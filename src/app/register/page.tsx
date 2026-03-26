@@ -56,11 +56,9 @@ export default function RegisterPage() {
           <div className="card flex flex-col justify-between gap-8">
             <div className="space-y-5">
               <div className="space-y-3">
-                <p className="text-sm font-mono uppercase tracking-[0.35em] text-slate-500">
-                  Front desk workflow
-                </p>
+                <p className="meta-label">Front desk workflow</p>
                 <h1 className="section-title text-5xl sm:text-6xl">Register athletes without slowing the room down.</h1>
-                <p className="max-w-xl text-sm leading-7 text-slate-300 sm:text-base">
+                <p className="max-w-xl font-body text-sm leading-7 text-slate-300 sm:text-base">
                   Keep intake light, validate the bib number, and route each athlete directly into the
                   scoring experience they will use for the rest of the event.
                 </p>
@@ -68,36 +66,28 @@ export default function RegisterPage() {
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="stat-card">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    Step 1
-                  </div>
+                  <div className="meta-label">Step 1</div>
                   <div className="mt-2 font-display text-3xl text-chalk">Name</div>
-                  <p className="mt-2 text-sm text-slate-400">Capture the athlete record.</p>
+                  <p className="mt-2 font-body text-sm text-slate-300">Capture the athlete record.</p>
                 </div>
                 <div className="stat-card">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    Step 2
-                  </div>
+                  <div className="meta-label">Step 2</div>
                   <div className="mt-2 font-display text-3xl text-chalk">Bib</div>
-                  <p className="mt-2 text-sm text-slate-400">Link their competition number.</p>
+                  <p className="mt-2 font-body text-sm text-slate-300">Link their competition number.</p>
                 </div>
                 <div className="stat-card">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    Step 3
-                  </div>
+                  <div className="meta-label">Step 3</div>
                   <div className="mt-2 font-display text-3xl text-chalk">Start</div>
-                  <p className="mt-2 text-sm text-slate-400">Open the live scorecard instantly.</p>
+                  <p className="mt-2 font-body text-sm text-slate-300">Open the live scorecard instantly.</p>
                 </div>
               </div>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-              <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                Desk notes
-              </div>
+              <div className="meta-label">Desk notes</div>
               <div className="mt-4 space-y-3">
                 {NOTES.map((note, index) => (
-                  <div key={note} className="flex gap-3 text-sm leading-7 text-slate-300">
+                  <div key={note} className="flex gap-3 font-body text-sm leading-7 text-slate-300">
                     <span className="mt-1 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-mono text-slate-400">
                       0{index + 1}
                     </span>
@@ -157,13 +147,11 @@ export default function RegisterPage() {
                     value={climberNumber}
                     onChange={(e) => setClimberNumber(e.target.value)}
                     placeholder="42"
-                    className="input-field font-mono text-lg"
+                    className="input-field font-body text-lg"
                     disabled={loading}
                     maxLength={6}
                   />
-                  <p className="mt-2 text-xs font-mono uppercase tracking-widest text-slate-500">
-                    Match the bib or registration roster.
-                  </p>
+                  <p className="mt-2 font-body text-sm text-slate-300">Match the bib or registration roster.</p>
                 </div>
 
                 {error && (
@@ -184,10 +172,8 @@ export default function RegisterPage() {
             )}
 
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                Returning athlete
-              </div>
-              <p className="mt-2 text-sm text-slate-300">
+              <div className="meta-label">Returning athlete</div>
+              <p className="mt-2 font-body text-sm text-slate-300">
                 Already checked in? Open the scorecard lookup and search by climber number.
               </p>
             </div>

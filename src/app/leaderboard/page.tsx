@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { buildLeaderboard, formatTime, type LeaderboardEntry } from "@/lib/scoring";
 import { getAllClimbersWithAttempts } from "@/lib/db";
@@ -19,6 +19,73 @@ const RANK_BADGES: Record<number, { label: string; tone: string }> = {
   2: { label: "2nd", tone: "text-slate-200 border-slate-300/20 bg-slate-300/10" },
   3: { label: "3rd", tone: "text-amber-300 border-amber-400/20 bg-amber-400/10" },
 };
+
+function AnimatedNumber({
+  value,
+  className,
+}: {
+  value: number;
+  className?: string;
+}) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const previousValue = useRef(value);
+
+  useEffect(() => {
+    const startValue = previousValue.current;
+    const endValue = value;
+
+    if (startValue === endValue) return;
+
+    let frame = 0;
+    const duration = 550;
+    const startedAt = performance.now();
+
+    const tick = (timestamp: number) => {
+      const progress = Math.min((timestamp - startedAt) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const nextValue = Math.round(startValue + (endValue - startValue) * eased);
+      setDisplayValue(nextValue);
+
+      if (progress < 1) {
+        frame = requestAnimationFrame(tick);
+      } else {
+        previousValue.current = endValue;
+      }
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  useEffect(() => {
+    previousValue.current = value;
+    setDisplayValue(value);
+  }, []);
+
+  return <span className={className}>{displayValue.toLocaleString()}</span>;
+}
+
+function LeaderboardSkeleton() {
+  return (
+    <div className="divide-y divide-white/5">
+      {[0, 1, 2, 3].map((index) => (
+        <div key={index} className="px-4 py-5 sm:px-6">
+          <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
+            <div className="flex items-center gap-3">
+              <div className="skeleton-block h-12 w-16 rounded-full" />
+              <div className="skeleton-block h-12 w-20 rounded-full" />
+            </div>
+            <div className="space-y-3">
+              <div className="skeleton-block h-8 w-48" />
+              <div className="skeleton-block h-3 w-full max-w-sm" />
+            </div>
+            <div className="skeleton-block h-20 w-28" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function ScoreBar({ score }: { score: number }) {
   return (
@@ -69,13 +136,17 @@ function LeaderboardRow({
 }) {
   const badge = RANK_BADGES[entry.rank];
   const rankChanged = prevRank !== undefined && prevRank !== entry.rank;
+  const rowStyle = {
+    animationDelay: `${index * 0.05}s`,
+    viewTransitionName: `leaderboard-${entry.climber_id}`,
+  } as CSSProperties;
 
   return (
     <div
       className={`leaderboard-row px-4 py-4 sm:px-6 ${rankChanged ? "animate-pulse" : ""} ${
         entry.rank === 1 ? "bg-yellow-400/5" : ""
       }`}
-      style={{ animationDelay: `${index * 0.05}s` }}
+      style={rowStyle}
     >
       <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
         <div className="flex items-center gap-3">
@@ -86,7 +157,7 @@ function LeaderboardRow({
           >
             {badge ? badge.label : `#${entry.rank}`}
           </div>
-          <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono uppercase tracking-widest text-slate-500">
+          <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono uppercase tracking-widest text-slate-300">
             #{entry.climber_number}
           </div>
         </div>
@@ -110,9 +181,9 @@ function LeaderboardRow({
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-right">
-          <div className="text-xs font-mono uppercase tracking-widest text-slate-500">Total</div>
-          <div className="section-title text-4xl leading-none text-chalk">{entry.total_score.toLocaleString()}</div>
-          <div className="mt-2 text-xs font-mono uppercase tracking-widest text-slate-500">
+          <div className="meta-label">Total</div>
+          <AnimatedNumber value={entry.total_score} className="font-display text-4xl leading-none text-chalk" />
+          <div className="mt-2 font-body text-sm text-slate-300">
             {entry.total_time_seconds > 0 ? formatTime(entry.total_time_seconds) : "No time yet"}
           </div>
         </div>
@@ -133,10 +204,23 @@ export default function LeaderboardPage() {
     try {
       const climbers = await getAllClimbersWithAttempts();
       const board = buildLeaderboard(climbers).slice(0, TOP_N);
-      setLeaderboard(board);
-      setLastUpdate(new Date());
-      setPulse(true);
-      setTimeout(() => setPulse(false), 500);
+      const applyUpdate = () => {
+        setLeaderboard(board);
+        setLastUpdate(new Date());
+        setPulse(true);
+        setTimeout(() => setPulse(false), 500);
+      };
+
+      if ("startViewTransition" in document) {
+        (
+          document as Document & {
+            startViewTransition?: (update: () => void) => void;
+          }
+        ).startViewTransition?.(applyUpdate);
+      } else {
+        applyUpdate();
+      }
+
       setLoadError("");
     } catch (err) {
       console.error("Failed to refresh leaderboard:", err);
@@ -190,7 +274,7 @@ export default function LeaderboardPage() {
           >
             <span className={`h-2 w-2 rounded-full ${pulse ? "bg-green-400" : "bg-slate-600"}`} />
             Live
-            {lastUpdateLabel && <span className="text-slate-500">{lastUpdateLabel}</span>}
+            {lastUpdateLabel && <span className="text-slate-300">{lastUpdateLabel}</span>}
           </div>
         </div>
 
@@ -198,13 +282,11 @@ export default function LeaderboardPage() {
           <div className="card">
             <span className="eyebrow">Broadcast board</span>
             <div className="mt-5 max-w-3xl">
-              <p className="text-sm font-mono uppercase tracking-[0.35em] text-slate-500">
-                Summit Series top six
-              </p>
+              <p className="meta-label">Summit Series top six</p>
               <h1 className="section-title mt-4 text-5xl sm:text-6xl lg:text-7xl">
                 The leaderboard now feels stage-ready.
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+              <p className="mt-4 max-w-2xl font-body text-sm leading-7 text-slate-300 sm:text-base">
                 Scores, route contribution, and tie-break time are grouped into one cleaner ranking
                 surface so judges can verify placements and spectators can read the board from a
                 distance.
@@ -213,25 +295,19 @@ export default function LeaderboardPage() {
 
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               <div className="stat-card">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                  Board depth
-                </div>
+                <div className="meta-label">Board depth</div>
                 <div className="mt-2 font-display text-4xl text-chalk">{TOP_N}</div>
-                <p className="mt-2 text-sm text-slate-400">Top competitors kept visible at all times.</p>
+                <p className="mt-2 font-body text-sm text-slate-300">Top competitors kept visible at all times.</p>
               </div>
               <div className="stat-card">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                  Tie-break
-                </div>
+                <div className="meta-label">Tie-break</div>
                 <div className="mt-2 font-display text-4xl text-chalk">Time</div>
-                <p className="mt-2 text-sm text-slate-400">Lowest combined completion time wins ties.</p>
+                <p className="mt-2 font-body text-sm text-slate-300">Lowest combined completion time wins ties.</p>
               </div>
               <div className="stat-card">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                  Update mode
-                </div>
+                <div className="meta-label">Update mode</div>
                 <div className="mt-2 font-display text-4xl text-chalk">Live</div>
-                <p className="mt-2 text-sm text-slate-400">Realtime refresh keeps the room synchronized.</p>
+                <p className="mt-2 font-body text-sm text-slate-300">Realtime refresh keeps the room synchronized.</p>
               </div>
             </div>
           </div>
@@ -239,7 +315,7 @@ export default function LeaderboardPage() {
           <aside className="card flex flex-col justify-between gap-5">
             <div>
               <span className="eyebrow">How to read it</span>
-              <div className="mt-5 space-y-3 text-sm leading-7 text-slate-300">
+              <div className="mt-5 space-y-3 font-body text-sm leading-7 text-slate-300">
                 <p>Route bars show how much of the 6,000-point ceiling each athlete has locked in.</p>
                 <p>Per-route chips make it obvious where the score came from without opening a detail view.</p>
                 <p>Rank badges and large totals help the top three hold visual priority on a projector.</p>
@@ -248,7 +324,7 @@ export default function LeaderboardPage() {
 
             <div className="space-y-3">
               <div className="card-muted">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">Route palette</div>
+                <div className="meta-label">Route palette</div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest">
                   <span className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-green-300">R1 1000</span>
                   <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-blue-300">R2 2000</span>
@@ -257,10 +333,8 @@ export default function LeaderboardPage() {
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                  Event flow
-                </div>
-                <div className="mt-3 space-y-2 text-sm text-slate-300">
+                <div className="meta-label">Event flow</div>
+                <div className="mt-3 space-y-2 font-body text-sm text-slate-300">
                   <p>Scores appear as soon as routes are completed.</p>
                   <p>Failed attempts affect score, but only the first three are penalized.</p>
                   <p>Time only matters once athletes begin stacking completed routes.</p>
@@ -274,12 +348,10 @@ export default function LeaderboardPage() {
           <div className="border-b border-white/10 px-4 py-4 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                  Live standings
-                </div>
+                <div className="meta-label">Live standings</div>
                 <h2 className="section-title mt-2 text-3xl">Current order</h2>
               </div>
-              <div className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-mono uppercase tracking-widest text-slate-500">
+              <div className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-mono uppercase tracking-widest text-slate-300">
                 score first, lowest time second
               </div>
             </div>
@@ -292,19 +364,17 @@ export default function LeaderboardPage() {
           )}
 
           {loading ? (
-            <div className="px-6 py-20 text-center">
-              <div className="mx-auto h-10 w-10 rounded-full border-2 border-white/10 border-t-accent animate-spin" />
-              <p className="mt-4 text-sm font-mono uppercase tracking-widest text-slate-500">
-                Loading rankings
-              </p>
-            </div>
+            <LeaderboardSkeleton />
           ) : leaderboard.length === 0 ? (
             <div className="px-6 py-20 text-center">
-              <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                Waiting for scores
+              <div className="mx-auto mb-8 flex w-full max-w-sm items-end justify-center gap-4">
+                <div className="podium-glow h-20 w-16 rounded-t-3xl border border-white/10 bg-white/[0.03]" />
+                <div className="podium-glow h-28 w-20 rounded-t-3xl border border-yellow-400/20 bg-yellow-400/10" />
+                <div className="podium-glow h-16 w-16 rounded-t-3xl border border-white/10 bg-white/[0.03]" />
               </div>
+              <div className="meta-label">Waiting for scores</div>
               <h3 className="section-title mt-4 text-4xl text-slate-300">No leaderboard entries yet.</h3>
-              <p className="mt-3 text-sm text-slate-400">
+              <p className="mt-3 font-body text-sm text-slate-300">
                 Scores will populate here as soon as climbers start completing routes.
               </p>
             </div>

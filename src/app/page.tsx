@@ -1,4 +1,5 @@
 import Link from "next/link";
+import HomeOperations from "./home-operations";
 
 const ACTIONS = [
   {
@@ -53,9 +54,7 @@ export default function Home() {
               <div className="space-y-5">
                 <span className="eyebrow">Summit Series live scoring</span>
                 <div className="max-w-3xl space-y-4">
-                  <p className="text-sm font-mono uppercase tracking-[0.35em] text-slate-500">
-                    Boulder comp control room
-                  </p>
+                  <p className="meta-label">Boulder comp control room</p>
                   <h1 className="section-title text-6xl leading-none sm:text-7xl lg:text-8xl">
                     A sharper scoring desk for fast-moving finals.
                   </h1>
@@ -77,29 +76,23 @@ export default function Home() {
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="stat-card">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    Routes
-                  </div>
+                  <div className="meta-label">Routes</div>
                   <div className="mt-2 font-display text-4xl text-chalk">3</div>
-                  <p className="mt-2 text-sm text-slate-400">
+                  <p className="mt-2 font-body text-sm text-slate-300">
                     Distinct score tiers keep route value obvious at a glance.
                   </p>
                 </div>
                 <div className="stat-card">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    Penalty model
-                  </div>
+                  <div className="meta-label">Penalty model</div>
                   <div className="mt-2 font-display text-4xl text-chalk">-200</div>
-                  <p className="mt-2 text-sm text-slate-400">
+                  <p className="mt-2 font-body text-sm text-slate-300">
                     Failed attempts are capped, so route progression still matters.
                   </p>
                 </div>
                 <div className="stat-card">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    Tie-break
-                  </div>
+                  <div className="meta-label">Tie-break</div>
                   <div className="mt-2 font-display text-4xl text-chalk">Time</div>
-                  <p className="mt-2 text-sm text-slate-400">
+                  <p className="mt-2 font-body text-sm text-slate-300">
                     Lowest combined completion time wins when scores match.
                   </p>
                 </div>
@@ -107,43 +100,35 @@ export default function Home() {
             </div>
           </div>
 
-          <aside className="card flex h-full flex-col justify-between gap-6">
+          <aside className="card flex h-full flex-col gap-6">
             <div className="space-y-4">
-              <span className="eyebrow">Event snapshot</span>
+              <span className="eyebrow">Scoring at a glance</span>
               <div>
-                <h2 className="section-title text-4xl gradient-text">Ready for judges, athletes, and the crowd.</h2>
-                <p className="mt-3 text-sm leading-7 text-slate-300">
-                  Each screen has a clear job: athlete intake, route administration, and public
-                  ranking. The UI now leans into that event-day split instead of looking like a
-                  generic CRUD app.
+                <h2 className="section-title text-4xl gradient-text">Route values stay visible without eating the page.</h2>
+                <p className="mt-3 font-body text-sm leading-7 text-slate-300">
+                  Judges still get the route-point reference, but the homepage now gives more room to
+                  live event context and operational actions.
                 </p>
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="grid gap-3">
               {CLIMB_RULES.map((rule) => (
                 <div key={rule.label} className="card-muted flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                      {rule.label}
-                    </div>
-                    <div className={`mt-1 font-display text-3xl ${rule.tone}`}>{rule.points}</div>
+                    <div className="meta-label">{rule.label}</div>
+                    <div className={`mt-1 font-display text-2xl ${rule.tone}`}>{rule.points}</div>
                   </div>
-                  <div className="text-right text-xs uppercase tracking-widest text-slate-500">
-                    base points
-                  </div>
+                  <div className="text-right font-body text-sm text-slate-300">base points</div>
                 </div>
               ))}
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                Rules
-              </div>
-              <div className="mt-3 space-y-2 text-sm text-slate-300">
-                <p>Up to three failed attempts per route reduce the score.</p>
-                <p>Completed routes stack cleanly from 1,000 to 6,000 total points.</p>
-                <p>Live board order falls back to lowest total time when tied.</p>
+              <div className="meta-label">Reminder</div>
+              <div className="mt-3 space-y-2 font-body text-sm text-slate-300">
+                <p>Only the first three failed attempts on each route are penalized.</p>
+                <p>Final board order stays score first, lowest total time second.</p>
               </div>
             </div>
           </aside>
@@ -159,7 +144,7 @@ export default function Home() {
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-4">
                   <h3 className="section-title text-3xl leading-none">{action.title}</h3>
-                  <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-slate-500">
+                  <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-slate-300">
                     {action.stat}
                   </span>
                 </div>
@@ -173,71 +158,7 @@ export default function Home() {
           ))}
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="card">
-            <span className="eyebrow">Why it works</span>
-            <div className="mt-5 space-y-4">
-              <div>
-                <h2 className="section-title text-4xl">The UI now reads like an event console.</h2>
-                <p className="mt-3 text-sm leading-7 text-slate-300">
-                  Bigger typography, cleaner cards, and clearer state contrast make it easier to scan
-                  at a distance and faster to use on a phone.
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="card-muted">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    At the desk
-                  </div>
-                  <p className="mt-2 text-sm leading-7 text-slate-300">
-                    Registration and judge actions are framed as focused tasks with fewer dead ends.
-                  </p>
-                </div>
-                <div className="card-muted">
-                  <div className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                    On the wall
-                  </div>
-                  <p className="mt-2 text-sm leading-7 text-slate-300">
-                    The leaderboard uses stronger score hierarchy so the top positions pop instantly.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="eyebrow">Competition flow</span>
-              <span className="text-xs font-mono uppercase tracking-widest text-slate-500">
-                Registration {"->"} scoring {"->"} rankings
-              </span>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="card-muted">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">01</div>
-                <h3 className="mt-3 section-title text-2xl">Register athletes</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-300">
-                  Capture name and bib number quickly, then link directly into the active scorecard.
-                </p>
-              </div>
-              <div className="card-muted">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">02</div>
-                <h3 className="mt-3 section-title text-2xl">Judge the attempts</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-300">
-                  Log misses, mark completion, and keep penalties visible without extra math.
-                </p>
-              </div>
-              <div className="card-muted">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-500">03</div>
-                <h3 className="mt-3 section-title text-2xl">Broadcast standings</h3>
-                <p className="mt-2 text-sm leading-7 text-slate-300">
-                  Surface the top six with enough contrast for coaches, athletes, and spectators.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        <HomeOperations />
       </div>
     </main>
   );
