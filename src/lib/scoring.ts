@@ -74,13 +74,13 @@ export interface LeaderboardViewRow {
   climber_id: string;
   name: string;
   climber_number: string;
-  category: string;
+  category?: string | null;
   total_score: number;
   total_time_seconds: number;
   completed_climbs: number;
   highest_completed_climb: number;
-  overall_rank: number;
-  category_rank: number;
+  overall_rank?: number | null;
+  category_rank?: number | null;
 }
 
 export async function getCompetitionSettings(forceRefresh = false): Promise<CompetitionSettings> {
@@ -196,13 +196,13 @@ export function mapLeaderboardViewRowToEntry(
     climber_id: row.climber_id,
     name: row.name,
     climber_number: row.climber_number,
-    category: row.category,
+    category: row.category ?? "Open",
     route_scores: [],
     completed_routes: row.completed_climbs,
     highest_completed_climb: row.highest_completed_climb,
     total_score: row.total_score,
     total_time_seconds: row.total_time_seconds,
-    rank: categoryScoped ? row.category_rank : row.overall_rank,
+    rank: (categoryScoped ? row.category_rank : row.overall_rank) ?? 0,
   };
 }
 

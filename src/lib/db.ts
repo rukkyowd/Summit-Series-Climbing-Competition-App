@@ -5,6 +5,7 @@ import type {
   ClimberWithAttempts,
   LeaderboardViewRow,
 } from "./scoring";
+import { buildLeaderboard, getCompetitionSettings } from "./scoring";
 
 function ensureConfigured() {
   assertSupabaseConfigured();
@@ -83,15 +84,17 @@ export async function getCompetitionCategories(): Promise<string[]> {
     .select("category")
     .order("category", { ascending: true });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    return ["Open"];
+  }
 
   const categories = new Set(
     (data ?? [])
       .map((entry) => entry.category)
       .filter((value): value is string => Boolean(value?.trim()))
   );
-
-  return Array.from(categories);
+  const values = Array.from(categories);
+  return values.length ? values : ["Open"];
 }
 
 export async function getLeaderboardRows(category?: string | null): Promise<LeaderboardViewRow[]> {
@@ -103,12 +106,82 @@ export async function getLeaderboardRows(category?: string | null): Promise<Lead
     query = query.eq("category", category);
   }
 
-  const { data, error } = await query.order(category ? "category_rank" : "overall_rank", {
-    ascending: true,
-  });
+  const { data, error } = await query;
 
-  if (error) throw new Error(error.message);
-  return (data as LeaderboardViewRow[]) ?? [];
+  if (!error && data) {
+    const rows = (data as LeaderboardViewRow[]).map((row) => ({
+      ...row,
+      category: row.category ?? "Open",
+    }));
+
+    rows.sort((left, right) => {
+      if ((right.total_score ?? 0) !== (left.total_score ?? 0)) {
+        return (right.total_score ?? 0) - (left.total_score ?? 0);
+      }
+      if ((left.total_time_seconds ?? 0) !== (right.total_time_seconds ?? 0)) {
+        return (left.total_time_seconds ?? 0) - (right.total_time_seconds ?? 0);
+      }
+      return left.name.localeCompare(right.name);
+    });
+
+    let overallRank = 1;
+    const categoryRanks: Record<string, number> = {};
+    const categoryCounts: Record<string, number> = {};
+    const previousByCategory: Record<string, LeaderboardViewRow | undefined> = {};
+
+    return rows.map((row, index) => {
+      if (
+        index > 0 &&
+        (row.total_score !== rows[index - 1].total_score ||
+          row.total_time_seconds !== rows[index - 1].total_time_seconds)
+      ) {
+        overallRank = index + 1;
+      }
+
+      const rowCategory = row.category ?? "Open";
+      categoryCounts[rowCategory] = (categoryCounts[rowCategory] ?? 0) + 1;
+
+      const previous = previousByCategory[rowCategory];
+      if (
+        !previous ||
+        previous.total_score !== row.total_score ||
+        previous.total_time_seconds !== row.total_time_seconds
+      ) {
+        categoryRanks[rowCategory] = categoryCounts[rowCategory];
+      }
+
+      previousByCategory[rowCategory] = row;
+
+      return {
+        ...row,
+        overall_rank: row.overall_rank ?? overallRank,
+        category_rank: row.category_rank ?? categoryRanks[rowCategory],
+      };
+    });
+  }
+
+  const [climbers, settings] = await Promise.all([
+    getAllClimbersWithAttempts(),
+    getCompetitionSettings(true),
+  ]);
+
+  const fallbackBoard = buildLeaderboard(
+    category ? climbers.filter((climber) => (climber.category ?? "Open") === category) : climbers,
+    settings
+  );
+
+  return fallbackBoard.map((entry) => ({
+    climber_id: entry.climber_id,
+    name: entry.name,
+    climber_number: entry.climber_number,
+    category: entry.category ?? "Open",
+    total_score: entry.total_score,
+    total_time_seconds: entry.total_time_seconds,
+    completed_climbs: entry.completed_routes,
+    highest_completed_climb: entry.highest_completed_climb,
+    overall_rank: entry.rank,
+    category_rank: entry.rank,
+  }));
 }
 
 export async function getOrCreateAttempt(
