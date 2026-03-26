@@ -25,8 +25,8 @@ const ACTIONS = [
 const SCORING_RULES = [
   "30 climbs",
   "Progressive point values",
-  "Penalty: -200 per failed attempt",
-  "Penalty cap: 3 fails per climb",
+  "Penalty values from event settings",
+  "Per-climb fail cap from settings",
   "Tie-break: Lowest total time",
 ];
 

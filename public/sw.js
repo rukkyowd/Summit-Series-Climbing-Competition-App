@@ -1,4 +1,4 @@
-const CACHE_NAME = "summit-series-v1";
+﻿const CACHE_NAME = "summit-series-v1";
 const APP_SHELL = ["/", "/register", "/scorecard", "/leaderboard", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
@@ -65,3 +65,4 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+

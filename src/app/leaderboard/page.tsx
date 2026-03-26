@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SiteHeader from "@/components/site-header";
 import { getCompetitionCategories, getLeaderboardRows } from "@/lib/db";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
@@ -170,7 +170,7 @@ export default function LeaderboardPage() {
 
   const categoryScoped = selectedCategory !== ALL_CATEGORIES;
 
-  const refreshLeaderboard = async () => {
+  const refreshLeaderboard = useCallback(async () => {
     try {
       const [rows, availableCategories] = await Promise.all([
         getLeaderboardRows(categoryScoped ? selectedCategory : null),
@@ -206,11 +206,11 @@ export default function LeaderboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [categoryScoped, selectedCategory]);
 
   useEffect(() => {
     refreshLeaderboard();
-  }, [selectedCategory]);
+  }, [refreshLeaderboard]);
 
   useEffect(() => {
     if (!supabaseConfigured) return;
@@ -229,7 +229,7 @@ export default function LeaderboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedCategory]);
+  }, [refreshLeaderboard]);
 
   useEffect(() => {
     const nextRanks: Record<string, number> = {};

@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getAllClimbersWithAttempts } from "@/lib/db";
-import { buildLeaderboard, formatTime, type ClimberWithAttempts } from "@/lib/scoring";
+import {
+  buildLeaderboard,
+  formatTime,
+  getCompetitionSettings,
+  type ClimberWithAttempts,
+  type CompetitionSettings,
+} from "@/lib/scoring";
 import {
   SUPABASE_BROWSER_KEY_ERROR,
   SUPABASE_ENV_ERROR,
@@ -35,14 +41,22 @@ function formatRelativeTime(timestamp: string) {
 
 export default function HomeOperations() {
   const [climbers, setClimbers] = useState<ClimberWithAttempts[]>([]);
+  const [settings, setSettings] = useState<CompetitionSettings>({
+    penalty_per_fail: 200,
+    max_penalized_fails: 3,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const refresh = async () => {
     try {
-      const rows = await getAllClimbersWithAttempts();
+      const [rows, nextSettings] = await Promise.all([
+        getAllClimbersWithAttempts(),
+        getCompetitionSettings(true),
+      ]);
       setClimbers(rows);
+      setSettings(nextSettings);
       setLastUpdated(new Date());
       setError("");
     } catch (err) {
@@ -64,6 +78,7 @@ export default function HomeOperations() {
       .channel("home-operations")
       .on("postgres_changes", { event: "*", schema: "public", table: "climbers" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "climb_attempts" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "competition_settings" }, refresh)
       .subscribe();
 
     return () => {
@@ -77,7 +92,7 @@ export default function HomeOperations() {
     const loggedAttempts = attempts.filter(
       (attempt) => attempt.completed || attempt.failed_attempts > 0
     ).length;
-    const leaderboard = buildLeaderboard(climbers);
+    const leaderboard = buildLeaderboard(climbers, settings);
 
     const activities: ActivityItem[] = [
       ...climbers
@@ -114,7 +129,7 @@ export default function HomeOperations() {
       leaderboard,
       activities,
     };
-  }, [climbers]);
+  }, [climbers, settings]);
 
   const liveStatus = !supabaseConfigured
     ? "Configuration needed"

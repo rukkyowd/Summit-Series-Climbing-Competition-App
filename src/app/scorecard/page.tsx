@@ -1,21 +1,10 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-  CLIMBS,
-  TOTAL_CLIMBS,
-  MAX_PENALIZED_FAILS,
-  PENALTY_PER_FAIL,
-  calculateClimbScore,
-  calculateTotalScore,
-  calculateTotalTime,
-  formatTime,
-  type ClimbAttempt,
-  type ClimbNumber,
-  type ClimberWithAttempts,
-} from "@/lib/scoring";
+import { useSearchParams } from "next/navigation";
+import SiteHeader from "@/components/site-header";
+import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import {
   addFailedAttempt,
   completeClimb,
@@ -26,125 +15,150 @@ import {
   getClimberByNumber,
   removeLastFail,
   resetClimb,
+  startClimbAttempt,
 } from "@/lib/db";
+import {
+  applyOptimisticQueueAction,
+  buildQueueActionId,
+  isNetworkLikeError,
+  readActiveTimers,
+  readOfflineQueue,
+  writeActiveTimers,
+  writeOfflineQueue,
+  type QueueAction,
+} from "@/lib/offline-scorecard";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
-import SiteHeader from "@/components/site-header";
+import {
+  CLIMBS,
+  calculateClimbScore,
+  calculateTotalScore,
+  calculateTotalTime,
+  countCompletedRoutes,
+  formatTime,
+  getCompetitionSettings,
+  TOTAL_CLIMBS,
+  type ClimbAttempt,
+  type ClimbNumber,
+  type ClimberWithAttempts,
+  type CompetitionSettings,
+} from "@/lib/scoring";
 
-const ADMIN_PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || "1234";
 const RECENT_LOOKUPS_KEY = "scorecard-recent-lookups";
 
-type Notice = {
-  tone: "error" | "success";
-  message: string;
-};
-
+type Notice = { tone: "error" | "success"; message: string };
 type DangerTarget = "climber" | "all" | null;
-type RecentLookup = {
-  id: string;
-  name: string;
-  climber_number: string;
-};
+type RecentLookup = { id: string; name: string; climber_number: string };
 
-function getAttempt(attempts: ClimbAttempt[], climbNumber: ClimbNumber) {
+function getAttempt(attempts: ClimbAttempt[], climbNumber: number) {
   return attempts.find((attempt) => attempt.climb_number === climbNumber);
 }
 
-function getClimbTheme(climbNumber: ClimbNumber) {
-  const themes = [
-    {
-      badge: "text-green-300 border-green-500/20 bg-green-500/10",
-      border: "border-green-500/25",
-      text: "text-green-300",
-      surface: "bg-green-500/10",
-      button: "border-green-500/20 bg-green-500/10 text-green-200 hover:bg-green-500/20",
-    },
-    {
-      badge: "text-blue-300 border-blue-500/20 bg-blue-500/10",
-      border: "border-blue-500/25",
-      text: "text-blue-300",
-      surface: "bg-blue-500/10",
-      button: "border-blue-500/20 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20",
-    },
-    {
-      badge: "text-red-200 border-accent/20 bg-accent/10",
-      border: "border-accent/25",
-      text: "text-red-200",
-      surface: "bg-accent/10",
-      button: "border-accent/20 bg-accent/10 text-red-100 hover:bg-accent/20",
-    },
-    {
-      badge: "text-yellow-200 border-yellow-500/20 bg-yellow-500/10",
-      border: "border-yellow-500/25",
-      text: "text-yellow-200",
-      surface: "bg-yellow-500/10",
-      button: "border-yellow-500/20 bg-yellow-500/10 text-yellow-100 hover:bg-yellow-500/20",
-    },
-    {
-      badge: "text-orange-200 border-orange-500/20 bg-orange-500/10",
-      border: "border-orange-500/25",
-      text: "text-orange-200",
-      surface: "bg-orange-500/10",
-      button: "border-orange-500/20 bg-orange-500/10 text-orange-100 hover:bg-orange-500/20",
-    },
-  ] as const;
-
-  return themes[(climbNumber - 1) % themes.length];
-}
-
-function AnimatedNumber({
-  value,
-  className,
-}: {
-  value: number;
-  className?: string;
-}) {
+function AnimatedNumber({ value, className }: { value: number; className?: string }) {
   const [displayValue, setDisplayValue] = useState(value);
   const previousValue = useRef(value);
-  const isFirstRender = useRef(true);
 
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      previousValue.current = value;
-      setDisplayValue(value);
-      return;
-    }
-
-    const startValue = previousValue.current;
-    const endValue = value;
-
-    if (startValue === endValue) return;
+    const start = previousValue.current;
+    const end = value;
+    if (start === end) return;
 
     let frame = 0;
-    const duration = 500;
     const startedAt = performance.now();
-
     const tick = (timestamp: number) => {
-      const progress = Math.min((timestamp - startedAt) / duration, 1);
+      const progress = Math.min((timestamp - startedAt) / 450, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      const nextValue = Math.round(startValue + (endValue - startValue) * eased);
-      setDisplayValue(nextValue);
-
+      setDisplayValue(Math.round(start + (end - start) * eased));
       if (progress < 1) {
         frame = requestAnimationFrame(tick);
       } else {
-        previousValue.current = endValue;
+        previousValue.current = end;
       }
     };
 
     frame = requestAnimationFrame(tick);
-
     return () => cancelAnimationFrame(frame);
   }, [value]);
 
   return <span className={className}>{displayValue.toLocaleString()}</span>;
 }
 
+function AccessCard({
+  profile,
+  authLoading,
+  email,
+  password,
+  setEmail,
+  setPassword,
+  onSubmit,
+  onSignOut,
+  error,
+}: {
+  profile: Profile | null;
+  authLoading: boolean;
+  email: string;
+  password: string;
+  setEmail: (value: string) => void;
+  setPassword: (value: string) => void;
+  onSubmit: (event: React.FormEvent) => void;
+  onSignOut: () => void;
+  error: string;
+}) {
+  if (profile && isStaffRole(profile.role)) {
+    return (
+      <section className="card">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="eyebrow">Judge access</div>
+            <h2 className="section-title mt-4 text-3xl">Signed in as {profile.role}</h2>
+            <p className="mt-3 text-sm text-slate-300">
+              Supabase Auth is active. Route updates and athlete registration are unlocked.
+            </p>
+          </div>
+          <button onClick={onSignOut} className="btn-ghost">
+            Sign out
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="card">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="eyebrow">Judge access</div>
+          <h2 className="section-title mt-4 text-3xl">Sign in with Supabase Auth</h2>
+        </div>
+        <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">Staff only</div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="judge@summitseries.com" className="input-field" autoComplete="email" />
+        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="input-field" autoComplete="current-password" />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={authLoading} className="btn-primary">
+          {authLoading ? "Checking session..." : "Sign in for route controls"}
+        </button>
+        <p className="text-sm text-slate-300">Public users can read scorecards. Only judge/admin roles can write.</p>
+      </div>
+
+      {error ? <p className="mt-3 text-sm text-accent">{error}</p> : null}
+    </form>
+  );
+}
+
 function ClimbCard({
   climb,
   attempt,
-  isAdmin,
+  canJudge,
   loading,
+  now,
+  settings,
+  timerStartedAt,
+  pendingSync,
+  onStart,
   onAddFail,
   onUndoFail,
   onComplete,
@@ -152,298 +166,80 @@ function ClimbCard({
 }: {
   climb: (typeof CLIMBS)[number];
   attempt?: ClimbAttempt;
-  isAdmin: boolean;
+  canJudge: boolean;
   loading: boolean;
+  now: number;
+  settings: CompetitionSettings;
+  timerStartedAt?: string;
+  pendingSync: boolean;
+  onStart: () => void;
   onAddFail: () => void;
   onUndoFail: () => void;
   onComplete: (seconds: number) => void;
   onReset: () => void;
 }) {
-  const [minutesInput, setMinutesInput] = useState("");
-  const [secondsInput, setSecondsInput] = useState("");
-  const [timeError, setTimeError] = useState("");
-  const [flash, setFlash] = useState(false);
-
-  const theme = getClimbTheme(climb.number);
   const fails = attempt?.failed_attempts ?? 0;
   const completed = attempt?.completed ?? false;
-  const penalizedFails = Math.min(fails, MAX_PENALIZED_FAILS);
-  const extraFails = Math.max(0, fails - penalizedFails);
-  const score = calculateClimbScore(climb.number, fails, completed);
-  const penaltyApplied = penalizedFails * PENALTY_PER_FAIL;
-
-  const handleComplete = () => {
-    setTimeError("");
-    const minutes = minutesInput.trim() === "" ? 0 : Number.parseInt(minutesInput, 10);
-    const seconds = secondsInput.trim() === "" ? 0 : Number.parseInt(secondsInput, 10);
-
-    if (Number.isNaN(minutes) || Number.isNaN(seconds) || minutes < 0 || seconds < 0 || seconds > 59) {
-      setTimeError("Enter minutes and seconds, with seconds between 0 and 59.");
-      return;
-    }
-
-    const totalSeconds = minutes * 60 + seconds;
-
-    if (totalSeconds <= 0) {
-      setTimeError("Enter a route time before marking the climb complete.");
-      return;
-    }
-
-    setFlash(true);
-    setTimeout(() => setFlash(false), 700);
-    onComplete(totalSeconds);
-    setMinutesInput("");
-    setSecondsInput("");
-  };
-
-  const handleAddFail = () => {
-    const element = document.getElementById(`fail-btn-${climb.number}`);
-    element?.classList.add("shake");
-    setTimeout(() => element?.classList.remove("shake"), 300);
-    onAddFail();
-  };
+  const cappedFails = Math.min(fails, settings.max_penalized_fails);
+  const score = calculateClimbScore(climb.number, fails, completed, settings);
+  const timerSeconds = timerStartedAt ? Math.max(1, Math.floor((now - new Date(timerStartedAt).getTime()) / 1000)) : 0;
 
   return (
-    <div
-      id={`climb-card-${climb.number}`}
-      className={`card border ${theme.border} transition-all duration-300 ${flash ? "flash-complete" : ""}`}
-    >
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div className="space-y-3">
-          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-mono uppercase tracking-widest ${theme.badge}`}>
-            Climb {climb.number.toString().padStart(2, "0")}
-          </span>
-          <div>
-            <h2 className="section-title text-3xl">{climb.label}</h2>
-            <p className="mt-2 font-body text-sm text-slate-300">{climb.basePoints.toLocaleString()} base points</p>
-          </div>
+    <article id={`climb-card-${climb.number}`} className="card border border-white/10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">Climb {climb.number.toString().padStart(2, "0")}</div>
+          <h3 className="section-title mt-4 text-3xl">{climb.label}</h3>
+          <p className="mt-2 text-sm text-slate-300">{climb.basePoints.toLocaleString()} base points</p>
         </div>
-
         <div className="rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-right">
           <div className="meta-label">Score</div>
-          <AnimatedNumber
-            value={completed ? score : 0}
-            className={`mt-2 block font-display text-4xl ${completed ? theme.text : "text-slate-400"}`}
-          />
-          <div className="mt-2 font-body text-sm text-slate-300">
-            {attempt?.completion_time_seconds ? formatTime(attempt.completion_time_seconds) : "No finish yet"}
-          </div>
+          <AnimatedNumber value={completed ? score : 0} className="mt-2 block font-display text-4xl text-chalk" />
+          <div className="mt-2 text-sm text-slate-300">{attempt?.completion_time_seconds ? formatTime(attempt.completion_time_seconds) : "No finish yet"}</div>
         </div>
       </div>
 
-      {completed ? (
-        <div className="space-y-4">
-          <div className={`rounded-3xl border border-white/10 px-4 py-4 ${theme.surface}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="meta-label">Status</div>
-                <div className={`mt-2 text-lg font-semibold ${theme.text}`}>Completed and scored</div>
-              </div>
-              <div className="text-right">
-                <div>{attempt?.completion_time_seconds ? formatTime(attempt.completion_time_seconds) : "--"}</div>
-                <div className="meta-label mt-1">time logged</div>
-              </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto]">
+        <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="meta-label">Live timer</div>
+              <div className="mt-2 font-display text-4xl text-chalk">{timerStartedAt ? formatTime(timerSeconds) : "0:00"}</div>
             </div>
-
-            <div className="mt-4 flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest">
-              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-slate-200">
-                fails {fails}
-              </span>
-              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-slate-200">
-                penalty -{penaltyApplied}
-              </span>
-              {extraFails > 0 && (
-                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-slate-200">
-                  extra fails +{extraFails}
-                </span>
-              )}
+            <div className="flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest">
+              {timerStartedAt ? <span className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-green-200">running</span> : null}
+              {pendingSync ? <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-yellow-100">pending sync</span> : null}
+              {completed ? <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-blue-200">complete</span> : null}
             </div>
           </div>
-
-          {isAdmin ? (
-            <button onClick={onReset} disabled={loading} className="btn-ghost w-full justify-center">
-              Reset route
-            </button>
-          ) : (
-            <p className="font-body text-sm text-slate-300">
-              Judges can reset this route if a score needs correction.
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="meta-label">Failed attempts</span>
-              <span className="meta-label">
-                {penalizedFails}/{MAX_PENALIZED_FAILS} penalized
-                {extraFails > 0 ? ` +${extraFails} extra` : ""}
-              </span>
-            </div>
-
-            <div className="mt-4 flex gap-2">
-              {[...Array(Math.max(fails, MAX_PENALIZED_FAILS))].map((_, index) => (
-                <div
-                  key={`${climb.number}-${index}`}
-                  className={`h-2 flex-1 rounded-full transition-all duration-200 ${
-                    index < fails
-                      ? index < MAX_PENALIZED_FAILS
-                        ? "bg-accent"
-                        : "bg-slate-500"
-                      : "bg-slate-800"
-                  }`}
-                />
-              ))}
-            </div>
-
-            {!isAdmin && (
-              <p className="mt-3 font-body text-sm text-slate-300">
-                Waiting on a judge to log fails or finish time for this climb.
-              </p>
-            )}
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest text-slate-300">
+            <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">fails {fails}</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">penalized {cappedFails}/{settings.max_penalized_fails}</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">penalty -{cappedFails * settings.penalty_per_fail}</span>
           </div>
-
-          {isAdmin ? (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                <button
-                  id={`fail-btn-${climb.number}`}
-                  onClick={handleAddFail}
-                  disabled={loading}
-                  className="btn-ghost w-full justify-center"
-                >
-                  Add fail
-                </button>
-                <button
-                  onClick={onUndoFail}
-                  disabled={loading || fails === 0}
-                  className="btn-ghost w-full justify-center"
-                >
-                  Undo fail
-                </button>
-                <div className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-mono uppercase tracking-widest text-slate-300">
-                  fails {fails}
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="meta-label mb-3">Mark Completion</div>
-                <div className="rounded-3xl border border-white/10 bg-rock/60 p-3">
-                  <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                    <label className="block">
-                      <span className="mb-2 block font-body text-sm text-slate-300">Minutes</span>
-                      <input
-                        type="number"
-                        min="0"
-                        inputMode="numeric"
-                        value={minutesInput}
-                        onChange={(e) => {
-                          setMinutesInput(e.target.value);
-                          setTimeError("");
-                        }}
-                        placeholder="0"
-                        className="input-field font-body text-base"
-                      />
-                    </label>
-                    <div className="hidden items-end justify-center pb-3 text-2xl font-display text-slate-300 sm:flex">
-                      :
-                    </div>
-                    <label className="block">
-                      <span className="mb-2 block font-body text-sm text-slate-300">Seconds</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="59"
-                        inputMode="numeric"
-                        value={secondsInput}
-                        onChange={(e) => {
-                          setSecondsInput(e.target.value);
-                          setTimeError("");
-                        }}
-                        onKeyDown={(e) => e.key === "Enter" && handleComplete()}
-                        placeholder="00"
-                        className="input-field font-body text-base"
-                      />
-                    </label>
-                  </div>
-                </div>
-                <button
-                  onClick={handleComplete}
-                  disabled={loading || (minutesInput.trim() === "" && secondsInput.trim() === "")}
-                  className={`mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold uppercase tracking-wider transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.button}`}
-                >
-                  Complete Climb
-                </button>
-                {timeError && <p className="mt-3 font-body text-sm text-accent">{timeError}</p>}
-                <p className="mt-3 font-body text-sm text-slate-300">
-                  Use separate minute and second fields so mobile judges get the numeric keypad.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 font-body text-sm text-slate-300">
-              Judge tools are hidden until the event PIN is entered.
-            </div>
-          )}
         </div>
-      )}
-    </div>
+        {completed && canJudge ? <button onClick={onReset} disabled={loading} className="btn-ghost w-full justify-center lg:w-auto">Reset</button> : null}
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <button onClick={onStart} disabled={loading || !canJudge || Boolean(timerStartedAt) || completed} className="btn-primary w-full justify-center">{timerStartedAt ? "Attempt running" : "Start attempt"}</button>
+        <button onClick={onAddFail} disabled={loading || !canJudge || completed} className="btn-ghost w-full justify-center">Add fail</button>
+        <button onClick={onUndoFail} disabled={loading || !canJudge || completed || fails === 0} className="btn-ghost w-full justify-center">Undo fail</button>
+        <button onClick={() => onComplete(timerSeconds)} disabled={loading || !canJudge || !timerStartedAt || completed} className="btn-ghost w-full justify-center">Stop and complete</button>
+      </div>
+
+      <p className="mt-4 text-sm text-slate-300">{canJudge ? "Completion time is written automatically from the live timer. Offline writes are queued and synced later." : "Sign in as a judge or admin to start timers and record results."}</p>
+    </article>
   );
 }
 
 function ScorecardLoading() {
   return (
     <main className="page-shell">
-      <div className="content-frame space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="skeleton-block h-12 w-32" />
-          <div className="skeleton-block h-12 w-36" />
-        </div>
-
+      <div className="content-frame">
         <section className="card">
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="space-y-4">
-              <div className="skeleton-block h-8 w-36" />
-              <div className="skeleton-block h-14 w-full max-w-lg" />
-              <div className="skeleton-block h-6 w-full max-w-2xl" />
-              <div className="flex gap-2">
-                <div className="skeleton-block h-9 w-28" />
-                <div className="skeleton-block h-9 w-32" />
-                <div className="skeleton-block h-9 w-28" />
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="skeleton-block h-20 w-full" />
-                <div className="skeleton-block h-20 w-full" />
-              </div>
-              <div className="skeleton-block mt-5 h-3 w-full" />
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="skeleton-block h-20 w-full" />
-                <div className="skeleton-block h-20 w-full" />
-                <div className="skeleton-block h-20 w-full" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-3">
-          {[0, 1, 2].map((index) => (
-            <div key={index} className="card space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-3">
-                  <div className="skeleton-block h-8 w-24" />
-                  <div className="skeleton-block h-9 w-40" />
-                  <div className="skeleton-block h-5 w-28" />
-                </div>
-                <div className="skeleton-block h-24 w-28" />
-              </div>
-              <div className="skeleton-block h-28 w-full" />
-              <div className="skeleton-block h-12 w-full" />
-              <div className="skeleton-block h-28 w-full" />
-            </div>
-          ))}
+          <div className="skeleton-block h-12 w-48" />
+          <div className="skeleton-block mt-4 h-24 w-full" />
         </section>
       </div>
     </main>
@@ -457,272 +253,336 @@ function ScorecardContent() {
   const [climber, setClimber] = useState<ClimberWithAttempts | null>(null);
   const [knownClimbers, setKnownClimbers] = useState<ClimberWithAttempts[]>([]);
   const [recentLookups, setRecentLookups] = useState<RecentLookup[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
   const [lookupInput, setLookupInput] = useState("");
   const [lookupError, setLookupError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [notice, setNotice] = useState<Notice | null>(null);
-
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [showPinEntry, setShowPinEntry] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
-  const [showPin, setShowPin] = useState(false);
+  const [settings, setSettings] = useState<CompetitionSettings>({ penalty_per_fail: 200, max_penalized_fails: 3 });
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const [offlineQueue, setOfflineQueue] = useState<QueueAction[]>([]);
+  const [activeTimers, setActiveTimers] = useState<Record<number, string>>({});
+  const [now, setNow] = useState(Date.now());
+  const [syncingQueue, setSyncingQueue] = useState(false);
   const [dangerTarget, setDangerTarget] = useState<DangerTarget>(null);
+  const syncRef = useRef(false);
 
-  const rememberLookup = useCallback((entry: ClimberWithAttempts) => {
-    setRecentLookups((current) => {
-      const nextLookups: RecentLookup[] = [
-        {
-          id: entry.id,
-          name: entry.name,
-          climber_number: entry.climber_number,
-        },
-        ...current.filter((recent) => recent.id !== entry.id),
-      ].slice(0, 5);
+  const canJudge = isStaffRole(profile?.role);
+  const attempts = climber?.climb_attempts ?? [];
+  const totalScore = calculateTotalScore(attempts, settings);
+  const totalTime = calculateTotalTime(attempts);
+  const completedCount = countCompletedRoutes(attempts);
+  const totalFails = attempts.reduce((sum, attempt) => sum + attempt.failed_attempts, 0);
+  const progressPercent = (completedCount / TOTAL_CLIMBS) * 100;
 
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(RECENT_LOOKUPS_KEY, JSON.stringify(nextLookups));
-      }
+  const matchingClimbers = useMemo(() => {
+    const query = lookupInput.trim().toLowerCase();
+    if (!query) return [];
+    return knownClimbers.filter((entry) => entry.climber_number.toLowerCase().includes(query) || entry.name.toLowerCase().includes(query)).slice(0, 8);
+  }, [knownClimbers, lookupInput]);
 
-      return nextLookups;
-    });
-  }, []);
+  const rememberLookup = (entry: ClimberWithAttempts) => {
+    const next = [{ id: entry.id, name: entry.name, climber_number: entry.climber_number }, ...recentLookups.filter((item) => item.id !== entry.id)].slice(0, 5);
+    setRecentLookups(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(RECENT_LOOKUPS_KEY, JSON.stringify(next));
+    }
+  };
 
-  const openClimber = useCallback((entry: ClimberWithAttempts) => {
+  const openClimber = (entry: ClimberWithAttempts) => {
     setClimber(entry);
     setLookupInput("");
     setLookupError("");
-    setNotice(null);
+    setDangerTarget(null);
     rememberLookup(entry);
-  }, [rememberLookup]);
+  };
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const refreshKnownClimbers = useCallback(async () => {
+    const rows = await getAllClimbersWithAttempts();
+    setKnownClimbers(rows);
+    return rows;
+  }, []);
 
-    const stored = window.localStorage.getItem(RECENT_LOOKUPS_KEY);
-    if (!stored) return;
+  const refreshCurrentClimber = useCallback(async (id: string) => {
+    const next = await getClimberById(id);
+    if (next) setClimber(next);
+  }, []);
 
-    try {
-      const parsed = JSON.parse(stored) as RecentLookup[];
-      setRecentLookups(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      window.localStorage.removeItem(RECENT_LOOKUPS_KEY);
+  const performAction = async (action: QueueAction) => {
+    switch (action.kind) {
+      case "start":
+        await startClimbAttempt(action.climberId, action.climbNumber, action.startedAtIso);
+        break;
+      case "add-fail":
+        await addFailedAttempt(action.climberId, action.climbNumber);
+        break;
+      case "undo-fail":
+        await removeLastFail(action.climberId, action.climbNumber);
+        break;
+      case "complete":
+        await completeClimb(action.climberId, action.climbNumber, action.completionTimeSeconds, action.startedAtIso);
+        break;
+      case "reset":
+        await resetClimb(action.climberId, action.climbNumber);
+        break;
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    getAllClimbersWithAttempts()
-      .then((rows) => setKnownClimbers(rows))
-      .catch(() => {
-        // Ignore lookup enhancement failures and leave the manual flow available.
-      });
-  }, []);
+  const queueAction = (action: QueueAction, message: string) => {
+    const next = [...offlineQueue, action];
+    setOfflineQueue(next);
+    writeOfflineQueue(next);
+    if (climber?.id === action.climberId) {
+      setClimber((current) => (current ? applyOptimisticQueueAction(current, action) : current));
+    }
+    setNotice({ tone: "success", message: `${message} Saved locally and queued for sync.` });
+  };
 
-  useEffect(() => {
-    if (!urlId) {
-      setPageLoading(false);
+  const runAction = async (action: QueueAction, message: string) => {
+    if (!climber || !canJudge) {
+      setNotice({ tone: "error", message: "Judge or admin login is required for score updates." });
       return;
     }
 
-    getClimberById(urlId)
-      .then((result) => {
-        if (result) {
-          openClimber(result);
-        } else {
-          setNotice({ tone: "error", message: "Unable to load this scorecard." });
-        }
-      })
-      .catch((err: unknown) => {
-        setNotice({
-          tone: "error",
-          message: err instanceof Error ? err.message : "Unable to load this scorecard.",
-        });
-      })
-      .finally(() => {
-        setPageLoading(false);
-      });
-  }, [openClimber, urlId]);
+    if (!online) {
+      queueAction(action, message);
+      return;
+    }
 
-  const climberId = climber?.id;
-
-  useEffect(() => {
-    if (!climberId || !supabaseConfigured) return;
-
-    const channel = supabase
-      .channel(`scorecard-${climberId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "climb_attempts",
-          filter: `climber_id=eq.${climberId}`,
-        },
-        () => {
-          getClimberById(climberId)
-            .then((updated) => {
-              if (updated) setClimber(updated);
-            })
-            .catch((err: unknown) => {
-              setNotice({
-                tone: "error",
-                message: err instanceof Error ? err.message : "Unable to refresh this scorecard.",
-              });
-            });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [climberId]);
-
-  const runLookup = useCallback(async (climberNumber: string, showErrors = true) => {
-    const trimmed = climberNumber.trim();
-    const normalized = trimmed.toLowerCase();
-    if (!trimmed) return;
-
-    setLookupError("");
-    setNotice(null);
     setLoading(true);
-
+    setNotice(null);
     try {
-      const exactNumberMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
-      const exactNameMatches = knownClimbers.filter(
-        (entry) => entry.name.trim().toLowerCase() === normalized
-      );
-
-      let result: ClimberWithAttempts | null = null;
-
-      if (exactNumberMatch) {
-        result = exactNumberMatch;
-      } else if (exactNameMatches.length === 1) {
-        result = exactNameMatches[0];
-      } else if (exactNameMatches.length > 1) {
-        throw new Error("Multiple athletes match that name. Choose one below.");
+      await performAction(action);
+      await refreshCurrentClimber(action.climberId);
+      await refreshKnownClimbers();
+      setNotice({ tone: "success", message });
+    } catch (error) {
+      if (isNetworkLikeError(error)) {
+        queueAction(action, message);
       } else {
-        result = await getClimberByNumber(trimmed);
-      }
-
-      if (!result) {
-        throw new Error("No athlete matched that name or number.");
-      }
-
-      openClimber(result);
-    } catch (err: any) {
-      if (showErrors) {
-        setLookupError(err.message || "Lookup failed.");
+        setNotice({ tone: "error", message: error instanceof Error ? error.message : "Unable to update the scorecard." });
       }
     } finally {
       setLoading(false);
     }
-  }, [knownClimbers, openClimber]);
-
-  const handleLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await runLookup(lookupInput, true);
   };
 
-  const matchingClimbers = useMemo(() => {
-    const trimmed = lookupInput.trim();
-    const normalized = trimmed.toLowerCase();
-    if (!trimmed) return [];
+  const syncOfflineActions = useCallback(async () => {
+    if (!online || !canJudge || syncRef.current) return;
+    const queued = readOfflineQueue();
+    if (!queued.length) return;
 
-    return knownClimbers
-      .filter((entry) => {
-        const name = entry.name.trim().toLowerCase();
-        return entry.climber_number.startsWith(trimmed) || name.includes(normalized);
-      })
-      .slice(0, 5);
-  }, [knownClimbers, lookupInput]);
+    syncRef.current = true;
+    setSyncingQueue(true);
+    let remaining = [...queued];
+
+    try {
+      for (const action of queued) {
+        try {
+          await performAction(action);
+          remaining = remaining.filter((item) => item.id !== action.id);
+          setOfflineQueue(remaining);
+          writeOfflineQueue(remaining);
+        } catch (error) {
+          if (isNetworkLikeError(error)) break;
+          remaining = remaining.filter((item) => item.id !== action.id);
+          setOfflineQueue(remaining);
+          writeOfflineQueue(remaining);
+        }
+      }
+
+      if (climber) await refreshCurrentClimber(climber.id);
+      await refreshKnownClimbers();
+
+      if (queued.length !== remaining.length) {
+        setNotice({ tone: "success", message: `Synced ${queued.length - remaining.length} queued update${queued.length - remaining.length === 1 ? "" : "s"}.` });
+      }
+    } finally {
+      syncRef.current = false;
+      setSyncingQueue(false);
+    }
+  }, [canJudge, climber, online, refreshCurrentClimber, refreshKnownClimbers]);
+
+  const runLookup = async (value: string, showErrors = true) => {
+    setLoading(true);
+    setLookupError("");
+    try {
+      const query = value.trim();
+      const exact = await getClimberByNumber(query);
+      if (exact) {
+        openClimber(exact);
+        return;
+      }
+      const match = knownClimbers.find((entry) => entry.name.toLowerCase() === query.toLowerCase());
+      if (match) {
+        openClimber(match);
+        return;
+      }
+      if (showErrors) setLookupError("No climber matched that number or exact name.");
+    } catch (error) {
+      setLookupError(error instanceof Error ? error.message : "Lookup failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (climber || loading) return;
+    const load = async () => {
+      try {
+        const [authState, climbers, competitionSettings] = await Promise.all([
+          supabaseConfigured ? getAuthState() : Promise.resolve({ session: null, profile: null }),
+          getAllClimbersWithAttempts(),
+          getCompetitionSettings(),
+        ]);
+        setProfile(authState.profile);
+        setKnownClimbers(climbers);
+        setSettings(competitionSettings);
+        setOfflineQueue(readOfflineQueue());
 
-    const trimmed = lookupInput.trim();
-    const normalized = trimmed.toLowerCase();
-    if (!trimmed) return;
+        if (typeof window !== "undefined") {
+          const stored = window.localStorage.getItem(RECENT_LOOKUPS_KEY);
+          if (stored) {
+            try {
+              setRecentLookups(JSON.parse(stored) as RecentLookup[]);
+            } catch {
+              window.localStorage.removeItem(RECENT_LOOKUPS_KEY);
+            }
+          }
+        }
 
-    const exactNumberMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
-    const exactNameMatches = knownClimbers.filter(
-      (entry) => entry.name.trim().toLowerCase() === normalized
-    );
+        if (urlId) {
+          const next = await getClimberById(urlId);
+          if (next) setClimber(next);
+        }
+      } catch (error) {
+        setNotice({ tone: "error", message: error instanceof Error ? error.message : "Unable to load the scorecard page." });
+      } finally {
+        setAuthLoading(false);
+        setPageLoading(false);
+      }
+    };
 
-    if (!exactNumberMatch && exactNameMatches.length !== 1) return;
+    load();
+  }, [urlId]);
 
-    const timer = window.setTimeout(() => {
-      runLookup(trimmed, false);
-    }, 350);
-
-    return () => window.clearTimeout(timer);
-  }, [climber, knownClimbers, loading, lookupInput, runLookup]);
-
-  const handlePinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (pinInput === ADMIN_PIN) {
-      setIsAdmin(true);
-      setShowPinEntry(false);
-      setPinInput("");
-      setPinError("");
-      setShowPin(false);
-      setDangerTarget(null);
-      setNotice({ tone: "success", message: "Judge mode unlocked." });
+  useEffect(() => {
+    if (!climber) {
+      setActiveTimers({});
       return;
     }
+    const stored = readActiveTimers(climber.id);
+    const next = { ...stored };
+    climber.climb_attempts.forEach((attempt) => {
+      if (attempt.completed) delete next[attempt.climb_number];
+    });
+    setActiveTimers(next);
+  }, [climber]);
 
-    setPinError("Incorrect PIN");
-    setPinInput("");
+  useEffect(() => {
+    if (climber) writeActiveTimers(climber.id, activeTimers);
+  }, [activeTimers, climber]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    const { data } = supabase.auth.onAuthStateChange(async () => {
+      const authState = await getAuthState();
+      setProfile(authState.profile);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    const refreshSettings = async () => setSettings(await getCompetitionSettings(true));
+    const channel = supabase
+      .channel("scorecard-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "climbers" }, async () => {
+        await refreshKnownClimbers();
+        if (climber) await refreshCurrentClimber(climber.id);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "climb_attempts" }, async () => {
+        if (climber) await refreshCurrentClimber(climber.id);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "competition_settings" }, refreshSettings)
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [climber, refreshCurrentClimber, refreshKnownClimbers]);
+
+  useEffect(() => {
+    if (online && canJudge) {
+      syncOfflineActions();
+    }
+  }, [online, canJudge, syncOfflineActions]);
+
+  const handleAuthSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const authState = await signInWithRole(email, password);
+      setProfile(authState.profile);
+      setPassword("");
+      setNotice({ tone: "success", message: "Judge session ready." });
+      await syncOfflineActions();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to sign in.");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  const handleAction = useCallback(
-    async (action: () => Promise<unknown>, successMessage: string) => {
-      if (!climber) return;
+  const startTimer = async (climbNumber: ClimbNumber) => {
+    if (!climber) return;
+    const startedAtIso = new Date().toISOString();
+    setActiveTimers((current) => ({ ...current, [climbNumber]: startedAtIso }));
+    await runAction({ id: buildQueueActionId(), kind: "start", climberId: climber.id, climbNumber, startedAtIso, createdAtIso: new Date().toISOString() }, `${CLIMBS[climbNumber - 1].label} started.`);
+  };
 
-      setLoading(true);
-      setNotice(null);
-
-      try {
-        await action();
-        const updated = await getClimberById(climber.id);
-        if (updated) setClimber(updated);
-        setDangerTarget(null);
-        setNotice({ tone: "success", message: successMessage });
-      } catch (err: any) {
-        setNotice({ tone: "error", message: err.message || "Update failed." });
-      } finally {
-        setLoading(false);
-      }
-    },
-    [climber]
-  );
-
-  const attempts = climber?.climb_attempts ?? [];
-  const totalScore = calculateTotalScore(attempts);
-  const totalTime = calculateTotalTime(attempts);
-  const completedCount = attempts.filter((attempt) => attempt.completed).length;
-  const totalFails = attempts.reduce((sum, attempt) => sum + attempt.failed_attempts, 0);
-  const progressPercent = (completedCount / TOTAL_CLIMBS) * 100;
+  const completeTimedClimb = async (climbNumber: ClimbNumber, seconds: number) => {
+    if (!climber) return;
+    const startedAtIso = activeTimers[climbNumber];
+    setActiveTimers((current) => {
+      const next = { ...current };
+      delete next[climbNumber];
+      return next;
+    });
+    await runAction({ id: buildQueueActionId(), kind: "complete", climberId: climber.id, climbNumber, completionTimeSeconds: seconds, startedAtIso, createdAtIso: new Date().toISOString() }, `${CLIMBS[climbNumber - 1].label} completed in ${formatTime(seconds)}.`);
+  };
 
   const handleDeleteCurrentClimber = async () => {
     if (!climber) return;
-
-    const climberId = climber.id;
     setLoading(true);
-    setNotice(null);
-
     try {
-      await deleteClimber(climberId);
+      await deleteClimber(climber.id);
       setClimber(null);
       setDangerTarget(null);
-      setNotice({ tone: "success", message: "Climber removed from the competition data." });
-    } catch (err: any) {
-      setNotice({
-        tone: "error",
-        message: err.message || "Unable to delete the current climber.",
-      });
+      await refreshKnownClimbers();
+      setNotice({ tone: "success", message: "Climber removed from competition data." });
+    } catch (error) {
+      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Unable to delete the current climber." });
     } finally {
       setLoading(false);
     }
@@ -730,136 +590,74 @@ function ScorecardContent() {
 
   const handleDeleteAllData = async () => {
     setLoading(true);
-    setNotice(null);
-
     try {
       await deleteAllClimbers();
       setClimber(null);
+      setKnownClimbers([]);
       setDangerTarget(null);
-      setLookupInput("");
-      setLookupError("");
-      setNotice({ tone: "success", message: "All competition data has been cleared." });
-    } catch (err: any) {
-      setNotice({
-        tone: "error",
-        message: err.message || "Unable to clear the competition data.",
-      });
+      setNotice({ tone: "success", message: "All competition data cleared." });
+    } catch (error) {
+      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Unable to clear competition data." });
     } finally {
       setLoading(false);
     }
   };
 
-  if (pageLoading) {
-    return <ScorecardLoading />;
-  }
+  if (pageLoading) return <ScorecardLoading />;
 
   if (!climber) {
     return (
       <main className="page-shell">
         <div className="content-frame space-y-6">
-          <SiteHeader />
-
-          <section className="mx-auto w-full max-w-3xl">
-            <div className="card">
-              <div className="mb-6 text-center">
-                <span className="eyebrow">Athlete Search</span>
-                <h1 className="section-title mt-4 text-4xl sm:text-5xl">Find a Competitor</h1>
-                <p className="mt-4 text-sm leading-7 text-slate-300">
-                  Search by climber number or athlete name. Exact matches open automatically.
-                </p>
-              </div>
-
-              {notice && (
-                <div
-                  className={`mb-5 rounded-2xl border px-4 py-3 text-sm ${
-                    notice.tone === "error"
-                      ? "border-accent/30 bg-accent/10 text-accent"
-                      : "border-green-500/20 bg-green-500/10 text-green-200"
-                  }`}
-                >
-                  {notice.message}
+          <SiteHeader
+            status={
+              <>
+                <div className={`status-pill ${online ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-yellow-500/20 bg-yellow-500/10 text-yellow-100"}`}>
+                  {online ? "Online" : "Offline queue ready"}
                 </div>
-              )}
+                {offlineQueue.length ? <div className="status-pill border-yellow-500/20 bg-yellow-500/10 text-yellow-100">{offlineQueue.length} pending sync</div> : null}
+              </>
+            }
+          />
 
-              <form onSubmit={handleLookup} className="space-y-5">
-                <div>
-                  <label className="meta-label mb-2 block">Climber Number or Name</label>
-                  <input
-                    type="text"
-                    inputMode="search"
-                    value={lookupInput}
-                    onChange={(e) => {
-                      setLookupInput(e.target.value);
-                      setLookupError("");
-                    }}
-                    placeholder="Enter a number or name"
-                    className="input-field font-body text-lg"
-                    autoFocus
-                  />
-                </div>
+          <AccessCard
+            profile={profile}
+            authLoading={authLoading}
+            email={email}
+            password={password}
+            setEmail={setEmail}
+            setPassword={setPassword}
+            onSubmit={handleAuthSubmit}
+            onSignOut={async () => {
+              await signOutUser();
+              setProfile(null);
+            }}
+            error={authError}
+          />
 
-                {lookupError && (
-                  <div className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
-                    {lookupError}
-                  </div>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                  <button type="submit" disabled={loading} className="btn-primary w-full">
-                    {loading ? "Looking Up..." : "Find Scorecard"}
-                  </button>
-                  <Link href="/register" className="btn-ghost w-full justify-center sm:w-auto">
-                    Register Athlete
-                  </Link>
-                </div>
-              </form>
-
-              {matchingClimbers.length > 0 && (
-                <div className="mt-6">
-                  <div className="meta-label mb-3 text-center">Matching Athletes</div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {matchingClimbers.map((entry) => (
-                      <button
-                        key={entry.id}
-                        onClick={() => runLookup(entry.climber_number, false)}
-                        className="command-link text-left"
-                      >
-                        <div>
-                          <div className="text-sm font-semibold text-chalk">{entry.name}</div>
-                          <div className="mt-1 text-xs text-slate-300">#{entry.climber_number}</div>
-                        </div>
-                        <span className="text-sm font-semibold text-blue-300">Open</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {recentLookups.length > 0 && (
-                <div className="mt-6">
-                  <div className="meta-label mb-3 text-center">Recent Athletes</div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {recentLookups.map((entry) => (
-                      <button
-                        key={entry.id}
-                        onClick={() => runLookup(entry.climber_number, false)}
-                        className="command-link text-left"
-                      >
-                        <div>
-                          <div className="text-sm font-semibold text-chalk">{entry.name}</div>
-                          <div className="mt-1 text-xs text-slate-300">#{entry.climber_number}</div>
-                        </div>
-                        <span className="text-sm font-semibold text-accent">Open</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-center text-sm text-slate-300">
-                If the athlete is not registered yet, create the record first.
-              </div>
+          <section className="card">
+            <div className="text-center">
+              <div className="eyebrow">Athlete search</div>
+              <h1 className="section-title mt-4 text-4xl sm:text-5xl">Find a competitor</h1>
+              <p className="mt-4 text-sm text-slate-300">Search by climber number or athlete name. Public users can view scorecards. Judges can score them.</p>
             </div>
+
+            {notice ? <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${notice.tone === "error" ? "border-accent/30 bg-accent/10 text-accent" : "border-green-500/20 bg-green-500/10 text-green-200"}`}>{notice.message}</div> : null}
+
+            <form onSubmit={async (event) => { event.preventDefault(); await runLookup(lookupInput); }} className="mt-6 space-y-5">
+              <div>
+                <label className="meta-label mb-2 block">Climber number or name</label>
+                <input type="text" value={lookupInput} onChange={(event) => { setLookupInput(event.target.value); setLookupError(""); }} className="input-field text-lg" placeholder="Enter a number or name" autoFocus />
+              </div>
+              {lookupError ? <div className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{lookupError}</div> : null}
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                <button type="submit" disabled={loading} className="btn-primary w-full">{loading ? "Looking up..." : "Find scorecard"}</button>
+                <Link href="/register" className="btn-ghost w-full justify-center sm:w-auto">Register athlete</Link>
+              </div>
+            </form>
+
+            {matchingClimbers.length ? <div className="mt-6 grid gap-3 sm:grid-cols-2">{matchingClimbers.map((entry) => <button key={entry.id} onClick={() => runLookup(entry.climber_number, false)} className="command-link text-left"><div><div className="text-sm font-semibold text-chalk">{entry.name}</div><div className="mt-1 text-xs text-slate-300">#{entry.climber_number} • {entry.category}</div></div><span className="text-sm font-semibold text-blue-300">Open</span></button>)}</div> : null}
+            {recentLookups.length ? <div className="mt-6 grid gap-3 sm:grid-cols-2">{recentLookups.map((entry) => <button key={entry.id} onClick={() => runLookup(entry.climber_number, false)} className="command-link text-left"><div><div className="text-sm font-semibold text-chalk">{entry.name}</div><div className="mt-1 text-xs text-slate-300">#{entry.climber_number}</div></div><span className="text-sm font-semibold text-accent">Open</span></button>)}</div> : null}
           </section>
         </div>
       </main>
@@ -872,70 +670,42 @@ function ScorecardContent() {
         <SiteHeader
           status={
             <>
-              <Link href="/leaderboard" className="nav-pill">
-                View leaderboard
-              </Link>
-              {isAdmin ? (
-                <button
-                  onClick={() => {
-                    setIsAdmin(false);
-                    setDangerTarget(null);
-                    setNotice({ tone: "success", message: "Judge mode disabled." });
-                  }}
-                  className="status-pill border-green-500/20 bg-green-500/10 text-green-200"
-                >
-                  Judge Mode On
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowPinEntry((current) => !current)}
-                  className="status-pill border-white/10 bg-white/[0.04] text-slate-300"
-                >
-                  Judge Login
-                </button>
-              )}
+              <Link href="/leaderboard" className="nav-pill">View leaderboard</Link>
+              <div className={`status-pill ${online ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-yellow-500/20 bg-yellow-500/10 text-yellow-100"}`}>{online ? "Online" : "Offline mode"}</div>
+              {syncingQueue ? <div className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">Syncing queue</div> : null}
+              {offlineQueue.length ? <div className="status-pill border-yellow-500/20 bg-yellow-500/10 text-yellow-100">{offlineQueue.length} pending sync</div> : null}
+              <div className={`status-pill ${canJudge ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}>{canJudge ? `Judge role: ${profile?.role}` : "Read-only"}</div>
             </>
           }
         />
 
-        <div className="sticky top-0 z-50 rounded-2xl border border-white/10 bg-granite/95 px-4 py-3 shadow-md backdrop-blur-md lg:hidden">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="meta-label">Active athlete</div>
-              <div className="truncate font-display text-2xl text-chalk">{climber.name.toUpperCase()}</div>
-            </div>
-            <div className="text-right">
-              <div className="meta-label">Score</div>
-              <AnimatedNumber value={totalScore} className="font-display text-2xl text-chalk" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center justify-between font-body text-sm text-slate-300">
-            <span>#{climber.climber_number}</span>
-            <span>{completedCount}/{TOTAL_CLIMBS} climbs</span>
-            <span>{formatTime(totalTime)}</span>
-          </div>
-        </div>
+        <AccessCard
+          profile={profile}
+          authLoading={authLoading}
+          email={email}
+          password={password}
+          setEmail={setEmail}
+          setPassword={setPassword}
+          onSubmit={handleAuthSubmit}
+          onSignOut={async () => {
+            await signOutUser();
+            setProfile(null);
+            setDangerTarget(null);
+          }}
+          error={authError}
+        />
 
         <section className="card">
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
-              <span className="eyebrow">Climber #{climber.climber_number}</span>
+              <div className="eyebrow">Climber #{climber.climber_number}</div>
               <h1 className="section-title mt-4 text-5xl sm:text-6xl">{climber.name.toUpperCase()}</h1>
-              <p className="mt-4 max-w-2xl font-body text-sm leading-7 text-slate-300 sm:text-base">
-                Route scoring is organized per climb, with fails, completion times, and total ranking
-                impact visible from one screen.
-              </p>
-
+              <p className="mt-4 text-sm text-slate-300">Category-aware scoring with Supabase-authenticated writes, live attempt timers, and offline fail logging.</p>
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest">
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
-                  total fails {totalFails}
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
-                  climbs complete {completedCount}/{TOTAL_CLIMBS}
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
-                  total time {formatTime(totalTime)}
-                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">{climber.category}</span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">fails {totalFails}</span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">complete {completedCount}/{TOTAL_CLIMBS}</span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">time {formatTime(totalTime)}</span>
               </div>
             </div>
 
@@ -950,113 +720,24 @@ function ScorecardContent() {
                   <AnimatedNumber value={totalScore} className="mt-2 block font-display text-4xl text-chalk" />
                 </div>
               </div>
-
-              <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-800">
-                <div className="progress-bar h-full rounded-full" style={{ width: `${progressPercent}%` }} />
-              </div>
-
+              <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-800"><div className="progress-bar h-full rounded-full" style={{ width: `${progressPercent}%` }} /></div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="card-muted p-3">
-                  <div className="meta-label">Completed</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">{completedCount}</div>
-                </div>
-                <div className="card-muted p-3">
-                  <div className="meta-label">Total time</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">{formatTime(totalTime)}</div>
-                </div>
-                <div className="card-muted p-3">
-                  <div className="meta-label">Penalty cap</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">3</div>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
-                <div className="meta-label">Ready to Score</div>
-                <p className="mt-3 text-sm leading-7 text-slate-300">
-                  Use Judge Mode to log fails, enter finish times, and reset a climb if needed.
-                </p>
+                <div className="card-muted p-3"><div className="meta-label">Completed</div><div className="mt-2 font-display text-3xl text-chalk">{completedCount}</div></div>
+                <div className="card-muted p-3"><div className="meta-label">Penalty</div><div className="mt-2 font-display text-3xl text-chalk">{settings.penalty_per_fail}</div></div>
+                <div className="card-muted p-3"><div className="meta-label">Cap</div><div className="mt-2 font-display text-3xl text-chalk">{settings.max_penalized_fails}</div></div>
               </div>
             </div>
           </div>
         </section>
 
-        {notice && (
-          <div
-            className={`rounded-3xl border px-5 py-4 text-sm ${
-              notice.tone === "error"
-                ? "border-accent/30 bg-accent/10 text-accent"
-                : "border-green-500/20 bg-green-500/10 text-green-200"
-            }`}
-          >
-            {notice.message}
-          </div>
-        )}
-
-        {showPinEntry && (
-          <form onSubmit={handlePinSubmit} className="card">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <span className="eyebrow">Judge access</span>
-                <h2 className="section-title mt-4 text-3xl">Unlock route controls</h2>
-              </div>
-              <div className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-mono uppercase tracking-widest text-slate-300">
-                Staff only
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-              <input
-                type={showPin ? "text" : "password"}
-                value={pinInput}
-                onChange={(e) => {
-                  setPinInput(e.target.value);
-                  setPinError("");
-                }}
-                placeholder="Enter judge PIN"
-                className="input-field font-body"
-                autoFocus
-                inputMode="numeric"
-              />
-              <button type="button" onClick={() => setShowPin((current) => !current)} className="btn-ghost px-5">
-                {showPin ? "Hide" : "Show"}
-              </button>
-              <button type="submit" className="btn-primary px-5">
-                Unlock
-              </button>
-            </div>
-            {pinError && <p className="mt-3 font-body text-sm text-accent">{pinError}</p>}
-          </form>
-        )}
+        {notice ? <div className={`rounded-3xl border px-5 py-4 text-sm ${notice.tone === "error" ? "border-accent/30 bg-accent/10 text-accent" : "border-green-500/20 bg-green-500/10 text-green-200"}`}>{notice.message}</div> : null}
 
         <section className="card">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="meta-label">Climb Navigator</div>
-              <p className="mt-2 text-sm text-slate-300">Jump straight to any climb.</p>
-            </div>
-            <div className="meta-label">{TOTAL_CLIMBS} Climbs</div>
+            <div><div className="meta-label">Climb navigator</div><p className="mt-2 text-sm text-slate-300">Jump to any route.</p></div>
+            <div className="meta-label">{TOTAL_CLIMBS} climbs</div>
           </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {CLIMBS.map((climb) => {
-              const attempt = getAttempt(attempts, climb.number);
-              const completed = attempt?.completed ?? false;
-
-              return (
-                <a
-                  key={climb.number}
-                  href={`#climb-card-${climb.number}`}
-                  className={`rounded-full border px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] transition-colors ${
-                    completed
-                      ? "border-green-500/20 bg-green-500/10 text-green-200"
-                      : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20"
-                  }`}
-                >
-                  {climb.number.toString().padStart(2, "0")}
-                </a>
-              );
-            })}
-          </div>
+          <div className="mt-4 flex flex-wrap gap-2">{CLIMBS.map((climb) => { const attempt = getAttempt(attempts, climb.number); return <a key={climb.number} href={`#climb-card-${climb.number}`} className={`rounded-full border px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] ${attempt?.completed ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}>{climb.number.toString().padStart(2, "0")}</a>; })}</div>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
@@ -1065,122 +746,41 @@ function ScorecardContent() {
               key={climb.number}
               climb={climb}
               attempt={getAttempt(attempts, climb.number)}
-              isAdmin={isAdmin}
+              canJudge={canJudge}
               loading={loading}
-              onAddFail={() =>
-                handleAction(() => addFailedAttempt(climber.id, climb.number), `${climb.label} fail logged.`)
-              }
-              onUndoFail={() =>
-                handleAction(() => removeLastFail(climber.id, climb.number), `${climb.label} fail removed.`)
-              }
-              onComplete={(seconds) =>
-                handleAction(() => completeClimb(climber.id, climb.number, seconds), `${climb.label} completed.`)
-              }
-              onReset={() =>
-                handleAction(() => resetClimb(climber.id, climb.number), `${climb.label} has been reset.`)
-              }
+              now={now}
+              settings={settings}
+              timerStartedAt={activeTimers[climb.number]}
+              pendingSync={offlineQueue.some((item) => item.climberId === climber.id && item.climbNumber === climb.number)}
+              onStart={() => startTimer(climb.number)}
+              onAddFail={() => runAction({ id: buildQueueActionId(), kind: "add-fail", climberId: climber.id, climbNumber: climb.number, createdAtIso: new Date().toISOString() }, `${climb.label} fail logged.`)}
+              onUndoFail={() => runAction({ id: buildQueueActionId(), kind: "undo-fail", climberId: climber.id, climbNumber: climb.number, createdAtIso: new Date().toISOString() }, `${climb.label} fail removed.`)}
+              onComplete={(seconds) => completeTimedClimb(climb.number, seconds)}
+              onReset={() => runAction({ id: buildQueueActionId(), kind: "reset", climberId: climber.id, climbNumber: climb.number, createdAtIso: new Date().toISOString() }, `${climb.label} reset.`)}
             />
           ))}
         </section>
 
-        {isAdmin && (
+        {canJudge ? (
           <section className="card border-accent/20">
-            <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-start">
-              <div>
-                <span className="eyebrow">Admin reset tools</span>
-                <h2 className="section-title mt-4 text-3xl">Clear test entries from the app</h2>
-                <p className="mt-3 max-w-2xl font-body text-sm leading-7 text-slate-300">
-                  Use these controls to remove the current climber or wipe all climbers and their
-                  attempts. This is meant for test cleanup, not production-safe moderation.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-accent/20 bg-accent/10 px-4 py-3 text-xs font-mono uppercase tracking-widest text-red-100">
-                Destructive actions
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><div className="eyebrow">Admin reset tools</div><h2 className="section-title mt-4 text-3xl">Clear test entries</h2></div>
+              <div className="status-pill border-accent/20 bg-accent/10 text-red-100">Destructive</div>
             </div>
-
             <div className="mt-6 grid gap-3 xl:grid-cols-[1fr_1fr_auto]">
-              <button
-                onClick={() =>
-                  setDangerTarget((current) => (current === "climber" ? null : "climber"))
-                }
-                disabled={loading}
-                className="btn-ghost w-full justify-center border-accent/20 text-red-100 hover:bg-accent/10"
-              >
-                Delete this climber
-              </button>
-              <button
-                onClick={() => setDangerTarget((current) => (current === "all" ? null : "all"))}
-                disabled={loading}
-                className="btn-ghost w-full justify-center border-accent/20 text-red-100 hover:bg-accent/10"
-              >
-                Reset all data
-              </button>
-              <button
-                onClick={() => setDangerTarget(null)}
-                disabled={loading || !dangerTarget}
-                className="btn-ghost w-full justify-center xl:w-auto"
-              >
-                Cancel
-              </button>
+              <button onClick={() => setDangerTarget((current) => (current === "climber" ? null : "climber"))} className="btn-ghost w-full justify-center border-accent/20 text-red-100">Delete this climber</button>
+              <button onClick={() => setDangerTarget((current) => (current === "all" ? null : "all"))} className="btn-ghost w-full justify-center border-accent/20 text-red-100">Reset all data</button>
+              <button onClick={() => setDangerTarget(null)} className="btn-ghost w-full justify-center xl:w-auto">Cancel</button>
             </div>
-
-            {dangerTarget === "climber" && (
-              <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5">
-                <div className="meta-label text-red-100">Confirm current climber deletion</div>
-                <p className="mt-3 font-body text-sm leading-7 text-red-50/90">
-                  This removes {climber.name} and all linked route attempts.
-                </p>
-                <button
-                  onClick={handleDeleteCurrentClimber}
-                  disabled={loading}
-                  className="btn-primary mt-4 bg-red-700 hover:bg-red-600"
-                >
-                  Confirm delete climber
-                </button>
-              </div>
-            )}
-
-            {dangerTarget === "all" && (
-              <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5">
-                <div className="meta-label text-red-100">Confirm full reset</div>
-                <p className="mt-3 font-body text-sm leading-7 text-red-50/90">
-                  This removes every climber and every recorded attempt from the database.
-                </p>
-                <button
-                  onClick={handleDeleteAllData}
-                  disabled={loading}
-                  className="btn-primary mt-4 bg-red-700 hover:bg-red-600"
-                >
-                  Confirm reset all data
-                </button>
-              </div>
-            )}
+            {dangerTarget === "climber" ? <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5"><p className="text-sm text-red-50/90">This removes {climber.name} and all linked attempts.</p><button onClick={handleDeleteCurrentClimber} disabled={loading} className="btn-primary mt-4 bg-red-700 hover:bg-red-600">Confirm delete climber</button></div> : null}
+            {dangerTarget === "all" ? <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5"><p className="text-sm text-red-50/90">This removes every climber and every recorded attempt.</p><button onClick={handleDeleteAllData} disabled={loading} className="btn-primary mt-4 bg-red-700 hover:bg-red-600">Confirm reset all data</button></div> : null}
           </section>
-        )}
+        ) : null}
 
         <section className="card">
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div>
-              <div className="meta-label">Need a different athlete?</div>
-              <p className="mt-2 font-body text-sm text-slate-300">
-                Switch back to lookup mode to open another competitor scorecard without leaving the
-                event control flow.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setClimber(null);
-                setLookupError("");
-                setNotice(null);
-                setShowPinEntry(false);
-                setShowPin(false);
-                setDangerTarget(null);
-              }}
-              className="btn-ghost w-full justify-center lg:w-auto"
-            >
-              Switch athlete
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><div className="meta-label">Need a different athlete?</div><p className="mt-2 text-sm text-slate-300">Return to lookup mode without losing the judge session.</p></div>
+            <button onClick={() => { setClimber(null); setDangerTarget(null); setLookupError(""); setNotice(null); }} className="btn-ghost w-full justify-center lg:w-auto">Switch athlete</button>
           </div>
         </section>
       </div>
@@ -1195,3 +795,4 @@ export default function ScorecardPage() {
     </Suspense>
   );
 }
+
