@@ -2,6 +2,7 @@ import type { Session } from "@supabase/supabase-js";
 import { assertSupabaseConfigured, supabase } from "./supabase";
 
 export type AppRole = "admin" | "judge" | "climber";
+const AUTH_TIMEOUT_MS = 10000;
 
 export interface Profile {
   id: string;
@@ -18,12 +19,26 @@ export function isStaffRole(role: AppRole | null | undefined) {
   return role === "admin" || role === "judge";
 }
 
+function withTimeout<T>(promise: PromiseLike<T>, label: string): Promise<T> {
+  return Promise.race<T>([
+    promise,
+    new Promise<never>((_, reject) => {
+      window.setTimeout(() => {
+        reject(
+          new Error(
+            `${label} timed out. Check your Supabase URL/key, confirm the schema is applied, and make sure your user has a row in public.profiles.`
+          )
+        );
+      }, AUTH_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 async function getProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, role, display_name")
-    .eq("id", userId)
-    .maybeSingle();
+  const { data, error } = await withTimeout<any>(
+    supabase.from("profiles").select("id, role, display_name").eq("id", userId).maybeSingle(),
+    "Profile lookup"
+  );
 
   if (error || !data) {
     return null;
@@ -38,7 +53,7 @@ export async function getAuthState(): Promise<AuthState> {
   const {
     data: { session },
     error,
-  } = await supabase.auth.getSession();
+  } = await withTimeout<any>(supabase.auth.getSession(), "Session lookup");
 
   if (error) {
     throw new Error(error.message);
@@ -60,10 +75,13 @@ export async function getAuthState(): Promise<AuthState> {
 export async function signInWithRole(email: string, password: string): Promise<AuthState> {
   assertSupabaseConfigured();
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  });
+  const { data, error } = await withTimeout<any>(
+    supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    }),
+    "Sign-in"
+  );
 
   if (error) {
     throw new Error(error.message);
@@ -77,7 +95,9 @@ export async function signInWithRole(email: string, password: string): Promise<A
 
   if (!isStaffRole(profile?.role)) {
     await supabase.auth.signOut();
-    throw new Error("This account is not assigned the judge or admin role.");
+    throw new Error(
+      "This account can sign in, but it is not assigned the judge or admin role in public.profiles."
+    );
   }
 
   return {
