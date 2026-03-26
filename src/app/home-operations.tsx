@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getAllClimbersWithAttempts } from "@/lib/db";
 import { buildLeaderboard, formatTime, type ClimberWithAttempts } from "@/lib/scoring";
-import { SUPABASE_BROWSER_KEY_ERROR, SUPABASE_ENV_ERROR, supabase, supabaseConfigured } from "@/lib/supabase";
+import {
+  SUPABASE_BROWSER_KEY_ERROR,
+  SUPABASE_ENV_ERROR,
+  supabase,
+  supabaseConfigured,
+} from "@/lib/supabase";
 
 type ActivityItem = {
   id: string;
@@ -100,7 +105,7 @@ export default function HomeOperations() {
         }),
     ]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 5);
+      .slice(0, 6);
 
     return {
       athleteCount: climbers.length,
@@ -114,82 +119,134 @@ export default function HomeOperations() {
   const liveStatus = !supabaseConfigured
     ? "Configuration needed"
     : totals.athleteCount === 0
-    ? "Waiting for athletes"
-    : totals.completedRoutes === 0
-    ? "Check-in active"
-    : "Competition live";
+      ? "Waiting for athletes"
+      : totals.completedRoutes === 0
+        ? "Check-in active"
+        : "Competition live";
   const hasConfigIssue = !supabaseConfigured || error === SUPABASE_BROWSER_KEY_ERROR;
 
   const statusTone = !supabaseConfigured
     ? "border-accent/20 bg-accent/10 text-red-100"
     : totals.completedRoutes > 0
-    ? "border-green-500/20 bg-green-500/10 text-green-200"
-    : "border-yellow-500/20 bg-yellow-500/10 text-yellow-100";
+      ? "border-green-500/20 bg-green-500/10 text-green-200"
+      : "border-yellow-500/20 bg-yellow-500/10 text-yellow-100";
 
-  const lastUpdatedLabel = lastUpdated?.toLocaleTimeString([], {
+  const boardUpdatedLabel = lastUpdated?.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
 
   return (
-    <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+    <section className="grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="eyebrow">Live event status</span>
-          <div className={`rounded-full border px-4 py-2 text-xs font-mono uppercase tracking-widest ${statusTone}`}>
+          <div>
+            <span className="eyebrow">Operations board</span>
+            <h2 className="section-title mt-4 text-4xl sm:text-5xl">See the room at a glance.</h2>
+          </div>
+          <div className={`status-pill ${statusTone}`}>
+            <span className={`h-2 w-2 rounded-full ${totals.completedRoutes > 0 ? "bg-green-400" : "bg-yellow-300"}`} />
             {liveStatus}
           </div>
         </div>
 
         {hasConfigIssue && (
-          <div className="mt-5 rounded-2xl border border-accent/20 bg-accent/10 px-4 py-4 text-sm text-red-100">
+          <div className="mt-5 rounded-[1.5rem] border border-accent/20 bg-accent/10 px-4 py-4 text-sm text-red-100">
             {error || (!supabaseConfigured ? SUPABASE_ENV_ERROR : SUPABASE_BROWSER_KEY_ERROR)}
           </div>
         )}
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <div className="stat-card">
-            <div className="meta-label">Athletes</div>
-            <div className="mt-2 font-display text-4xl text-chalk">{totals.athleteCount}</div>
-            <p className="mt-2 font-body text-sm text-slate-300">Total competitors currently checked in.</p>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="hero-stat">
+            <div className="meta-label">Athletes checked in</div>
+            <div className="mt-3 font-display text-5xl text-chalk">{totals.athleteCount}</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Competitors currently in the event.</p>
           </div>
-          <div className="stat-card">
-            <div className="meta-label">Routes complete</div>
-            <div className="mt-2 font-display text-4xl text-chalk">{totals.completedRoutes}</div>
-            <p className="mt-2 font-body text-sm text-slate-300">Finished routes across the whole event.</p>
+          <div className="hero-stat">
+            <div className="meta-label">Routes completed</div>
+            <div className="mt-3 font-display text-5xl text-chalk">{totals.completedRoutes}</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Finished routes logged across the field.</p>
           </div>
-          <div className="stat-card">
+          <div className="hero-stat">
             <div className="meta-label">Recorded attempts</div>
-            <div className="mt-2 font-display text-4xl text-chalk">{totals.loggedAttempts}</div>
-            <p className="mt-2 font-body text-sm text-slate-300">Routes with fails or completed times entered.</p>
+            <div className="mt-3 font-display text-5xl text-chalk">{totals.loggedAttempts}</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Routes with failures or completion times entered.</p>
           </div>
-          <div className="stat-card">
-            <div className="meta-label">Board updated</div>
-            <div className="mt-2 font-display text-4xl text-chalk">{lastUpdatedLabel ?? "--:--"}</div>
-            <p className="mt-2 font-body text-sm text-slate-300">Latest refresh from the live scoring feed.</p>
+          <div className="hero-stat">
+            <div className="meta-label">Board last updated</div>
+            <div className="mt-3 font-display text-5xl text-chalk">{boardUpdatedLabel ?? "--:--"}</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">Latest refresh from the scoring feed.</p>
           </div>
         </div>
 
-        <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="meta-label">Current leader</div>
-              <div className="mt-2 font-display text-3xl text-chalk">
-                {totals.leaderboard[0]?.name?.toUpperCase() ?? "No leader yet"}
+        <div className="mt-6 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-[1.7rem] border border-white/10 bg-black/20 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="meta-label">Current leader</div>
+                <div className="mt-2 font-display text-4xl text-chalk">
+                  {totals.leaderboard[0]?.name?.toUpperCase() ?? "NO LEADER YET"}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="meta-label">Top score</div>
+                <div className="mt-2 font-display text-4xl text-chalk">
+                  {totals.leaderboard[0]?.total_score?.toLocaleString() ?? "0"}
+                </div>
               </div>
             </div>
-            <div className="text-right">
-              <div className="meta-label">Top score</div>
-              <div className="mt-2 font-display text-3xl text-chalk">
-                {totals.leaderboard[0]?.total_score?.toLocaleString() ?? "0"}
+
+            <p className="mt-3 text-sm leading-7 text-slate-300">
+              {totals.leaderboard[0]
+                ? `Current tie-break time is ${formatTime(totals.leaderboard[0].total_time_seconds)}.`
+                : "Leaderboard details will snap into place as soon as athletes complete routes."}
+            </p>
+          </div>
+
+          <div className="rounded-[1.7rem] border border-white/10 bg-white/[0.03] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="meta-label">Board pulse</div>
+                <div className="mt-2 font-display text-3xl text-chalk">Top three snapshot</div>
               </div>
+              <span className="meta-label">Score then time</span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {loading ? (
+                [0, 1, 2].map((index) => (
+                  <div key={index} className="skeleton-block h-16 w-full rounded-[1.3rem]" />
+                ))
+              ) : totals.leaderboard.length > 0 ? (
+                totals.leaderboard.slice(0, 3).map((entry) => (
+                  <div key={entry.climber_id} className="card-muted flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="meta-label">Rank {entry.rank}</div>
+                      <div className="mt-2 truncate text-lg font-semibold text-chalk">
+                        {entry.name.toUpperCase()}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-300">
+                        #{entry.climber_number} • {formatTime(entry.total_time_seconds)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="meta-label">Score</div>
+                      <div className="mt-2 font-display text-3xl text-chalk">
+                        {entry.total_score.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
+                  <div className="meta-label">Standings idle</div>
+                  <p className="mt-3 text-sm leading-7 text-slate-300">
+                    Once routes begin closing out, the top athletes will appear here immediately.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
-          <p className="mt-3 font-body text-sm text-slate-300">
-            {totals.leaderboard[0]
-              ? `Time tie-break currently sits at ${formatTime(totals.leaderboard[0].total_time_seconds)}.`
-              : "Leaderboard will update here once routes start getting completed."}
-          </p>
         </div>
       </div>
 
@@ -203,25 +260,27 @@ export default function HomeOperations() {
           <div className="mt-5 space-y-3">
             {loading ? (
               [0, 1, 2, 3].map((index) => (
-                <div key={index} className="skeleton-block h-16 w-full rounded-2xl" />
+                <div key={index} className="skeleton-block h-16 w-full rounded-[1.3rem]" />
               ))
             ) : totals.activities.length > 0 ? (
               totals.activities.map((activity) => (
                 <div key={activity.id} className="card-muted flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-mono uppercase tracking-widest ${activity.tone}`}>
+                    <span
+                      className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] ${activity.tone}`}
+                    >
                       {activity.label}
                     </span>
-                    <p className="mt-3 font-body text-sm text-slate-200">{activity.detail}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-200">{activity.detail}</p>
                   </div>
                   <div className="meta-label whitespace-nowrap">{formatRelativeTime(activity.timestamp)}</div>
                 </div>
               ))
             ) : (
-              <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
+              <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
                 <div className="meta-label">No activity yet</div>
-                <p className="mt-3 font-body text-sm text-slate-300">
-                  As athletes register and routes are completed, the event feed will appear here.
+                <p className="mt-3 text-sm leading-7 text-slate-300">
+                  Registrations and route completions will show up here as soon as the event starts moving.
                 </p>
               </div>
             )}
@@ -231,17 +290,32 @@ export default function HomeOperations() {
         <div className="card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="eyebrow">Quick actions</span>
-            <span className="meta-label">Ops shortcuts</span>
+            <span className="meta-label">Operational shortcuts</span>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Link href="/register" className="btn-primary w-full">
-              Register athlete
+
+          <div className="mt-5 grid gap-3">
+            <Link href="/register" className="command-link">
+              <div>
+                <div className="meta-label">Front desk</div>
+                <div className="mt-2 text-lg font-semibold text-chalk">Register a competitor</div>
+              </div>
+              <span className="text-sm font-semibold text-accent">Go</span>
             </Link>
-            <Link href="/scorecard" className="btn-ghost w-full">
-              Judge routes
+
+            <Link href="/scorecard" className="command-link">
+              <div>
+                <div className="meta-label">Judge view</div>
+                <div className="mt-2 text-lg font-semibold text-chalk">Open route controls</div>
+              </div>
+              <span className="text-sm font-semibold text-blue-300">Go</span>
             </Link>
-            <Link href="/leaderboard" className="btn-ghost w-full">
-              Show leaderboard
+
+            <Link href="/leaderboard" className="command-link">
+              <div>
+                <div className="meta-label">Projection</div>
+                <div className="mt-2 text-lg font-semibold text-chalk">Show live board</div>
+              </div>
+              <span className="text-sm font-semibold text-yellow-300">Go</span>
             </Link>
           </div>
         </div>

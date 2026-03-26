@@ -9,9 +9,9 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ["'Bebas Neue'", "cursive"],
-        mono: ["'Share Tech Mono'", "monospace"],
-        body: ["'DM Sans'", "sans-serif"],
+        display: ["var(--font-display)", "cursive"],
+        mono: ["var(--font-mono)", "monospace"],
+        body: ["var(--font-body)", "sans-serif"],
       },
       colors: {
         chalk: "#F5F0E8",

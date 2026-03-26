@@ -5,6 +5,7 @@ import Link from "next/link";
 import { buildLeaderboard, formatTime, type LeaderboardEntry } from "@/lib/scoring";
 import { getAllClimbersWithAttempts } from "@/lib/db";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
+import SiteHeader from "@/components/site-header";
 
 const TOP_N = 6;
 
@@ -29,8 +30,16 @@ function AnimatedNumber({
 }) {
   const [displayValue, setDisplayValue] = useState(value);
   const previousValue = useRef(value);
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      previousValue.current = value;
+      setDisplayValue(value);
+      return;
+    }
+
     const startValue = previousValue.current;
     const endValue = value;
 
@@ -56,11 +65,6 @@ function AnimatedNumber({
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [value]);
-
-  useEffect(() => {
-    previousValue.current = value;
-    setDisplayValue(value);
-  }, []);
 
   return <span className={className}>{displayValue.toLocaleString()}</span>;
 }
@@ -89,7 +93,7 @@ function LeaderboardSkeleton() {
 
 function ScoreBar({ score }: { score: number }) {
   return (
-    <div className="flex h-2 w-full max-w-36 gap-1">
+    <div className="flex h-2 w-full max-w-40 gap-1">
       {SCORE_SEGMENTS.map((segment) => {
         const filled = Math.max(0, Math.min(score - segment.start, segment.points));
         const width = (filled / segment.points) * 100;
@@ -119,7 +123,9 @@ function ScorePill({
   if (value <= 0) return null;
 
   return (
-    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest ${tone}`}>
+    <span
+      className={`rounded-full border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] ${tone}`}
+    >
       {label} {value}
     </span>
   );
@@ -148,43 +154,58 @@ function LeaderboardRow({
       }`}
       style={rowStyle}
     >
-      <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
-        <div className="flex items-center gap-3">
+      <div className="grid gap-4 text-center md:grid-cols-[auto_1fr_auto] md:items-center">
+        <div className="flex items-center justify-center gap-3">
           <div
-            className={`inline-flex min-w-14 items-center justify-center rounded-full border px-3 py-2 text-sm font-mono uppercase tracking-widest ${
+            className={`inline-flex min-w-14 items-center justify-center rounded-full border px-3 py-2 text-sm font-mono uppercase tracking-[0.22em] ${
               badge ? badge.tone : "border-white/10 bg-white/[0.03] text-slate-400"
             }`}
           >
             {badge ? badge.label : `#${entry.rank}`}
           </div>
-          <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono uppercase tracking-widest text-slate-300">
+          <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] text-slate-300">
             #{entry.climber_number}
           </div>
         </div>
 
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <h3 className="section-title text-3xl leading-none sm:text-4xl">{entry.name.toUpperCase()}</h3>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <h3 className="section-title text-3xl sm:text-4xl">{entry.name.toUpperCase()}</h3>
             {rankChanged && (
-              <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-accent">
-                position changed
+              <span className="status-pill border-accent/20 bg-accent/10 text-red-100">
+                Position Changed
               </span>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <ScoreBar score={entry.total_score} />
-            <ScorePill label="R1" value={entry.climb1_score} tone="border-green-500/20 bg-green-500/10 text-green-300" />
-            <ScorePill label="R2" value={entry.climb2_score} tone="border-blue-500/20 bg-blue-500/10 text-blue-300" />
-            <ScorePill label="R3" value={entry.climb3_score} tone="border-accent/20 bg-accent/10 text-red-200" />
+            <ScorePill
+              label="R1"
+              value={entry.climb1_score}
+              tone="border-green-500/20 bg-green-500/10 text-green-300"
+            />
+            <ScorePill
+              label="R2"
+              value={entry.climb2_score}
+              tone="border-blue-500/20 bg-blue-500/10 text-blue-300"
+            />
+            <ScorePill
+              label="R3"
+              value={entry.climb3_score}
+              tone="border-accent/20 bg-accent/10 text-red-200"
+            />
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-right">
+        <div className="rounded-[1.6rem] border border-white/10 bg-black/20 px-4 py-3 text-center">
           <div className="meta-label">Total</div>
-          <AnimatedNumber value={entry.total_score} className="font-display text-4xl leading-none text-chalk" />
-          <div className="mt-2 font-body text-sm text-slate-300">
-            {entry.total_time_seconds > 0 ? formatTime(entry.total_time_seconds) : "No time yet"}
+          <AnimatedNumber
+            value={entry.total_score}
+            className="mt-2 block font-display text-4xl leading-none text-chalk"
+          />
+          <div className="mt-2 text-sm text-slate-300">
+            {entry.total_time_seconds > 0 ? formatTime(entry.total_time_seconds) : "No Time Yet"}
           </div>
         </div>
       </div>
@@ -237,8 +258,8 @@ export default function LeaderboardPage() {
 
     const channel = supabase
       .channel("leaderboard-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "climb_attempts" }, () => refreshLeaderboard())
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "climbers" }, () => refreshLeaderboard())
+      .on("postgres_changes", { event: "*", schema: "public", table: "climb_attempts" }, refreshLeaderboard)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "climbers" }, refreshLeaderboard)
       .subscribe();
 
     return () => {
@@ -262,97 +283,36 @@ export default function LeaderboardPage() {
 
   return (
     <main className="page-shell">
-      <div className="content-frame space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link href="/" className="btn-ghost px-4 py-2 text-xs">
-            Back home
-          </Link>
-          <div
-            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-mono uppercase tracking-widest transition-colors ${
-              pulse ? "border-green-400/30 bg-green-500/10 text-green-300" : "border-white/10 bg-white/[0.03] text-slate-400"
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full ${pulse ? "bg-green-400" : "bg-slate-600"}`} />
-            Live
-            {lastUpdateLabel && <span className="text-slate-300">{lastUpdateLabel}</span>}
+      <div className="content-frame space-y-5">
+        <SiteHeader />
+
+        <div className="space-y-4 text-center">
+          <div className="meta-label">Summit Series Standings</div>
+          <h1 className="section-title text-4xl sm:text-5xl">Live Leaderboard</h1>
+          <div className="flex justify-center">
+            <div
+              className={`status-pill ${
+                pulse
+                  ? "border-green-400/30 bg-green-500/10 text-green-300"
+                  : "border-white/10 bg-white/[0.03] text-slate-300"
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${pulse ? "bg-green-400" : "bg-slate-600"}`} />
+              Live
+              {lastUpdateLabel ? <span className="text-slate-200">{lastUpdateLabel}</span> : null}
+            </div>
           </div>
         </div>
 
-        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="card">
-            <span className="eyebrow">Broadcast board</span>
-            <div className="mt-5 max-w-3xl">
-              <p className="meta-label">Summit Series top six</p>
-              <h1 className="section-title mt-4 text-5xl sm:text-6xl lg:text-7xl">
-                The leaderboard now feels stage-ready.
-              </h1>
-              <p className="mt-4 max-w-2xl font-body text-sm leading-7 text-slate-300 sm:text-base">
-                Scores, route contribution, and tie-break time are grouped into one cleaner ranking
-                surface so judges can verify placements and spectators can read the board from a
-                distance.
-              </p>
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <div className="stat-card">
-                <div className="meta-label">Board depth</div>
-                <div className="mt-2 font-display text-4xl text-chalk">{TOP_N}</div>
-                <p className="mt-2 font-body text-sm text-slate-300">Top competitors kept visible at all times.</p>
-              </div>
-              <div className="stat-card">
-                <div className="meta-label">Tie-break</div>
-                <div className="mt-2 font-display text-4xl text-chalk">Time</div>
-                <p className="mt-2 font-body text-sm text-slate-300">Lowest combined completion time wins ties.</p>
-              </div>
-              <div className="stat-card">
-                <div className="meta-label">Update mode</div>
-                <div className="mt-2 font-display text-4xl text-chalk">Live</div>
-                <p className="mt-2 font-body text-sm text-slate-300">Realtime refresh keeps the room synchronized.</p>
-              </div>
-            </div>
-          </div>
-
-          <aside className="card flex flex-col justify-between gap-5">
-            <div>
-              <span className="eyebrow">How to read it</span>
-              <div className="mt-5 space-y-3 font-body text-sm leading-7 text-slate-300">
-                <p>Route bars show how much of the 6,000-point ceiling each athlete has locked in.</p>
-                <p>Per-route chips make it obvious where the score came from without opening a detail view.</p>
-                <p>Rank badges and large totals help the top three hold visual priority on a projector.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="card-muted">
-                <div className="meta-label">Route palette</div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest">
-                  <span className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-green-300">R1 1000</span>
-                  <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-blue-300">R2 2000</span>
-                  <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-red-200">R3 3000</span>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-                <div className="meta-label">Event flow</div>
-                <div className="mt-3 space-y-2 font-body text-sm text-slate-300">
-                  <p>Scores appear as soon as routes are completed.</p>
-                  <p>Failed attempts affect score, but only the first three are penalized.</p>
-                  <p>Time only matters once athletes begin stacking completed routes.</p>
-                </div>
-              </div>
-            </div>
-          </aside>
-        </section>
-
         <section className="card overflow-hidden p-0">
           <div className="border-b border-white/10 px-4 py-4 sm:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-center sm:text-left">
               <div>
-                <div className="meta-label">Live standings</div>
-                <h2 className="section-title mt-2 text-3xl">Current order</h2>
+                <div className="meta-label">Current Order</div>
+                <h2 className="section-title mt-2 text-3xl">Top {TOP_N}</h2>
               </div>
-              <div className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-mono uppercase tracking-widest text-slate-300">
-                score first, lowest time second
+              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                Score First, Lowest Time Second
               </div>
             </div>
           </div>
@@ -372,9 +332,9 @@ export default function LeaderboardPage() {
                 <div className="podium-glow h-28 w-20 rounded-t-3xl border border-yellow-400/20 bg-yellow-400/10" />
                 <div className="podium-glow h-16 w-16 rounded-t-3xl border border-white/10 bg-white/[0.03]" />
               </div>
-              <div className="meta-label">Waiting for scores</div>
+              <div className="meta-label">Waiting for Scores</div>
               <h3 className="section-title mt-4 text-4xl text-slate-300">No leaderboard entries yet.</h3>
-              <p className="mt-3 font-body text-sm text-slate-300">
+              <p className="mt-3 text-sm text-slate-300">
                 Scores will populate here as soon as climbers start completing routes.
               </p>
             </div>
@@ -391,15 +351,6 @@ export default function LeaderboardPage() {
             </div>
           )}
         </section>
-
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link href="/register" className="btn-ghost px-4 py-2 text-xs">
-            Register athletes
-          </Link>
-          <Link href="/scorecard" className="btn-ghost px-4 py-2 text-xs">
-            Open scorecards
-          </Link>
-        </div>
       </div>
     </main>
   );

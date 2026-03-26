@@ -26,6 +26,7 @@ import {
   resetClimb,
 } from "@/lib/db";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
+import SiteHeader from "@/components/site-header";
 
 const ADMIN_PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || "1234";
 
@@ -78,8 +79,16 @@ function AnimatedNumber({
 }) {
   const [displayValue, setDisplayValue] = useState(value);
   const previousValue = useRef(value);
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      previousValue.current = value;
+      setDisplayValue(value);
+      return;
+    }
+
     const startValue = previousValue.current;
     const endValue = value;
 
@@ -106,11 +115,6 @@ function AnimatedNumber({
 
     return () => cancelAnimationFrame(frame);
   }, [value]);
-
-  useEffect(() => {
-    previousValue.current = value;
-    setDisplayValue(value);
-  }, []);
 
   return <span className={className}>{displayValue.toLocaleString()}</span>;
 }
@@ -461,21 +465,23 @@ function ScorecardContent() {
       });
   }, [urlId]);
 
+  const climberId = climber?.id;
+
   useEffect(() => {
-    if (!climber || !supabaseConfigured) return;
+    if (!climberId || !supabaseConfigured) return;
 
     const channel = supabase
-      .channel(`scorecard-${climber.id}`)
+      .channel(`scorecard-${climberId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "climb_attempts",
-          filter: `climber_id=eq.${climber.id}`,
+          filter: `climber_id=eq.${climberId}`,
         },
         () => {
-          getClimberById(climber.id)
+          getClimberById(climberId)
             .then((updated) => {
               if (updated) setClimber(updated);
             })
@@ -492,7 +498,7 @@ function ScorecardContent() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [climber?.id]);
+  }, [climberId]);
 
   const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -609,19 +615,27 @@ function ScorecardContent() {
   if (!climber) {
     return (
       <main className="page-shell">
-        <div className="content-frame">
-          <div className="mb-6 flex items-center justify-between gap-4">
-            <Link href="/" className="btn-ghost px-4 py-2 text-xs">
-              Back home
-            </Link>
-            <span className="eyebrow">Scorecard lookup</span>
-          </div>
+        <div className="content-frame space-y-6">
+          <SiteHeader
+            status={
+              <>
+                <span className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">
+                  Judge lookup
+                </span>
+                <Link href="/register" className="nav-pill">
+                  Register athlete
+                </Link>
+              </>
+            }
+          />
 
           <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
             <div className="card flex flex-col justify-between gap-6">
               <div>
                 <p className="meta-label">Athlete search</p>
-                <h1 className="section-title mt-4 text-5xl sm:text-6xl">Find a competitor and jump into route tracking.</h1>
+                <h1 className="section-title mt-4 text-5xl sm:text-6xl">
+                  Find a competitor and jump straight into route tracking.
+                </h1>
                 <p className="mt-4 max-w-xl font-body text-sm leading-7 text-slate-300 sm:text-base">
                   Search by climber number to reopen an athlete scorecard. Judges can unlock route
                   actions after loading the athlete view.
@@ -709,32 +723,34 @@ function ScorecardContent() {
   return (
     <main className="page-shell">
       <div className="content-frame space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link href="/" className="btn-ghost px-4 py-2 text-xs">
-            Back home
-          </Link>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href="/leaderboard" className="btn-ghost px-4 py-2 text-xs">
-              View leaderboard
-            </Link>
-            {isAdmin ? (
-              <button
-                onClick={() => {
-                  setIsAdmin(false);
-                  setDangerTarget(null);
-                  setNotice({ tone: "success", message: "Judge mode disabled." });
-                }}
-                className="inline-flex items-center justify-center rounded-full border border-green-500/20 bg-green-500/10 px-4 py-2 text-xs font-mono uppercase tracking-widest text-green-200"
-              >
-                Judge mode on
-              </button>
-            ) : (
-              <button onClick={() => setShowPinEntry((current) => !current)} className="btn-ghost px-4 py-2 text-xs">
-                Judge login
-              </button>
-            )}
-          </div>
-        </div>
+        <SiteHeader
+          status={
+            <>
+              <Link href="/leaderboard" className="nav-pill">
+                View leaderboard
+              </Link>
+              {isAdmin ? (
+                <button
+                  onClick={() => {
+                    setIsAdmin(false);
+                    setDangerTarget(null);
+                    setNotice({ tone: "success", message: "Judge mode disabled." });
+                  }}
+                  className="status-pill border-green-500/20 bg-green-500/10 text-green-200"
+                >
+                  Judge mode on
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowPinEntry((current) => !current)}
+                  className="status-pill border-white/10 bg-white/[0.04] text-slate-300"
+                >
+                  Judge login
+                </button>
+              )}
+            </>
+          }
+        />
 
         <div className="sticky top-0 z-50 rounded-2xl border border-white/10 bg-granite/95 px-4 py-3 shadow-md backdrop-blur-md lg:hidden">
           <div className="flex items-center justify-between gap-3">
@@ -777,7 +793,7 @@ function ScorecardContent() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
+            <div className="rounded-[1.8rem] border border-white/10 bg-black/20 p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="meta-label">Progress</div>
@@ -806,6 +822,14 @@ function ScorecardContent() {
                   <div className="meta-label">Penalty cap</div>
                   <div className="mt-2 font-display text-3xl text-chalk">3</div>
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+                <div className="meta-label">Judge guidance</div>
+                <p className="mt-3 text-sm leading-7 text-slate-300">
+                  Mobile judges can stay in this screen the whole time: log fails, enter completion
+                  time, and confirm route status without losing athlete context.
+                </p>
               </div>
             </div>
           </div>

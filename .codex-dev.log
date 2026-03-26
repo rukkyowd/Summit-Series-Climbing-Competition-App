@@ -1,0 +1,11 @@
+
+> climbing-comp@1.0.0 dev
+> next dev --port 3001
+
+  ▲ Next.js 14.2.3
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1881ms
+^C^C

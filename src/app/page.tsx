@@ -1,164 +1,103 @@
 import Link from "next/link";
-import HomeOperations from "./home-operations";
+import SiteHeader from "@/components/site-header";
 
 const ACTIONS = [
   {
     href: "/register",
-    label: "Register",
-    title: "Check athletes in fast",
-    description: "Create a competitor record and send them straight to their live scorecard.",
+    title: "Register Athletes",
+    description: "Add a competitor and open their scorecard right away.",
     accent: "text-accent",
-    ring: "border-accent/25 group-hover:border-accent/45",
-    glow: "bg-accent/10",
-    stat: "Front desk ready",
   },
   {
     href: "/scorecard",
-    label: "Scorecard",
-    title: "Track every attempt",
-    description: "Log fails, completion times, and judge actions from a single route view.",
-    accent: "text-blue-400",
-    ring: "border-blue-500/25 group-hover:border-blue-400/45",
-    glow: "bg-blue-500/10",
-    stat: "Judge workflow",
+    title: "Open Scorecards",
+    description: "Find an athlete, record attempts, and log route times.",
+    accent: "text-blue-300",
   },
   {
     href: "/leaderboard",
-    label: "Leaderboard",
-    title: "Keep the room live",
-    description: "Project the current top performers with rank movement and tie-break timing.",
-    accent: "text-yellow-400",
-    ring: "border-yellow-500/25 group-hover:border-yellow-400/45",
-    glow: "bg-yellow-500/10",
-    stat: "Audience facing",
+    title: "View Leaderboard",
+    description: "See the latest rankings, scores, and tie-break times.",
+    accent: "text-yellow-300",
   },
 ];
 
-const CLIMB_RULES = [
-  { label: "Route 01", points: "1,000", tone: "text-green-400" },
-  { label: "Route 02", points: "2,000", tone: "text-blue-400" },
-  { label: "Route 03", points: "3,000", tone: "text-accent" },
+const SCORING_RULES = [
+  { label: "Route 1", value: "1,000 points" },
+  { label: "Route 2", value: "2,000 points" },
+  { label: "Route 3", value: "3,000 points" },
+  { label: "Penalty", value: "-200 per failed attempt" },
+  { label: "Tie-break", value: "Lowest total time" },
 ];
 
 export default function Home() {
   return (
     <main className="page-shell">
-      <div className="content-frame space-y-8">
-        <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="card relative overflow-hidden">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
-            <div className="absolute -left-20 top-10 h-52 w-52 rounded-full bg-accent/10 blur-3xl" />
-            <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-yellow-400/10 blur-3xl" />
+      <div className="content-frame space-y-6">
+        <SiteHeader />
 
-            <div className="relative space-y-8">
-              <div className="space-y-5">
-                <span className="eyebrow">Summit Series live scoring</span>
-                <div className="max-w-3xl space-y-4">
-                  <p className="meta-label">Boulder comp control room</p>
-                  <h1 className="section-title text-6xl leading-none sm:text-7xl lg:text-8xl">
-                    A sharper scoring desk for fast-moving finals.
-                  </h1>
-                  <p className="max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-                    Run athlete registration, route logging, and spectator-facing rankings from one
-                    focused interface built for judges under pressure.
-                  </p>
-                </div>
-              </div>
+        <section className="card relative overflow-hidden text-center">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+          <div className="absolute -left-24 top-10 h-56 w-56 rounded-full bg-accent/12 blur-3xl" />
+          <div className="absolute right-0 top-0 h-44 w-44 rounded-full bg-yellow-400/10 blur-3xl" />
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Link href="/scorecard" className="btn-primary">
-                  Open scorecards
-                </Link>
-                <Link href="/leaderboard" className="btn-ghost">
-                  View live board
-                </Link>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="stat-card">
-                  <div className="meta-label">Routes</div>
-                  <div className="mt-2 font-display text-4xl text-chalk">3</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">
-                    Distinct score tiers keep route value obvious at a glance.
-                  </p>
-                </div>
-                <div className="stat-card">
-                  <div className="meta-label">Penalty model</div>
-                  <div className="mt-2 font-display text-4xl text-chalk">-200</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">
-                    Failed attempts are capped, so route progression still matters.
-                  </p>
-                </div>
-                <div className="stat-card">
-                  <div className="meta-label">Tie-break</div>
-                  <div className="mt-2 font-display text-4xl text-chalk">Time</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">
-                    Lowest combined completion time wins when scores match.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <aside className="card flex h-full flex-col gap-6">
+          <div className="relative mx-auto max-w-4xl space-y-8">
+            <span className="eyebrow">Summit Series</span>
             <div className="space-y-4">
-              <span className="eyebrow">Scoring at a glance</span>
-              <div>
-                <h2 className="section-title text-4xl gradient-text">Route values stay visible without eating the page.</h2>
-                <p className="mt-3 font-body text-sm leading-7 text-slate-300">
-                  Judges still get the route-point reference, but the homepage now gives more room to
-                  live event context and operational actions.
-                </p>
-              </div>
+              <h1 className="section-title text-6xl sm:text-7xl lg:text-[5.5rem]">
+                Simple live scoring for your climbing competition.
+              </h1>
+              <p className="mx-auto max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+                Register athletes, update scorecards, and follow the leaderboard from one clean set
+                of pages.
+              </p>
             </div>
 
-            <div className="grid gap-3">
-              {CLIMB_RULES.map((rule) => (
-                <div key={rule.label} className="card-muted flex items-center justify-between gap-4">
-                  <div>
-                    <div className="meta-label">{rule.label}</div>
-                    <div className={`mt-1 font-display text-2xl ${rule.tone}`}>{rule.points}</div>
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link href="/register" className="btn-primary min-w-52">
+                Register Athletes
+              </Link>
+              <Link href="/scorecard" className="btn-ghost min-w-52">
+                Open Scorecards
+              </Link>
+              <Link href="/leaderboard" className="btn-ghost min-w-52">
+                View Leaderboard
+              </Link>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              {ACTIONS.map((action) => (
+                <Link key={action.href} href={action.href} className="command-link text-center">
+                  <div className="w-full">
+                    <div className="text-lg font-semibold text-chalk">{action.title}</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{action.description}</p>
+                    <div className={`mt-4 text-sm font-semibold ${action.accent}`}>Open</div>
                   </div>
-                  <div className="text-right font-body text-sm text-slate-300">base points</div>
-                </div>
+                </Link>
               ))}
             </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="meta-label">Reminder</div>
-              <div className="mt-3 space-y-2 font-body text-sm text-slate-300">
-                <p>Only the first three failed attempts on each route are penalized.</p>
-                <p>Final board order stays score first, lowest total time second.</p>
-              </div>
-            </div>
-          </aside>
+          </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3">
-          {ACTIONS.map((action) => (
-            <Link key={action.href} href={action.href} className={`group action-card ${action.ring}`}>
-              <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
-              <div className={`mb-5 inline-flex rounded-full border border-white/10 px-3 py-1 text-xs font-mono uppercase tracking-widest ${action.glow} ${action.accent}`}>
-                {action.label}
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                  <h3 className="section-title text-3xl leading-none">{action.title}</h3>
-                  <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-slate-300">
-                    {action.stat}
-                  </span>
-                </div>
-                <p className="text-sm leading-7 text-slate-300">{action.description}</p>
-              </div>
-              <div className="mt-8 flex items-center justify-between text-sm font-medium text-slate-300">
-                <span>Open panel</span>
-                <span className={action.accent}>Explore</span>
-              </div>
-            </Link>
-          ))}
-        </section>
+        <section className="card text-center">
+          <div className="mx-auto max-w-3xl space-y-4">
+            <div className="meta-label">Scoring</div>
+            <h2 className="section-title text-4xl sm:text-5xl">How scoring works</h2>
+            <p className="text-sm leading-7 text-slate-300 sm:text-base">
+              Route scores increase from one wall to the next. Failed attempts reduce the score, and
+              the lowest total time breaks ties.
+            </p>
+          </div>
 
-        <HomeOperations />
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {SCORING_RULES.map((rule) => (
+              <div key={rule.label} className="hero-stat text-center">
+                <div className="meta-label">{rule.label}</div>
+                <div className="mt-3 text-lg font-semibold text-chalk">{rule.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </main>
   );

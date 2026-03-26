@@ -4,11 +4,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { registerClimber } from "@/lib/db";
+import SiteHeader from "@/components/site-header";
 
 const NOTES = [
   "Bib number must be unique for the competition.",
   "Athletes jump straight into their scorecard after check-in.",
   "Judges can unlock route controls later from the scorecard view.",
+];
+
+const DESK_METRICS = [
+  { label: "Flow", value: "Fast", detail: "Keep intake short and accurate." },
+  { label: "Duplicate guard", value: "On", detail: "Bib numbers are validated before save." },
+  { label: "Handoff", value: "Direct", detail: "Open the athlete scorecard immediately after check-in." },
 ];
 
 export default function RegisterPage() {
@@ -25,7 +32,9 @@ export default function RegisterPage() {
 
     if (!name.trim()) return setError("Please enter the athlete name.");
     if (!climberNumber.trim()) return setError("Please enter the climber number.");
-    if (!/^\d+$/.test(climberNumber.trim())) return setError("Climber number must contain digits only.");
+    if (!/^\d+$/.test(climberNumber.trim())) {
+      return setError("Climber number must contain digits only.");
+    }
 
     setLoading(true);
 
@@ -44,138 +53,138 @@ export default function RegisterPage() {
 
   return (
     <main className="page-shell">
-      <div className="content-frame">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <Link href="/" className="btn-ghost px-4 py-2 text-xs">
-            Back home
-          </Link>
-          <span className="eyebrow">Athlete check-in</span>
-        </div>
+      <div className="content-frame space-y-6">
+        <SiteHeader
+          status={
+            <>
+              <span className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">
+                Front desk flow
+              </span>
+              <Link href="/scorecard" className="nav-pill">
+                Find athlete
+              </Link>
+            </>
+          }
+        />
 
-        <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="card flex flex-col justify-between gap-8">
-            <div className="space-y-5">
-              <div className="space-y-3">
-                <p className="meta-label">Front desk workflow</p>
-                <h1 className="section-title text-5xl sm:text-6xl">Register athletes without slowing the room down.</h1>
-                <p className="max-w-xl font-body text-sm leading-7 text-slate-300 sm:text-base">
-                  Keep intake light, validate the bib number, and route each athlete directly into the
-                  scoring experience they will use for the rest of the event.
-                </p>
-              </div>
+        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid gap-4">
+            <div className="card relative overflow-hidden">
+              <div className="absolute -right-12 top-0 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
+              <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-white/30 to-transparent" />
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="stat-card">
-                  <div className="meta-label">Step 1</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">Name</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">Capture the athlete record.</p>
+              <div className="relative space-y-5">
+                <span className="eyebrow">Athlete intake</span>
+                <div>
+                  <p className="meta-label">Front desk workflow</p>
+                  <h1 className="section-title mt-4 text-5xl sm:text-6xl">
+                    Check competitors in without slowing the room down.
+                  </h1>
+                  <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300 sm:text-base">
+                    Keep registration light, validate the bib number, and route each athlete straight
+                    into the live scoring flow they will use for the rest of the event.
+                  </p>
                 </div>
-                <div className="stat-card">
-                  <div className="meta-label">Step 2</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">Bib</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">Link their competition number.</p>
-                </div>
-                <div className="stat-card">
-                  <div className="meta-label">Step 3</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">Start</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">Open the live scorecard instantly.</p>
+
+                <div className="grid gap-3">
+                  {NOTES.map((note, index) => (
+                    <div key={note} className="card-muted flex gap-3">
+                      <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-xs font-mono text-slate-200">
+                        0{index + 1}
+                      </span>
+                      <p className="text-sm leading-7 text-slate-300">{note}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-              <div className="meta-label">Desk notes</div>
-              <div className="mt-4 space-y-3">
-                {NOTES.map((note, index) => (
-                  <div key={note} className="flex gap-3 font-body text-sm leading-7 text-slate-300">
-                    <span className="mt-1 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-mono text-slate-400">
-                      0{index + 1}
-                    </span>
-                    <span>{note}</span>
-                  </div>
-                ))}
-              </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {DESK_METRICS.map((metric) => (
+                <div key={metric.label} className="hero-stat">
+                  <div className="meta-label">{metric.label}</div>
+                  <div className="mt-3 font-display text-4xl text-chalk">{metric.value}</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">{metric.detail}</p>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="card">
-            <div className="mb-6 flex items-center justify-between gap-4">
-              <div>
-                <span className="eyebrow">New competitor</span>
-                <h2 className="section-title mt-4 text-4xl">Competition intake</h2>
-              </div>
-              <div className="rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-xs font-mono uppercase tracking-widest text-accent">
-                Live form
-              </div>
-            </div>
+          <div className="card relative overflow-hidden">
+            <div className="absolute right-10 top-10 h-32 w-32 rounded-full bg-accent/10 blur-3xl" />
 
-            {success ? (
-              <div className="rounded-3xl border border-green-500/20 bg-green-500/10 px-6 py-12 text-center">
-                <div className="text-xs font-mono uppercase tracking-widest text-green-300">
-                  Athlete ready
+            <div className="relative">
+              <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <span className="eyebrow">New competitor</span>
+                  <h2 className="section-title mt-4 text-4xl sm:text-5xl">Competition intake</h2>
                 </div>
-                <div className="mt-4 font-display text-5xl text-green-300">Registered</div>
-                <p className="mt-3 text-sm text-green-100/80">
-                  Redirecting to the competitor scorecard now.
+                <div className="status-pill border-accent/20 bg-accent/10 text-red-100">Live form</div>
+              </div>
+
+              {success ? (
+                <div className="rounded-[1.8rem] border border-green-500/20 bg-green-500/10 px-6 py-12 text-center">
+                  <div className="meta-label text-green-200">Athlete ready</div>
+                  <div className="mt-4 font-display text-6xl text-green-200">Registered</div>
+                  <p className="mt-3 text-sm text-green-50/80">
+                    Redirecting to the competitor scorecard now.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <div>
+                    <label className="meta-label mb-2 block">Athlete name</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Alex Honnold"
+                      className="input-field text-lg"
+                      autoFocus
+                      disabled={loading}
+                      maxLength={80}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="meta-label mb-2 block">Climber number</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={climberNumber}
+                      onChange={(e) => setClimberNumber(e.target.value)}
+                      placeholder="42"
+                      className="input-field text-lg"
+                      disabled={loading}
+                      maxLength={6}
+                    />
+                    <p className="mt-2 text-sm text-slate-300">Match the bib or registration roster.</p>
+                  </div>
+
+                  {error && (
+                    <div className="rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                    <button type="submit" disabled={loading} className="btn-primary w-full">
+                      {loading ? "Registering..." : "Register and open scorecard"}
+                    </button>
+                    <Link href="/scorecard" className="btn-ghost w-full justify-center sm:w-auto">
+                      Find athlete
+                    </Link>
+                  </div>
+                </form>
+              )}
+
+              <div className="mt-6 rounded-[1.6rem] border border-white/10 bg-black/20 p-5">
+                <div className="meta-label">Returning athlete</div>
+                <p className="mt-3 text-sm leading-7 text-slate-300">
+                  Already checked in? Open the scorecard lookup and search by climber number instead
+                  of creating a duplicate record.
                 </p>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label className="mb-2 block text-xs font-mono uppercase tracking-widest text-slate-400">
-                    Athlete name
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Alex Honnold"
-                    className="input-field text-lg"
-                    autoFocus
-                    disabled={loading}
-                    maxLength={80}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-mono uppercase tracking-widest text-slate-400">
-                    Climber number
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={climberNumber}
-                    onChange={(e) => setClimberNumber(e.target.value)}
-                    placeholder="42"
-                    className="input-field font-body text-lg"
-                    disabled={loading}
-                    maxLength={6}
-                  />
-                  <p className="mt-2 font-body text-sm text-slate-300">Match the bib or registration roster.</p>
-                </div>
-
-                {error && (
-                  <div className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
-                    {error}
-                  </div>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                  <button type="submit" disabled={loading} className="btn-primary w-full">
-                    {loading ? "Registering..." : "Register and open scorecard"}
-                  </button>
-                  <Link href="/scorecard" className="btn-ghost w-full justify-center sm:w-auto">
-                    Find athlete
-                  </Link>
-                </div>
-              </form>
-            )}
-
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <div className="meta-label">Returning athlete</div>
-              <p className="mt-2 font-body text-sm text-slate-300">
-                Already checked in? Open the scorecard lookup and search by climber number.
-              </p>
             </div>
           </div>
         </section>
