@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   CLIMBS,
+  TOTAL_CLIMBS,
   MAX_PENALIZED_FAILS,
   PENALTY_PER_FAIL,
   calculateClimbScore,
@@ -49,32 +50,45 @@ function getAttempt(attempts: ClimbAttempt[], climbNumber: ClimbNumber) {
 }
 
 function getClimbTheme(climbNumber: ClimbNumber) {
-  switch (climbNumber) {
-    case 1:
-      return {
-        badge: "text-green-300 border-green-500/20 bg-green-500/10",
-        border: "border-green-500/25",
-        text: "text-green-300",
-        surface: "bg-green-500/10",
-        button: "border-green-500/20 bg-green-500/10 text-green-200 hover:bg-green-500/20",
-      };
-    case 2:
-      return {
-        badge: "text-blue-300 border-blue-500/20 bg-blue-500/10",
-        border: "border-blue-500/25",
-        text: "text-blue-300",
-        surface: "bg-blue-500/10",
-        button: "border-blue-500/20 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20",
-      };
-    default:
-      return {
-        badge: "text-red-200 border-accent/20 bg-accent/10",
-        border: "border-accent/25",
-        text: "text-red-200",
-        surface: "bg-accent/10",
-        button: "border-accent/20 bg-accent/10 text-red-100 hover:bg-accent/20",
-      };
-  }
+  const themes = [
+    {
+      badge: "text-green-300 border-green-500/20 bg-green-500/10",
+      border: "border-green-500/25",
+      text: "text-green-300",
+      surface: "bg-green-500/10",
+      button: "border-green-500/20 bg-green-500/10 text-green-200 hover:bg-green-500/20",
+    },
+    {
+      badge: "text-blue-300 border-blue-500/20 bg-blue-500/10",
+      border: "border-blue-500/25",
+      text: "text-blue-300",
+      surface: "bg-blue-500/10",
+      button: "border-blue-500/20 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20",
+    },
+    {
+      badge: "text-red-200 border-accent/20 bg-accent/10",
+      border: "border-accent/25",
+      text: "text-red-200",
+      surface: "bg-accent/10",
+      button: "border-accent/20 bg-accent/10 text-red-100 hover:bg-accent/20",
+    },
+    {
+      badge: "text-yellow-200 border-yellow-500/20 bg-yellow-500/10",
+      border: "border-yellow-500/25",
+      text: "text-yellow-200",
+      surface: "bg-yellow-500/10",
+      button: "border-yellow-500/20 bg-yellow-500/10 text-yellow-100 hover:bg-yellow-500/20",
+    },
+    {
+      badge: "text-orange-200 border-orange-500/20 bg-orange-500/10",
+      border: "border-orange-500/25",
+      text: "text-orange-200",
+      surface: "bg-orange-500/10",
+      button: "border-orange-500/20 bg-orange-500/10 text-orange-100 hover:bg-orange-500/20",
+    },
+  ] as const;
+
+  return themes[(climbNumber - 1) % themes.length];
 }
 
 function AnimatedNumber({
@@ -190,11 +204,14 @@ function ClimbCard({
   };
 
   return (
-    <div className={`card border ${theme.border} transition-all duration-300 ${flash ? "flash-complete" : ""}`}>
+    <div
+      id={`climb-card-${climb.number}`}
+      className={`card border ${theme.border} transition-all duration-300 ${flash ? "flash-complete" : ""}`}
+    >
       <div className="mb-5 flex items-start justify-between gap-4">
         <div className="space-y-3">
           <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-mono uppercase tracking-widest ${theme.badge}`}>
-            Route {climb.number}
+            Climb {climb.number.toString().padStart(2, "0")}
           </span>
           <div>
             <h2 className="section-title text-3xl">{climb.label}</h2>
@@ -281,7 +298,7 @@ function ClimbCard({
 
             {!isAdmin && (
               <p className="mt-3 font-body text-sm text-slate-300">
-                Waiting on a judge to log fails or finish time for this route.
+                Waiting on a judge to log fails or finish time for this climb.
               </p>
             )}
           </div>
@@ -310,7 +327,7 @@ function ClimbCard({
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="meta-label mb-3">Mark completion</div>
+                <div className="meta-label mb-3">Mark Completion</div>
                 <div className="rounded-3xl border border-white/10 bg-rock/60 p-3">
                   <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr]">
                     <label className="block">
@@ -355,7 +372,7 @@ function ClimbCard({
                   disabled={loading || (minutesInput.trim() === "" && secondsInput.trim() === "")}
                   className={`mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold uppercase tracking-wider transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.button}`}
                 >
-                  Complete route
+                  Complete Climb
                 </button>
                 {timeError && <p className="mt-3 font-body text-sm text-accent">{timeError}</p>}
                 <p className="mt-3 font-body text-sm text-slate-300">
@@ -663,7 +680,7 @@ function ScorecardContent() {
   const totalTime = calculateTotalTime(attempts);
   const completedCount = attempts.filter((attempt) => attempt.completed).length;
   const totalFails = attempts.reduce((sum, attempt) => sum + attempt.failed_attempts, 0);
-  const progressPercent = (completedCount / CLIMBS.length) * 100;
+  const progressPercent = (completedCount / TOTAL_CLIMBS) * 100;
 
   const handleDeleteCurrentClimber = async () => {
     if (!climber) return;
@@ -870,7 +887,7 @@ function ScorecardContent() {
           </div>
           <div className="mt-3 flex items-center justify-between font-body text-sm text-slate-300">
             <span>#{climber.climber_number}</span>
-            <span>{completedCount}/{CLIMBS.length} routes</span>
+            <span>{completedCount}/{TOTAL_CLIMBS} climbs</span>
             <span>{formatTime(totalTime)}</span>
           </div>
         </div>
@@ -890,7 +907,7 @@ function ScorecardContent() {
                   total fails {totalFails}
                 </span>
                 <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
-                  routes complete {completedCount}/{CLIMBS.length}
+                  climbs complete {completedCount}/{TOTAL_CLIMBS}
                 </span>
                 <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
                   total time {formatTime(totalTime)}
@@ -932,7 +949,7 @@ function ScorecardContent() {
               <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
                 <div className="meta-label">Ready to Score</div>
                 <p className="mt-3 text-sm leading-7 text-slate-300">
-                  Use Judge Mode to log fails, enter finish times, and reset a route if needed.
+                  Use Judge Mode to log fails, enter finish times, and reset a climb if needed.
                 </p>
               </div>
             </div>
@@ -987,7 +1004,38 @@ function ScorecardContent() {
           </form>
         )}
 
-        <section className="grid gap-4 xl:grid-cols-3">
+        <section className="card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="meta-label">Climb Navigator</div>
+              <p className="mt-2 text-sm text-slate-300">Jump straight to any climb.</p>
+            </div>
+            <div className="meta-label">{TOTAL_CLIMBS} Climbs</div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {CLIMBS.map((climb) => {
+              const attempt = getAttempt(attempts, climb.number);
+              const completed = attempt?.completed ?? false;
+
+              return (
+                <a
+                  key={climb.number}
+                  href={`#climb-card-${climb.number}`}
+                  className={`rounded-full border px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] transition-colors ${
+                    completed
+                      ? "border-green-500/20 bg-green-500/10 text-green-200"
+                      : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20"
+                  }`}
+                >
+                  {climb.number.toString().padStart(2, "0")}
+                </a>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
           {CLIMBS.map((climb) => (
             <ClimbCard
               key={climb.number}

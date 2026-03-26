@@ -23,10 +23,10 @@ const ACTIONS = [
 ];
 
 const SCORING_RULES = [
-  "Route 1: 1,000 points",
-  "Route 2: 2,000 points",
-  "Route 3: 3,000 points",
+  "30 climbs",
+  "Progressive point values",
   "Penalty: -200 per failed attempt",
+  "Penalty cap: 3 fails per climb",
   "Tie-break: Lowest total time",
 ];
 

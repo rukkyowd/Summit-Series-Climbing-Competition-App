@@ -1,18 +1,18 @@
 "use client";
 
 import { CSSProperties, useEffect, useRef, useState } from "react";
-import { buildLeaderboard, formatTime, type LeaderboardEntry } from "@/lib/scoring";
+import {
+  buildLeaderboard,
+  formatTime,
+  MAX_TOTAL_SCORE,
+  TOTAL_CLIMBS,
+  type LeaderboardEntry,
+} from "@/lib/scoring";
 import { getAllClimbersWithAttempts } from "@/lib/db";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
 import SiteHeader from "@/components/site-header";
 
-const TOP_N = 6;
-
-const SCORE_SEGMENTS = [
-  { key: "route-1", start: 0, points: 1000, color: "bg-green-500" },
-  { key: "route-2", start: 1000, points: 2000, color: "bg-blue-500" },
-  { key: "route-3", start: 3000, points: 3000, color: "bg-accent" },
-];
+const TOP_N = 10;
 
 const RANK_BADGES: Record<number, { label: string; tone: string }> = {
   1: { label: "1st", tone: "text-yellow-300 border-yellow-400/20 bg-yellow-400/10" },
@@ -91,46 +91,33 @@ function LeaderboardSkeleton({ presentationMode }: { presentationMode: boolean }
 }
 
 function ScoreBar({
-  score,
+  totalScore,
   presentationMode,
 }: {
-  score: number;
+  totalScore: number;
   presentationMode: boolean;
 }) {
-  return (
-    <div className={`flex h-2 gap-1 ${presentationMode ? "w-full max-w-56" : "w-full max-w-40"}`}>
-      {SCORE_SEGMENTS.map((segment) => {
-        const filled = Math.max(0, Math.min(score - segment.start, segment.points));
-        const width = (filled / segment.points) * 100;
+  const width = Math.max(0, Math.min((totalScore / MAX_TOTAL_SCORE) * 100, 100));
 
-        return (
-          <div key={segment.key} className="flex-1 overflow-hidden rounded-full bg-slate-800">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${segment.color}`}
-              style={{ width: `${width}%` }}
-            />
-          </div>
-        );
-      })}
+  return (
+    <div className={`overflow-hidden rounded-full bg-slate-800 ${presentationMode ? "h-3 w-full max-w-64" : "h-2 w-full max-w-44"}`}>
+      <div
+        className="progress-bar h-full rounded-full transition-all duration-700"
+        style={{ width: `${width}%` }}
+      />
     </div>
   );
 }
 
-function ScorePill({
+function StatChip({
   label,
   value,
-  tone,
 }: {
   label: string;
-  value: number;
-  tone: string;
+  value: string;
 }) {
-  if (value <= 0) return null;
-
   return (
-    <span
-      className={`rounded-full border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.22em] ${tone}`}
-    >
+    <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">
       {label} {value}
     </span>
   );
@@ -193,23 +180,13 @@ function LeaderboardRow({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <ScoreBar score={entry.total_score} presentationMode={presentationMode} />
-            <ScorePill
-              label="R1"
-              value={entry.climb1_score}
-              tone="border-green-500/20 bg-green-500/10 text-green-300"
-            />
-            <ScorePill
-              label="R2"
-              value={entry.climb2_score}
-              tone="border-blue-500/20 bg-blue-500/10 text-blue-300"
-            />
-            <ScorePill
-              label="R3"
-              value={entry.climb3_score}
-              tone="border-accent/20 bg-accent/10 text-red-200"
-            />
+          <div className="flex flex-col items-center gap-3">
+            <ScoreBar totalScore={entry.total_score} presentationMode={presentationMode} />
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <StatChip label="Completed" value={`${entry.completed_routes}/${TOTAL_CLIMBS}`} />
+              <StatChip label="Highest" value={entry.highest_completed_climb ? `C${entry.highest_completed_climb}` : "--"} />
+              <StatChip label="Time" value={formatTime(entry.total_time_seconds)} />
+            </div>
           </div>
         </div>
 
@@ -221,7 +198,7 @@ function LeaderboardRow({
           <div className="meta-label">Total</div>
           <AnimatedNumber value={entry.total_score} className={`mt-2 block font-display leading-none text-chalk ${scoreClass}`} />
           <div className={`mt-2 text-slate-300 ${presentationMode ? "text-base" : "text-sm"}`}>
-            {entry.total_time_seconds > 0 ? formatTime(entry.total_time_seconds) : "No Time Yet"}
+            {entry.completed_routes} Climbs Completed
           </div>
         </div>
       </div>
