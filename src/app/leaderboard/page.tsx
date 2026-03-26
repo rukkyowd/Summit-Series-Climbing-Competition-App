@@ -1,7 +1,6 @@
 "use client";
 
 import { CSSProperties, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { buildLeaderboard, formatTime, type LeaderboardEntry } from "@/lib/scoring";
 import { getAllClimbersWithAttempts } from "@/lib/db";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
@@ -69,21 +68,21 @@ function AnimatedNumber({
   return <span className={className}>{displayValue.toLocaleString()}</span>;
 }
 
-function LeaderboardSkeleton() {
+function LeaderboardSkeleton({ presentationMode }: { presentationMode: boolean }) {
   return (
     <div className="divide-y divide-white/5">
       {[0, 1, 2, 3].map((index) => (
-        <div key={index} className="px-4 py-5 sm:px-6">
+        <div key={index} className={`px-4 py-5 sm:px-6 ${presentationMode ? "lg:py-8" : ""}`}>
           <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center gap-3">
               <div className="skeleton-block h-12 w-16 rounded-full" />
               <div className="skeleton-block h-12 w-20 rounded-full" />
             </div>
             <div className="space-y-3">
-              <div className="skeleton-block h-8 w-48" />
-              <div className="skeleton-block h-3 w-full max-w-sm" />
+              <div className="skeleton-block mx-auto h-8 w-48" />
+              <div className="skeleton-block mx-auto h-3 w-full max-w-sm" />
             </div>
-            <div className="skeleton-block h-20 w-28" />
+            <div className="skeleton-block mx-auto h-20 w-28" />
           </div>
         </div>
       ))}
@@ -91,9 +90,15 @@ function LeaderboardSkeleton() {
   );
 }
 
-function ScoreBar({ score }: { score: number }) {
+function ScoreBar({
+  score,
+  presentationMode,
+}: {
+  score: number;
+  presentationMode: boolean;
+}) {
   return (
-    <div className="flex h-2 w-full max-w-40 gap-1">
+    <div className={`flex h-2 gap-1 ${presentationMode ? "w-full max-w-56" : "w-full max-w-40"}`}>
       {SCORE_SEGMENTS.map((segment) => {
         const filled = Math.max(0, Math.min(score - segment.start, segment.points));
         const width = (filled / segment.points) * 100;
@@ -135,10 +140,12 @@ function LeaderboardRow({
   entry,
   index,
   prevRank,
+  presentationMode,
 }: {
   entry: LeaderboardEntry;
   index: number;
   prevRank: number | undefined;
+  presentationMode: boolean;
 }) {
   const badge = RANK_BADGES[entry.rank];
   const rankChanged = prevRank !== undefined && prevRank !== entry.rank;
@@ -147,11 +154,15 @@ function LeaderboardRow({
     viewTransitionName: `leaderboard-${entry.climber_id}`,
   } as CSSProperties;
 
+  const topTier = presentationMode && entry.rank <= 3;
+  const nameClass = topTier ? "text-5xl sm:text-6xl" : presentationMode ? "text-4xl sm:text-5xl" : "text-3xl sm:text-4xl";
+  const scoreClass = topTier ? "text-5xl sm:text-6xl" : presentationMode ? "text-4xl sm:text-5xl" : "text-4xl";
+
   return (
     <div
-      className={`leaderboard-row px-4 py-4 sm:px-6 ${rankChanged ? "animate-pulse" : ""} ${
-        entry.rank === 1 ? "bg-yellow-400/5" : ""
-      }`}
+      className={`leaderboard-row px-4 py-4 sm:px-6 ${presentationMode ? "lg:px-8 lg:py-6" : ""} ${
+        rankChanged ? "animate-pulse" : ""
+      } ${entry.rank === 1 ? "bg-yellow-400/5" : ""}`}
       style={rowStyle}
     >
       <div className="grid gap-4 text-center md:grid-cols-[auto_1fr_auto] md:items-center">
@@ -159,18 +170,22 @@ function LeaderboardRow({
           <div
             className={`inline-flex min-w-14 items-center justify-center rounded-full border px-3 py-2 text-sm font-mono uppercase tracking-[0.22em] ${
               badge ? badge.tone : "border-white/10 bg-white/[0.03] text-slate-400"
-            }`}
+            } ${presentationMode ? "min-w-16 px-4 py-3 text-base" : ""}`}
           >
             {badge ? badge.label : `#${entry.rank}`}
           </div>
-          <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] text-slate-300">
+          <div
+            className={`rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] text-slate-300 ${
+              presentationMode ? "px-4 py-3 text-sm" : ""
+            }`}
+          >
             #{entry.climber_number}
           </div>
         </div>
 
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <h3 className="section-title text-3xl sm:text-4xl">{entry.name.toUpperCase()}</h3>
+            <h3 className={`section-title ${nameClass}`}>{entry.name.toUpperCase()}</h3>
             {rankChanged && (
               <span className="status-pill border-accent/20 bg-accent/10 text-red-100">
                 Position Changed
@@ -179,7 +194,7 @@ function LeaderboardRow({
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <ScoreBar score={entry.total_score} />
+            <ScoreBar score={entry.total_score} presentationMode={presentationMode} />
             <ScorePill
               label="R1"
               value={entry.climb1_score}
@@ -198,13 +213,14 @@ function LeaderboardRow({
           </div>
         </div>
 
-        <div className="rounded-[1.6rem] border border-white/10 bg-black/20 px-4 py-3 text-center">
+        <div
+          className={`rounded-[1.6rem] border border-white/10 bg-black/20 px-4 py-3 text-center ${
+            presentationMode ? "mx-auto min-w-48 px-6 py-5" : ""
+          }`}
+        >
           <div className="meta-label">Total</div>
-          <AnimatedNumber
-            value={entry.total_score}
-            className="mt-2 block font-display text-4xl leading-none text-chalk"
-          />
-          <div className="mt-2 text-sm text-slate-300">
+          <AnimatedNumber value={entry.total_score} className={`mt-2 block font-display leading-none text-chalk ${scoreClass}`} />
+          <div className={`mt-2 text-slate-300 ${presentationMode ? "text-base" : "text-sm"}`}>
             {entry.total_time_seconds > 0 ? formatTime(entry.total_time_seconds) : "No Time Yet"}
           </div>
         </div>
@@ -219,6 +235,7 @@ export default function LeaderboardPage() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [pulse, setPulse] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [presentationMode, setPresentationMode] = useState(false);
   const prevRanksRef = useRef<Record<string, number>>({});
 
   const refreshLeaderboard = async () => {
@@ -275,45 +292,95 @@ export default function LeaderboardPage() {
     prevRanksRef.current = nextRanks;
   }, [leaderboard]);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setPresentationMode(false);
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
   const lastUpdateLabel = lastUpdate?.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   });
 
+  const liveBadge = (
+    <div
+      className={`status-pill ${
+        pulse
+          ? "border-green-400/30 bg-green-500/10 text-green-300"
+          : "border-white/10 bg-white/[0.03] text-slate-300"
+      }`}
+    >
+      <span className={`h-2 w-2 rounded-full ${pulse ? "bg-green-400" : "bg-slate-600"}`} />
+      Live
+      {lastUpdateLabel ? <span className="text-slate-200">{lastUpdateLabel}</span> : null}
+    </div>
+  );
+
+  const togglePresentationMode = async () => {
+    const nextMode = !presentationMode;
+    setPresentationMode(nextMode);
+
+    try {
+      if (nextMode && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen?.();
+      }
+
+      if (!nextMode && document.fullscreenElement) {
+        await document.exitFullscreen?.();
+      }
+    } catch {
+      // Fall back to layout-only presentation mode when the Fullscreen API is unavailable.
+    }
+  };
+
+  const boardStatus = (
+    <>
+      <button onClick={togglePresentationMode} className="nav-pill">
+        {presentationMode ? "Exit Presentation" : "Presentation Mode"}
+      </button>
+      {liveBadge}
+    </>
+  );
+
   return (
-    <main className="page-shell">
-      <div className="content-frame space-y-5">
-        <SiteHeader />
-
-        <div className="space-y-4 text-center">
-          <div className="meta-label">Summit Series Standings</div>
-          <h1 className="section-title text-4xl sm:text-5xl">Live Leaderboard</h1>
-          <div className="flex justify-center">
-            <div
-              className={`status-pill ${
-                pulse
-                  ? "border-green-400/30 bg-green-500/10 text-green-300"
-                  : "border-white/10 bg-white/[0.03] text-slate-300"
-              }`}
-            >
-              <span className={`h-2 w-2 rounded-full ${pulse ? "bg-green-400" : "bg-slate-600"}`} />
-              Live
-              {lastUpdateLabel ? <span className="text-slate-200">{lastUpdateLabel}</span> : null}
-            </div>
+    <main className={`page-shell ${presentationMode ? "lg:px-4 lg:py-4" : ""}`}>
+      <div className={`content-frame space-y-5 ${presentationMode ? "max-w-none" : ""}`}>
+        {!presentationMode ? (
+          <SiteHeader status={boardStatus} />
+        ) : (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {boardStatus}
           </div>
-        </div>
+        )}
 
-        <section className="card overflow-hidden p-0">
+        {!presentationMode && (
+          <div className="space-y-4 text-center">
+            <div className="meta-label">Summit Series Standings</div>
+            <h1 className="section-title text-4xl sm:text-5xl">Live Leaderboard</h1>
+          </div>
+        )}
+
+        <section className={`card overflow-hidden p-0 ${presentationMode ? "border-white/5 bg-black/30" : ""}`}>
           <div className="border-b border-white/10 px-4 py-4 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-3 text-center sm:text-left">
-              <div>
-                <div className="meta-label">Current Order</div>
-                <h2 className="section-title mt-2 text-3xl">Top {TOP_N}</h2>
+              <div className="w-full sm:w-auto">
+                <div className="meta-label">{presentationMode ? "Live Standings" : "Current Order"}</div>
+                <h2 className={`section-title mt-2 ${presentationMode ? "text-4xl sm:text-5xl" : "text-3xl"}`}>
+                  Top {TOP_N}
+                </h2>
               </div>
-              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                Score First, Lowest Time Second
-              </div>
+              {!presentationMode && (
+                <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                  Score First, Lowest Time Second
+                </div>
+              )}
             </div>
           </div>
 
@@ -324,7 +391,7 @@ export default function LeaderboardPage() {
           )}
 
           {loading ? (
-            <LeaderboardSkeleton />
+            <LeaderboardSkeleton presentationMode={presentationMode} />
           ) : leaderboard.length === 0 ? (
             <div className="px-6 py-20 text-center">
               <div className="mx-auto mb-8 flex w-full max-w-sm items-end justify-center gap-4">
@@ -346,6 +413,7 @@ export default function LeaderboardPage() {
                   entry={entry}
                   index={index}
                   prevRank={prevRanksRef.current[entry.climber_id]}
+                  presentationMode={presentationMode}
                 />
               ))}
             </div>

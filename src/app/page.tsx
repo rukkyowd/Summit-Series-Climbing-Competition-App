@@ -23,11 +23,11 @@ const ACTIONS = [
 ];
 
 const SCORING_RULES = [
-  { label: "Route 1", value: "1,000 points" },
-  { label: "Route 2", value: "2,000 points" },
-  { label: "Route 3", value: "3,000 points" },
-  { label: "Penalty", value: "-200 per failed attempt" },
-  { label: "Tie-break", value: "Lowest total time" },
+  "Route 1: 1,000 points",
+  "Route 2: 2,000 points",
+  "Route 3: 3,000 points",
+  "Penalty: -200 per failed attempt",
+  "Tie-break: Lowest total time",
 ];
 
 export default function Home() {
@@ -43,26 +43,15 @@ export default function Home() {
 
           <div className="relative mx-auto max-w-4xl space-y-8">
             <span className="eyebrow">Summit Series</span>
+
             <div className="space-y-4">
-              <h1 className="section-title text-6xl sm:text-7xl lg:text-[5.5rem]">
-                Simple live scoring for your climbing competition.
+              <h1 className="section-title text-6xl sm:text-7xl lg:text-[5.2rem]">
+                Live scoring made simple.
               </h1>
               <p className="mx-auto max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
                 Register athletes, update scorecards, and follow the leaderboard from one clean set
                 of pages.
               </p>
-            </div>
-
-            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link href="/register" className="btn-primary min-w-52">
-                Register Athletes
-              </Link>
-              <Link href="/scorecard" className="btn-ghost min-w-52">
-                Open Scorecards
-              </Link>
-              <Link href="/leaderboard" className="btn-ghost min-w-52">
-                View Leaderboard
-              </Link>
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
@@ -76,26 +65,17 @@ export default function Home() {
                 </Link>
               ))}
             </div>
-          </div>
-        </section>
 
-        <section className="card text-center">
-          <div className="mx-auto max-w-3xl space-y-4">
-            <div className="meta-label">Scoring</div>
-            <h2 className="section-title text-4xl sm:text-5xl">How scoring works</h2>
-            <p className="text-sm leading-7 text-slate-300 sm:text-base">
-              Route scores increase from one wall to the next. Failed attempts reduce the score, and
-              the lowest total time breaks ties.
-            </p>
-          </div>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {SCORING_RULES.map((rule) => (
-              <div key={rule.label} className="hero-stat text-center">
-                <div className="meta-label">{rule.label}</div>
-                <div className="mt-3 text-lg font-semibold text-chalk">{rule.value}</div>
-              </div>
-            ))}
+            <div className="flex flex-wrap justify-center gap-2">
+              {SCORING_RULES.map((rule) => (
+                <span
+                  key={rule}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300"
+                >
+                  {rule}
+                </span>
+              ))}
+            </div>
           </div>
         </section>
       </div>

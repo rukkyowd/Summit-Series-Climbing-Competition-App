@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -20,6 +20,7 @@ import {
   completeClimb,
   deleteAllClimbers,
   deleteClimber,
+  getAllClimbersWithAttempts,
   getClimberById,
   getClimberByNumber,
   removeLastFail,
@@ -29,6 +30,7 @@ import { supabase, supabaseConfigured } from "@/lib/supabase";
 import SiteHeader from "@/components/site-header";
 
 const ADMIN_PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || "1234";
+const RECENT_LOOKUPS_KEY = "scorecard-recent-lookups";
 
 type Notice = {
   tone: "error" | "success";
@@ -36,6 +38,11 @@ type Notice = {
 };
 
 type DangerTarget = "climber" | "all" | null;
+type RecentLookup = {
+  id: string;
+  name: string;
+  climber_number: string;
+};
 
 function getAttempt(attempts: ClimbAttempt[], climbNumber: ClimbNumber) {
   return attempts.find((attempt) => attempt.climb_number === climbNumber);
@@ -431,6 +438,8 @@ function ScorecardContent() {
   const urlId = searchParams.get("id");
 
   const [climber, setClimber] = useState<ClimberWithAttempts | null>(null);
+  const [knownClimbers, setKnownClimbers] = useState<ClimberWithAttempts[]>([]);
+  const [recentLookups, setRecentLookups] = useState<RecentLookup[]>([]);
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [lookupInput, setLookupInput] = useState("");
@@ -444,6 +453,55 @@ function ScorecardContent() {
   const [showPin, setShowPin] = useState(false);
   const [dangerTarget, setDangerTarget] = useState<DangerTarget>(null);
 
+  const rememberLookup = useCallback((entry: ClimberWithAttempts) => {
+    setRecentLookups((current) => {
+      const nextLookups: RecentLookup[] = [
+        {
+          id: entry.id,
+          name: entry.name,
+          climber_number: entry.climber_number,
+        },
+        ...current.filter((recent) => recent.id !== entry.id),
+      ].slice(0, 5);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(RECENT_LOOKUPS_KEY, JSON.stringify(nextLookups));
+      }
+
+      return nextLookups;
+    });
+  }, []);
+
+  const openClimber = useCallback((entry: ClimberWithAttempts) => {
+    setClimber(entry);
+    setLookupInput("");
+    setLookupError("");
+    setNotice(null);
+    rememberLookup(entry);
+  }, [rememberLookup]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stored = window.localStorage.getItem(RECENT_LOOKUPS_KEY);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored) as RecentLookup[];
+      setRecentLookups(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      window.localStorage.removeItem(RECENT_LOOKUPS_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    getAllClimbersWithAttempts()
+      .then((rows) => setKnownClimbers(rows))
+      .catch(() => {
+        // Ignore lookup enhancement failures and leave the manual flow available.
+      });
+  }, []);
+
   useEffect(() => {
     if (!urlId) {
       setPageLoading(false);
@@ -452,7 +510,11 @@ function ScorecardContent() {
 
     getClimberById(urlId)
       .then((result) => {
-        setClimber(result);
+        if (result) {
+          openClimber(result);
+        } else {
+          setNotice({ tone: "error", message: "Unable to load this scorecard." });
+        }
       })
       .catch((err: unknown) => {
         setNotice({
@@ -463,7 +525,7 @@ function ScorecardContent() {
       .finally(() => {
         setPageLoading(false);
       });
-  }, [urlId]);
+  }, [openClimber, urlId]);
 
   const climberId = climber?.id;
 
@@ -500,23 +562,61 @@ function ScorecardContent() {
     };
   }, [climberId]);
 
-  const handleLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const runLookup = useCallback(async (climberNumber: string, showErrors = true) => {
+    const trimmed = climberNumber.trim();
+    if (!trimmed) return;
+
     setLookupError("");
     setNotice(null);
     setLoading(true);
 
     try {
-      const result = await getClimberByNumber(lookupInput.trim());
-      if (!result) throw new Error("No climber found with that number.");
-      setClimber(result);
-      setLookupInput("");
+      const localMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
+      const result = localMatch ?? (await getClimberByNumber(trimmed));
+
+      if (!result) {
+        throw new Error("No climber found with that number.");
+      }
+
+      openClimber(result);
     } catch (err: any) {
-      setLookupError(err.message || "Lookup failed.");
+      if (showErrors) {
+        setLookupError(err.message || "Lookup failed.");
+      }
     } finally {
       setLoading(false);
     }
+  }, [knownClimbers, openClimber]);
+
+  const handleLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runLookup(lookupInput, true);
   };
+
+  const matchingClimbers = useMemo(() => {
+    const trimmed = lookupInput.trim();
+    if (!trimmed) return [];
+
+    return knownClimbers
+      .filter((entry) => entry.climber_number.startsWith(trimmed))
+      .slice(0, 5);
+  }, [knownClimbers, lookupInput]);
+
+  useEffect(() => {
+    if (climber || loading) return;
+
+    const trimmed = lookupInput.trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) return;
+
+    const exactMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
+    if (!exactMatch) return;
+
+    const timer = window.setTimeout(() => {
+      runLookup(trimmed, false);
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [climber, knownClimbers, loading, lookupInput, runLookup]);
 
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -623,6 +723,9 @@ function ScorecardContent() {
               <div className="mb-6 text-center">
                 <span className="eyebrow">Athlete Search</span>
                 <h1 className="section-title mt-4 text-4xl sm:text-5xl">Find a Competitor</h1>
+                <p className="mt-4 text-sm leading-7 text-slate-300">
+                  Enter a climber number to open the scorecard. Exact matches open automatically.
+                </p>
               </div>
 
               {notice && (
@@ -644,7 +747,10 @@ function ScorecardContent() {
                     type="text"
                     inputMode="numeric"
                     value={lookupInput}
-                    onChange={(e) => setLookupInput(e.target.value)}
+                    onChange={(e) => {
+                      setLookupInput(e.target.value);
+                      setLookupError("");
+                    }}
                     placeholder="Enter the athlete number"
                     className="input-field font-body text-lg"
                     autoFocus
@@ -666,6 +772,48 @@ function ScorecardContent() {
                   </Link>
                 </div>
               </form>
+
+              {matchingClimbers.length > 0 && (
+                <div className="mt-6">
+                  <div className="meta-label mb-3 text-center">Matching Athletes</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {matchingClimbers.map((entry) => (
+                      <button
+                        key={entry.id}
+                        onClick={() => runLookup(entry.climber_number, false)}
+                        className="command-link text-left"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-chalk">{entry.name}</div>
+                          <div className="mt-1 text-xs text-slate-300">#{entry.climber_number}</div>
+                        </div>
+                        <span className="text-sm font-semibold text-blue-300">Open</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recentLookups.length > 0 && (
+                <div className="mt-6">
+                  <div className="meta-label mb-3 text-center">Recent Athletes</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {recentLookups.map((entry) => (
+                      <button
+                        key={entry.id}
+                        onClick={() => runLookup(entry.climber_number, false)}
+                        className="command-link text-left"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-chalk">{entry.name}</div>
+                          <div className="mt-1 text-xs text-slate-300">#{entry.climber_number}</div>
+                        </div>
+                        <span className="text-sm font-semibold text-accent">Open</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-center text-sm text-slate-300">
                 If the athlete is not registered yet, create the record first.
@@ -695,14 +843,14 @@ function ScorecardContent() {
                   }}
                   className="status-pill border-green-500/20 bg-green-500/10 text-green-200"
                 >
-                  Judge mode on
+                  Judge Mode On
                 </button>
               ) : (
                 <button
                   onClick={() => setShowPinEntry((current) => !current)}
                   className="status-pill border-white/10 bg-white/[0.04] text-slate-300"
                 >
-                  Judge login
+                  Judge Login
                 </button>
               )}
             </>
@@ -782,10 +930,9 @@ function ScorecardContent() {
               </div>
 
               <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
-                <div className="meta-label">Judge guidance</div>
+                <div className="meta-label">Ready to Score</div>
                 <p className="mt-3 text-sm leading-7 text-slate-300">
-                  Mobile judges can stay in this screen the whole time: log fails, enter completion
-                  time, and confirm route status without losing athlete context.
+                  Use Judge Mode to log fails, enter finish times, and reset a route if needed.
                 </p>
               </div>
             </div>
