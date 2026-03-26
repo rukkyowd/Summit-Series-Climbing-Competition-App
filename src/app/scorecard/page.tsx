@@ -581,6 +581,7 @@ function ScorecardContent() {
 
   const runLookup = useCallback(async (climberNumber: string, showErrors = true) => {
     const trimmed = climberNumber.trim();
+    const normalized = trimmed.toLowerCase();
     if (!trimmed) return;
 
     setLookupError("");
@@ -588,11 +589,25 @@ function ScorecardContent() {
     setLoading(true);
 
     try {
-      const localMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
-      const result = localMatch ?? (await getClimberByNumber(trimmed));
+      const exactNumberMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
+      const exactNameMatches = knownClimbers.filter(
+        (entry) => entry.name.trim().toLowerCase() === normalized
+      );
+
+      let result: ClimberWithAttempts | null = null;
+
+      if (exactNumberMatch) {
+        result = exactNumberMatch;
+      } else if (exactNameMatches.length === 1) {
+        result = exactNameMatches[0];
+      } else if (exactNameMatches.length > 1) {
+        throw new Error("Multiple athletes match that name. Choose one below.");
+      } else {
+        result = await getClimberByNumber(trimmed);
+      }
 
       if (!result) {
-        throw new Error("No climber found with that number.");
+        throw new Error("No athlete matched that name or number.");
       }
 
       openClimber(result);
@@ -612,10 +627,14 @@ function ScorecardContent() {
 
   const matchingClimbers = useMemo(() => {
     const trimmed = lookupInput.trim();
+    const normalized = trimmed.toLowerCase();
     if (!trimmed) return [];
 
     return knownClimbers
-      .filter((entry) => entry.climber_number.startsWith(trimmed))
+      .filter((entry) => {
+        const name = entry.name.trim().toLowerCase();
+        return entry.climber_number.startsWith(trimmed) || name.includes(normalized);
+      })
       .slice(0, 5);
   }, [knownClimbers, lookupInput]);
 
@@ -623,10 +642,15 @@ function ScorecardContent() {
     if (climber || loading) return;
 
     const trimmed = lookupInput.trim();
-    if (!trimmed || !/^\d+$/.test(trimmed)) return;
+    const normalized = trimmed.toLowerCase();
+    if (!trimmed) return;
 
-    const exactMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
-    if (!exactMatch) return;
+    const exactNumberMatch = knownClimbers.find((entry) => entry.climber_number === trimmed);
+    const exactNameMatches = knownClimbers.filter(
+      (entry) => entry.name.trim().toLowerCase() === normalized
+    );
+
+    if (!exactNumberMatch && exactNameMatches.length !== 1) return;
 
     const timer = window.setTimeout(() => {
       runLookup(trimmed, false);
@@ -741,7 +765,7 @@ function ScorecardContent() {
                 <span className="eyebrow">Athlete Search</span>
                 <h1 className="section-title mt-4 text-4xl sm:text-5xl">Find a Competitor</h1>
                 <p className="mt-4 text-sm leading-7 text-slate-300">
-                  Enter a climber number to open the scorecard. Exact matches open automatically.
+                  Search by climber number or athlete name. Exact matches open automatically.
                 </p>
               </div>
 
@@ -759,16 +783,16 @@ function ScorecardContent() {
 
               <form onSubmit={handleLookup} className="space-y-5">
                 <div>
-                  <label className="meta-label mb-2 block">Climber Number</label>
+                  <label className="meta-label mb-2 block">Climber Number or Name</label>
                   <input
                     type="text"
-                    inputMode="numeric"
+                    inputMode="search"
                     value={lookupInput}
                     onChange={(e) => {
                       setLookupInput(e.target.value);
                       setLookupError("");
                     }}
-                    placeholder="Enter the athlete number"
+                    placeholder="Enter a number or name"
                     className="input-field font-body text-lg"
                     autoFocus
                   />
