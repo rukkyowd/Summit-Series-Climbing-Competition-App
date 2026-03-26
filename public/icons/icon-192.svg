@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Summit Series icon">
+  <rect width="192" height="192" rx="40" fill="#111111" />
+  <path d="M42 144 79 54l17 35 17-25 37 80H42Z" fill="#f4d03f" />
+  <path d="M54 144 89 84l18 30 13-18 18 48H54Z" fill="#2ecc71" opacity=".88" />
+  <circle cx="144" cy="48" r="14" fill="#3498db" />
+</svg>

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { Bebas_Neue, DM_Sans, Share_Tech_Mono } from "next/font/google";
 import "./globals.css";
+import PwaProvider from "@/components/pwa-provider";
 
 const displayFont = Bebas_Neue({
   subsets: ["latin"],
@@ -23,6 +24,12 @@ const monoFont = Share_Tech_Mono({
 export const metadata: Metadata = {
   title: "Summit Series | Climbing Competition",
   description: "Live scoring and leaderboard for Summit Series climbing competition",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Summit Series",
+  },
 };
 
 export const viewport: Viewport = {
@@ -39,6 +46,7 @@ export default function RootLayout({
       <body
         className={`${displayFont.variable} ${bodyFont.variable} ${monoFont.variable} font-body bg-rock text-chalk antialiased`}
       >
+        <PwaProvider />
         {children}
         <Analytics />
       </body>

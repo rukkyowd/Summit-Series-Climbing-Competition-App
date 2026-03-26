@@ -1,18 +1,23 @@
 import { assertSupabaseConfigured, supabase } from "./supabase";
-import type { ClimbAttempt, ClimbNumber, ClimberWithAttempts } from "./scoring";
+import type {
+  ClimbAttempt,
+  ClimbNumber,
+  ClimberWithAttempts,
+  LeaderboardViewRow,
+} from "./scoring";
 
 function ensureConfigured() {
   assertSupabaseConfigured();
 }
 
-export async function registerClimber(name: string, climberNumber: string) {
+export async function registerClimber(name: string, climberNumber: string, category: string) {
   ensureConfigured();
 
   const { data: existing } = await supabase
     .from("climbers")
     .select("id")
     .eq("climber_number", climberNumber)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     throw new Error(`Climber number ${climberNumber} is already registered.`);
@@ -20,7 +25,11 @@ export async function registerClimber(name: string, climberNumber: string) {
 
   const { data, error } = await supabase
     .from("climbers")
-    .insert({ name: name.trim(), climber_number: climberNumber.trim() })
+    .insert({
+      name: name.trim(),
+      climber_number: climberNumber.trim(),
+      category: category.trim(),
+    })
     .select()
     .single();
 
@@ -35,9 +44,9 @@ export async function getClimberByNumber(climberNumber: string) {
     .from("climbers")
     .select("*, climb_attempts(*)")
     .eq("climber_number", climberNumber)
-    .single();
+    .maybeSingle();
 
-  if (error) return null;
+  if (error || !data) return null;
   return data as ClimberWithAttempts;
 }
 
@@ -48,9 +57,9 @@ export async function getClimberById(id: string) {
     .from("climbers")
     .select("*, climb_attempts(*)")
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
-  if (error) return null;
+  if (error || !data) return null;
   return data as ClimberWithAttempts;
 }
 
@@ -59,10 +68,47 @@ export async function getAllClimbersWithAttempts(): Promise<ClimberWithAttempts[
 
   const { data, error } = await supabase
     .from("climbers")
-    .select("*, climb_attempts(*)");
+    .select("*, climb_attempts(*)")
+    .order("climber_number", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data as ClimberWithAttempts[]) ?? [];
+}
+
+export async function getCompetitionCategories(): Promise<string[]> {
+  ensureConfigured();
+
+  const { data, error } = await supabase
+    .from("climbers")
+    .select("category")
+    .order("category", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const categories = new Set(
+    (data ?? [])
+      .map((entry) => entry.category)
+      .filter((value): value is string => Boolean(value?.trim()))
+  );
+
+  return Array.from(categories);
+}
+
+export async function getLeaderboardRows(category?: string | null): Promise<LeaderboardViewRow[]> {
+  ensureConfigured();
+
+  let query = supabase.from("leaderboard_view").select("*");
+
+  if (category) {
+    query = query.eq("category", category);
+  }
+
+  const { data, error } = await query.order(category ? "category_rank" : "overall_rank", {
+    ascending: true,
+  });
+
+  if (error) throw new Error(error.message);
+  return (data as LeaderboardViewRow[]) ?? [];
 }
 
 export async function getOrCreateAttempt(
@@ -76,10 +122,11 @@ export async function getOrCreateAttempt(
     .select("*")
     .eq("climber_id", climberId)
     .eq("climb_number", climbNumber)
-    .single();
+    .maybeSingle();
 
   if (existing) return existing as ClimbAttempt;
 
+  const startedAt = new Date().toISOString();
   const { data, error } = await supabase
     .from("climb_attempts")
     .insert({
@@ -87,7 +134,34 @@ export async function getOrCreateAttempt(
       climb_number: climbNumber,
       failed_attempts: 0,
       completed: false,
+      started_at: startedAt,
     })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as ClimbAttempt;
+}
+
+export async function startClimbAttempt(
+  climberId: string,
+  climbNumber: ClimbNumber,
+  startedAtIso = new Date().toISOString()
+): Promise<ClimbAttempt> {
+  ensureConfigured();
+  const attempt = await getOrCreateAttempt(climberId, climbNumber);
+
+  if (attempt.completed) {
+    throw new Error("Completed climbs must be reset before a new timed attempt starts.");
+  }
+
+  const { data, error } = await supabase
+    .from("climb_attempts")
+    .update({
+      started_at: startedAtIso,
+      completed_at: null,
+    })
+    .eq("id", attempt.id)
     .select()
     .single();
 
@@ -141,7 +215,8 @@ export async function removeLastFail(
 export async function completeClimb(
   climberId: string,
   climbNumber: ClimbNumber,
-  completionTimeSeconds: number
+  completionTimeSeconds: number,
+  startedAtIso?: string
 ): Promise<ClimbAttempt> {
   ensureConfigured();
   const attempt = await getOrCreateAttempt(climberId, climbNumber);
@@ -155,6 +230,7 @@ export async function completeClimb(
     .update({
       completed: true,
       completion_time_seconds: completionTimeSeconds,
+      started_at: startedAtIso ?? attempt.started_at ?? new Date().toISOString(),
       completed_at: new Date().toISOString(),
     })
     .eq("id", attempt.id)
@@ -178,6 +254,7 @@ export async function resetClimb(
       completed: false,
       failed_attempts: 0,
       completion_time_seconds: null,
+      started_at: new Date().toISOString(),
       completed_at: null,
     })
     .eq("id", attempt.id)
@@ -191,10 +268,7 @@ export async function resetClimb(
 export async function deleteClimber(climberId: string): Promise<void> {
   ensureConfigured();
 
-  const { error } = await supabase
-    .from("climbers")
-    .delete()
-    .eq("id", climberId);
+  const { error } = await supabase.from("climbers").delete().eq("id", climberId);
 
   if (error) throw new Error(error.message);
 }
@@ -202,10 +276,7 @@ export async function deleteClimber(climberId: string): Promise<void> {
 export async function deleteAllClimbers(): Promise<void> {
   ensureConfigured();
 
-  const { error } = await supabase
-    .from("climbers")
-    .delete()
-    .not("id", "is", null);
+  const { error } = await supabase.from("climbers").delete().not("id", "is", null);
 
   if (error) throw new Error(error.message);
 }

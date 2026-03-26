@@ -1,13 +1,25 @@
 // ============================================================
 // SCORING ENGINE
-// All scoring math lives here. Pure functions, no side effects.
+// Shared scoring helpers plus database-backed competition settings.
 // ============================================================
 
+import { assertSupabaseConfigured, supabase } from "./supabase";
+
 export const TOTAL_CLIMBS = 30;
-export const PENALTY_PER_FAIL = 200;
-export const MAX_PENALIZED_FAILS = 3;
+
+export interface CompetitionSettings {
+  penalty_per_fail: number;
+  max_penalized_fails: number;
+}
+
+export const DEFAULT_COMPETITION_SETTINGS: CompetitionSettings = {
+  penalty_per_fail: 200,
+  max_penalized_fails: 3,
+};
 
 const CLIMB_COLORS = ["#2ECC71", "#3498DB", "#E63946", "#F4D03F", "#FF9F43"] as const;
+
+let cachedSettings: CompetitionSettings | null = null;
 
 export const CLIMBS = Array.from({ length: TOTAL_CLIMBS }, (_, index) => {
   const number = index + 1;
@@ -30,13 +42,14 @@ export interface ClimbAttempt {
   completed: boolean;
   completion_time_seconds: number | null;
   started_at?: string;
-  completed_at?: string;
+  completed_at?: string | null;
 }
 
 export interface Climber {
   id: string;
   name: string;
   climber_number: string;
+  category: string;
   registered_at?: string;
 }
 
@@ -48,6 +61,7 @@ export interface LeaderboardEntry {
   climber_id: string;
   name: string;
   climber_number: string;
+  category: string;
   route_scores: number[];
   completed_routes: number;
   highest_completed_climb: number;
@@ -56,24 +70,89 @@ export interface LeaderboardEntry {
   rank: number;
 }
 
+export interface LeaderboardViewRow {
+  climber_id: string;
+  name: string;
+  climber_number: string;
+  category: string;
+  total_score: number;
+  total_time_seconds: number;
+  completed_climbs: number;
+  highest_completed_climb: number;
+  overall_rank: number;
+  category_rank: number;
+}
+
+export async function getCompetitionSettings(forceRefresh = false): Promise<CompetitionSettings> {
+  if (cachedSettings && !forceRefresh) {
+    return cachedSettings;
+  }
+
+  if (!supabase) {
+    return DEFAULT_COMPETITION_SETTINGS;
+  }
+
+  try {
+    assertSupabaseConfigured();
+
+    const { data, error } = await supabase
+      .from("competition_settings")
+      .select("penalty_per_fail, max_penalized_fails")
+      .eq("id", 1)
+      .single();
+
+    if (error || !data) {
+      cachedSettings = DEFAULT_COMPETITION_SETTINGS;
+      return cachedSettings;
+    }
+
+    cachedSettings = {
+      penalty_per_fail: data.penalty_per_fail ?? DEFAULT_COMPETITION_SETTINGS.penalty_per_fail,
+      max_penalized_fails:
+        data.max_penalized_fails ?? DEFAULT_COMPETITION_SETTINGS.max_penalized_fails,
+    };
+
+    return cachedSettings;
+  } catch {
+    cachedSettings = DEFAULT_COMPETITION_SETTINGS;
+    return cachedSettings;
+  }
+}
+
+export function clearCompetitionSettingsCache() {
+  cachedSettings = null;
+}
+
 export function calculateClimbScore(
   climbNumber: ClimbNumber,
   failedAttempts: number,
-  completed: boolean
+  completed: boolean,
+  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
 ): number {
   if (!completed) return 0;
 
   const climb = CLIMBS.find((entry) => entry.number === climbNumber);
   if (!climb) return 0;
 
-  const cappedFails = Math.min(failedAttempts, MAX_PENALIZED_FAILS);
-  const penalty = cappedFails * PENALTY_PER_FAIL;
+  const cappedFails = Math.min(failedAttempts, settings.max_penalized_fails);
+  const penalty = cappedFails * settings.penalty_per_fail;
   return climb.basePoints - penalty;
 }
 
-export function calculateTotalScore(attempts: ClimbAttempt[]): number {
+export function calculateTotalScore(
+  attempts: ClimbAttempt[],
+  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
+): number {
   return attempts.reduce((total, attempt) => {
-    return total + calculateClimbScore(attempt.climb_number, attempt.failed_attempts, attempt.completed);
+    return (
+      total +
+      calculateClimbScore(
+        attempt.climb_number,
+        attempt.failed_attempts,
+        attempt.completed,
+        settings
+      )
+    );
   }, 0);
 }
 
@@ -96,18 +175,45 @@ export function getHighestCompletedClimb(attempts: ClimbAttempt[]): number {
     .reduce((highest, attempt) => Math.max(highest, attempt.climb_number), 0);
 }
 
-export function getRouteScores(attempts: ClimbAttempt[]): number[] {
+export function getRouteScores(
+  attempts: ClimbAttempt[],
+  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
+): number[] {
   return CLIMBS.map((climb) => {
     const attempt = attempts.find((entry) => entry.climb_number === climb.number);
-    return attempt ? calculateClimbScore(climb.number, attempt.failed_attempts, attempt.completed) : 0;
+
+    return attempt
+      ? calculateClimbScore(climb.number, attempt.failed_attempts, attempt.completed, settings)
+      : 0;
   });
+}
+
+export function mapLeaderboardViewRowToEntry(
+  row: LeaderboardViewRow,
+  categoryScoped = false
+): LeaderboardEntry {
+  return {
+    climber_id: row.climber_id,
+    name: row.name,
+    climber_number: row.climber_number,
+    category: row.category,
+    route_scores: [],
+    completed_routes: row.completed_climbs,
+    highest_completed_climb: row.highest_completed_climb,
+    total_score: row.total_score,
+    total_time_seconds: row.total_time_seconds,
+    rank: categoryScoped ? row.category_rank : row.overall_rank,
+  };
 }
 
 export const MAX_TOTAL_SCORE = CLIMBS.reduce((sum, climb) => sum + climb.basePoints, 0);
 
-export function buildLeaderboard(climbers: ClimberWithAttempts[]): LeaderboardEntry[] {
+export function buildLeaderboard(
+  climbers: ClimberWithAttempts[],
+  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
+): LeaderboardEntry[] {
   const entries = climbers.map((climber) => {
-    const route_scores = getRouteScores(climber.climb_attempts);
+    const route_scores = getRouteScores(climber.climb_attempts, settings);
     const total_score = route_scores.reduce((sum, score) => sum + score, 0);
     const total_time_seconds = calculateTotalTime(climber.climb_attempts);
 
@@ -115,6 +221,7 @@ export function buildLeaderboard(climbers: ClimberWithAttempts[]): LeaderboardEn
       climber_id: climber.id,
       name: climber.name,
       climber_number: climber.climber_number,
+      category: climber.category,
       route_scores,
       completed_routes: countCompletedRoutes(climber.climb_attempts),
       highest_completed_climb: getHighestCompletedClimb(climber.climb_attempts),
@@ -126,7 +233,11 @@ export function buildLeaderboard(climbers: ClimberWithAttempts[]): LeaderboardEn
 
   entries.sort((a, b) => {
     if (b.total_score !== a.total_score) return b.total_score - a.total_score;
-    return a.total_time_seconds - b.total_time_seconds;
+    if (a.total_time_seconds !== b.total_time_seconds) {
+      return a.total_time_seconds - b.total_time_seconds;
+    }
+
+    return a.name.localeCompare(b.name);
   });
 
   let rank = 1;
