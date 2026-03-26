@@ -106,12 +106,12 @@ create table if not exists public.climbers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   climber_number text not null unique,
-  category text not null default 'Mens Open',
+  category text not null default 'Open',
   registered_at timestamptz not null default now()
 );
 
 alter table public.climbers
-  add column if not exists category text not null default 'Mens Open';
+  add column if not exists category text not null default 'Open';
 
 -- ============================================================
 -- CLIMB ATTEMPTS

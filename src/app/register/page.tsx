@@ -7,7 +7,7 @@ import SiteHeader from "@/components/site-header";
 import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { registerClimber } from "@/lib/db";
 
-const CATEGORY_OPTIONS = ["Mens Open", "Womens Pro", "Youth"];
+const DEFAULT_CATEGORY = "Open";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [climberNumber, setClimberNumber] = useState("");
-  const [category, setCategory] = useState(CATEGORY_OPTIONS[0]);
+  const [category] = useState(DEFAULT_CATEGORY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -58,8 +58,6 @@ export default function RegisterPage() {
     if (!/^[\\dA-Za-z-]+$/.test(climberNumber.trim())) {
       return setError("Climber number must use letters, digits, or dashes only.");
     }
-    if (!category.trim()) return setError("Please choose a category.");
-
     setLoading(true);
 
     try {
@@ -197,20 +195,8 @@ export default function RegisterPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="meta-label mb-2 block">Category</label>
-                    <select
-                      value={category}
-                      onChange={(event) => setCategory(event.target.value)}
-                      className="input-field text-lg"
-                      disabled={loading || !canRegister}
-                    >
-                      {CATEGORY_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="rounded-[1.3rem] border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300">
+                    Category defaults to <span className="text-chalk">{DEFAULT_CATEGORY}</span>.
                   </div>
 
                   {error ? (

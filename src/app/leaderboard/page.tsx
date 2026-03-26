@@ -125,9 +125,11 @@ function LeaderboardRow({
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-center gap-3">
             <h3 className="section-title text-3xl sm:text-4xl">{entry.name.toUpperCase()}</h3>
-            <span className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-              {entry.category}
-            </span>
+            {entry.category !== "Open" ? (
+              <span className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                {entry.category}
+              </span>
+            ) : null}
             {rankChanged ? (
               <span className="status-pill border-accent/20 bg-accent/10 text-red-100">
                 Position Changed
@@ -243,6 +245,7 @@ export default function LeaderboardPage() {
     () => [ALL_CATEGORIES, ...categories.filter((category) => category !== ALL_CATEGORIES)],
     [categories]
   );
+  const showCategoryFilters = filterOptions.length > 2;
 
   const lastUpdateLabel = lastUpdate?.toLocaleTimeString([], {
     hour: "2-digit",
@@ -264,7 +267,7 @@ export default function LeaderboardPage() {
         {lastUpdateLabel ? <span className="text-slate-200">{lastUpdateLabel}</span> : null}
       </div>
       <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-        {categoryScoped ? selectedCategory : "All divisions"}
+        {showCategoryFilters ? (categoryScoped ? selectedCategory : "All divisions") : "Open"}
       </div>
     </>
   );
@@ -277,10 +280,7 @@ export default function LeaderboardPage() {
         <div className="space-y-4 text-center">
           <div className="meta-label">Summit Series Standings</div>
           <h1 className="section-title text-4xl sm:text-5xl">Live Leaderboard</h1>
-          <p className="mx-auto max-w-2xl text-sm text-slate-300">
-            Filter by category to compare climbers inside a division, or stay on the full board for
-            overall standings.
-          </p>
+          <p className="mx-auto max-w-2xl text-sm text-slate-300">Live standings update from Supabase in real time.</p>
         </div>
 
         <section className="card overflow-hidden p-0">
@@ -290,7 +290,7 @@ export default function LeaderboardPage() {
                 <div>
                   <div className="meta-label">Current Order</div>
                   <h2 className="section-title mt-2 text-3xl">
-                    Top {TOP_N} {categoryScoped ? selectedCategory : "Across All Categories"}
+                    Top {TOP_N} {showCategoryFilters ? (categoryScoped ? selectedCategory : "Across All Categories") : ""}
                   </h2>
                 </div>
                 <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
@@ -298,21 +298,23 @@ export default function LeaderboardPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                {filterOptions.map((category) => (
-                  <button
-                    key={category}
-                    onClick={() => setSelectedCategory(category)}
-                    className={`rounded-full border px-4 py-2 text-xs font-mono uppercase tracking-[0.22em] transition-colors ${
-                      selectedCategory === category
-                        ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200"
-                        : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20"
-                    }`}
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
+              {showCategoryFilters ? (
+                <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+                  {filterOptions.map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setSelectedCategory(category)}
+                      className={`rounded-full border px-4 py-2 text-xs font-mono uppercase tracking-[0.22em] transition-colors ${
+                        selectedCategory === category
+                          ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200"
+                          : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20"
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
 
