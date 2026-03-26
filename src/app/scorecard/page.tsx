@@ -616,55 +616,13 @@ function ScorecardContent() {
     return (
       <main className="page-shell">
         <div className="content-frame space-y-6">
-          <SiteHeader
-            status={
-              <>
-                <span className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">
-                  Judge lookup
-                </span>
-                <Link href="/register" className="nav-pill">
-                  Register athlete
-                </Link>
-              </>
-            }
-          />
+          <SiteHeader />
 
-          <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="card flex flex-col justify-between gap-6">
-              <div>
-                <p className="meta-label">Athlete search</p>
-                <h1 className="section-title mt-4 text-5xl sm:text-6xl">
-                  Find a competitor and jump straight into route tracking.
-                </h1>
-                <p className="mt-4 max-w-xl font-body text-sm leading-7 text-slate-300 sm:text-base">
-                  Search by climber number to reopen an athlete scorecard. Judges can unlock route
-                  actions after loading the athlete view.
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="stat-card">
-                  <div className="meta-label">Score</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">Live</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">Totals update as attempts are logged.</p>
-                </div>
-                <div className="stat-card">
-                  <div className="meta-label">Judge mode</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">PIN</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">Secure route controls for staff only.</p>
-                </div>
-                <div className="stat-card">
-                  <div className="meta-label">Tie-break</div>
-                  <div className="mt-2 font-display text-3xl text-chalk">Time</div>
-                  <p className="mt-2 font-body text-sm text-slate-300">Each completed route contributes to the total.</p>
-                </div>
-              </div>
-            </div>
-
+          <section className="mx-auto w-full max-w-3xl">
             <div className="card">
-              <div className="mb-6">
-                <span className="eyebrow">Open athlete card</span>
-                <h2 className="section-title mt-4 text-4xl">Look up by climber number</h2>
+              <div className="mb-6 text-center">
+                <span className="eyebrow">Athlete Search</span>
+                <h1 className="section-title mt-4 text-4xl sm:text-5xl">Find a Competitor</h1>
               </div>
 
               {notice && (
@@ -681,7 +639,7 @@ function ScorecardContent() {
 
               <form onSubmit={handleLookup} className="space-y-5">
                 <div>
-                  <label className="meta-label mb-2 block">Climber number</label>
+                  <label className="meta-label mb-2 block">Climber Number</label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -701,17 +659,16 @@ function ScorecardContent() {
 
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                   <button type="submit" disabled={loading} className="btn-primary w-full">
-                    {loading ? "Looking up..." : "Find scorecard"}
+                    {loading ? "Looking Up..." : "Find Scorecard"}
                   </button>
                   <Link href="/register" className="btn-ghost w-full justify-center sm:w-auto">
-                    Register athlete
+                    Register Athlete
                   </Link>
                 </div>
               </form>
 
-              <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 font-body text-sm text-slate-300">
-                If the athlete is not registered yet, create the record first and this screen will
-                become their route dashboard.
+              <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-center text-sm text-slate-300">
+                If the athlete is not registered yet, create the record first.
               </div>
             </div>
           </section>
