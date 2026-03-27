@@ -33,6 +33,7 @@ export const CLIMBS = Array.from({ length: TOTAL_CLIMBS }, (_, index) => {
 });
 
 export type ClimbNumber = number;
+export type ClimbDifficulty = "easy" | "medium" | "hard";
 
 export interface ClimbAttempt {
   id?: string;
@@ -81,6 +82,12 @@ export interface LeaderboardViewRow {
   highest_completed_climb: number;
   overall_rank?: number | null;
   category_rank?: number | null;
+}
+
+export function getClimbDifficulty(climbNumber: ClimbNumber): ClimbDifficulty {
+  if (climbNumber <= 10) return "easy";
+  if (climbNumber <= 20) return "medium";
+  return "hard";
 }
 
 export async function getCompetitionSettings(forceRefresh = false): Promise<CompetitionSettings> {

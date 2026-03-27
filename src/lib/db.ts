@@ -216,6 +216,23 @@ export async function getOrCreateAttempt(
   return data as ClimbAttempt;
 }
 
+export async function getAttemptSnapshot(
+  climberId: string,
+  climbNumber: ClimbNumber
+): Promise<ClimbAttempt | null> {
+  ensureConfigured();
+
+  const { data, error } = await supabase
+    .from("climb_attempts")
+    .select("*")
+    .eq("climber_id", climberId)
+    .eq("climb_number", climbNumber)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return (data as ClimbAttempt | null) ?? null;
+}
+
 export async function startClimbAttempt(
   climberId: string,
   climbNumber: ClimbNumber,

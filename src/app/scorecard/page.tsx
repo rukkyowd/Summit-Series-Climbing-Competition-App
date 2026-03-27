@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
@@ -11,6 +11,7 @@ import {
   deleteAllClimbers,
   deleteClimber,
   getAllClimbersWithAttempts,
+  getAttemptSnapshot,
   getClimberById,
   getClimberByNumber,
   removeLastFail,
@@ -20,37 +21,123 @@ import {
 import {
   applyOptimisticQueueAction,
   buildQueueActionId,
+  captureAttemptSnapshot,
+  hasAttemptConflict,
   isNetworkLikeError,
   readActiveTimers,
   readOfflineQueue,
   writeActiveTimers,
   writeOfflineQueue,
+  type AttemptSnapshot,
   type QueueAction,
 } from "@/lib/offline-scorecard";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
 import {
   CLIMBS,
+  buildLeaderboard,
   calculateClimbScore,
   calculateTotalScore,
   calculateTotalTime,
   countCompletedRoutes,
   formatTime,
   getCompetitionSettings,
+  getClimbDifficulty,
   TOTAL_CLIMBS,
   type ClimbAttempt,
+  type ClimbDifficulty,
   type ClimbNumber,
   type ClimberWithAttempts,
   type CompetitionSettings,
+  type LeaderboardEntry,
 } from "@/lib/scoring";
 
 const RECENT_LOOKUPS_KEY = "scorecard-recent-lookups";
+const FAIL_UNDO_WINDOW_MS = 4500;
 
-type Notice = { tone: "error" | "success"; message: string };
+type Notice = { tone: "error" | "success" | "warning"; message: string };
 type DangerTarget = "climber" | "all" | null;
 type RecentLookup = { id: string; name: string; climber_number: string };
+type UndoToast = { climbNumber: ClimbNumber; label: string; expiresAt: number };
+
+const DIFFICULTY_META: Record<
+  ClimbDifficulty,
+  {
+    label: string;
+    chipClass: string;
+    navigatorClass: string;
+  }
+> = {
+  easy: {
+    label: "Easy",
+    chipClass: "border-blue-500/20 bg-blue-500/10 text-blue-200",
+    navigatorClass: "border-blue-500/20 bg-blue-500/10 text-blue-200",
+  },
+  medium: {
+    label: "Medium",
+    chipClass: "border-amber-500/20 bg-amber-500/10 text-amber-100",
+    navigatorClass: "border-amber-500/20 bg-amber-500/10 text-amber-100",
+  },
+  hard: {
+    label: "Hard",
+    chipClass: "border-red-500/20 bg-red-500/10 text-red-100",
+    navigatorClass: "border-red-500/20 bg-red-500/10 text-red-100",
+  },
+};
 
 function getAttempt(attempts: ClimbAttempt[], climbNumber: number) {
   return attempts.find((attempt) => attempt.climb_number === climbNumber);
+}
+
+function getNoticeClass(tone: Notice["tone"]) {
+  if (tone === "error") {
+    return "border-accent/30 bg-accent/10 text-accent";
+  }
+
+  if (tone === "warning") {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-100";
+  }
+
+  return "border-green-500/20 bg-green-500/10 text-green-200";
+}
+
+function triggerHaptic(pattern: number | number[]) {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+    return;
+  }
+
+  navigator.vibrate(pattern);
+}
+
+function buildAttemptExpectedState(attempt?: ClimbAttempt): AttemptSnapshot {
+  return captureAttemptSnapshot(attempt);
+}
+
+function getRankDeltaSummary(entry: LeaderboardEntry, leaderboard: LeaderboardEntry[]) {
+  const entryIndex = leaderboard.findIndex((row) => row.climber_id === entry.climber_id);
+  if (entryIndex <= 0) {
+    return {
+      label: "Field lead",
+      detail: "Currently holding first place.",
+    };
+  }
+
+  const ahead = leaderboard[entryIndex - 1];
+  const scoreGap = ahead.total_score - entry.total_score;
+
+  if (scoreGap > 0) {
+    return {
+      label: `${(scoreGap + 1).toLocaleString()} pts to move up`,
+      detail: `Passing ${ahead.name} takes ${(scoreGap + 1).toLocaleString()} more points.`,
+    };
+  }
+
+  const timeGap = Math.max(0, entry.total_time_seconds - ahead.total_time_seconds);
+  return {
+    label: timeGap ? `${formatTime(timeGap)} faster wins the tie` : "Tied on score and time",
+    detail: timeGap
+      ? `Matching score is already enough. ${formatTime(timeGap)} faster would take the next spot.`
+      : `This score is tied exactly with ${ahead.name}.`,
+  };
 }
 
 function AnimatedNumber({ value, className }: { value: number; className?: string }) {
@@ -158,6 +245,7 @@ function ClimbCard({
   settings,
   timerStartedAt,
   pendingSync,
+  isActive,
   onStart,
   onAddFail,
   onUndoFail,
@@ -172,6 +260,7 @@ function ClimbCard({
   settings: CompetitionSettings;
   timerStartedAt?: string;
   pendingSync: boolean;
+  isActive: boolean;
   onStart: () => void;
   onAddFail: () => void;
   onUndoFail: () => void;
@@ -180,15 +269,34 @@ function ClimbCard({
 }) {
   const fails = attempt?.failed_attempts ?? 0;
   const completed = attempt?.completed ?? false;
+  const difficulty = getClimbDifficulty(climb.number);
+  const difficultyMeta = DIFFICULTY_META[difficulty];
   const cappedFails = Math.min(fails, settings.max_penalized_fails);
   const score = calculateClimbScore(climb.number, fails, completed, settings);
-  const timerSeconds = timerStartedAt ? Math.max(1, Math.floor((now - new Date(timerStartedAt).getTime()) / 1000)) : 0;
+  const timerSeconds = timerStartedAt
+    ? Math.max(1, Math.floor((now - new Date(timerStartedAt).getTime()) / 1000))
+    : 0;
+  const articleClass = completed
+    ? "border-green-500/20"
+    : isActive
+      ? "border-blue-500/20 shadow-[0_0_0_1px_rgba(52,152,219,0.14)]"
+      : "border-white/10";
 
   return (
-    <article id={`climb-card-${climb.number}`} className="card border border-white/10">
+    <article id={`climb-card-${climb.number}`} className={`card border ${articleClass}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">Climb {climb.number.toString().padStart(2, "0")}</div>
+          <div className="flex flex-wrap gap-2">
+            <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+              Climb {climb.number.toString().padStart(2, "0")}
+            </div>
+            <div className={`status-pill ${difficultyMeta.chipClass}`}>{difficultyMeta.label}</div>
+            {isActive ? (
+              <div className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">
+                Active climb
+              </div>
+            ) : null}
+          </div>
           <h3 className="section-title mt-4 text-3xl">{climb.label}</h3>
           <p className="mt-2 text-sm text-slate-300">{climb.basePoints.toLocaleString()} base points</p>
         </div>
@@ -207,9 +315,21 @@ function ClimbCard({
               <div className="mt-2 font-display text-4xl text-chalk">{timerStartedAt ? formatTime(timerSeconds) : "0:00"}</div>
             </div>
             <div className="flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest">
-              {timerStartedAt ? <span className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-green-200">running</span> : null}
-              {pendingSync ? <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-yellow-100">pending sync</span> : null}
-              {completed ? <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-blue-200">complete</span> : null}
+              {timerStartedAt ? (
+                <span className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-green-200">
+                  running
+                </span>
+              ) : null}
+              {pendingSync ? (
+                <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-yellow-100">
+                  pending sync
+                </span>
+              ) : null}
+              {completed ? (
+                <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-blue-200">
+                  complete
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest text-slate-300">
@@ -222,13 +342,41 @@ function ClimbCard({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <button onClick={onStart} disabled={loading || !canJudge || Boolean(timerStartedAt) || completed} className="btn-primary w-full justify-center">{timerStartedAt ? "Attempt running" : "Start attempt"}</button>
-        <button onClick={onAddFail} disabled={loading || !canJudge || completed} className="btn-ghost w-full justify-center">Add fail</button>
-        <button onClick={onUndoFail} disabled={loading || !canJudge || completed || fails === 0} className="btn-ghost w-full justify-center">Undo fail</button>
-        <button onClick={() => onComplete(timerSeconds)} disabled={loading || !canJudge || !timerStartedAt || completed} className="btn-ghost w-full justify-center">Stop and complete</button>
+        <button
+          onClick={onStart}
+          disabled={loading || !canJudge || Boolean(timerStartedAt) || completed}
+          className="btn-primary w-full justify-center"
+        >
+          {timerStartedAt ? "Attempt running" : "Start attempt"}
+        </button>
+        <button
+          onClick={onAddFail}
+          disabled={loading || !canJudge || completed}
+          className="btn-ghost w-full justify-center"
+        >
+          Add fail
+        </button>
+        <button
+          onClick={onUndoFail}
+          disabled={loading || !canJudge || completed || fails === 0}
+          className="btn-ghost w-full justify-center"
+        >
+          Undo fail
+        </button>
+        <button
+          onClick={() => onComplete(timerSeconds)}
+          disabled={loading || !canJudge || !timerStartedAt || completed}
+          className="btn-ghost w-full justify-center"
+        >
+          Stop and complete
+        </button>
       </div>
 
-      <p className="mt-4 text-sm text-slate-300">{canJudge ? "Completion time is written automatically from the live timer. Offline writes are queued and synced later." : "Sign in as a judge or admin to start timers and record results."}</p>
+      <p className="mt-4 text-sm text-slate-300">
+        {canJudge
+          ? "Completion time is written automatically from the live timer. Offline writes are queued and synced later."
+          : "Sign in as a judge or admin to start timers and record results."}
+      </p>
     </article>
   );
 }
@@ -236,13 +384,143 @@ function ClimbCard({
 function ScorecardLoading() {
   return (
     <main className="page-shell">
-      <div className="content-frame">
+      <div className="content-frame space-y-6">
+        <section className="app-header">
+          <div className="flex flex-col items-center gap-4">
+            <div className="skeleton-block h-12 w-44" />
+            <div className="flex flex-wrap justify-center gap-2">
+              <div className="skeleton-block h-10 w-24 rounded-full" />
+              <div className="skeleton-block h-10 w-24 rounded-full" />
+              <div className="skeleton-block h-10 w-28 rounded-full" />
+            </div>
+          </div>
+        </section>
+
         <section className="card">
-          <div className="skeleton-block h-12 w-48" />
-          <div className="skeleton-block mt-4 h-24 w-full" />
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="space-y-4">
+              <div className="skeleton-block h-8 w-32" />
+              <div className="skeleton-block h-16 w-3/4" />
+              <div className="skeleton-block h-20 w-full" />
+            </div>
+            <div className="rounded-[1.8rem] border border-white/10 bg-black/20 p-5">
+              <div className="skeleton-block h-10 w-full" />
+              <div className="skeleton-block mt-5 h-3 w-full" />
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="skeleton-block h-24 w-full" />
+                <div className="skeleton-block h-24 w-full" />
+                <div className="skeleton-block h-24 w-full" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="skeleton-block h-8 w-48" />
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Array.from({ length: 10 }, (_, index) => (
+              <div key={index} className="skeleton-block h-10 w-16 rounded-full" />
+            ))}
+          </div>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <article key={index} className="card border border-white/10">
+              <div className="skeleton-block h-8 w-40" />
+              <div className="skeleton-block mt-4 h-12 w-2/3" />
+              <div className="skeleton-block mt-5 h-28 w-full" />
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="skeleton-block h-12 w-full rounded-full" />
+                <div className="skeleton-block h-12 w-full rounded-full" />
+              </div>
+            </article>
+          ))}
         </section>
       </div>
     </main>
+  );
+}
+
+function ActiveClimbBar({
+  climb,
+  timerSeconds,
+  extraActiveCount,
+  loading,
+  onAddFail,
+  onComplete,
+}: {
+  climb: (typeof CLIMBS)[number];
+  timerSeconds: number;
+  extraActiveCount: number;
+  loading: boolean;
+  onAddFail: () => void;
+  onComplete: () => void;
+}) {
+  return (
+    <div className="sticky-active-bar">
+      <div className="sticky-active-bar__content">
+        <div>
+          <div className="meta-label">Active climb</div>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <span className="section-title text-3xl">{climb.label}</span>
+            <span className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">
+              {formatTime(timerSeconds)}
+            </span>
+            {extraActiveCount > 0 ? (
+              <span className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                +{extraActiveCount} more running
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-1 flex-wrap gap-3 md:flex-none">
+          <button
+            onClick={onAddFail}
+            disabled={loading}
+            className="btn-ghost min-w-[9rem] flex-1 justify-center md:flex-none"
+          >
+            + Fail
+          </button>
+          <button
+            onClick={onComplete}
+            disabled={loading}
+            className="btn-primary min-w-[11rem] flex-1 justify-center md:flex-none"
+          >
+            Stop and complete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UndoToastCard({
+  toast,
+  onUndo,
+  onDismiss,
+}: {
+  toast: UndoToast;
+  onUndo: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="floating-toast">
+      <div className="rounded-[1.5rem] border border-white/10 bg-[rgba(18,21,27,0.96)] p-4 shadow-2xl backdrop-blur-xl">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1">
+            <div className="meta-label">Fail added</div>
+            <p className="mt-1 text-sm text-slate-200">{toast.label} recorded. Undo is still available.</p>
+          </div>
+          <button onClick={onUndo} className="btn-ghost min-w-[7rem] justify-center">
+            Undo
+          </button>
+          <button onClick={onDismiss} className="nav-pill">
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -270,6 +548,7 @@ function ScorecardContent() {
   const [now, setNow] = useState(Date.now());
   const [syncingQueue, setSyncingQueue] = useState(false);
   const [dangerTarget, setDangerTarget] = useState<DangerTarget>(null);
+  const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const syncRef = useRef(false);
 
   const canJudge = isStaffRole(profile?.role);
@@ -279,12 +558,64 @@ function ScorecardContent() {
   const completedCount = countCompletedRoutes(attempts);
   const totalFails = attempts.reduce((sum, attempt) => sum + attempt.failed_attempts, 0);
   const progressPercent = (completedCount / TOTAL_CLIMBS) * 100;
+  const hardTopCount = attempts.filter(
+    (attempt) => attempt.completed && getClimbDifficulty(attempt.climb_number) === "hard"
+  ).length;
+
+  const activeClimbEntries = useMemo(
+    () =>
+      Object.entries(activeTimers)
+        .map(([climbNumber, startedAt]) => ({
+          climbNumber: Number(climbNumber) as ClimbNumber,
+          startedAt,
+        }))
+        .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime()),
+    [activeTimers]
+  );
+
+  const primaryActiveClimbNumber = activeClimbEntries[0]?.climbNumber;
+  const primaryActiveClimb = primaryActiveClimbNumber ? CLIMBS[primaryActiveClimbNumber - 1] : null;
+  const primaryActiveTimerSeconds =
+    primaryActiveClimbNumber && activeTimers[primaryActiveClimbNumber]
+      ? Math.max(1, Math.floor((now - new Date(activeTimers[primaryActiveClimbNumber]).getTime()) / 1000))
+      : 0;
 
   const matchingClimbers = useMemo(() => {
     const query = lookupInput.trim().toLowerCase();
     if (!query) return [];
     return knownClimbers.filter((entry) => entry.climber_number.toLowerCase().includes(query) || entry.name.toLowerCase().includes(query)).slice(0, 8);
   }, [knownClimbers, lookupInput]);
+
+  const liveLeaderboard = useMemo(() => {
+    if (!climber) return [];
+
+    const boardSource = knownClimbers.some((entry) => entry.id === climber.id)
+      ? knownClimbers.map((entry) => (entry.id === climber.id ? climber : entry))
+      : [...knownClimbers, climber];
+
+    return buildLeaderboard(boardSource, settings);
+  }, [climber, knownClimbers, settings]);
+
+  const liveRankEntry = useMemo(
+    () => liveLeaderboard.find((entry) => entry.climber_id === climber?.id) ?? null,
+    [climber?.id, liveLeaderboard]
+  );
+
+  const liveRankDelta = useMemo(
+    () => (liveRankEntry ? getRankDeltaSummary(liveRankEntry, liveLeaderboard) : null),
+    [liveLeaderboard, liveRankEntry]
+  );
+
+  const auroraStyle = useMemo(
+    () =>
+      ({
+        "--aurora-primary":
+          hardTopCount >= 4 ? "rgba(230, 57, 70, 0.24)" : "rgba(52, 152, 219, 0.22)",
+        "--aurora-secondary":
+          hardTopCount >= 7 ? "rgba(244, 208, 63, 0.22)" : "rgba(230, 57, 70, 0.14)",
+      }) as CSSProperties,
+    [hardTopCount]
+  );
 
   const rememberLookup = (entry: ClimberWithAttempts) => {
     const next = [{ id: entry.id, name: entry.name, climber_number: entry.climber_number }, ...recentLookups.filter((item) => item.id !== entry.id)].slice(0, 5);
@@ -341,17 +672,17 @@ function ScorecardContent() {
       setClimber((current) => (current ? applyOptimisticQueueAction(current, action) : current));
     }
     setNotice({ tone: "success", message: `${message} Saved locally and queued for sync.` });
+    return true;
   };
 
   const runAction = async (action: QueueAction, message: string) => {
     if (!climber || !canJudge) {
       setNotice({ tone: "error", message: "Judge or admin login is required for score updates." });
-      return;
+      return false;
     }
 
     if (!online) {
-      queueAction(action, message);
-      return;
+      return queueAction(action, message);
     }
 
     setLoading(true);
@@ -361,15 +692,21 @@ function ScorecardContent() {
       await refreshCurrentClimber(action.climberId);
       await refreshKnownClimbers();
       setNotice({ tone: "success", message });
+      return true;
     } catch (error) {
       if (isNetworkLikeError(error)) {
-        queueAction(action, message);
+        return queueAction(action, message);
       } else {
-        setNotice({ tone: "error", message: error instanceof Error ? error.message : "Unable to update the scorecard." });
+        setNotice({
+          tone: "error",
+          message: error instanceof Error ? error.message : "Unable to update the scorecard.",
+        });
       }
     } finally {
       setLoading(false);
     }
+
+    return false;
   };
 
   const syncOfflineActions = useCallback(async () => {
@@ -380,11 +717,21 @@ function ScorecardContent() {
     syncRef.current = true;
     setSyncingQueue(true);
     let remaining = [...queued];
+    let syncedCount = 0;
+    let conflictCount = 0;
 
     try {
       for (const action of queued) {
         try {
+          if (action.expectedState) {
+            const serverAttempt = await getAttemptSnapshot(action.climberId, action.climbNumber);
+            if (hasAttemptConflict(action.expectedState, serverAttempt)) {
+              conflictCount += 1;
+            }
+          }
+
           await performAction(action);
+          syncedCount += 1;
           remaining = remaining.filter((item) => item.id !== action.id);
           setOfflineQueue(remaining);
           writeOfflineQueue(remaining);
@@ -399,8 +746,13 @@ function ScorecardContent() {
       if (climber) await refreshCurrentClimber(climber.id);
       await refreshKnownClimbers();
 
-      if (queued.length !== remaining.length) {
-        setNotice({ tone: "success", message: `Synced ${queued.length - remaining.length} queued update${queued.length - remaining.length === 1 ? "" : "s"}.` });
+      if (syncedCount > 0) {
+        setNotice({
+          tone: conflictCount ? "warning" : "success",
+          message: conflictCount
+            ? `Synced ${syncedCount} queued update${syncedCount === 1 ? "" : "s"}. ${conflictCount} conflict${conflictCount === 1 ? "" : "s"} detected, and the latest local update was applied.`
+            : `Synced ${syncedCount} queued update${syncedCount === 1 ? "" : "s"}.`,
+        });
       }
     } finally {
       syncRef.current = false;
@@ -488,9 +840,18 @@ function ScorecardContent() {
   }, [activeTimers, climber]);
 
   useEffect(() => {
+    if (!activeClimbEntries.length) return;
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [activeClimbEntries.length]);
+
+  useEffect(() => {
+    if (!undoToast) return;
+    const remainingMs = Math.max(0, undoToast.expiresAt - Date.now());
+    const timer = window.setTimeout(() => setUndoToast(null), remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [undoToast]);
 
   useEffect(() => {
     const onOnline = () => setOnline(true);
@@ -557,19 +918,119 @@ function ScorecardContent() {
   const startTimer = async (climbNumber: ClimbNumber) => {
     if (!climber) return;
     const startedAtIso = new Date().toISOString();
+    const expectedState = buildAttemptExpectedState(getAttempt(attempts, climbNumber));
     setActiveTimers((current) => ({ ...current, [climbNumber]: startedAtIso }));
-    await runAction({ id: buildQueueActionId(), kind: "start", climberId: climber.id, climbNumber, startedAtIso, createdAtIso: new Date().toISOString() }, `${CLIMBS[climbNumber - 1].label} started.`);
+    const applied = await runAction(
+      {
+        id: buildQueueActionId(),
+        kind: "start",
+        climberId: climber.id,
+        climbNumber,
+        startedAtIso,
+        createdAtIso: new Date().toISOString(),
+        expectedState,
+      },
+      `${CLIMBS[climbNumber - 1].label} started.`
+    );
+
+    if (!applied) {
+      setActiveTimers((current) => {
+        const next = { ...current };
+        delete next[climbNumber];
+        return next;
+      });
+    }
   };
 
   const completeTimedClimb = async (climbNumber: ClimbNumber, seconds: number) => {
     if (!climber) return;
     const startedAtIso = activeTimers[climbNumber];
+    const expectedState = buildAttemptExpectedState(getAttempt(attempts, climbNumber));
     setActiveTimers((current) => {
       const next = { ...current };
       delete next[climbNumber];
       return next;
     });
-    await runAction({ id: buildQueueActionId(), kind: "complete", climberId: climber.id, climbNumber, completionTimeSeconds: seconds, startedAtIso, createdAtIso: new Date().toISOString() }, `${CLIMBS[climbNumber - 1].label} completed in ${formatTime(seconds)}.`);
+    const applied = await runAction(
+      {
+        id: buildQueueActionId(),
+        kind: "complete",
+        climberId: climber.id,
+        climbNumber,
+        completionTimeSeconds: seconds,
+        startedAtIso,
+        createdAtIso: new Date().toISOString(),
+        expectedState,
+      },
+      `${CLIMBS[climbNumber - 1].label} completed in ${formatTime(seconds)}.`
+    );
+
+    if (applied) {
+      triggerHaptic([18, 24, 18]);
+    } else if (startedAtIso) {
+      setActiveTimers((current) => ({ ...current, [climbNumber]: startedAtIso }));
+    }
+  };
+
+  const logFail = async (climbNumber: ClimbNumber) => {
+    if (!climber) return;
+    const expectedState = buildAttemptExpectedState(getAttempt(attempts, climbNumber));
+    const applied = await runAction(
+      {
+        id: buildQueueActionId(),
+        kind: "add-fail",
+        climberId: climber.id,
+        climbNumber,
+        createdAtIso: new Date().toISOString(),
+        expectedState,
+      },
+      `${CLIMBS[climbNumber - 1].label} fail logged.`
+    );
+
+    if (applied) {
+      triggerHaptic(16);
+      setUndoToast({
+        climbNumber,
+        label: CLIMBS[climbNumber - 1].label,
+        expiresAt: Date.now() + FAIL_UNDO_WINDOW_MS,
+      });
+    }
+  };
+
+  const undoFail = async (climbNumber: ClimbNumber) => {
+    if (!climber) return;
+    const expectedState = buildAttemptExpectedState(getAttempt(attempts, climbNumber));
+    const applied = await runAction(
+      {
+        id: buildQueueActionId(),
+        kind: "undo-fail",
+        climberId: climber.id,
+        climbNumber,
+        createdAtIso: new Date().toISOString(),
+        expectedState,
+      },
+      `${CLIMBS[climbNumber - 1].label} fail removed.`
+    );
+
+    if (applied && undoToast?.climbNumber === climbNumber) {
+      setUndoToast(null);
+    }
+  };
+
+  const resetAttempt = async (climbNumber: ClimbNumber) => {
+    if (!climber) return;
+    const expectedState = buildAttemptExpectedState(getAttempt(attempts, climbNumber));
+    await runAction(
+      {
+        id: buildQueueActionId(),
+        kind: "reset",
+        climberId: climber.id,
+        climbNumber,
+        createdAtIso: new Date().toISOString(),
+        expectedState,
+      },
+      `${CLIMBS[climbNumber - 1].label} reset.`
+    );
   };
 
   const handleDeleteCurrentClimber = async () => {
@@ -642,7 +1103,11 @@ function ScorecardContent() {
               <p className="mt-4 text-sm text-slate-300">Search by climber number or athlete name. Public users can view scorecards. Judges can score them.</p>
             </div>
 
-            {notice ? <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${notice.tone === "error" ? "border-accent/30 bg-accent/10 text-accent" : "border-green-500/20 bg-green-500/10 text-green-200"}`}>{notice.message}</div> : null}
+            {notice ? (
+              <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${getNoticeClass(notice.tone)}`}>
+                {notice.message}
+              </div>
+            ) : null}
 
             <form onSubmit={async (event) => { event.preventDefault(); await runLookup(lookupInput); }} className="mt-6 space-y-5">
               <div>
@@ -666,15 +1131,41 @@ function ScorecardContent() {
 
   return (
     <main className="page-shell">
-      <div className="content-frame space-y-6">
+      <div className={`content-frame space-y-6 ${canJudge && primaryActiveClimb ? "pb-28" : ""}`}>
         <SiteHeader
           status={
             <>
-              <Link href="/leaderboard" className="nav-pill">View leaderboard</Link>
-              <div className={`status-pill ${online ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-yellow-500/20 bg-yellow-500/10 text-yellow-100"}`}>{online ? "Online" : "Offline mode"}</div>
-              {syncingQueue ? <div className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">Syncing queue</div> : null}
-              {offlineQueue.length ? <div className="status-pill border-yellow-500/20 bg-yellow-500/10 text-yellow-100">{offlineQueue.length} pending sync</div> : null}
-              <div className={`status-pill ${canJudge ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}>{canJudge ? `Judge role: ${profile?.role}` : "Read-only"}</div>
+              <Link href="/leaderboard" className="nav-pill">
+                View leaderboard
+              </Link>
+              <div
+                className={`status-pill ${
+                  online
+                    ? "border-green-500/20 bg-green-500/10 text-green-200"
+                    : "border-yellow-500/20 bg-yellow-500/10 text-yellow-100"
+                }`}
+              >
+                {online ? "Online" : "Offline mode"}
+              </div>
+              {syncingQueue ? (
+                <div className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">
+                  Syncing queue
+                </div>
+              ) : null}
+              {offlineQueue.length ? (
+                <div className="status-pill border-yellow-500/20 bg-yellow-500/10 text-yellow-100">
+                  {offlineQueue.length} pending sync
+                </div>
+              ) : null}
+              <div
+                className={`status-pill ${
+                  canJudge
+                    ? "border-green-500/20 bg-green-500/10 text-green-200"
+                    : "border-white/10 bg-white/[0.03] text-slate-300"
+                }`}
+              >
+                {canJudge ? `Judge role: ${profile?.role}` : "Read-only"}
+              </div>
             </>
           }
         />
@@ -691,53 +1182,129 @@ function ScorecardContent() {
             await signOutUser();
             setProfile(null);
             setDangerTarget(null);
+            setUndoToast(null);
           }}
           error={authError}
         />
 
         <section className="card">
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
             <div>
               <div className="eyebrow">Climber #{climber.climber_number}</div>
               <h1 className="section-title mt-4 text-5xl sm:text-6xl">{climber.name.toUpperCase()}</h1>
-              <p className="mt-4 text-sm text-slate-300">Category-aware scoring with Supabase-authenticated writes, live attempt timers, and offline fail logging.</p>
+              <p className="mt-4 max-w-2xl text-sm text-slate-300">
+                Judge-first scoring with live timers, queued offline writes, and quick one-handed controls for the gym floor.
+              </p>
               <div className="mt-6 flex flex-wrap gap-2 text-xs font-mono uppercase tracking-widest">
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">{climber.category}</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">fails {totalFails}</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">complete {completedCount}/{TOTAL_CLIMBS}</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">time {formatTime(totalTime)}</span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
+                  {climber.category}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
+                  fails {totalFails}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
+                  complete {completedCount}/{TOTAL_CLIMBS}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
+                  time {formatTime(totalTime)}
+                </span>
               </div>
             </div>
 
-            <div className="rounded-[1.8rem] border border-white/10 bg-black/20 p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="meta-label">Progress</div>
-                  <div className="mt-2 section-title text-4xl">{progressPercent.toFixed(0)}%</div>
+            <div className="relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-black/20 p-5">
+              <div className="score-aurora aurora-ring" style={auroraStyle} />
+              <div className="relative">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="meta-label">Progress</div>
+                    <div className="mt-2 section-title text-4xl">{progressPercent.toFixed(0)}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="meta-label">Total score</div>
+                    <AnimatedNumber
+                      value={totalScore}
+                      className="mt-2 block font-display text-4xl text-chalk"
+                    />
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="meta-label">Total score</div>
-                  <AnimatedNumber value={totalScore} className="mt-2 block font-display text-4xl text-chalk" />
+                <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-800">
+                  <div className="progress-bar h-full rounded-full" style={{ width: `${progressPercent}%` }} />
                 </div>
-              </div>
-              <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-800"><div className="progress-bar h-full rounded-full" style={{ width: `${progressPercent}%` }} /></div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="card-muted p-3"><div className="meta-label">Completed</div><div className="mt-2 font-display text-3xl text-chalk">{completedCount}</div></div>
-                <div className="card-muted p-3"><div className="meta-label">Penalty</div><div className="mt-2 font-display text-3xl text-chalk">{settings.penalty_per_fail}</div></div>
-                <div className="card-muted p-3"><div className="meta-label">Cap</div><div className="mt-2 font-display text-3xl text-chalk">{settings.max_penalized_fails}</div></div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="card-muted p-3">
+                    <div className="meta-label">Completed</div>
+                    <div className="mt-2 font-display text-3xl text-chalk">{completedCount}</div>
+                  </div>
+                  <div className="card-muted p-3">
+                    <div className="meta-label">Live rank</div>
+                    <div className="mt-2 font-display text-3xl text-chalk">
+                      {liveRankEntry ? `#${liveRankEntry.rank}` : "--"}
+                    </div>
+                  </div>
+                  <div className="card-muted p-3">
+                    <div className="meta-label">Move up</div>
+                    <div className="mt-2 text-sm font-semibold text-chalk">
+                      {liveRankDelta?.label ?? "Waiting for field"}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-300">
+                      {liveRankDelta?.detail ?? "Rank updates as live scores change."}
+                    </div>
+                  </div>
+                  <div className="card-muted p-3">
+                    <div className="meta-label">Hard tops</div>
+                    <div className="mt-2 font-display text-3xl text-chalk">{hardTopCount}</div>
+                    <div className="mt-2 text-xs text-slate-300">Aurora shifts warmer as hard routes fall.</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {notice ? <div className={`rounded-3xl border px-5 py-4 text-sm ${notice.tone === "error" ? "border-accent/30 bg-accent/10 text-accent" : "border-green-500/20 bg-green-500/10 text-green-200"}`}>{notice.message}</div> : null}
+        {notice ? (
+          <div className={`rounded-3xl border px-5 py-4 text-sm ${getNoticeClass(notice.tone)}`}>
+            {notice.message}
+          </div>
+        ) : null}
 
         <section className="card">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><div className="meta-label">Climb navigator</div><p className="mt-2 text-sm text-slate-300">Jump to any route.</p></div>
+            <div>
+              <div className="meta-label">Climb navigator</div>
+              <p className="mt-2 text-sm text-slate-300">
+                Jump to any route. Colors show difficulty before a climb is finished.
+              </p>
+            </div>
             <div className="meta-label">{TOTAL_CLIMBS} climbs</div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">{CLIMBS.map((climb) => { const attempt = getAttempt(attempts, climb.number); return <a key={climb.number} href={`#climb-card-${climb.number}`} className={`rounded-full border px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] ${attempt?.completed ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}>{climb.number.toString().padStart(2, "0")}</a>; })}</div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className={`status-pill ${DIFFICULTY_META.easy.chipClass}`}>Easy</span>
+            <span className={`status-pill ${DIFFICULTY_META.medium.chipClass}`}>Medium</span>
+            <span className={`status-pill ${DIFFICULTY_META.hard.chipClass}`}>Hard</span>
+            <span className="status-pill border-green-500/20 bg-green-500/10 text-green-200">Complete</span>
+            <span className="status-pill border-blue-500/20 bg-blue-500/10 text-blue-200">Active</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {CLIMBS.map((climb) => {
+              const attempt = getAttempt(attempts, climb.number);
+              const difficulty = getClimbDifficulty(climb.number);
+              const navigatorTone = attempt?.completed
+                ? "border-green-500/20 bg-green-500/10 text-green-200"
+                : activeTimers[climb.number]
+                  ? "border-blue-500/20 bg-blue-500/10 text-blue-200"
+                  : DIFFICULTY_META[difficulty].navigatorClass;
+
+              return (
+                <a
+                  key={climb.number}
+                  href={`#climb-card-${climb.number}`}
+                  className={`rounded-full border px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] ${navigatorTone}`}
+                >
+                  {climb.number.toString().padStart(2, "0")}
+                </a>
+              );
+            })}
+          </div>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
@@ -751,12 +1318,15 @@ function ScorecardContent() {
               now={now}
               settings={settings}
               timerStartedAt={activeTimers[climb.number]}
-              pendingSync={offlineQueue.some((item) => item.climberId === climber.id && item.climbNumber === climb.number)}
+              pendingSync={offlineQueue.some(
+                (item) => item.climberId === climber.id && item.climbNumber === climb.number
+              )}
+              isActive={primaryActiveClimbNumber === climb.number}
               onStart={() => startTimer(climb.number)}
-              onAddFail={() => runAction({ id: buildQueueActionId(), kind: "add-fail", climberId: climber.id, climbNumber: climb.number, createdAtIso: new Date().toISOString() }, `${climb.label} fail logged.`)}
-              onUndoFail={() => runAction({ id: buildQueueActionId(), kind: "undo-fail", climberId: climber.id, climbNumber: climb.number, createdAtIso: new Date().toISOString() }, `${climb.label} fail removed.`)}
+              onAddFail={() => logFail(climb.number)}
+              onUndoFail={() => undoFail(climb.number)}
               onComplete={(seconds) => completeTimedClimb(climb.number, seconds)}
-              onReset={() => runAction({ id: buildQueueActionId(), kind: "reset", climberId: climber.id, climbNumber: climb.number, createdAtIso: new Date().toISOString() }, `${climb.label} reset.`)}
+              onReset={() => resetAttempt(climb.number)}
             />
           ))}
         </section>
@@ -764,26 +1334,103 @@ function ScorecardContent() {
         {canJudge ? (
           <section className="card border-accent/20">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><div className="eyebrow">Admin reset tools</div><h2 className="section-title mt-4 text-3xl">Clear test entries</h2></div>
+              <div>
+                <div className="eyebrow">Admin reset tools</div>
+                <h2 className="section-title mt-4 text-3xl">Clear test entries</h2>
+              </div>
               <div className="status-pill border-accent/20 bg-accent/10 text-red-100">Destructive</div>
             </div>
             <div className="mt-6 grid gap-3 xl:grid-cols-[1fr_1fr_auto]">
-              <button onClick={() => setDangerTarget((current) => (current === "climber" ? null : "climber"))} className="btn-ghost w-full justify-center border-accent/20 text-red-100">Delete this climber</button>
-              <button onClick={() => setDangerTarget((current) => (current === "all" ? null : "all"))} className="btn-ghost w-full justify-center border-accent/20 text-red-100">Reset all data</button>
-              <button onClick={() => setDangerTarget(null)} className="btn-ghost w-full justify-center xl:w-auto">Cancel</button>
+              <button
+                onClick={() => setDangerTarget((current) => (current === "climber" ? null : "climber"))}
+                className="btn-ghost w-full justify-center border-accent/20 text-red-100"
+              >
+                Delete this climber
+              </button>
+              <button
+                onClick={() => setDangerTarget((current) => (current === "all" ? null : "all"))}
+                className="btn-ghost w-full justify-center border-accent/20 text-red-100"
+              >
+                Reset all data
+              </button>
+              <button
+                onClick={() => setDangerTarget(null)}
+                className="btn-ghost w-full justify-center xl:w-auto"
+              >
+                Cancel
+              </button>
             </div>
-            {dangerTarget === "climber" ? <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5"><p className="text-sm text-red-50/90">This removes {climber.name} and all linked attempts.</p><button onClick={handleDeleteCurrentClimber} disabled={loading} className="btn-primary mt-4 bg-red-700 hover:bg-red-600">Confirm delete climber</button></div> : null}
-            {dangerTarget === "all" ? <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5"><p className="text-sm text-red-50/90">This removes every climber and every recorded attempt.</p><button onClick={handleDeleteAllData} disabled={loading} className="btn-primary mt-4 bg-red-700 hover:bg-red-600">Confirm reset all data</button></div> : null}
+            {dangerTarget === "climber" ? (
+              <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5">
+                <p className="text-sm text-red-50/90">This removes {climber.name} and all linked attempts.</p>
+                <button
+                  onClick={handleDeleteCurrentClimber}
+                  disabled={loading}
+                  className="btn-primary mt-4 bg-red-700 hover:bg-red-600"
+                >
+                  Confirm delete climber
+                </button>
+              </div>
+            ) : null}
+            {dangerTarget === "all" ? (
+              <div className="mt-5 rounded-3xl border border-accent/30 bg-accent/10 p-5">
+                <p className="text-sm text-red-50/90">
+                  This removes every climber and every recorded attempt.
+                </p>
+                <button
+                  onClick={handleDeleteAllData}
+                  disabled={loading}
+                  className="btn-primary mt-4 bg-red-700 hover:bg-red-600"
+                >
+                  Confirm reset all data
+                </button>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
         <section className="card">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><div className="meta-label">Need a different athlete?</div><p className="mt-2 text-sm text-slate-300">Return to lookup mode without losing the judge session.</p></div>
-            <button onClick={() => { setClimber(null); setDangerTarget(null); setLookupError(""); setNotice(null); }} className="btn-ghost w-full justify-center lg:w-auto">Switch athlete</button>
+            <div>
+              <div className="meta-label">Need a different athlete?</div>
+              <p className="mt-2 text-sm text-slate-300">
+                Return to lookup mode without losing the judge session.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setClimber(null);
+                setDangerTarget(null);
+                setLookupError("");
+                setNotice(null);
+                setUndoToast(null);
+              }}
+              className="btn-ghost w-full justify-center lg:w-auto"
+            >
+              Switch athlete
+            </button>
           </div>
         </section>
       </div>
+
+      {undoToast ? (
+        <UndoToastCard
+          toast={undoToast}
+          onUndo={() => void undoFail(undoToast.climbNumber)}
+          onDismiss={() => setUndoToast(null)}
+        />
+      ) : null}
+
+      {canJudge && primaryActiveClimb ? (
+        <ActiveClimbBar
+          climb={primaryActiveClimb}
+          timerSeconds={primaryActiveTimerSeconds}
+          extraActiveCount={Math.max(0, activeClimbEntries.length - 1)}
+          loading={loading}
+          onAddFail={() => void logFail(primaryActiveClimb.number)}
+          onComplete={() => void completeTimedClimb(primaryActiveClimb.number, primaryActiveTimerSeconds)}
+        />
+      ) : null}
     </main>
   );
 }

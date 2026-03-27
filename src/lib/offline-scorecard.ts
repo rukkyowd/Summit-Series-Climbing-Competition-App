@@ -1,5 +1,14 @@
 import type { ClimbAttempt, ClimbNumber, ClimberWithAttempts } from "./scoring";
 
+export interface AttemptSnapshot {
+  exists: boolean;
+  failedAttempts: number;
+  completed: boolean;
+  completionTimeSeconds: number | null;
+  startedAtIso?: string;
+  completedAtIso?: string | null;
+}
+
 export type QueueAction =
   | {
       id: string;
@@ -8,6 +17,7 @@ export type QueueAction =
       climbNumber: ClimbNumber;
       startedAtIso: string;
       createdAtIso: string;
+      expectedState?: AttemptSnapshot;
     }
   | {
       id: string;
@@ -15,6 +25,7 @@ export type QueueAction =
       climberId: string;
       climbNumber: ClimbNumber;
       createdAtIso: string;
+      expectedState?: AttemptSnapshot;
     }
   | {
       id: string;
@@ -24,6 +35,7 @@ export type QueueAction =
       completionTimeSeconds: number;
       startedAtIso?: string;
       createdAtIso: string;
+      expectedState?: AttemptSnapshot;
     };
 
 const OFFLINE_QUEUE_KEY = "scorecard-offline-queue";
@@ -82,6 +94,53 @@ function buildAttempt(climberId: string, climbNumber: ClimbNumber, startedAtIso?
     started_at: startedAtIso,
     completed_at: null,
   };
+}
+
+export function captureAttemptSnapshot(attempt?: ClimbAttempt | null): AttemptSnapshot {
+  if (!attempt) {
+    return {
+      exists: false,
+      failedAttempts: 0,
+      completed: false,
+      completionTimeSeconds: null,
+    };
+  }
+
+  return {
+    exists: true,
+    failedAttempts: attempt.failed_attempts,
+    completed: attempt.completed,
+    completionTimeSeconds: attempt.completion_time_seconds,
+    startedAtIso: attempt.started_at,
+    completedAtIso: attempt.completed_at,
+  };
+}
+
+export function hasAttemptConflict(
+  expectedState: AttemptSnapshot,
+  attempt?: ClimbAttempt | null
+): boolean {
+  if (!expectedState.exists) {
+    return Boolean(
+      attempt &&
+        (attempt.failed_attempts > 0 ||
+          attempt.completed ||
+          attempt.completion_time_seconds != null ||
+          attempt.completed_at)
+    );
+  }
+
+  if (!attempt) {
+    return true;
+  }
+
+  return (
+    expectedState.failedAttempts !== attempt.failed_attempts ||
+    expectedState.completed !== attempt.completed ||
+    expectedState.completionTimeSeconds !== attempt.completion_time_seconds ||
+    expectedState.startedAtIso !== attempt.started_at ||
+    (expectedState.completedAtIso ?? null) !== (attempt.completed_at ?? null)
+  );
 }
 
 export function applyOptimisticQueueAction(

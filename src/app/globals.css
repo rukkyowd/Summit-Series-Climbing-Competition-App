@@ -96,10 +96,20 @@ body::after {
   }
 
   .app-header {
-    @apply sticky top-4 z-40 rounded-[2rem] border border-white/10 bg-[rgba(17,19,24,0.78)] px-4 py-4 shadow-2xl backdrop-blur-xl sm:px-5;
+    @apply sticky top-4 z-40 overflow-hidden rounded-[2rem] border border-white/10 bg-[rgba(17,19,24,0.78)] px-4 py-4 shadow-2xl backdrop-blur-xl sm:px-5;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 20px 45px rgba(0, 0, 0, 0.28);
+    isolation: isolate;
+  }
+
+  .app-header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23r)' opacity='0.22'/%3E%3Cpath d='M0 165L50 126L93 138L136 102L196 117L240 85V240H0Z' fill='rgba(255,255,255,0.08)'/%3E%3C/svg%3E");
+    opacity: 0.16;
+    pointer-events: none;
   }
 
   .eyebrow {
@@ -145,6 +155,18 @@ body::after {
   .btn-primary {
     @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-accent px-6 py-3 font-body text-sm font-semibold uppercase tracking-[0.16em] text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40;
     box-shadow: 0 14px 26px rgba(230, 57, 70, 0.22);
+    isolation: isolate;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .btn-primary::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.14'/%3E%3Cpath d='M0 46L29 34L55 38L89 26L121 31L160 19V60H0Z' fill='rgba(255,255,255,0.16)'/%3E%3C/svg%3E");
+    opacity: 0.38;
+    pointer-events: none;
   }
 
   .btn-ghost {
@@ -213,6 +235,21 @@ body::after {
   .command-link {
     @apply flex items-center justify-between gap-3 rounded-[1.3rem] border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06];
   }
+
+  .sticky-active-bar {
+    @apply fixed inset-x-4 bottom-4 z-50 mx-auto max-w-6xl;
+  }
+
+  .sticky-active-bar__content {
+    @apply flex flex-col gap-4 rounded-[1.8rem] border border-white/10 bg-[rgba(15,18,24,0.94)] px-4 py-4 shadow-2xl backdrop-blur-xl sm:px-5;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 24px 60px rgba(0, 0, 0, 0.34);
+  }
+
+  .floating-toast {
+    @apply fixed bottom-32 right-4 z-50 w-[min(24rem,calc(100vw-2rem))];
+  }
 }
 
 .gradient-text {
@@ -252,6 +289,14 @@ body::after {
   filter: blur(2px);
   opacity: 0.75;
   pointer-events: none;
+}
+
+.score-aurora {
+  background:
+    radial-gradient(circle at 26% 28%, rgba(255, 255, 255, 0.08), transparent 24%),
+    radial-gradient(circle at 72% 65%, var(--aurora-primary, rgba(52, 152, 219, 0.22)), transparent 34%),
+    radial-gradient(circle at 44% 76%, var(--aurora-secondary, rgba(230, 57, 70, 0.16)), transparent 28%);
+  opacity: 0.9;
 }
 
 @keyframes shine {
