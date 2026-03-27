@@ -140,6 +140,18 @@ function getRankDeltaSummary(entry: LeaderboardEntry, leaderboard: LeaderboardEn
   };
 }
 
+function getAuthBootstrapMessage(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "Judge session is unavailable right now. Public scorecards still work.";
+  }
+
+  if (error.message.toLowerCase().includes("timed out")) {
+    return "Judge session lookup is taking too long. Public scorecards still work, and judges can try signing in again.";
+  }
+
+  return "Judge session is unavailable right now. Public scorecards still work.";
+}
+
 function AnimatedNumber({ value, className }: { value: number; className?: string }) {
   const [displayValue, setDisplayValue] = useState(value);
   const previousValue = useRef(value);
@@ -644,6 +656,22 @@ function ScorecardContent() {
     if (next) setClimber(next);
   }, []);
 
+  const loadAuthStateSafe = useCallback(async () => {
+    if (!supabaseConfigured) {
+      return { session: null, profile: null };
+    }
+
+    try {
+      const authState = await getAuthState();
+      setAuthError("");
+      return authState;
+    } catch (error) {
+      console.warn("Scorecard auth bootstrap failed:", error);
+      setAuthError(getAuthBootstrapMessage(error));
+      return { session: null, profile: null };
+    }
+  }, []);
+
   const performAction = async (action: QueueAction) => {
     switch (action.kind) {
       case "start":
@@ -787,7 +815,7 @@ function ScorecardContent() {
     const load = async () => {
       try {
         const [authState, climbers, competitionSettings] = await Promise.all([
-          supabaseConfigured ? getAuthState() : Promise.resolve({ session: null, profile: null }),
+          loadAuthStateSafe(),
           getAllClimbersWithAttempts(),
           getCompetitionSettings(),
         ]);
@@ -820,7 +848,7 @@ function ScorecardContent() {
     };
 
     load();
-  }, [urlId]);
+  }, [loadAuthStateSafe, urlId]);
 
   useEffect(() => {
     if (!climber) {
@@ -866,12 +894,14 @@ function ScorecardContent() {
 
   useEffect(() => {
     if (!supabaseConfigured) return;
-    const { data } = supabase.auth.onAuthStateChange(async () => {
-      const authState = await getAuthState();
-      setProfile(authState.profile);
+    const { data } = supabase.auth.onAuthStateChange(() => {
+      void (async () => {
+        const authState = await loadAuthStateSafe();
+        setProfile(authState.profile);
+      })();
     });
     return () => data.subscription.unsubscribe();
-  }, []);
+  }, [loadAuthStateSafe]);
 
   useEffect(() => {
     if (!supabaseConfigured) return;
