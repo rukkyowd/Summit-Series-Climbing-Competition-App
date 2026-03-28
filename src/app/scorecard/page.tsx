@@ -58,6 +58,7 @@ type Notice = { tone: "error" | "success" | "warning"; message: string };
 type DangerTarget = "climber" | "all" | null;
 type RecentLookup = { id: string; name: string; climber_number: string };
 type UndoToast = { climbNumber: ClimbNumber; label: string; expiresAt: number };
+type SyncToast = { message: string; expiresAt: number };
 
 const DIFFICULTY_META: Record<
   ClimbDifficulty,
@@ -179,6 +180,84 @@ function AnimatedNumber({ value, className }: { value: number; className?: strin
   }, [value]);
 
   return <span className={className}>{displayValue.toLocaleString()}</span>;
+}
+
+function LongPressResetButton({
+  disabled,
+  onConfirm,
+}: {
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  const HOLD_MS = 3000;
+  const frameRef = useRef<number>();
+  const startedAtRef = useRef<number | null>(null);
+  const firedRef = useRef(false);
+  const [holding, setHolding] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const stopHolding = useCallback(() => {
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = undefined;
+    }
+    startedAtRef.current = null;
+    firedRef.current = false;
+    setHolding(false);
+    setProgress(0);
+  }, []);
+
+  const startHolding = useCallback(() => {
+    if (disabled) return;
+    const startedAt = performance.now();
+    startedAtRef.current = startedAt;
+    firedRef.current = false;
+    setHolding(true);
+
+    const tick = (timestamp: number) => {
+      if (!startedAtRef.current || firedRef.current) {
+        return;
+      }
+
+      const elapsed = timestamp - startedAtRef.current;
+      const nextProgress = Math.min(elapsed / HOLD_MS, 1);
+      setProgress(nextProgress);
+
+      if (nextProgress >= 1) {
+        firedRef.current = true;
+        stopHolding();
+        onConfirm();
+        return;
+      }
+
+      frameRef.current = requestAnimationFrame(tick);
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+  }, [disabled, onConfirm, stopHolding]);
+
+  useEffect(() => stopHolding, [stopHolding]);
+
+  return (
+    <button
+      type="button"
+      onPointerDown={startHolding}
+      onPointerUp={stopHolding}
+      onPointerLeave={stopHolding}
+      onPointerCancel={stopHolding}
+      onContextMenu={(event) => event.preventDefault()}
+      disabled={disabled}
+      className="btn-ghost relative w-full justify-center overflow-hidden border-accent/20 text-red-100"
+    >
+      <span
+        className="absolute inset-y-0 left-0 bg-red-500/18 transition-[width] duration-100"
+        style={{ width: `${progress * 100}%` }}
+      />
+      <span className="relative z-10">
+        {holding ? `Keep holding ${Math.max(1, Math.ceil((1 - progress) * 3))}s` : "Hold 3s to reset"}
+      </span>
+    </button>
+  );
 }
 
 function AccessCard({
