@@ -17,6 +17,10 @@ const config: Config = {
         chalk: "#F5F0E8",
         rock: "#1A1A1A",
         granite: "#2D2D2D",
+        fbc: {
+          yellow: "#F3C54D",
+          blue: "#2C7FB8",
+        },
         hold: {
           red: "#E63946",
           yellow: "#F4D03F",

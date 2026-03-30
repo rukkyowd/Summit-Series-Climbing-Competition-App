@@ -3,7 +3,7 @@
 // Shared scoring helpers plus database-backed competition settings.
 // ============================================================
 
-import { assertSupabaseConfigured, supabase } from "./supabase";
+import { assertSupabaseConfigured, publicSupabase } from "./supabase";
 
 export const TOTAL_CLIMBS = 30;
 
@@ -95,14 +95,10 @@ export async function getCompetitionSettings(forceRefresh = false): Promise<Comp
     return cachedSettings;
   }
 
-  if (!supabase) {
-    return DEFAULT_COMPETITION_SETTINGS;
-  }
-
   try {
     assertSupabaseConfigured();
 
-    const { data, error } = await supabase
+    const { data, error } = await publicSupabase
       .from("competition_settings")
       .select("penalty_per_fail, max_penalized_fails")
       .eq("id", 1)

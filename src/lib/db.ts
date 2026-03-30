@@ -1,4 +1,4 @@
-import { assertSupabaseConfigured, supabase } from "./supabase";
+import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
 import type {
   ClimbAttempt,
   ClimbNumber,
@@ -41,7 +41,7 @@ export async function registerClimber(name: string, climberNumber: string, categ
 export async function getClimberByNumber(climberNumber: string) {
   ensureConfigured();
 
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from("climbers")
     .select("*, climb_attempts(*)")
     .eq("climber_number", climberNumber)
@@ -54,7 +54,7 @@ export async function getClimberByNumber(climberNumber: string) {
 export async function getClimberById(id: string) {
   ensureConfigured();
 
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from("climbers")
     .select("*, climb_attempts(*)")
     .eq("id", id)
@@ -67,7 +67,7 @@ export async function getClimberById(id: string) {
 export async function getAllClimbersWithAttempts(): Promise<ClimberWithAttempts[]> {
   ensureConfigured();
 
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from("climbers")
     .select("*, climb_attempts(*)")
     .order("climber_number", { ascending: true });
@@ -79,7 +79,7 @@ export async function getAllClimbersWithAttempts(): Promise<ClimberWithAttempts[
 export async function getCompetitionCategories(): Promise<string[]> {
   ensureConfigured();
 
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from("climbers")
     .select("category")
     .order("category", { ascending: true });
@@ -100,7 +100,7 @@ export async function getCompetitionCategories(): Promise<string[]> {
 export async function getLeaderboardRows(category?: string | null): Promise<LeaderboardViewRow[]> {
   ensureConfigured();
 
-  let query = supabase.from("leaderboard_view").select("*");
+  let query = publicSupabase.from("leaderboard_view").select("*");
 
   if (category) {
     query = query.eq("category", category);
@@ -222,7 +222,7 @@ export async function getAttemptSnapshot(
 ): Promise<ClimbAttempt | null> {
   ensureConfigured();
 
-  const { data, error } = await supabase
+  const { data, error } = await publicSupabase
     .from("climb_attempts")
     .select("*")
     .eq("climber_id", climberId)

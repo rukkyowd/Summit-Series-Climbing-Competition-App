@@ -26,14 +26,27 @@ export function assertSupabaseConfigured() {
   }
 }
 
-export const supabase = createClient(
-  supabaseUrl ?? "https://placeholder-project.supabase.co",
-  supabaseBrowserKey ?? "placeholder-browser-key",
-  {
-    realtime: {
-      params: {
-        eventsPerSecond: 10,
+function createBrowserClient(persistSession: boolean) {
+  return createClient(
+    supabaseUrl ?? "https://placeholder-project.supabase.co",
+    supabaseBrowserKey ?? "placeholder-browser-key",
+    {
+      auth: {
+        persistSession,
+        autoRefreshToken: persistSession,
+        detectSessionInUrl: persistSession,
       },
-    },
-  }
-);
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    }
+  );
+}
+
+export const supabase = createBrowserClient(true);
+
+// Public screens should always read with the publishable key alone so stale staff
+// sessions in local storage cannot break anonymous leaderboard queries.
+export const publicSupabase = createBrowserClient(false);

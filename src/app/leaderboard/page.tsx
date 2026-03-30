@@ -3,7 +3,7 @@
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SiteHeader from "@/components/site-header";
 import { getCompetitionCategories, getLeaderboardRows } from "@/lib/db";
-import { supabase, supabaseConfigured } from "@/lib/supabase";
+import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   formatTime,
   mapLeaderboardViewRowToEntry,
@@ -217,7 +217,7 @@ export default function LeaderboardPage() {
   useEffect(() => {
     if (!supabaseConfigured) return;
 
-    const channel = supabase
+    const channel = publicSupabase
       .channel("leaderboard-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "climb_attempts" }, refreshLeaderboard)
       .on("postgres_changes", { event: "*", schema: "public", table: "climbers" }, refreshLeaderboard)
@@ -229,7 +229,7 @@ export default function LeaderboardPage() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      publicSupabase.removeChannel(channel);
     };
   }, [refreshLeaderboard]);
 

@@ -169,6 +169,15 @@ body::after {
     pointer-events: none;
   }
 
+  .judge-action-secondary {
+    background-color: var(--blue);
+    box-shadow: 0 14px 26px rgba(52, 152, 219, 0.22);
+  }
+
+  .judge-action-secondary:hover {
+    background-color: #4ea9e5;
+  }
+
   .btn-ghost {
     @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-6 py-3 font-body text-sm font-semibold uppercase tracking-[0.16em] text-chalk transition-all duration-200 hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-40;
   }
@@ -247,8 +256,19 @@ body::after {
       0 24px 60px rgba(0, 0, 0, 0.34);
   }
 
-  .floating-toast {
-    @apply fixed bottom-32 right-4 z-50 w-[min(24rem,calc(100vw-2rem))];
+  .floating-toast-stack {
+    @apply fixed bottom-32 right-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3;
+  }
+
+  .install-banner {
+    @apply fixed inset-x-4 bottom-24 z-[60] mx-auto max-w-4xl;
+  }
+
+  .install-banner__content {
+    @apply flex flex-col gap-4 rounded-[1.8rem] border border-fbc-yellow/20 bg-[rgba(20,23,29,0.96)] px-5 py-4 shadow-2xl backdrop-blur-xl md:flex-row md:items-center;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 24px 60px rgba(0, 0, 0, 0.34);
   }
 }
 

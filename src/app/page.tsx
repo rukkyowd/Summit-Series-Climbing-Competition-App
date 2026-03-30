@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
+import HomeOperations from "@/app/home-operations";
 
 const ACTIONS = [
   {
@@ -42,15 +43,17 @@ export default function Home() {
           <div className="absolute right-0 top-0 h-44 w-44 rounded-full bg-yellow-400/10 blur-3xl" />
 
           <div className="relative mx-auto max-w-4xl space-y-8">
-            <span className="eyebrow">Summit Series</span>
+            <span className="eyebrow border-fbc-yellow/20 bg-fbc-yellow/10 text-fbc-yellow">
+              Summit Series x FBC
+            </span>
 
             <div className="space-y-4">
               <h1 className="section-title text-6xl sm:text-7xl lg:text-[5.2rem]">
-                Live scoring made simple.
+                Built for the Fredericton Bouldering Co-op floor.
               </h1>
               <p className="mx-auto max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-                Register athletes, update scorecards, and follow the leaderboard from one clean set
-                of pages.
+                Register athletes, score in dead zones, and keep the room in sync from one set of
+                judge-ready pages.
               </p>
             </div>
 
@@ -78,6 +81,8 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        <HomeOperations />
       </div>
     </main>
   );

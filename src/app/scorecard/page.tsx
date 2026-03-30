@@ -31,7 +31,7 @@ import {
   type AttemptSnapshot,
   type QueueAction,
 } from "@/lib/offline-scorecard";
-import { supabase, supabaseConfigured } from "@/lib/supabase";
+import { publicSupabase, supabase, supabaseConfigured } from "@/lib/supabase";
 import {
   CLIMBS,
   buildLeaderboard,
@@ -398,7 +398,7 @@ function ClimbCard({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto]">
+      <div className="mt-5">
         <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -429,38 +429,47 @@ function ClimbCard({
             <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">penalty -{cappedFails * settings.penalty_per_fail}</span>
           </div>
         </div>
-        {completed && canJudge ? <button onClick={onReset} disabled={loading} className="btn-ghost w-full justify-center lg:w-auto">Reset</button> : null}
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <button
-          onClick={onStart}
-          disabled={loading || !canJudge || Boolean(timerStartedAt) || completed}
-          className="btn-primary w-full justify-center"
-        >
-          {timerStartedAt ? "Attempt running" : "Start attempt"}
-        </button>
-        <button
-          onClick={onAddFail}
-          disabled={loading || !canJudge || completed}
-          className="btn-ghost w-full justify-center"
-        >
-          Add fail
-        </button>
-        <button
-          onClick={onUndoFail}
-          disabled={loading || !canJudge || completed || fails === 0}
-          className="btn-ghost w-full justify-center"
-        >
-          Undo fail
-        </button>
-        <button
-          onClick={() => onComplete(timerSeconds)}
-          disabled={loading || !canJudge || !timerStartedAt || completed}
-          className="btn-ghost w-full justify-center"
-        >
-          Stop and complete
-        </button>
+      <div className="mt-5 rounded-[1.6rem] border border-white/10 bg-white/[0.03] p-4">
+        <div className="meta-label">Judge controls</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <button
+            onClick={onStart}
+            disabled={loading || !canJudge || Boolean(timerStartedAt) || completed}
+            className="btn-primary w-full justify-center"
+          >
+            {timerStartedAt ? "Attempt running" : "Start attempt"}
+          </button>
+          <button
+            onClick={onAddFail}
+            disabled={loading || !canJudge || completed}
+            className="btn-primary judge-action-secondary w-full justify-center"
+          >
+            Add fail
+          </button>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <button
+            onClick={onUndoFail}
+            disabled={loading || !canJudge || completed || fails === 0}
+            className="btn-ghost w-full justify-center"
+          >
+            Undo fail
+          </button>
+          <button
+            onClick={() => onComplete(timerSeconds)}
+            disabled={loading || !canJudge || !timerStartedAt || completed}
+            className="btn-ghost w-full justify-center"
+          >
+            Stop and complete
+          </button>
+        </div>
+        {completed && canJudge ? (
+          <div className="mt-3">
+            <LongPressResetButton disabled={loading} onConfirm={onReset} />
+          </div>
+        ) : null}
       </div>
 
       <p className="mt-4 text-sm text-slate-300">
@@ -596,20 +605,40 @@ function UndoToastCard({
   onDismiss: () => void;
 }) {
   return (
-    <div className="floating-toast">
-      <div className="rounded-[1.5rem] border border-white/10 bg-[rgba(18,21,27,0.96)] p-4 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex-1">
-            <div className="meta-label">Fail added</div>
-            <p className="mt-1 text-sm text-slate-200">{toast.label} recorded. Undo is still available.</p>
-          </div>
-          <button onClick={onUndo} className="btn-ghost min-w-[7rem] justify-center">
-            Undo
-          </button>
-          <button onClick={onDismiss} className="nav-pill">
-            Dismiss
-          </button>
+    <div className="rounded-[1.5rem] border border-white/10 bg-[rgba(18,21,27,0.96)] p-4 shadow-2xl backdrop-blur-xl">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1">
+          <div className="meta-label">Fail added</div>
+          <p className="mt-1 text-sm text-slate-200">{toast.label} recorded. Undo is still available.</p>
         </div>
+        <button onClick={onUndo} className="btn-ghost min-w-[7rem] justify-center">
+          Undo
+        </button>
+        <button onClick={onDismiss} className="nav-pill">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SyncToastCard({
+  toast,
+  onDismiss,
+}: {
+  toast: SyncToast;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="rounded-[1.5rem] border border-green-500/20 bg-[rgba(16,31,24,0.96)] p-4 shadow-2xl backdrop-blur-xl">
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <div className="meta-label text-green-200">Sync complete</div>
+          <p className="mt-1 text-sm text-green-50">{toast.message}</p>
+        </div>
+        <button onClick={onDismiss} className="nav-pill">
+          Dismiss
+        </button>
       </div>
     </div>
   );
@@ -640,6 +669,7 @@ function ScorecardContent() {
   const [syncingQueue, setSyncingQueue] = useState(false);
   const [dangerTarget, setDangerTarget] = useState<DangerTarget>(null);
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
+  const [syncToast, setSyncToast] = useState<SyncToast | null>(null);
   const syncRef = useRef(false);
 
   const canJudge = isStaffRole(profile?.role);
@@ -860,6 +890,13 @@ function ScorecardContent() {
             ? `Synced ${syncedCount} queued update${syncedCount === 1 ? "" : "s"}. ${conflictCount} conflict${conflictCount === 1 ? "" : "s"} detected, and the latest local update was applied.`
             : `Synced ${syncedCount} queued update${syncedCount === 1 ? "" : "s"}.`,
         });
+
+        if (remaining.length === 0) {
+          setSyncToast({
+            message: "All queued score updates are now safely synced.",
+            expiresAt: Date.now() + 4500,
+          });
+        }
       }
     } finally {
       syncRef.current = false;
@@ -961,6 +998,13 @@ function ScorecardContent() {
   }, [undoToast]);
 
   useEffect(() => {
+    if (!syncToast) return;
+    const remainingMs = Math.max(0, syncToast.expiresAt - Date.now());
+    const timer = window.setTimeout(() => setSyncToast(null), remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [syncToast]);
+
+  useEffect(() => {
     const onOnline = () => setOnline(true);
     const onOffline = () => setOnline(false);
     window.addEventListener("online", onOnline);
@@ -985,7 +1029,7 @@ function ScorecardContent() {
   useEffect(() => {
     if (!supabaseConfigured) return;
     const refreshSettings = async () => setSettings(await getCompetitionSettings(true));
-    const channel = supabase
+    const channel = publicSupabase
       .channel("scorecard-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "climbers" }, async () => {
         await refreshKnownClimbers();
@@ -997,7 +1041,7 @@ function ScorecardContent() {
       .on("postgres_changes", { event: "*", schema: "public", table: "competition_settings" }, refreshSettings)
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      publicSupabase.removeChannel(channel);
     };
   }, [climber, refreshCurrentClimber, refreshKnownClimbers]);
 
@@ -1201,6 +1245,7 @@ function ScorecardContent() {
             onSignOut={async () => {
               await signOutUser();
               setProfile(null);
+              setSyncToast(null);
             }}
             error={authError}
           />
@@ -1292,6 +1337,7 @@ function ScorecardContent() {
             setProfile(null);
             setDangerTarget(null);
             setUndoToast(null);
+            setSyncToast(null);
           }}
           error={authError}
         />
@@ -1513,6 +1559,7 @@ function ScorecardContent() {
                 setLookupError("");
                 setNotice(null);
                 setUndoToast(null);
+                setSyncToast(null);
               }}
               className="btn-ghost w-full justify-center lg:w-auto"
             >
@@ -1522,12 +1569,17 @@ function ScorecardContent() {
         </section>
       </div>
 
-      {undoToast ? (
-        <UndoToastCard
-          toast={undoToast}
-          onUndo={() => void undoFail(undoToast.climbNumber)}
-          onDismiss={() => setUndoToast(null)}
-        />
+      {undoToast || syncToast ? (
+        <div className="floating-toast-stack">
+          {syncToast ? <SyncToastCard toast={syncToast} onDismiss={() => setSyncToast(null)} /> : null}
+          {undoToast ? (
+            <UndoToastCard
+              toast={undoToast}
+              onUndo={() => void undoFail(undoToast.climbNumber)}
+              onDismiss={() => setUndoToast(null)}
+            />
+          ) : null}
+        </div>
       ) : null}
 
       {canJudge && primaryActiveClimb ? (
