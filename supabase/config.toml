@@ -1,0 +1,7 @@
+project_id = "xtjfcmsurnowsvwhndcn"
+
+[db]
+major_version = 15
+
+[studio]
+enabled = false

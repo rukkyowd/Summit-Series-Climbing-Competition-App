@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:push": "npx supabase db push --linked",
+    "db:push:dry": "npx supabase db push --linked --dry-run",
+    "db:pull": "npx supabase db pull",
+    "db:migration:new": "npx supabase migration new"
   },
   "dependencies": {
     "@supabase/ssr": "^0.3.0",

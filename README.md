@@ -4,6 +4,8 @@ A production-ready, real-time climbing competition scoring system built with **N
 
 Now featuring **Offline-First capabilities**, **Role-Based Access Control**, and **Dynamic 30-Route Scoring**.
 
+Supabase migration automation is documented in [supabase/README.md](./supabase/README.md).
+
 ---
 
 ## ✨ Features
