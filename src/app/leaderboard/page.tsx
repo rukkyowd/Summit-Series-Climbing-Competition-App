@@ -362,56 +362,56 @@ export default function LeaderboardPage() {
           </section>
         )}
 
-        <section className="card">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="eyebrow">Leaderboard access</div>
-              <h2 className="section-title mt-4 text-3xl">
-                {canSeeStaffDetails ? `Signed in as ${profile?.role}` : "Public leaderboard mode"}
-              </h2>
-              <p className="mt-3 text-sm text-slate-300">
-                {finalsActive
-                  ? "Finals are public. Staff sign-in only adds qualifier breakdown access outside finals mode."
-                  : canSeeStaffDetails
-                  ? "Qualifier counting top-six climbs are visible."
-                  : "Sign in as a judge or admin to reveal the qualifier counting top-six climb breakdown."}
-              </p>
+        {!finalsActive ? (
+          <section className="card">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="eyebrow">Leaderboard access</div>
+                <h2 className="section-title mt-4 text-3xl">
+                  {canSeeStaffDetails ? `Signed in as ${profile?.role}` : "Public leaderboard mode"}
+                </h2>
+                <p className="mt-3 text-sm text-slate-300">
+                  {canSeeStaffDetails
+                    ? "Qualifier counting top-six climbs are visible."
+                    : "Sign in as a judge or admin to reveal the qualifier counting top-six climb breakdown."}
+                </p>
+              </div>
+              {canSeeStaffDetails ? (
+                <button onClick={() => void signOutUser().then(() => setProfile(null))} className="btn-ghost">
+                  Sign out
+                </button>
+              ) : null}
             </div>
-            {canSeeStaffDetails ? (
-              <button onClick={() => void signOutUser().then(() => setProfile(null))} className="btn-ghost">
-                Sign out
-              </button>
+
+            {!canSeeStaffDetails ? (
+              <form onSubmit={handleAuthSubmit} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="judge@gym.com"
+                  className="input-field"
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Password"
+                  className="input-field"
+                />
+                <button type="submit" disabled={authLoading} className="btn-primary">
+                  {authLoading ? "Signing in..." : "Staff sign in"}
+                </button>
+              </form>
             ) : null}
-          </div>
 
-          {!canSeeStaffDetails ? (
-            <form onSubmit={handleAuthSubmit} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="judge@gym.com"
-                className="input-field"
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Password"
-                className="input-field"
-              />
-              <button type="submit" disabled={authLoading} className="btn-primary">
-                {authLoading ? "Signing in..." : "Staff sign in"}
-              </button>
-            </form>
-          ) : null}
-
-          {authError ? (
-            <div className="mt-4 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
-              {authError}
-            </div>
-          ) : null}
-        </section>
+            {authError ? (
+              <div className="mt-4 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+                {authError}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {error ? (
           <div className="rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
@@ -517,94 +517,12 @@ export default function LeaderboardPage() {
               )}
             </section>
           </section>
+        ) : activeFinalsRows.length ? (
+          <FinalsResultsTable title={selectedFinalsCategory} rows={activeFinalsRows} />
         ) : (
-          <>
-            <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-              <section className="card">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="eyebrow">Finalists</div>
-                    <h2 className="section-title mt-4 text-3xl">Category roster</h2>
-                  </div>
-                  <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                    {selectedFinalsCategory}
-                  </div>
-                </div>
-
-                {loading ? (
-                  <p className="mt-4 text-sm text-slate-300">Loading finalists...</p>
-                ) : activeFinalists.length ? (
-                  <div className="mt-5 space-y-3">
-                    {activeFinalists.map((entry) => (
-                      <div key={entry.climber_id} className="card-muted">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="text-lg font-semibold text-chalk">{entry.name}</div>
-                            <div className="mt-1 text-sm text-slate-300">
-                              {entry.display_category}
-                            </div>
-                          </div>
-                          {entry.advanced_with_tie ? (
-                            <div className="status-pill border-yellow-400/20 bg-yellow-400/10 text-yellow-100">
-                              Tie advance
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-4 text-sm text-slate-300">No finalists stored for this finals category yet.</p>
-                )}
-              </section>
-
-              <section className="card">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="eyebrow">Finalists</div>
-                    <h2 className="section-title mt-4 text-3xl">Finalist rankings</h2>
-                  </div>
-                  <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                    Seeded from qualifiers
-                  </div>
-                </div>
-
-                {loading ? (
-                  <p className="mt-4 text-sm text-slate-300">Loading finalist rankings...</p>
-                ) : activeFinalists.length ? (
-                  <div className="mt-5 space-y-4">
-                    {activeFinalists.map((entry) => (
-                      <div key={entry.climber_id} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="meta-label">#{entry.qualifier_rank} seed</div>
-                            <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
-                            <div className="mt-1 text-sm text-slate-300">{selectedFinalsCategory}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="meta-label">Advancement</div>
-                            <div className="mt-2 text-lg font-semibold text-chalk">
-                              {entry.advanced_with_tie ? "Tie advance" : "Auto-qualify"}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-4 text-sm text-slate-300">Finalist rankings will appear here once finalists are stored.</p>
-                )}
-              </section>
-            </section>
-
-            {activeFinalsRows.length ? (
-              <FinalsResultsTable title={selectedFinalsCategory} rows={activeFinalsRows} />
-            ) : (
-              <section className="card">
-                <p className="text-sm text-slate-300">Finals standings will appear here after judge scoring begins for {selectedFinalsCategory}.</p>
-              </section>
-            )}
-          </>
+          <section className="card">
+            <p className="text-sm text-slate-300">Finals standings will appear here after judge scoring begins for {selectedFinalsCategory}.</p>
+          </section>
         )}
       </div>
     </main>
