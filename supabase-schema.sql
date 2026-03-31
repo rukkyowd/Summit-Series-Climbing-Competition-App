@@ -536,6 +536,8 @@ select
 from public.qualifier_leaderboard_view q
 cross join config cfg
 where cfg.format = 'ifsc_finals_format'
+  and q.age_group = 'Open'
+  and q.gender_division in ('Men', 'Women')
   and (
     q.category_row_number <= cfg.finals_cutoff
     or (cfg.finals_tie_advances and q.category_rank <= cfg.finals_cutoff)

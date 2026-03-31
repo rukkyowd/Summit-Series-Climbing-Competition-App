@@ -331,7 +331,7 @@ export default function HomePage() {
                     Registration always includes the full category grid by default: Men, Women, and X across Youth D, Youth C, Youth B, Youth A, Junior, Rec, Masters, and Open.
                   </p>
                   <p className="mt-3 text-sm text-slate-400">
-                    There is no event-level category setup required anymore.
+                    Finals advancement is limited to Men / Open and Women / Open. There is no event-level category setup required anymore.
                   </p>
                 </div>
 

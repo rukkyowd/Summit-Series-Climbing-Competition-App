@@ -212,6 +212,10 @@ export function getDefaultEventCategories(): EventCategory[] {
   );
 }
 
+export function isFinalsEligibleCategory(genderDivision: string, ageGroup: string) {
+  return ageGroup === "Open" && (genderDivision === "Men" || genderDivision === "Women");
+}
+
 export const FORMAT_TEMPLATES: FormatTemplate[] = [
   {
     value: "scramble",
@@ -557,6 +561,10 @@ export function pickFinalists(
   const byCategory = new Map<string, QualifierLeaderboardEntry[]>();
 
   qualifierEntries.forEach((entry) => {
+    if (!isFinalsEligibleCategory(entry.gender_division, entry.age_group)) {
+      return;
+    }
+
     const key = entry.category_id ?? "__uncategorized__";
     const next = byCategory.get(key) ?? [];
     next.push(entry);

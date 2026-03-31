@@ -16,7 +16,13 @@ import {
   type CompetitionSnapshot,
 } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
-import { formatSupportsFinals, getClimbs, getTimeSlotLabel, type ClimberWithAttempts } from "@/lib/scoring";
+import {
+  formatSupportsFinals,
+  getClimbs,
+  getTimeSlotLabel,
+  isFinalsEligibleCategory,
+  type ClimberWithAttempts,
+} from "@/lib/scoring";
 
 type QualifierDraft = { attemptCount: number; topped: boolean };
 type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
@@ -148,6 +154,9 @@ function ScorecardContent() {
 
     return snapshot.finalsLeaderboard.find((entry) => entry.climber_id === climber.id) ?? null;
   }, [climber, snapshot]);
+  const finalsEligible = climber
+    ? isFinalsEligibleCategory(climber.gender_division, climber.age_group)
+    : false;
 
   const runLookup = async (query: string) => {
     try {
@@ -371,7 +380,9 @@ function ScorecardContent() {
                 <>
                   <div className="meta-label">Finals status</div>
                   <div className="mt-3 text-sm text-slate-300">
-                    {finalists.has(climber.id)
+                    {!finalsEligible
+                      ? "This category does not advance to finals."
+                      : finalists.has(climber.id)
                       ? finalsEntry
                         ? `Overall #${finalsEntry.overall_rank} | Category #${finalsEntry.category_rank}`
                         : "Qualified for finals"
@@ -471,6 +482,8 @@ function ScorecardContent() {
 
             {!canJudge ? (
               <p className="mt-4 text-sm text-slate-300">Finals scoring requires a judge or admin session.</p>
+            ) : !finalsEligible ? (
+              <p className="mt-4 text-sm text-slate-300">Only Men / Open and Women / Open advance to finals.</p>
             ) : !finalists.has(climber.id) ? (
               <p className="mt-4 text-sm text-slate-300">This climber has not advanced into finals for the current cutoff.</p>
             ) : (
