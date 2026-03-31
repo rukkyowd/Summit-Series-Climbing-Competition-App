@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
 import { getCompetitionSnapshot, registerClimber, type CompetitionSnapshot } from "@/lib/db";
+import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -74,6 +75,7 @@ export default function RegisterPage() {
         timeSlotId: timeSlotId || null,
       });
       const link = `/scorecard?token=${climber.access_token}`;
+      saveScorecardAccessToken(climber.access_token);
       setSuccessLink(link);
       setName("");
       setClimberNumber("");

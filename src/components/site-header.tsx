@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { readScorecardAccessToken } from "@/lib/scorecard-access";
 
 const NAV_ITEMS = [
   { href: "/", label: "Home" },
@@ -17,6 +19,12 @@ export default function SiteHeader({
   status?: ReactNode;
 }) {
   const pathname = usePathname();
+  const [scorecardHref, setScorecardHref] = useState("/scorecard");
+
+  useEffect(() => {
+    const token = readScorecardAccessToken();
+    setScorecardHref(token ? `/scorecard?token=${token}` : "/scorecard");
+  }, [pathname]);
 
   return (
     <header className="app-header">
@@ -34,16 +42,19 @@ export default function SiteHeader({
 
         <nav className="flex flex-wrap justify-center gap-2">
           {NAV_ITEMS.map((item) => {
+            const href = item.href === "/scorecard" ? scorecardHref : item.href;
             const isActive =
-              item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href);
+              item.href === "/"
+                ? pathname === "/"
+                : pathname?.startsWith(item.href);
 
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={href}
                 className={`nav-pill ${isActive ? "nav-pill-active" : ""}`}
               >
-                {item.label}
+                {item.href === "/scorecard" && scorecardHref !== "/scorecard" ? "My Scorecard" : item.label}
               </Link>
             );
           })}

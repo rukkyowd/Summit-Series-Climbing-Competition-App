@@ -16,6 +16,7 @@ import {
   type CompetitionSnapshot,
 } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
+import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
   formatSupportsFinals,
   getClimbs,
@@ -50,6 +51,12 @@ function ScorecardContent() {
   const [message, setMessage] = useState("");
 
   const canJudge = isStaffRole(profile?.role);
+
+  useEffect(() => {
+    if (token) {
+      saveScorecardAccessToken(token);
+    }
+  }, [token]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -249,6 +256,9 @@ function ScorecardContent() {
                 <h1 className="section-title mt-4 text-4xl sm:text-5xl">Open a climber scorecard</h1>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
                   Private qualifier links open directly for climbers. Judges can sign in to search by name or number, override qualifier entries, and open finals scoring.
+                </p>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">
+                  Once a climber opens their private link on this device, the navigation keeps a My Scorecard shortcut so they can jump back after checking the leaderboard.
                 </p>
               </div>
               <Link href="/register" className="btn-primary">

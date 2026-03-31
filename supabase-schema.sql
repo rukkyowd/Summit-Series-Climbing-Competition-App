@@ -1,7 +1,7 @@
 create extension if not exists pgcrypto;
 
-drop view if exists public.finalists_view;
 drop view if exists public.finals_leaderboard_view;
+drop view if exists public.finalists_view;
 drop view if exists public.qualifier_leaderboard_view;
 drop view if exists public.category_participants_view;
 
