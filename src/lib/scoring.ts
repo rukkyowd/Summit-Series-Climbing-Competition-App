@@ -17,6 +17,18 @@ export const EVENT_FORMATS = [
   "ifsc_finals_format",
 ] as const;
 
+export const SCHEDULE_PHASE_TYPES = [
+  "check_in",
+  "technical_meeting",
+  "isolation",
+  "qualifier_round",
+  "wall_reset",
+  "observation",
+  "finals_round",
+  "results",
+  "custom",
+] as const;
+
 export const CATEGORY_DIVISIONS = ["Men", "Women", "X"] as const;
 export const CATEGORY_AGE_GROUPS = [
   "Youth D",
@@ -35,6 +47,7 @@ export type FinalEnteredBy = "staff";
 export type StageMode = "qualifier" | "finals";
 export type CategoryDivision = (typeof CATEGORY_DIVISIONS)[number];
 export type CategoryAgeGroup = (typeof CATEGORY_AGE_GROUPS)[number];
+export type SchedulePhaseType = (typeof SCHEDULE_PHASE_TYPES)[number];
 
 export interface EventCategory {
   id: string;
@@ -50,6 +63,9 @@ export interface EventTimeSlot {
   id: string;
   event_id: number;
   label: string;
+  phase_type: SchedulePhaseType;
+  audience_label: string;
+  is_active: boolean;
   start_time: string | null;
   end_time: string | null;
   capacity: number;
@@ -219,6 +235,25 @@ export interface FinalsSummary {
   attempts_to_zone: number;
 }
 
+export interface WorkflowRoleGuide {
+  role: string;
+  title: string;
+  detail: string;
+}
+
+export interface EventWorkflowGuide {
+  headline: string;
+  summary: string;
+  notes: string[];
+  roles: WorkflowRoleGuide[];
+}
+
+export interface SchedulePhaseOption {
+  value: SchedulePhaseType;
+  label: string;
+  description: string;
+}
+
 export function createCategoryKey(genderDivision: string, ageGroup: string) {
   return `${genderDivision}::${ageGroup}`;
 }
@@ -245,17 +280,17 @@ export const FORMAT_TEMPLATES: FormatTemplate[] = [
     value: "scramble",
     label: "Scramble",
     short_label: "Scramble",
-    description: "Open qualifier scoring with self-scored best-six counting climbs and live rankings.",
+    description: "Open qualifier scoring built for recreational scramble sessions with self-scoring and live rankings.",
     supports_finals: false,
-    scheduling_hint: "Best for open gym sessions with flexible arrival and broad live visibility.",
+    scheduling_hint: "Best for recreational check-in windows and flexible scramble sessions where climbers score from their phone.",
   },
   {
     value: "five_on_five_off",
     label: "Five on five off",
     short_label: "5 on / 5 off",
-    description: "Qualifier scoring with the same best-six ranking model plus slot-aware rotation planning.",
+    description: "Competitive qualifier mode for fixed start lists, five-on and five-off rotations, and stricter session timing.",
     supports_finals: false,
-    scheduling_hint: "Best when athletes rotate through fixed groups and time windows.",
+    scheduling_hint: "Best when athletes rotate through fixed groups, transit zones, and official time windows.",
   },
   {
     value: "flash_format",
@@ -269,9 +304,57 @@ export const FORMAT_TEMPLATES: FormatTemplate[] = [
     value: "ifsc_finals_format",
     label: "IFSC finals format",
     short_label: "IFSC finals",
-    description: "Qualifier best-six scoring that feeds a separate IFSC-style finals stage.",
+    description: "Judge-operated finals mode with four finals boulders and the 2025 IFSC points system.",
     supports_finals: true,
-    scheduling_hint: "Best when the event includes a judge-operated finals round after qualifiers.",
+    scheduling_hint: "Best when finalists move together through a dedicated finals round after qualifiers.",
+  },
+];
+
+export const SCHEDULE_PHASE_OPTIONS: SchedulePhaseOption[] = [
+  {
+    value: "check_in",
+    label: "Check-in",
+    description: "Good for arrival windows, late registration, waivers, and athlete check-in.",
+  },
+  {
+    value: "technical_meeting",
+    label: "Technical meeting",
+    description: "Use for rules briefings or round instructions before climbing starts.",
+  },
+  {
+    value: "isolation",
+    label: "Isolation",
+    description: "Use when athletes must be present in isolation before the round can begin.",
+  },
+  {
+    value: "qualifier_round",
+    label: "Qualifier round",
+    description: "The live qualifier climbing window.",
+  },
+  {
+    value: "wall_reset",
+    label: "Wall reset",
+    description: "Use for strip and reset blocks when the gym is between rounds.",
+  },
+  {
+    value: "observation",
+    label: "Observation",
+    description: "Use for finals observation or a scheduled preview block.",
+  },
+  {
+    value: "finals_round",
+    label: "Finals round",
+    description: "The live finals climbing window.",
+  },
+  {
+    value: "results",
+    label: "Results",
+    description: "Results posting, raffle, prizing, or awards.",
+  },
+  {
+    value: "custom",
+    label: "Custom",
+    description: "A flexible block for anything else in the day-of schedule.",
   },
 ];
 
@@ -300,12 +383,212 @@ export function formatSupportsFinals(format: EventFormat) {
   return getFormatTemplate(format).supports_finals;
 }
 
+export function formatUsesSelfScoredQualifiers(format: EventFormat) {
+  return format === "scramble";
+}
+
 export function isQualifierStage(event: Pick<EventConfig, "stage_mode">) {
   return event.stage_mode === "qualifier";
 }
 
 export function isFinalsStage(event: Pick<EventConfig, "stage_mode">) {
   return event.stage_mode === "finals";
+}
+
+export function getEventWorkflowGuide(
+  event: Pick<EventConfig, "format" | "stage_mode">
+): EventWorkflowGuide {
+  if (event.stage_mode === "finals") {
+    return {
+      headline: "Finals round live",
+      summary:
+        "Registration is closed, finalists move as one group through four finals boulders, and judges control all scoring.",
+      notes: [
+        "Only Men / Open and Women / Open can advance to finals in this app.",
+        "Finals scoring uses the 2025 IFSC points system, with qualifier rank used for count-back.",
+        "Climbers should follow the official presentation, observation, transit, and start order instead of self-scoring.",
+      ],
+      roles: [
+        {
+          role: "Admin",
+          title: "Run the finals session",
+          detail: "Keep the public finals board live, confirm finalists, and avoid reopening qualifier edits.",
+        },
+        {
+          role: "Judge",
+          title: "Enter top and zone results",
+          detail: "Use the scorecard page to record zone, top, and attempts for each finalist on each finals boulder.",
+        },
+        {
+          role: "Climber",
+          title: "Follow finals call-up",
+          detail: "Finalists do not self-score. They wait for their group movement and judge-recorded attempts.",
+        },
+      ],
+    };
+  }
+
+  if (event.format === "five_on_five_off") {
+    return {
+      headline: "Competitive qualifier with fixed rotations",
+      summary:
+        "This mode fits youth competitive qualifiers with an official start list, a prescribed order, and a five-on, five-off rhythm.",
+      notes: [
+        "Athletes should start on the assigned boulder and rotate in order; no ad hoc rescheduling.",
+        "Rest periods match the rotation window, and climbers move through transit without watching unattempted boulders.",
+        "Use time slots as check-in, isolation, and round windows so the phone view mirrors the day-of schedule.",
+      ],
+      roles: [
+        {
+          role: "Admin",
+          title: "Publish the running order",
+          detail: "Set clear slot labels for check-in, isolation, technical meeting, and qualifier blocks so athletes know where they belong.",
+        },
+        {
+          role: "Judge",
+          title: "Operate by start list",
+          detail: "Open the scorecard page by climber and follow the official rotation instead of treating the round like an open scramble.",
+        },
+        {
+          role: "Climber",
+          title: "Check the schedule first",
+          detail: "Use the website to confirm category, slot, and timing, then follow the official order on the wall.",
+        },
+      ],
+    };
+  }
+
+  if (event.format === "flash_format") {
+    return {
+      headline: "Flash-format qualifier",
+      summary:
+        "This mode keeps qualifier scoring but is better for scheduled sessions where athletes move with set observation and start information.",
+      notes: [
+        "Use time slots to publish session timing, observation windows, and athlete groupings.",
+        "The website should guide athletes to the right session rather than make them guess which page matters next.",
+        "Staff can still review qualifier scoring while public users mainly need schedule clarity and live standings.",
+      ],
+      roles: [
+        {
+          role: "Admin",
+          title: "Label each session clearly",
+          detail: "Make slot names read like schedule blocks so families and athletes can quickly see what happens next.",
+        },
+        {
+          role: "Judge",
+          title: "Keep scoring aligned to the session",
+          detail: "Use the scorecard page during the assigned flash round and avoid mixing athletes between sessions.",
+        },
+        {
+          role: "Climber",
+          title: "Watch your session timing",
+          detail: "Check in for the published block, then follow staff instruction for observation and attempts.",
+        },
+      ],
+    };
+  }
+
+  return {
+    headline: "Open scramble qualifier",
+    summary:
+      "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
+    notes: [
+      "Use time slots as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
+      "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
+      "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
+    ],
+    roles: [
+      {
+        role: "Admin",
+        title: "Set up the day flow",
+        detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule.",
+      },
+      {
+        role: "Judge",
+        title: "Override only when needed",
+        detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections.",
+      },
+      {
+        role: "Climber",
+        title: "Register and self-score",
+        detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings.",
+      },
+    ],
+  };
+}
+
+export function formatSchedulePhaseLabel(phaseType: SchedulePhaseType) {
+  return SCHEDULE_PHASE_OPTIONS.find((option) => option.value === phaseType)?.label ?? "Custom";
+}
+
+export function getSchedulePhaseDescription(phaseType: SchedulePhaseType) {
+  return (
+    SCHEDULE_PHASE_OPTIONS.find((option) => option.value === phaseType)?.description ??
+    "This block helps explain what is happening right now."
+  );
+}
+
+export function getActiveScheduleBlock(event: Pick<EventConfig, "time_slots">) {
+  return event.time_slots.find((slot) => slot.is_active) ?? null;
+}
+
+export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
+  return (
+    phaseType === "check_in" ||
+    phaseType === "technical_meeting" ||
+    phaseType === "qualifier_round" ||
+    phaseType === "custom"
+  );
+}
+
+export function schedulePhaseAllowsQualifierScoring(phaseType: SchedulePhaseType) {
+  return phaseType === "qualifier_round" || phaseType === "custom";
+}
+
+export function schedulePhaseAllowsFinalsScoring(phaseType: SchedulePhaseType) {
+  return phaseType === "finals_round" || phaseType === "custom";
+}
+
+export function schedulePhaseBlocksMovement(phaseType: SchedulePhaseType) {
+  return phaseType === "isolation" || phaseType === "wall_reset" || phaseType === "results";
+}
+
+export function canRegisterDuringEvent(event: Pick<EventConfig, "stage_mode" | "time_slots">) {
+  if (event.stage_mode !== "qualifier") {
+    return false;
+  }
+
+  const activeBlock = getActiveScheduleBlock(event);
+  return activeBlock ? schedulePhaseAllowsRegistration(activeBlock.phase_type) : true;
+}
+
+export function canClimberSelfScoreQualifier(
+  event: Pick<EventConfig, "format" | "stage_mode" | "time_slots">
+) {
+  if (event.stage_mode !== "qualifier" || !formatUsesSelfScoredQualifiers(event.format)) {
+    return false;
+  }
+
+  const activeBlock = getActiveScheduleBlock(event);
+  return activeBlock ? schedulePhaseAllowsQualifierScoring(activeBlock.phase_type) : true;
+}
+
+export function canStaffScoreQualifier(event: Pick<EventConfig, "stage_mode" | "time_slots">) {
+  if (event.stage_mode !== "qualifier") {
+    return false;
+  }
+
+  const activeBlock = getActiveScheduleBlock(event);
+  return activeBlock ? schedulePhaseAllowsQualifierScoring(activeBlock.phase_type) : true;
+}
+
+export function canStaffScoreFinals(event: Pick<EventConfig, "stage_mode" | "time_slots">) {
+  if (event.stage_mode !== "finals") {
+    return false;
+  }
+
+  const activeBlock = getActiveScheduleBlock(event);
+  return activeBlock ? schedulePhaseAllowsFinalsScoring(activeBlock.phase_type) : true;
 }
 
 export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
@@ -340,6 +623,7 @@ export function normalizeEventConfig(
     );
 
   const nextStageMode = (event?.stage_mode ?? DEFAULT_EVENT_CONFIG.stage_mode) as StageMode;
+  let activeSlotSeen = false;
 
   return {
     id: ACTIVE_EVENT_ID,
@@ -371,9 +655,25 @@ export function normalizeEventConfig(
       .map((slot) => ({
         ...slot,
         event_id: ACTIVE_EVENT_ID,
+        phase_type: (slot.phase_type ?? "custom") as SchedulePhaseType,
+        audience_label: slot.audience_label?.trim() ?? "",
+        is_active: (() => {
+          if (!slot.is_active || activeSlotSeen) {
+            return false;
+          }
+
+          activeSlotSeen = true;
+          return true;
+        })(),
         eligible_category_ids: [...(slot.eligible_category_ids ?? [])],
       }))
-      .sort((left, right) => left.label.localeCompare(right.label)),
+      .sort((left, right) => {
+        if (left.is_active !== right.is_active) {
+          return left.is_active ? -1 : 1;
+        }
+
+        return left.label.localeCompare(right.label);
+      }),
   };
 }
 
@@ -740,6 +1040,7 @@ export function buildRegistrationChoices(event: EventConfig, climbers: Climber[]
 
   return event.categories.map((category) => {
     const slots = event.time_slots
+      .filter((slot) => schedulePhaseAllowsRegistration(slot.phase_type))
       .filter((slot) => {
         if (!slot.eligible_category_ids.length) {
           return true;
@@ -773,10 +1074,10 @@ export function getCategoryName(
 
 export function getTimeSlotLabel(slotId: string | null | undefined, event: EventConfig) {
   if (!slotId) {
-    return "No slot";
+    return "No schedule block";
   }
 
-  return event.time_slots.find((slot) => slot.id === slotId)?.label ?? "No slot";
+  return event.time_slots.find((slot) => slot.id === slotId)?.label ?? "No schedule block";
 }
 
 export function formatAttemptsLabel(attemptCount: number, succeeded: boolean) {

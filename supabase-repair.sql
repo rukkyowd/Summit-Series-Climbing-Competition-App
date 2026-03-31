@@ -80,6 +80,10 @@ begin
 end $$;
 drop function if exists public.reset_active_event();
 drop function if exists public.advance_event_to_finals();
+drop function if exists public.finals_staff_scoring_open();
+drop function if exists public.qualifier_staff_scoring_open();
+drop function if exists public.qualifier_self_scoring_open();
+drop function if exists public.registration_open();
 drop function if exists public.finals_open();
 drop function if exists public.qualifiers_open();
 drop function if exists public.submit_qualifier_attempt(text, integer, integer, boolean);
@@ -244,6 +248,112 @@ as $$
   )
 $$;
 
+create or replace function public.registration_open()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with active_slot as (
+    select phase_type
+    from public.event_time_slots
+    where event_id = 1
+      and is_active = true
+    order by created_at asc
+    limit 1
+  )
+  select public.qualifiers_open()
+    and coalesce(
+      (
+        select phase_type in ('check_in', 'technical_meeting', 'qualifier_round', 'custom')
+        from active_slot
+      ),
+      true
+    )
+$$;
+
+create or replace function public.qualifier_staff_scoring_open()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with active_slot as (
+    select phase_type
+    from public.event_time_slots
+    where event_id = 1
+      and is_active = true
+    order by created_at asc
+    limit 1
+  )
+  select public.qualifiers_open()
+    and coalesce(
+      (
+        select phase_type in ('qualifier_round', 'custom')
+        from active_slot
+      ),
+      true
+    )
+$$;
+
+create or replace function public.qualifier_self_scoring_open()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with config as (
+    select format
+    from public.active_event_config
+    where id = 1
+  ),
+  active_slot as (
+    select phase_type
+    from public.event_time_slots
+    where event_id = 1
+      and is_active = true
+    order by created_at asc
+    limit 1
+  )
+  select coalesce((select format = 'scramble' from config), false)
+    and public.qualifiers_open()
+    and coalesce(
+      (
+        select phase_type in ('qualifier_round', 'custom')
+        from active_slot
+      ),
+      true
+    )
+$$;
+
+create or replace function public.finals_staff_scoring_open()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with active_slot as (
+    select phase_type
+    from public.event_time_slots
+    where event_id = 1
+      and is_active = true
+    order by created_at asc
+    limit 1
+  )
+  select public.finals_open()
+    and coalesce(
+      (
+        select phase_type in ('finals_round', 'custom')
+        from active_slot
+      ),
+      true
+    )
+$$;
+
 create table public.event_categories (
   id uuid primary key default gen_random_uuid(),
   event_id integer not null references public.active_event_config(id) on delete cascade default 1,
@@ -259,6 +369,9 @@ create table public.event_time_slots (
   id uuid primary key default gen_random_uuid(),
   event_id integer not null references public.active_event_config(id) on delete cascade default 1,
   label text not null,
+  phase_type text not null default 'custom' check (phase_type in ('check_in', 'technical_meeting', 'isolation', 'qualifier_round', 'wall_reset', 'observation', 'finals_round', 'results', 'custom')),
+  audience_label text not null default '',
+  is_active boolean not null default false,
   start_time text,
   end_time text,
   capacity integer not null check (capacity > 0),
@@ -396,7 +509,7 @@ using (true);
 
 create policy "climbers public insert"
 on public.climbers for insert
-with check (public.qualifiers_open());
+with check (public.registration_open());
 
 create policy "climbers staff update"
 on public.climbers for update to authenticated
@@ -414,8 +527,8 @@ using (true);
 
 create policy "qualifier attempts staff write"
 on public.qualifier_attempts for all to authenticated
-using (public.is_staff() and public.qualifiers_open())
-with check (public.is_staff() and public.qualifiers_open());
+using (public.is_staff() and public.qualifier_staff_scoring_open())
+with check (public.is_staff() and public.qualifier_staff_scoring_open());
 
 create policy "final attempts public read"
 on public.final_attempts for select
@@ -425,7 +538,7 @@ create policy "final attempts staff write"
 on public.final_attempts for all to authenticated
 using (
   public.is_staff()
-  and public.finals_open()
+  and public.finals_staff_scoring_open()
   and exists (
     select 1
     from public.event_finalists ef
@@ -435,7 +548,7 @@ using (
 )
 with check (
   public.is_staff()
-  and public.finals_open()
+  and public.finals_staff_scoring_open()
   and exists (
     select 1
     from public.event_finalists ef
@@ -459,8 +572,8 @@ declare
   v_climber public.climbers;
   v_attempt public.qualifier_attempts;
 begin
-  if not public.qualifiers_open() then
-    raise exception 'Qualifier scoring is locked because the event has advanced to finals';
+  if not public.qualifier_self_scoring_open() then
+    raise exception 'Private qualifier scoring is only open during the live scramble round';
   end if;
 
   select *

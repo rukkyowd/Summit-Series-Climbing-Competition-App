@@ -6,6 +6,10 @@ import {
   buildFinalsLeaderboard,
   buildQualifierLeaderboard,
   buildRegistrationChoices,
+  canClimberSelfScoreQualifier,
+  canRegisterDuringEvent,
+  canStaffScoreFinals,
+  canStaffScoreQualifier,
   createCategoryKey,
   isFinalsStage,
   isQualifierStage,
@@ -119,6 +123,9 @@ async function fetchTimeSlots() {
     id: row.id ?? createId(),
     event_id: ACTIVE_EVENT_ID,
     label: row.label ?? "Open slot",
+    phase_type: row.phase_type ?? "custom",
+    audience_label: row.audience_label ?? "",
+    is_active: row.is_active ?? false,
     start_time: row.start_time ?? null,
     end_time: row.end_time ?? null,
     capacity: row.capacity ?? DEFAULT_EVENT_CONFIG.max_climbers,
@@ -261,6 +268,38 @@ function joinCompetitionData(
 
 function validateSlotForCategory(slot: EventTimeSlot, categoryId: string) {
   return !slot.eligible_category_ids.length || slot.eligible_category_ids.includes(categoryId);
+}
+
+function assertRegistrationWindowOpen(event: EventConfig) {
+  assertQualifierOpen(event, "Registration is closed because the event has already advanced to finals.");
+
+  if (!canRegisterDuringEvent(event)) {
+    throw new Error("Registration is not open during the current schedule block.");
+  }
+}
+
+function assertStaffQualifierWindowOpen(event: EventConfig) {
+  assertQualifierOpen(event, "Qualifier scoring is locked because the event has advanced to finals.");
+
+  if (!canStaffScoreQualifier(event)) {
+    throw new Error("Qualifier scoring is not open during the current schedule block.");
+  }
+}
+
+function assertClimberQualifierWindowOpen(event: EventConfig) {
+  assertQualifierOpen(event, "Qualifier scoring is locked because the event has advanced to finals.");
+
+  if (!canClimberSelfScoreQualifier(event)) {
+    throw new Error("Private qualifier scoring is only open during the live scramble round.");
+  }
+}
+
+function assertFinalsWindowOpen(event: EventConfig) {
+  assertFinalsOpen(event, "Finals scoring is not available until the event advances to finals.");
+
+  if (!canStaffScoreFinals(event)) {
+    throw new Error("Finals scoring is not open during the current schedule block.");
+  }
 }
 
 export async function getActiveEventConfig() {
@@ -455,6 +494,9 @@ export async function saveEventConfig(input: SaveEventConfigInput) {
         id: slot.id || createId(),
         event_id: ACTIVE_EVENT_ID,
         label: cleanString(slot.label),
+        phase_type: slot.phase_type,
+        audience_label: cleanString(slot.audience_label),
+        is_active: slot.is_active,
         start_time: slot.start_time ? cleanString(slot.start_time) : null,
         end_time: slot.end_time ? cleanString(slot.end_time) : null,
         capacity: slot.capacity,
@@ -496,7 +538,7 @@ export async function registerClimber(input: RegisterClimberInput) {
   ensureConfigured();
 
   const snapshot = await getCompetitionSnapshot();
-  assertQualifierOpen(snapshot.event, "Registration is closed because the event has already advanced to finals.");
+  assertRegistrationWindowOpen(snapshot.event);
 
   const existing = snapshot.climbers.find(
     (climber) => climber.climber_number.toLowerCase() === cleanString(input.climberNumber).toLowerCase()
@@ -564,7 +606,7 @@ export async function updateQualifierAttemptByStaff(
   ensureConfigured();
 
   const event = await getActiveEventConfig();
-  assertQualifierOpen(event, "Qualifier scoring is locked because the event has advanced to finals.");
+  assertStaffQualifierWindowOpen(event);
 
   const { data, error } = await supabase
     .from("qualifier_attempts")
@@ -600,7 +642,7 @@ export async function updateQualifierAttemptByToken(
   ensureConfigured();
 
   const event = await getActiveEventConfig();
-  assertQualifierOpen(event, "Qualifier scoring is locked because the event has advanced to finals.");
+  assertClimberQualifierWindowOpen(event);
 
   const { data, error } = await publicSupabase.rpc("submit_qualifier_attempt", {
     p_access_token: cleanString(accessToken),
@@ -654,7 +696,7 @@ export async function updateFinalAttempt(
   ensureConfigured();
 
   const snapshot = await getCompetitionSnapshot();
-  assertFinalsOpen(snapshot.event, "Finals scoring is not available until the event advances to finals.");
+  assertFinalsWindowOpen(snapshot.event);
 
   if (!snapshot.finalists.some((entry) => entry.climber_id === climberId)) {
     throw new Error("Only finalists can receive finals scores.");

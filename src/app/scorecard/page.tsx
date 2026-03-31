@@ -19,9 +19,15 @@ import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
   buildFinalProblemResults,
+  canClimberSelfScoreQualifier,
+  canStaffScoreFinals,
+  canStaffScoreQualifier,
   calculateFinalAttemptPoints,
+  formatSchedulePhaseLabel,
   formatFinalPoints,
   formatSupportsFinals,
+  getActiveScheduleBlock,
+  getEventWorkflowGuide,
   getClimbs,
   getTimeSlotLabel,
   isFinalsEligibleCategory,
@@ -175,6 +181,17 @@ function ScorecardContent() {
     ? isFinalsEligibleCategory(climber.gender_division, climber.age_group)
     : false;
   const qualifierLocked = snapshot?.event.stage_mode === "finals";
+  const activeScheduleBlock = useMemo(
+    () => (snapshot ? getActiveScheduleBlock(snapshot.event) : null),
+    [snapshot]
+  );
+  const qualifierSelfScoringOpen = snapshot ? canClimberSelfScoreQualifier(snapshot.event) : false;
+  const qualifierStaffScoringOpen = snapshot ? canStaffScoreQualifier(snapshot.event) : false;
+  const finalsStaffScoringOpen = snapshot ? canStaffScoreFinals(snapshot.event) : false;
+  const workflowGuide = useMemo(
+    () => (snapshot ? getEventWorkflowGuide(snapshot.event) : null),
+    [snapshot]
+  );
   const liveFinalProblemResults = useMemo(() => {
     if (!snapshot) {
       return [];
@@ -224,7 +241,7 @@ function ScorecardContent() {
   };
 
   const saveQualifier = async (climbNumber: number) => {
-    if (!climber || qualifierLocked) {
+    if (!climber || qualifierLocked || (!canJudge && !qualifierSelfScoringOpen) || (canJudge && !qualifierStaffScoringOpen)) {
       return;
     }
 
@@ -249,7 +266,7 @@ function ScorecardContent() {
   };
 
   const saveFinals = async (climbNumber: number) => {
-    if (!climber || !canJudge) {
+    if (!climber || !canJudge || !finalsStaffScoringOpen) {
       return;
     }
 
@@ -293,6 +310,13 @@ function ScorecardContent() {
                 <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">
                   Once a climber opens their private link on this device, the navigation keeps a My Scorecard shortcut so they can jump back after checking the leaderboard.
                 </p>
+                {workflowGuide ? (
+                  <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                    <div className="meta-label">What happens in this round</div>
+                    <div className="mt-2 text-xl font-semibold text-chalk">{workflowGuide.headline}</div>
+                    <p className="mt-3 text-sm leading-7 text-slate-300">{workflowGuide.summary}</p>
+                  </div>
+                ) : null}
               </div>
               <Link href="/register" className="btn-primary">
                 Register climber
@@ -400,6 +424,34 @@ function ScorecardContent() {
                   <Link href={token ? `/scorecard?token=${token}&stage=finals` : `/scorecard?id=${climber.id}&stage=finals`} className={`btn-ghost ${stage === "finals" ? "border-yellow-400/30 text-yellow-200" : ""}`}>Finals</Link>
                 ) : null}
               </div>
+              {workflowGuide ? (
+                <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                  <div className="meta-label">Round workflow</div>
+                  <div className="mt-2 text-xl font-semibold text-chalk">{workflowGuide.headline}</div>
+                  <p className="mt-3 text-sm leading-7 text-slate-300">{workflowGuide.summary}</p>
+                  <p className="mt-3 text-sm text-slate-400">
+                    {canJudge
+                      ? workflowGuide.roles.find((entry) => entry.role === "Judge")?.detail
+                      : workflowGuide.roles.find((entry) => entry.role === "Climber")?.detail}
+                  </p>
+                </div>
+              ) : null}
+              {activeScheduleBlock ? (
+                <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                  <div className="meta-label">Live schedule block</div>
+                  <div className="mt-2 text-xl font-semibold text-chalk">{activeScheduleBlock.label}</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                      {formatSchedulePhaseLabel(activeScheduleBlock.phase_type)}
+                    </span>
+                    {activeScheduleBlock.audience_label ? (
+                      <span className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                        {activeScheduleBlock.audience_label}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-[1.7rem] border border-white/10 bg-black/20 p-5">
@@ -455,16 +507,34 @@ function ScorecardContent() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="eyebrow">Qualifiers</div>
-                <h2 className="section-title mt-4 text-3xl">Self-scored attempts by boulder</h2>
+                <h2 className="section-title mt-4 text-3xl">
+                  {snapshot && canJudge ? "Judge-operated qualifier scoring" : "Qualifier attempts by boulder"}
+                </h2>
               </div>
               <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                {qualifierLocked ? "Qualifier round closed" : canJudge ? "Saving as staff override" : "Saving from private link"}
+                {qualifierLocked
+                  ? "Qualifier round closed"
+                  : canJudge
+                  ? qualifierStaffScoringOpen
+                    ? "Judge entry live"
+                    : "Judge entry paused"
+                  : qualifierSelfScoringOpen
+                  ? "Saving from private link"
+                  : "Read-only right now"}
               </div>
             </div>
 
             {qualifierLocked ? (
               <p className="mt-4 text-sm text-slate-300">
                 Qualifier entries are read-only because the event has already advanced to finals.
+              </p>
+            ) : !canJudge && !qualifierSelfScoringOpen ? (
+              <p className="mt-4 text-sm text-slate-300">
+                Private qualifier scoring is only open during a live scramble qualifier block. For competitive qualifier formats, judges should record scores from staff devices.
+              </p>
+            ) : canJudge && !qualifierStaffScoringOpen ? (
+              <p className="mt-4 text-sm text-slate-300">
+                The current schedule block is not a qualifier climbing window, so qualifier scoring is paused.
               </p>
             ) : null}
 
@@ -478,7 +548,7 @@ function ScorecardContent() {
                         <div className="meta-label">Boulder {climb.number.toString().padStart(2, "0")}</div>
                         <div className="mt-2 text-xl font-semibold text-chalk">{climb.base_points} base points</div>
                       </div>
-                      <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving || qualifierLocked} className="btn-primary">
+                      <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving || qualifierLocked || (canJudge ? !qualifierStaffScoringOpen : !qualifierSelfScoringOpen)} className="btn-primary">
                         Save
                       </button>
                     </div>
@@ -498,7 +568,7 @@ function ScorecardContent() {
                               },
                             }))
                           }
-                          disabled={qualifierLocked}
+                          disabled={qualifierLocked || (canJudge ? !qualifierStaffScoringOpen : !qualifierSelfScoringOpen)}
                           className="input-field mt-2"
                         />
                       </label>
@@ -506,7 +576,7 @@ function ScorecardContent() {
                         <input
                           type="checkbox"
                           checked={draft.topped}
-                          disabled={qualifierLocked}
+                          disabled={qualifierLocked || (canJudge ? !qualifierStaffScoringOpen : !qualifierSelfScoringOpen)}
                           onChange={(event) =>
                             setQualifierDrafts((current) => ({
                               ...current,
@@ -533,7 +603,7 @@ function ScorecardContent() {
                 <h2 className="section-title mt-4 text-3xl">Judge-operated IFSC points scoring</h2>
               </div>
               <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                {canJudge ? "Judge entry only" : "Read-only"}
+                {canJudge ? (finalsStaffScoringOpen ? "Judge entry only" : "Judge entry paused") : "Read-only"}
               </div>
             </div>
 
@@ -543,6 +613,10 @@ function ScorecardContent() {
               <p className="mt-4 text-sm text-slate-300">Only Men / Open and Women / Open advance to finals.</p>
             ) : !finalists.has(climber.id) ? (
               <p className="mt-4 text-sm text-slate-300">This climber has not advanced into finals for the current cutoff.</p>
+            ) : !finalsStaffScoringOpen ? (
+              <p className="mt-4 text-sm text-slate-300">
+                Finals scoring is paused until the live schedule block is set to a finals round or custom block.
+              </p>
             ) : (
               <div className="mt-5 space-y-5">
                 <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
@@ -577,7 +651,7 @@ function ScorecardContent() {
                             <div className="mt-2 text-xl font-semibold text-chalk">Finals attempt</div>
                             <div className="mt-2 text-sm text-slate-300">Current points: {formatFinalPoints(problemPoints)}</div>
                           </div>
-                          <button type="button" onClick={() => void saveFinals(climb.number)} disabled={saving} className="btn-primary">
+                          <button type="button" onClick={() => void saveFinals(climb.number)} disabled={saving || !finalsStaffScoringOpen} className="btn-primary">
                             Save
                           </button>
                         </div>

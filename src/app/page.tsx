@@ -11,6 +11,10 @@ import {
   DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   DEFAULT_TOTAL_CLIMBS,
   FORMAT_TEMPLATES,
+  SCHEDULE_PHASE_OPTIONS,
+  formatSchedulePhaseLabel,
+  getActiveScheduleBlock,
+  getEventWorkflowGuide,
   formatStageLabel,
   formatSupportsFinals,
   formatTimeRange,
@@ -32,6 +36,9 @@ function cloneEvent(event: EventConfig): EventConfig {
     categories: event.categories.map((category) => ({ ...category })),
     time_slots: event.time_slots.map((slot) => ({
       ...slot,
+      phase_type: slot.phase_type,
+      audience_label: slot.audience_label,
+      is_active: slot.is_active,
       eligible_category_ids: [...slot.eligible_category_ids],
     })),
   };
@@ -41,7 +48,10 @@ function makeSlot(): EventTimeSlot {
   return {
     id: makeId(),
     event_id: 1,
-    label: "Session",
+    label: "Check-in",
+    phase_type: "check_in",
+    audience_label: "",
+    is_active: false,
     start_time: "09:00",
     end_time: "11:00",
     capacity: 20,
@@ -91,6 +101,14 @@ export default function HomePage() {
   const finalsActive = draft?.stage_mode === "finals";
   const canAdvanceToFinals = canSave && draft?.format === "scramble" && draft.stage_mode === "qualifier";
   const leader = snapshot?.qualifierLeaderboard[0] ?? null;
+  const workflowGuide = useMemo(
+    () => (snapshot ? getEventWorkflowGuide(snapshot.event) : null),
+    [snapshot]
+  );
+  const activeScheduleBlock = useMemo(
+    () => (snapshot ? getActiveScheduleBlock(snapshot.event) : null),
+    [snapshot]
+  );
   const stats = useMemo(
     () => ({
       climbers: snapshot?.climbers.length ?? 0,
@@ -196,7 +214,13 @@ export default function HomePage() {
       current
         ? {
             ...current,
-            time_slots: current.time_slots.map((slot) => (slot.id === slotId ? { ...slot, ...patch } : slot)),
+            time_slots: current.time_slots.map((slot) => {
+              if (patch.is_active && slot.id !== slotId) {
+                return { ...slot, is_active: false };
+              }
+
+              return slot.id === slotId ? { ...slot, ...patch } : slot;
+            }),
           }
         : current
     );
@@ -311,7 +335,7 @@ export default function HomePage() {
               </div>
 
               {loading ? <p className="mt-4 text-sm text-slate-300">Loading event summary...</p> : null}
-              {snapshot ? (
+            {snapshot ? (
                 <div className="mt-5 space-y-4">
                   <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
                     <div className="meta-label">Format template</div>
@@ -325,6 +349,54 @@ export default function HomePage() {
                       {FORMAT_TEMPLATES.find((item) => item.value === snapshot.event.format)?.description}
                     </p>
                   </div>
+                  {workflowGuide ? (
+                    <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                      <div className="meta-label">Day-of workflow</div>
+                      <div className="mt-2 text-2xl font-semibold text-chalk">{workflowGuide.headline}</div>
+                      <p className="mt-3 text-sm text-slate-300">{workflowGuide.summary}</p>
+                      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                        {workflowGuide.roles.map((entry) => (
+                          <div key={entry.role} className="card-muted">
+                            <div className="meta-label">{entry.role}</div>
+                            <div className="mt-2 text-lg font-semibold text-chalk">{entry.title}</div>
+                            <p className="mt-2 text-sm leading-6 text-slate-300">{entry.detail}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {workflowGuide.notes.map((note) => (
+                          <p key={note} className="text-sm text-slate-400">
+                            {note}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                    <div className="meta-label">Current live block</div>
+                    {activeScheduleBlock ? (
+                      <>
+                        <div className="mt-2 text-2xl font-semibold text-chalk">{activeScheduleBlock.label}</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="status-pill border-green-500/20 bg-green-500/10 text-green-200">
+                            {formatSchedulePhaseLabel(activeScheduleBlock.phase_type)}
+                          </span>
+                          {activeScheduleBlock.audience_label ? (
+                            <span className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                              {activeScheduleBlock.audience_label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-3 text-sm text-slate-300">
+                          {formatTimeRange(activeScheduleBlock.start_time, activeScheduleBlock.end_time)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-300">
+                        No schedule block is marked live right now. The app falls back to the overall qualifier or finals stage until you choose one.
+                      </p>
+                    )}
+                  </div>
                   <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
                     <div className="meta-label">Categories</div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -336,20 +408,31 @@ export default function HomePage() {
                     </div>
                   </div>
                   <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
-                    <div className="meta-label">Slots</div>
+                    <div className="meta-label">Schedule blocks</div>
                     <div className="mt-4 space-y-3">
                       {snapshot.event.time_slots.map((slot) => (
                         <div key={slot.id} className="card-muted">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <div className="text-lg font-semibold text-chalk">{slot.label}</div>
-                              <div className="mt-1 text-sm text-slate-300">{formatTimeRange(slot.start_time, slot.end_time)}</div>
+                              <div className="mt-1 flex flex-wrap gap-2 text-sm text-slate-300">
+                                <span>{formatTimeRange(slot.start_time, slot.end_time)}</span>
+                                <span>{formatSchedulePhaseLabel(slot.phase_type)}</span>
+                                {slot.audience_label ? <span>{slot.audience_label}</span> : null}
+                              </div>
                             </div>
-                            <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">Cap {slot.capacity}</div>
+                            <div className="flex flex-wrap gap-2">
+                              {slot.is_active ? (
+                                <div className="status-pill border-green-500/20 bg-green-500/10 text-green-200">
+                                  Live now
+                                </div>
+                              ) : null}
+                              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">Cap {slot.capacity}</div>
+                            </div>
                           </div>
                         </div>
                       ))}
-                      {!snapshot.event.time_slots.length ? <p className="text-sm text-slate-300">No slots configured yet.</p> : null}
+                      {!snapshot.event.time_slots.length ? <p className="text-sm text-slate-300">No schedule blocks configured yet. Add slot rows for check-in, isolation, round windows, and results so mobile users can follow the day easily.</p> : null}
                     </div>
                   </div>
                 </div>
@@ -375,7 +458,7 @@ export default function HomePage() {
               <div className="mt-6 space-y-6">
                 {finalsActive ? (
                   <div className="rounded-[1.4rem] border border-green-500/20 bg-green-500/10 px-4 py-4 text-sm text-green-100">
-                    Finals are active. The event format and qualifier settings are locked so the live finals standings stay stable.
+                    Finals are active. The event format and qualifier settings are locked so the live finals standings stay stable, but the schedule board can still be updated.
                   </div>
                 ) : null}
 
@@ -447,27 +530,41 @@ export default function HomePage() {
                 <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="meta-label">Time slots</div>
-                        <p className="mt-2 text-sm text-slate-300">Time slots are open to all categories by default.</p>
+                        <div className="meta-label">Schedule blocks</div>
+                        <p className="mt-2 text-sm text-slate-300">Use these like a mobile-friendly day-of schedule: check-in, isolation, technical meeting, qualifier window, finals window, and results. The live block controls what athletes can do on the public pages.</p>
                       </div>
-                    <button type="button" onClick={() => setDraft({ ...draft, time_slots: [...draft.time_slots, makeSlot()] })} disabled={!canSave || finalsActive} className="btn-ghost">Add slot</button>
+                    <button type="button" onClick={() => setDraft({ ...draft, time_slots: [...draft.time_slots, makeSlot()] })} disabled={!canSave} className="btn-ghost">Add slot</button>
                   </div>
                   <div className="mt-4 space-y-4">
                     {draft.time_slots.map((slot) => (
                       <div key={slot.id} className="card-muted space-y-4">
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          <input type="text" value={slot.label} onChange={(event) => updateSlot(slot.id, { label: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="Slot label" />
-                          <input type="text" value={slot.start_time ?? ""} onChange={(event) => updateSlot(slot.id, { start_time: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="Start time" />
-                          <input type="text" value={slot.end_time ?? ""} onChange={(event) => updateSlot(slot.id, { end_time: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="End time" />
-                          <input type="number" min={1} value={slot.capacity} onChange={(event) => updateSlot(slot.id, { capacity: Number(event.target.value) || 1 })} disabled={!canSave || finalsActive} className="input-field" placeholder="Capacity" />
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <input type="text" value={slot.label} onChange={(event) => updateSlot(slot.id, { label: event.target.value })} disabled={!canSave} className="input-field" placeholder="Slot label" />
+                          <select value={slot.phase_type} onChange={(event) => updateSlot(slot.id, { phase_type: event.target.value as EventTimeSlot["phase_type"] })} disabled={!canSave} className="input-field">
+                            {SCHEDULE_PHASE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <input type="text" value={slot.audience_label} onChange={(event) => updateSlot(slot.id, { audience_label: event.target.value })} disabled={!canSave} className="input-field" placeholder="Audience label (optional)" />
                         </div>
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <input type="text" value={slot.start_time ?? ""} onChange={(event) => updateSlot(slot.id, { start_time: event.target.value })} disabled={!canSave} className="input-field" placeholder="Start time" />
+                          <input type="text" value={slot.end_time ?? ""} onChange={(event) => updateSlot(slot.id, { end_time: event.target.value })} disabled={!canSave} className="input-field" placeholder="End time" />
+                          <input type="number" min={1} value={slot.capacity} onChange={(event) => updateSlot(slot.id, { capacity: Number(event.target.value) || 1 })} disabled={!canSave} className="input-field" placeholder="Capacity" />
+                        </div>
+                        <label className="flex items-center gap-2 text-sm text-slate-300">
+                          <input type="checkbox" checked={slot.is_active} onChange={(event) => updateSlot(slot.id, { is_active: event.target.checked })} disabled={!canSave} />
+                          Mark this as the live schedule block
+                        </label>
                         <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
-                          This slot is available to every registration category.
+                          {SCHEDULE_PHASE_OPTIONS.find((option) => option.value === slot.phase_type)?.description} Use the audience label for groups like Recreational, Men / Women Open, or Youth Competitive.
                         </div>
-                        <button type="button" onClick={() => setDraft({ ...draft, time_slots: draft.time_slots.filter((entry) => entry.id !== slot.id) })} disabled={!canSave || finalsActive} className="btn-ghost">Remove slot</button>
+                        <button type="button" onClick={() => setDraft({ ...draft, time_slots: draft.time_slots.filter((entry) => entry.id !== slot.id) })} disabled={!canSave} className="btn-ghost">Remove slot</button>
                       </div>
                     ))}
-                    {!draft.time_slots.length ? <p className="text-sm text-slate-300">No slots configured yet.</p> : null}
+                    {!draft.time_slots.length ? <p className="text-sm text-slate-300">No schedule blocks configured yet.</p> : null}
                   </div>
                 </div>
 
@@ -477,7 +574,7 @@ export default function HomePage() {
                       {isPending ? "Advancing..." : "Advance to finals"}
                     </button>
                   ) : null}
-                  <button type="button" onClick={save} disabled={!canSave || isPending || finalsActive} className="btn-primary">
+                  <button type="button" onClick={save} disabled={!canSave || isPending} className="btn-primary">
                     {isPending ? "Saving..." : "Save active event"}
                   </button>
                   <button type="button" onClick={resetEvent} disabled={!canSave || isPending} className="btn-ghost">
