@@ -6,17 +6,13 @@ import SiteHeader from "@/components/site-header";
 import { getAuthState, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { getCompetitionSnapshot, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
 import {
-  CATEGORY_AGE_GROUPS,
-  CATEGORY_DIVISIONS,
   DEFAULT_FINALS_CUTOFF,
   DEFAULT_MAX_CLIMBERS,
   DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   DEFAULT_TOTAL_CLIMBS,
   FORMAT_TEMPLATES,
-  buildDisplayCategory,
   formatSupportsFinals,
   formatTimeRange,
-  type EventCategory,
   type EventConfig,
   type EventTimeSlot,
 } from "@/lib/scoring";
@@ -37,18 +33,6 @@ function cloneEvent(event: EventConfig): EventConfig {
       ...slot,
       eligible_category_ids: [...slot.eligible_category_ids],
     })),
-  };
-}
-
-function makeCategory(index: number): EventCategory {
-  const division = CATEGORY_DIVISIONS[index % CATEGORY_DIVISIONS.length];
-  return {
-    id: makeId(),
-    event_id: 1,
-    gender_division: division,
-    age_group: "Open",
-    display_name: buildDisplayCategory(division, "Open"),
-    sort_order: index,
   };
 }
 
@@ -130,7 +114,7 @@ export default function HomePage() {
             qualifier_counting_climbs: draft.qualifier_counting_climbs,
             finals_cutoff: supportsFinals ? draft.finals_cutoff : DEFAULT_FINALS_CUTOFF,
             finals_tie_advances: supportsFinals ? draft.finals_tie_advances : true,
-            categories: draft.categories,
+            categories: [],
             time_slots: draft.time_slots,
           });
 
@@ -141,28 +125,6 @@ export default function HomePage() {
         }
       })();
     });
-  };
-
-  const updateCategory = (categoryId: string, patch: Partial<EventCategory>) => {
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            categories: current.categories.map((category) =>
-              category.id === categoryId
-                ? {
-                    ...category,
-                    ...patch,
-                    display_name: buildDisplayCategory(
-                      patch.gender_division ?? category.gender_division,
-                      patch.age_group ?? category.age_group
-                    ),
-                  }
-                : category
-            ),
-          }
-        : current
-    );
   };
 
   const updateSlot = (slotId: string, patch: Partial<EventTimeSlot>) => {
@@ -364,58 +326,20 @@ export default function HomePage() {
                 </label>
 
                 <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="meta-label">Categories</div>
-                      <p className="mt-2 text-sm text-slate-300">Each row becomes one selectable registration category.</p>
-                    </div>
-                    <button type="button" onClick={() => setDraft({ ...draft, categories: [...draft.categories, makeCategory(draft.categories.length)] })} disabled={!canSave} className="btn-ghost">Add category</button>
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {draft.categories.map((category, index) => (
-                      <div key={category.id} className="card-muted space-y-3">
-                        <div className="grid gap-3 md:grid-cols-3">
-                          <select
-                            value={category.gender_division}
-                            onChange={(event) => updateCategory(category.id, { gender_division: event.target.value })}
-                            disabled={!canSave}
-                            className="input-field"
-                          >
-                            {Array.from(new Set([...CATEGORY_DIVISIONS, category.gender_division])).map((division) => (
-                              <option key={division} value={division}>
-                                {division}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={category.age_group}
-                            onChange={(event) => updateCategory(category.id, { age_group: event.target.value })}
-                            disabled={!canSave}
-                            className="input-field"
-                          >
-                            {Array.from(new Set([...CATEGORY_AGE_GROUPS, category.age_group])).map((ageGroup) => (
-                              <option key={ageGroup} value={ageGroup}>
-                                {ageGroup}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="input-field flex items-center text-slate-200">
-                            {buildDisplayCategory(category.gender_division, category.age_group)}
-                          </div>
-                        </div>
-                        <button type="button" onClick={() => setDraft({ ...draft, categories: draft.categories.filter((entry) => entry.id !== category.id).map((entry, nextIndex) => ({ ...entry, sort_order: nextIndex })) })} disabled={!canSave || draft.categories.length <= 1} className="btn-ghost">
-                          Remove category {index + 1}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <div className="meta-label">Registration categories</div>
+                  <p className="mt-3 text-sm text-slate-300">
+                    Registration always includes the full category grid by default: Men, Women, and X across Youth D, Youth C, Youth B, Youth A, Junior, Rec, Masters, and Open.
+                  </p>
+                  <p className="mt-3 text-sm text-slate-400">
+                    There is no event-level category setup required anymore.
+                  </p>
                 </div>
 
                 <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="meta-label">Time slots</div>
-                      <p className="mt-2 text-sm text-slate-300">Restrict slots to selected categories or leave them open to everyone.</p>
+                      <p className="mt-2 text-sm text-slate-300">Time slots are open to all categories by default.</p>
                     </div>
                     <button type="button" onClick={() => setDraft({ ...draft, time_slots: [...draft.time_slots, makeSlot()] })} disabled={!canSave} className="btn-ghost">Add slot</button>
                   </div>
@@ -428,23 +352,8 @@ export default function HomePage() {
                           <input type="text" value={slot.end_time ?? ""} onChange={(event) => updateSlot(slot.id, { end_time: event.target.value })} disabled={!canSave} className="input-field" placeholder="End time" />
                           <input type="number" min={1} value={slot.capacity} onChange={(event) => updateSlot(slot.id, { capacity: Number(event.target.value) || 1 })} disabled={!canSave} className="input-field" placeholder="Capacity" />
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {draft.categories.map((category) => {
-                            const checked = slot.eligible_category_ids.includes(category.id);
-                            return (
-                              <label key={category.id} className={`rounded-full border px-3 py-2 text-xs uppercase tracking-[0.22em] ${checked ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(event) => updateSlot(slot.id, { eligible_category_ids: event.target.checked ? [...slot.eligible_category_ids, category.id] : slot.eligible_category_ids.filter((id) => id !== category.id) })}
-                                  disabled={!canSave}
-                                  className="sr-only"
-                                />
-                                {category.display_name}
-                              </label>
-                            );
-                          })}
-                          <button type="button" onClick={() => updateSlot(slot.id, { eligible_category_ids: [] })} disabled={!canSave} className="btn-ghost">Open to all</button>
+                        <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
+                          This slot is available to every registration category.
                         </div>
                         <button type="button" onClick={() => setDraft({ ...draft, time_slots: draft.time_slots.filter((entry) => entry.id !== slot.id) })} disabled={!canSave} className="btn-ghost">Remove slot</button>
                       </div>

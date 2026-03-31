@@ -5,6 +5,71 @@ drop view if exists public.finals_leaderboard_view;
 drop view if exists public.qualifier_leaderboard_view;
 drop view if exists public.category_participants_view;
 
+do $$
+begin
+  if to_regclass('auth.users') is not null then
+    drop trigger if exists on_auth_user_created on auth.users;
+  end if;
+
+  if to_regclass('public.competition_settings') is not null then
+    drop trigger if exists competition_settings_set_updated_at on public.competition_settings;
+    drop policy if exists "Public can read settings" on public.competition_settings;
+    drop policy if exists "Admins can update settings" on public.competition_settings;
+  end if;
+
+  if to_regclass('public.active_event_config') is not null then
+    drop trigger if exists active_event_config_set_updated_at on public.active_event_config;
+  end if;
+
+  if to_regclass('public.profiles') is not null then
+    drop policy if exists "Users can read own profile" on public.profiles;
+    drop policy if exists "Admins can read all profiles" on public.profiles;
+    drop policy if exists "Admins can update profiles" on public.profiles;
+    drop policy if exists "profiles read own" on public.profiles;
+    drop policy if exists "profiles update admin" on public.profiles;
+  end if;
+
+  if to_regclass('public.climbers') is not null then
+    drop policy if exists "Public read climbers" on public.climbers;
+    drop policy if exists "Staff insert climbers" on public.climbers;
+    drop policy if exists "Staff update climbers" on public.climbers;
+    drop policy if exists "Staff delete climbers" on public.climbers;
+    drop policy if exists "climbers public read" on public.climbers;
+    drop policy if exists "climbers staff write" on public.climbers;
+  end if;
+
+  if to_regclass('public.climb_attempts') is not null then
+    drop policy if exists "Public read attempts" on public.climb_attempts;
+    drop policy if exists "Staff insert attempts" on public.climb_attempts;
+    drop policy if exists "Staff update attempts" on public.climb_attempts;
+    drop policy if exists "Staff delete attempts" on public.climb_attempts;
+  end if;
+
+  if to_regclass('public.event_categories') is not null then
+    drop policy if exists "event categories public read" on public.event_categories;
+    drop policy if exists "event categories admin write" on public.event_categories;
+  end if;
+
+  if to_regclass('public.event_time_slots') is not null then
+    drop policy if exists "event slots public read" on public.event_time_slots;
+    drop policy if exists "event slots admin write" on public.event_time_slots;
+  end if;
+
+  if to_regclass('public.active_event_config') is not null then
+    drop policy if exists "event config public read" on public.active_event_config;
+    drop policy if exists "event config admin write" on public.active_event_config;
+  end if;
+
+  if to_regclass('public.qualifier_attempts') is not null then
+    drop policy if exists "qualifier attempts public read" on public.qualifier_attempts;
+    drop policy if exists "qualifier attempts staff write" on public.qualifier_attempts;
+  end if;
+
+  if to_regclass('public.final_attempts') is not null then
+    drop policy if exists "final attempts public read" on public.final_attempts;
+    drop policy if exists "final attempts staff write" on public.final_attempts;
+  end if;
+end $$;
 drop function if exists public.submit_qualifier_attempt(text, integer, integer, boolean);
 drop function if exists public.set_updated_at();
 drop function if exists public.is_admin();

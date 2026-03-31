@@ -195,6 +195,23 @@ export interface FinalsSummary {
   attempts_to_zone: number;
 }
 
+export function createCategoryKey(genderDivision: string, ageGroup: string) {
+  return `${genderDivision}::${ageGroup}`;
+}
+
+export function getDefaultEventCategories(): EventCategory[] {
+  return CATEGORY_DIVISIONS.flatMap((division, divisionIndex) =>
+    CATEGORY_AGE_GROUPS.map((ageGroup, ageIndex) => ({
+      id: createCategoryKey(division, ageGroup),
+      event_id: ACTIVE_EVENT_ID,
+      gender_division: division,
+      age_group: ageGroup,
+      display_name: buildDisplayCategory(division, ageGroup),
+      sort_order: divisionIndex * CATEGORY_AGE_GROUPS.length + ageIndex,
+    }))
+  );
+}
+
 export const FORMAT_TEMPLATES: FormatTemplate[] = [
   {
     value: "scramble",
@@ -270,6 +287,18 @@ export function normalizeEventConfig(
 ): EventConfig {
   const nextFormat = (event?.format ?? DEFAULT_EVENT_CONFIG.format) as EventFormat;
   const supportsFinals = formatSupportsFinals(nextFormat);
+  const normalizedCategories = (categories.length ? categories : getDefaultEventCategories())
+    .map((category, index) => ({
+      ...category,
+      id: createCategoryKey(category.gender_division, category.age_group),
+      event_id: ACTIVE_EVENT_ID,
+      sort_order: category.sort_order ?? index,
+      display_name: buildDisplayCategory(category.gender_division, category.age_group),
+    }))
+    .sort(
+      (left, right) =>
+        left.sort_order - right.sort_order || left.display_name.localeCompare(right.display_name)
+    );
 
   return {
     id: ACTIVE_EVENT_ID,
@@ -288,14 +317,7 @@ export function normalizeEventConfig(
       : DEFAULT_FINALS_CUTOFF,
     finals_tie_advances: event?.finals_tie_advances ?? true,
     updated_at: event?.updated_at,
-    categories: categories
-      .map((category, index) => ({
-        ...category,
-        event_id: ACTIVE_EVENT_ID,
-        sort_order: category.sort_order ?? index,
-        display_name: normalizeCategoryDisplay(category),
-      }))
-      .sort((left, right) => left.sort_order - right.sort_order || left.display_name.localeCompare(right.display_name)),
+    categories: normalizedCategories,
     time_slots: timeSlots
       .map((slot) => ({
         ...slot,

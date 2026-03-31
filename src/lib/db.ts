@@ -6,8 +6,8 @@ import {
   buildFinalsLeaderboard,
   buildQualifierLeaderboard,
   buildRegistrationChoices,
+  createCategoryKey,
   formatSupportsFinals,
-  normalizeCategoryDisplay,
   normalizeEventConfig,
   pickFinalists,
   type Climber,
@@ -93,29 +93,6 @@ async function fetchEventRow() {
   return data;
 }
 
-async function fetchEventCategories() {
-  const { data, error } = await publicSupabase
-    .from("event_categories")
-    .select("*")
-    .eq("event_id", ACTIVE_EVENT_ID)
-    .order("sort_order", { ascending: true })
-    .order("display_name", { ascending: true });
-
-  if (error) {
-    return [] as EventCategory[];
-  }
-
-  return ((data ?? []) as any[]).map((row, index) => ({
-    id: row.id ?? createId(),
-    event_id: ACTIVE_EVENT_ID,
-    gender_division: row.gender_division ?? "Open",
-    age_group: row.age_group ?? "All ages",
-    display_name: normalizeCategoryDisplay(row),
-    sort_order: row.sort_order ?? index,
-    created_at: row.created_at,
-  }));
-}
-
 async function fetchTimeSlots() {
   const { data, error } = await publicSupabase
     .from("event_time_slots")
@@ -158,11 +135,14 @@ async function fetchClimberRows() {
     name: row.name ?? "Unknown climber",
     climber_number: row.climber_number ?? "",
     province: row.province ?? "",
-    category_id: row.category_id ?? null,
+    category_id: createCategoryKey(
+      row.gender_division ?? "Open",
+      row.age_group ?? "Open"
+    ),
     gender_division: row.gender_division ?? "Open",
-    age_group: row.age_group ?? "All ages",
+    age_group: row.age_group ?? "Open",
     display_category:
-      row.display_category ?? buildDisplayCategory(row.gender_division ?? "Open", row.age_group ?? "All ages"),
+      row.display_category ?? buildDisplayCategory(row.gender_division ?? "Open", row.age_group ?? "Open"),
     time_slot_id: row.time_slot_id ?? null,
     access_token: "",
     access_token_created_at: undefined,
@@ -252,13 +232,9 @@ function validateSlotForCategory(slot: EventTimeSlot, categoryId: string) {
 export async function getActiveEventConfig() {
   ensureConfigured();
 
-  const [eventRow, categories, timeSlots] = await Promise.all([
-    fetchEventRow(),
-    fetchEventCategories(),
-    fetchTimeSlots(),
-  ]);
+  const [eventRow, timeSlots] = await Promise.all([fetchEventRow(), fetchTimeSlots()]);
 
-  return normalizeEventConfig(eventRow, categories, timeSlots);
+  return normalizeEventConfig(eventRow, [], timeSlots);
 }
 
 export async function getAllClimbersWithAttempts() {
@@ -358,12 +334,15 @@ export async function getClimberByAccessToken(token: string) {
         name: climberRow.data.name ?? "Unknown climber",
         climber_number: climberRow.data.climber_number ?? "",
         province: climberRow.data.province ?? "",
-        category_id: climberRow.data.category_id ?? null,
+        category_id: createCategoryKey(
+          climberRow.data.gender_division ?? "Open",
+          climberRow.data.age_group ?? "Open"
+        ),
         gender_division: climberRow.data.gender_division ?? "Open",
-        age_group: climberRow.data.age_group ?? "All ages",
+        age_group: climberRow.data.age_group ?? "Open",
         display_category:
           climberRow.data.display_category ??
-          buildDisplayCategory(climberRow.data.gender_division ?? "Open", climberRow.data.age_group ?? "All ages"),
+          buildDisplayCategory(climberRow.data.gender_division ?? "Open", climberRow.data.age_group ?? "Open"),
         time_slot_id: climberRow.data.time_slot_id ?? null,
         access_token: climberRow.data.access_token ?? "",
         access_token_created_at: climberRow.data.access_token_created_at ?? undefined,
@@ -430,23 +409,6 @@ export async function saveEventConfig(input: SaveEventConfigInput) {
   await supabase.from("event_categories").delete().eq("event_id", ACTIVE_EVENT_ID);
   await supabase.from("event_time_slots").delete().eq("event_id", ACTIVE_EVENT_ID);
 
-  if (payload.categories.length) {
-    const { error } = await supabase.from("event_categories").insert(
-      payload.categories.map((category, index) => ({
-        id: category.id || createId(),
-        event_id: ACTIVE_EVENT_ID,
-        gender_division: cleanString(category.gender_division),
-        age_group: cleanString(category.age_group),
-        display_name: normalizeCategoryDisplay(category),
-        sort_order: category.sort_order ?? index,
-      }))
-    );
-
-    if (error) {
-      throw new Error(error.message);
-    }
-  }
-
   if (payload.time_slots.length) {
     const { error } = await supabase.from("event_time_slots").insert(
       payload.time_slots.map((slot) => ({
@@ -456,7 +418,7 @@ export async function saveEventConfig(input: SaveEventConfigInput) {
         start_time: slot.start_time ? cleanString(slot.start_time) : null,
         end_time: slot.end_time ? cleanString(slot.end_time) : null,
         capacity: slot.capacity,
-        eligible_category_ids: slot.eligible_category_ids,
+        eligible_category_ids: [],
       }))
     );
 
@@ -513,7 +475,7 @@ export async function registerClimber(input: RegisterClimberInput) {
     name: cleanString(input.name),
     climber_number: cleanString(input.climberNumber),
     province: cleanString(input.province),
-    category_id: category.id,
+    category_id: null,
     gender_division: cleanString(category.gender_division),
     age_group: cleanString(category.age_group),
     display_category: category.display_name,
