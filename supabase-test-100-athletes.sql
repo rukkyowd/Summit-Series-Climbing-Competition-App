@@ -153,6 +153,47 @@ inserted_climbers as (
   join category_grid on category_grid.category_index = athlete_seed.category_index
   join slot_seed on slot_seed.label = athlete_seed.slot_label
   returning id, climber_number
+),
+athlete_profiles as (
+  select
+    climbers.id,
+    climbers.climber_number::int as athlete_number,
+    6 + ((climbers.climber_number::int * 11) % 13) as strength_band,
+    1 + ((climbers.climber_number::int * 5) % 4) as endurance_band,
+    (climbers.climber_number::int * 3) % 6 as volatility_band
+  from inserted_climbers climbers
+),
+qualifier_attempt_seed as (
+  select
+    profiles.id as climber_id,
+    profiles.athlete_number,
+    profiles.strength_band,
+    profiles.endurance_band,
+    profiles.volatility_band,
+    climbs.climb_number,
+    least(20, 9 + ((profiles.athlete_number * 7) % 12)) as max_logged_climb,
+    profiles.strength_band + ((profiles.athlete_number + climbs.climb_number * 3) % 6) as success_score,
+    6 + floor((climbs.climb_number - 1) / 3.0)::int + ((climbs.climb_number + profiles.volatility_band) % 4) as difficulty_score
+  from athlete_profiles profiles
+  cross join generate_series(1, 20) as climbs(climb_number)
+),
+qualifier_attempt_rows as (
+  select
+    climber_id,
+    climb_number,
+    success_score >= difficulty_score as topped,
+    case
+      when success_score >= difficulty_score
+        then 1 + ((athlete_number * (climb_number + 2) + volatility_band) % (2 + least(2, endurance_band)))
+      else 1 + ((athlete_number + climb_number + endurance_band) % (3 + (volatility_band % 3)))
+    end as attempt_count,
+    case
+      when climb_number <= 8 or ((athlete_number + climb_number) % 2 = 0) then 'climber'
+      else 'staff'
+    end as entered_by
+  from qualifier_attempt_seed
+  where climb_number <= max_logged_climb
+    and not (climb_number > 15 and ((athlete_number + climb_number) % 4) = 0)
 )
 insert into public.qualifier_attempts (
   event_id,
@@ -164,26 +205,123 @@ insert into public.qualifier_attempts (
 )
 select
   1,
-  climbers.id,
-  climbs.climb_number,
-  case
-    when climbs.climb_number <= 6 + ((climbers.climber_number::int - 1) % 8)
-      then 1 + ((climbers.climber_number::int + climbs.climb_number) % 4)
-    else 1 + ((climbers.climber_number::int + climbs.climb_number) % 3)
-  end,
-  climbs.climb_number <= 6 + ((climbers.climber_number::int - 1) % 8),
-  case when climbs.climb_number <= 10 then 'climber' else 'staff' end
-from inserted_climbers climbers
-cross join lateral (
-  select generate_series(1, 12 + (climbers.climber_number::int % 5)) as climb_number
-) climbs;
+  rows.climber_id,
+  rows.climb_number,
+  rows.attempt_count,
+  rows.topped,
+  rows.entered_by
+from qualifier_attempt_rows rows;
 
-select public.advance_event_to_finals();
+insert into public.event_finalists (
+  event_id,
+  climber_id,
+  name,
+  category_id,
+  display_category,
+  gender_division,
+  age_group,
+  qualifier_rank,
+  advanced_with_tie
+)
+with config as (
+  select *
+  from public.active_event_config
+  where id = 1
+),
+ranked as (
+  select *
+  from public.qualifier_leaderboard_view
+  where age_group = 'Open'
+    and gender_division in ('Men', 'Women')
+),
+cutoff as (
+  select
+    ranked.category_id,
+    ranked.total_score,
+    ranked.topped_count,
+    ranked.counting_attempt_total
+  from ranked
+  cross join config
+  where ranked.category_row_number = config.finals_cutoff
+)
+select
+  1,
+  ranked.climber_id,
+  ranked.name,
+  ranked.category_id,
+  ranked.display_category,
+  ranked.gender_division,
+  ranked.age_group,
+  ranked.category_rank,
+  ranked.category_row_number > config.finals_cutoff
+from ranked
+cross join config
+left join cutoff using (category_id)
+where ranked.category_row_number <= config.finals_cutoff
+   or (
+     config.finals_tie_advances
+     and cutoff.category_id is not null
+     and ranked.category_row_number > config.finals_cutoff
+     and ranked.total_score = cutoff.total_score
+     and ranked.topped_count = cutoff.topped_count
+     and ranked.counting_attempt_total = cutoff.counting_attempt_total
+   );
+
+update public.active_event_config
+set
+  format = 'ifsc_finals_format',
+  stage_mode = 'finals',
+  qualifier_locked_at = now(),
+  finals_started_at = now(),
+  finals_problem_count = 4
+where id = 1;
 
 with finalist_pool as (
-  select c.*
+  select
+    c.*,
+    ef.qualifier_rank,
+    greatest(1, 11 - ef.qualifier_rank) as qualifier_bonus,
+    1 + ((c.climber_number::int * 7) % 4) as finals_attack,
+    1 + ((c.climber_number::int * 13) % 4) as finals_precision
   from public.climbers c
   join public.event_finalists ef on ef.climber_id = c.id
+),
+final_attempt_seed as (
+  select
+    finalists.id as climber_id,
+    climbs.climb_number,
+    finalists.climber_number::int as athlete_number,
+    finalists.qualifier_bonus,
+    finalists.finals_attack,
+    finalists.finals_precision,
+    case climbs.climb_number
+      when 1 then 11
+      when 2 then 13
+      when 3 then 12
+      else 14
+    end as problem_difficulty
+  from finalist_pool finalists
+  cross join (values (1), (2), (3), (4)) as climbs(climb_number)
+),
+final_attempt_rows as (
+  select
+    climber_id,
+    climb_number,
+    (
+      qualifier_bonus
+      + finals_precision
+      + ((athlete_number + climb_number * 5) % 7)
+      >= problem_difficulty + 1
+    ) as top,
+    (
+      qualifier_bonus
+      + finals_attack
+      + ((athlete_number * (climb_number + 1)) % 6)
+      >= problem_difficulty - 2
+    ) as zone,
+    1 + ((athlete_number + climb_number + finals_precision) % 4) as raw_top_attempts,
+    1 + ((athlete_number * 2 + climb_number + finals_attack) % 5) as raw_zone_attempts
+  from final_attempt_seed
 )
 insert into public.final_attempts (
   event_id,
@@ -197,20 +335,19 @@ insert into public.final_attempts (
 )
 select
   1,
-  finalists.id,
-  climbs.climb_number,
-  ((finalists.climber_number::int + climbs.climb_number) % 3) = 0,
-  ((finalists.climber_number::int + climbs.climb_number) % 4) <> 0,
+  rows.climber_id,
+  rows.climb_number,
+  rows.top,
+  rows.top or rows.zone,
   case
-    when ((finalists.climber_number::int + climbs.climb_number) % 3) = 0
-      then 1 + ((finalists.climber_number::int + climbs.climb_number) % 3)
+    when rows.top
+      then rows.raw_top_attempts
     else null
   end,
   case
-    when ((finalists.climber_number::int + climbs.climb_number) % 4) <> 0
-      then 1 + ((finalists.climber_number::int + climbs.climb_number) % 4)
+    when rows.top or rows.zone
+      then case when rows.top then least(rows.raw_zone_attempts, rows.raw_top_attempts) else rows.raw_zone_attempts end
     else null
   end,
   'staff'
-from finalist_pool finalists
-cross join (values (1), (2), (3), (4)) as climbs(climb_number);
+from final_attempt_rows rows;

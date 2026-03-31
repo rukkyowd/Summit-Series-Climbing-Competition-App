@@ -5,9 +5,16 @@ import SiteHeader from "@/components/site-header";
 import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
-import { FORMAT_TEMPLATES, formatFinalPoints, formatSupportsFinals, getTimeSlotLabel, type FinalsLeaderboardEntry } from "@/lib/scoring";
+import {
+  FORMAT_TEMPLATES,
+  formatFinalPoints,
+  formatSupportsFinals,
+  getTimeSlotLabel,
+  type FinalsLeaderboardEntry,
+} from "@/lib/scoring";
 
 const ALL_CATEGORIES = "all";
+const FINALS_CATEGORY_ORDER = ["Men / Open", "Women / Open"] as const;
 
 function FinalsResultCell({
   top,
@@ -51,7 +58,7 @@ function FinalsResultsTable({
     <section className="card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="eyebrow">Finals</div>
+          <div className="eyebrow">Finals Leaderboard</div>
           <h2 className="section-title mt-4 text-3xl">{title}</h2>
         </div>
         <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
@@ -113,6 +120,8 @@ function FinalsResultsTable({
 export default function LeaderboardPage() {
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
+  const [selectedFinalsCategory, setSelectedFinalsCategory] =
+    useState<(typeof FINALS_CATEGORY_ORDER)[number]>("Men / Open");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -167,6 +176,7 @@ export default function LeaderboardPage() {
   }, []);
 
   const canSeeStaffDetails = isStaffRole(profile?.role);
+  const finalsActive = snapshot?.event.stage_mode === "finals" && !!snapshot && formatSupportsFinals(snapshot.event.format);
   const showingAllCategories = selectedCategory === ALL_CATEGORIES;
 
   const categories = useMemo(() => snapshot?.event.categories ?? [], [snapshot]);
@@ -181,35 +191,62 @@ export default function LeaderboardPage() {
     });
   }, [selectedCategory, snapshot]);
 
-  const finalsRows = useMemo(() => {
-    if (!snapshot) {
-      return [];
-    }
+  const finalists = useMemo(() => snapshot?.finalists ?? [], [snapshot]);
 
-    return snapshot.finalsLeaderboard.filter((entry) => {
-      return selectedCategory === ALL_CATEGORIES || entry.category_id === selectedCategory;
+  const finalistsByDisplayCategory = useMemo(() => {
+    const grouped = new Map<string, typeof finalists>();
+    finalists.forEach((entry) => {
+      const list = grouped.get(entry.display_category) ?? [];
+      list.push(entry);
+      grouped.set(entry.display_category, [...list, entry].sort((left, right) => left.qualifier_rank - right.qualifier_rank));
     });
-  }, [selectedCategory, snapshot]);
-
-  const finalists = useMemo(() => {
-    if (!snapshot) {
-      return [];
-    }
-
-    return snapshot.finalists.filter((entry) => {
-      return selectedCategory === ALL_CATEGORIES || entry.category_id === selectedCategory;
-    });
-  }, [selectedCategory, snapshot]);
+    return grouped;
+  }, [finalists]);
 
   const finalsGroups = useMemo(() => {
-    const men = finalsRows.filter((entry) => entry.display_category === "Men / Open");
-    const women = finalsRows.filter((entry) => entry.display_category === "Women / Open");
+    if (!snapshot) {
+      return new Map<string, FinalsLeaderboardEntry[]>();
+    }
 
-    return {
-      men,
-      women,
-    };
-  }, [finalsRows]);
+    return FINALS_CATEGORY_ORDER.reduce((groups, categoryName) => {
+      groups.set(
+        categoryName,
+        snapshot.finalsLeaderboard.filter((entry) => entry.display_category === categoryName)
+      );
+      return groups;
+    }, new Map<string, FinalsLeaderboardEntry[]>());
+  }, [snapshot]);
+
+  useEffect(() => {
+    if (!finalsActive) {
+      return;
+    }
+
+    const availableCategory = FINALS_CATEGORY_ORDER.find((categoryName) => {
+      return (finalistsByDisplayCategory.get(categoryName)?.length ?? 0) > 0 || (finalsGroups.get(categoryName)?.length ?? 0) > 0;
+    });
+
+    if (!availableCategory) {
+      return;
+    }
+
+    if (
+      (finalistsByDisplayCategory.get(selectedFinalsCategory)?.length ?? 0) === 0 &&
+      (finalsGroups.get(selectedFinalsCategory)?.length ?? 0) === 0
+    ) {
+      setSelectedFinalsCategory(availableCategory);
+    }
+  }, [finalistsByDisplayCategory, finalsActive, finalsGroups, selectedFinalsCategory]);
+
+  const activeFinalists = useMemo(() => {
+    return finalistsByDisplayCategory.get(selectedFinalsCategory) ?? [];
+  }, [finalistsByDisplayCategory, selectedFinalsCategory]);
+
+  const activeFinalsRows = useMemo(() => {
+    return finalsGroups.get(selectedFinalsCategory) ?? [];
+  }, [finalsGroups, selectedFinalsCategory]);
+
+  const activeFinalsToggleLabel = selectedFinalsCategory === "Men / Open" ? "Show Women / Open finals" : "Show Men / Open finals";
 
   const lastUpdated = updatedAt?.toLocaleTimeString([], {
     hour: "2-digit",
@@ -254,44 +291,76 @@ export default function LeaderboardPage() {
           }
         />
 
-        <section className="card">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="eyebrow">Competition board</div>
-              <h1 className="section-title mt-4 text-4xl sm:text-5xl">
-                {snapshot?.event.name ?? "Live standings"}
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
-                Public users see qualifier totals during the scramble, then the full 2025 IFSC-style finals points board after the event advances. Judge and admin accounts can still reveal the qualifier counting-climb breakdown.
-              </p>
+        {!finalsActive ? (
+          <section className="card">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="eyebrow">Competition board</div>
+                <h1 className="section-title mt-4 text-4xl sm:text-5xl">
+                  {snapshot?.event.name ?? "Live standings"}
+                </h1>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
+                  Public users see qualifier totals during the scramble, then the full 2025 IFSC-style finals points board after the event advances. Judge and admin accounts can still reveal the qualifier counting-climb breakdown.
+                </p>
+              </div>
+              <div
+                className={`status-pill ${
+                  canSeeStaffDetails
+                    ? "border-green-500/20 bg-green-500/10 text-green-200"
+                    : "border-white/10 bg-white/[0.03] text-slate-300"
+                }`}
+              >
+                {canSeeStaffDetails ? "Staff detail view" : "Public summary view"}
+              </div>
             </div>
-            <div
-              className={`status-pill ${
-                canSeeStaffDetails
-                  ? "border-green-500/20 bg-green-500/10 text-green-200"
-                  : "border-white/10 bg-white/[0.03] text-slate-300"
-              }`}
-            >
-              {canSeeStaffDetails ? "Staff detail view" : "Public summary view"}
-            </div>
-          </div>
 
-          <div className="mt-5 max-w-sm">
-            <label className="meta-label mb-2 block">Category view</label>
-            <select
-              value={selectedCategory}
-              onChange={(event) => setSelectedCategory(event.target.value)}
-              className="input-field"
-            >
-              <option value={ALL_CATEGORIES}>All categories</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.display_name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </section>
+            <div className="mt-5 max-w-sm">
+              <label className="meta-label mb-2 block">Category view</label>
+              <select
+                value={selectedCategory}
+                onChange={(event) => setSelectedCategory(event.target.value)}
+                className="input-field"
+              >
+                <option value={ALL_CATEGORIES}>All categories</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
+        ) : (
+          <section className="card">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="eyebrow">Finals Mode</div>
+                <h1 className="section-title mt-4 text-4xl sm:text-5xl">
+                  {snapshot?.event.name ?? "Finals"}
+                </h1>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
+                  Finals are active. The board now focuses on finalists only, with one finals category displayed at a time.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="status-pill border-yellow-400/20 bg-yellow-400/10 text-yellow-100">
+                  {selectedFinalsCategory}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedFinalsCategory((current) =>
+                      current === "Men / Open" ? "Women / Open" : "Men / Open"
+                    )
+                  }
+                  className="btn-ghost"
+                >
+                  {activeFinalsToggleLabel}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="card">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -301,8 +370,10 @@ export default function LeaderboardPage() {
                 {canSeeStaffDetails ? `Signed in as ${profile?.role}` : "Public leaderboard mode"}
               </h2>
               <p className="mt-3 text-sm text-slate-300">
-                {canSeeStaffDetails
-                  ? "Qualifier counting top-six climbs are visible. Finals are public and already show the full IFSC points board."
+                {finalsActive
+                  ? "Finals are public. Staff sign-in only adds qualifier breakdown access outside finals mode."
+                  : canSeeStaffDetails
+                  ? "Qualifier counting top-six climbs are visible."
                   : "Sign in as a judge or admin to reveal the qualifier counting top-six climb breakdown."}
               </p>
             </div>
@@ -348,155 +419,193 @@ export default function LeaderboardPage() {
           </div>
         ) : null}
 
-        <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-          <section className="card">
-            <div>
-              <div className="eyebrow">Participants</div>
-              <h2 className="section-title mt-4 text-3xl">Category roster</h2>
-            </div>
-
-            {loading ? (
-              <p className="mt-4 text-sm text-slate-300">Loading participants...</p>
-            ) : qualifierRows.length ? (
-              <div className="mt-5 space-y-3">
-                {qualifierRows.map((entry) => (
-                  <div key={entry.climber_id} className="card-muted">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-lg font-semibold text-chalk">{entry.name}</div>
-                        <div className="mt-1 text-sm text-slate-300">
-                          #{entry.climber_number} | {entry.display_category} | {entry.province}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="meta-label">
-                          {showingAllCategories ? "Overall rank" : "Category rank"}
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-chalk">
-                          #{showingAllCategories ? entry.overall_rank : entry.category_rank}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-400">
-                          {snapshot ? getTimeSlotLabel(entry.time_slot_id, snapshot.event) : "No slot"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-slate-300">No climbers in this category yet.</p>
-            )}
-          </section>
-
-          <section className="card">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+        {!finalsActive ? (
+          <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+            <section className="card">
               <div>
-                <div className="eyebrow">Qualifiers</div>
-                <h2 className="section-title mt-4 text-3xl">Qualifier rankings</h2>
+                <div className="eyebrow">Participants</div>
+                <h2 className="section-title mt-4 text-3xl">Category roster</h2>
               </div>
-              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                {canSeeStaffDetails ? `Best-${snapshot?.event.qualifier_counting_climbs ?? 6} detail shown` : "Totals only"}
-              </div>
-            </div>
 
-            {loading ? (
-              <p className="mt-4 text-sm text-slate-300">Loading qualifier rankings...</p>
-            ) : qualifierRows.length ? (
-              <div className="mt-5 space-y-4">
-                {qualifierRows.map((entry) => (
-                  <div key={entry.climber_id} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="meta-label">#{entry.overall_rank} overall | #{entry.category_rank} category</div>
-                        <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
-                        <div className="mt-1 text-sm text-slate-300">
-                          {entry.display_category} | {entry.province}
+              {loading ? (
+                <p className="mt-4 text-sm text-slate-300">Loading participants...</p>
+              ) : qualifierRows.length ? (
+                <div className="mt-5 space-y-3">
+                  {qualifierRows.map((entry) => (
+                    <div key={entry.climber_id} className="card-muted">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-lg font-semibold text-chalk">{entry.name}</div>
+                          <div className="mt-1 text-sm text-slate-300">
+                            #{entry.climber_number} | {entry.display_category} | {entry.province}
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="meta-label">Qualifier total</div>
-                        <div className="mt-2 font-display text-4xl text-chalk">
-                          {entry.total_score.toLocaleString()}
+                        <div className="text-right">
+                          <div className="meta-label">
+                            {showingAllCategories ? "Overall rank" : "Category rank"}
+                          </div>
+                          <div className="mt-2 text-2xl font-semibold text-chalk">
+                            #{showingAllCategories ? entry.overall_rank : entry.category_rank}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-400">
+                            {snapshot ? getTimeSlotLabel(entry.time_slot_id, snapshot.event) : "No slot"}
+                          </div>
                         </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-slate-300">No climbers in this category yet.</p>
+              )}
+            </section>
 
-                    {canSeeStaffDetails ? (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {entry.counting_climbs.length ? (
-                          entry.counting_climbs.map((climb) => (
-                            <span
-                              key={climb.climb_number}
-                              className="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-yellow-100"
-                            >
-                              B{climb.climb_number.toString().padStart(2, "0")} - {climb.score} - {climb.attempt_count} att
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-sm text-slate-300">No counting tops yet.</span>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-slate-300">Qualifier rankings will appear here once scores are entered.</p>
-            )}
-          </section>
-        </section>
-
-        {snapshot && snapshot.event.stage_mode === "finals" && formatSupportsFinals(snapshot.event.format) ? (
-          <>
             <section className="card">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="eyebrow">Finalists</div>
-                  <h2 className="section-title mt-4 text-3xl">Advancement list</h2>
+                  <div className="eyebrow">Qualifiers</div>
+                  <h2 className="section-title mt-4 text-3xl">Qualifier rankings</h2>
                 </div>
                 <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                  Cutoff: top {snapshot.event.finals_cutoff}
+                  {canSeeStaffDetails ? `Best-${snapshot?.event.qualifier_counting_climbs ?? 6} detail shown` : "Totals only"}
                 </div>
               </div>
 
-              <div className="mt-5 space-y-3">
-                {finalists.length ? (
-                  finalists.map((entry) => (
-                    <div key={entry.climber_id} className="card-muted flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-lg font-semibold text-chalk">{entry.name}</div>
-                        <div className="mt-1 text-sm text-slate-300">
-                          {entry.display_category} | Qualifier rank #{entry.qualifier_rank}
+              {loading ? (
+                <p className="mt-4 text-sm text-slate-300">Loading qualifier rankings...</p>
+              ) : qualifierRows.length ? (
+                <div className="mt-5 space-y-4">
+                  {qualifierRows.map((entry) => (
+                    <div key={entry.climber_id} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="meta-label">#{entry.overall_rank} overall | #{entry.category_rank} category</div>
+                          <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
+                          <div className="mt-1 text-sm text-slate-300">
+                            {entry.display_category} | {entry.province}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="meta-label">Qualifier total</div>
+                          <div className="mt-2 font-display text-4xl text-chalk">
+                            {entry.total_score.toLocaleString()}
+                          </div>
                         </div>
                       </div>
-                      {entry.advanced_with_tie ? (
-                        <span className="status-pill border-yellow-400/20 bg-yellow-400/10 text-yellow-200">
-                          Tie advance
-                        </span>
+
+                      {canSeeStaffDetails ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {entry.counting_climbs.length ? (
+                            entry.counting_climbs.map((climb) => (
+                              <span
+                                key={climb.climb_number}
+                                className="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-yellow-100"
+                              >
+                                B{climb.climb_number.toString().padStart(2, "0")} - {climb.score} - {climb.attempt_count} att
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-sm text-slate-300">No counting tops yet.</span>
+                          )}
+                        </div>
                       ) : null}
                     </div>
-                  ))
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-slate-300">Qualifier rankings will appear here once scores are entered.</p>
+              )}
+            </section>
+          </section>
+        ) : (
+          <>
+            <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+              <section className="card">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="eyebrow">Finalists</div>
+                    <h2 className="section-title mt-4 text-3xl">Category roster</h2>
+                  </div>
+                  <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                    {selectedFinalsCategory}
+                  </div>
+                </div>
+
+                {loading ? (
+                  <p className="mt-4 text-sm text-slate-300">Loading finalists...</p>
+                ) : activeFinalists.length ? (
+                  <div className="mt-5 space-y-3">
+                    {activeFinalists.map((entry) => (
+                      <div key={entry.climber_id} className="card-muted">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-lg font-semibold text-chalk">{entry.name}</div>
+                            <div className="mt-1 text-sm text-slate-300">
+                              {entry.display_category}
+                            </div>
+                          </div>
+                          {entry.advanced_with_tie ? (
+                            <div className="status-pill border-yellow-400/20 bg-yellow-400/10 text-yellow-100">
+                              Tie advance
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <p className="text-sm text-slate-300">No finalists have been stored for this event yet.</p>
+                  <p className="mt-4 text-sm text-slate-300">No finalists stored for this finals category yet.</p>
                 )}
-              </div>
+              </section>
+
+              <section className="card">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="eyebrow">Finalists</div>
+                    <h2 className="section-title mt-4 text-3xl">Finalist rankings</h2>
+                  </div>
+                  <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                    Seeded from qualifiers
+                  </div>
+                </div>
+
+                {loading ? (
+                  <p className="mt-4 text-sm text-slate-300">Loading finalist rankings...</p>
+                ) : activeFinalists.length ? (
+                  <div className="mt-5 space-y-4">
+                    {activeFinalists.map((entry) => (
+                      <div key={entry.climber_id} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="meta-label">#{entry.qualifier_rank} seed</div>
+                            <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
+                            <div className="mt-1 text-sm text-slate-300">{selectedFinalsCategory}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="meta-label">Advancement</div>
+                            <div className="mt-2 text-lg font-semibold text-chalk">
+                              {entry.advanced_with_tie ? "Tie advance" : "Auto-qualify"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-300">Finalist rankings will appear here once finalists are stored.</p>
+                )}
+              </section>
             </section>
 
-            {finalsGroups.men.length ? (
-              <FinalsResultsTable title="Men / Open Finals" rows={finalsGroups.men} />
-            ) : null}
-
-            {finalsGroups.women.length ? (
-              <FinalsResultsTable title="Women / Open Finals" rows={finalsGroups.women} />
-            ) : null}
-
-            {!finalsGroups.men.length && !finalsGroups.women.length ? (
+            {activeFinalsRows.length ? (
+              <FinalsResultsTable title={selectedFinalsCategory} rows={activeFinalsRows} />
+            ) : (
               <section className="card">
-                <p className="text-sm text-slate-300">Finals standings will appear here after finalists are advanced and judge scoring begins.</p>
+                <p className="text-sm text-slate-300">Finals standings will appear here after judge scoring begins for {selectedFinalsCategory}.</p>
               </section>
-            ) : null}
+            )}
           </>
-        ) : null}
+        )}
       </div>
     </main>
   );

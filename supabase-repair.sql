@@ -162,40 +162,6 @@ as $$
   select coalesce(public.current_user_role() = 'admin', false)
 $$;
 
-create or replace function public.qualifiers_open()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select coalesce(
-    (
-      select stage_mode = 'qualifier'
-      from public.active_event_config
-      where id = 1
-    ),
-    false
-  )
-$$;
-
-create or replace function public.finals_open()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select coalesce(
-    (
-      select stage_mode = 'finals'
-      from public.active_event_config
-      where id = 1
-    ),
-    false
-  )
-$$;
-
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -242,6 +208,40 @@ on conflict (id) do nothing;
 create trigger active_event_config_set_updated_at
 before update on public.active_event_config
 for each row execute procedure public.set_updated_at();
+
+create or replace function public.qualifiers_open()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select stage_mode = 'qualifier'
+      from public.active_event_config
+      where id = 1
+    ),
+    false
+  )
+$$;
+
+create or replace function public.finals_open()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select stage_mode = 'finals'
+      from public.active_event_config
+      where id = 1
+    ),
+    false
+  )
+$$;
 
 create table public.event_categories (
   id uuid primary key default gen_random_uuid(),

@@ -134,7 +134,69 @@ join (
 ) as data(climber_number, climb_number, attempt_count, topped)
   on data.climber_number = seed.climber_number;
 
-select public.advance_event_to_finals();
+insert into public.event_finalists (
+  event_id,
+  climber_id,
+  name,
+  category_id,
+  display_category,
+  gender_division,
+  age_group,
+  qualifier_rank,
+  advanced_with_tie
+)
+with config as (
+  select *
+  from public.active_event_config
+  where id = 1
+),
+ranked as (
+  select *
+  from public.qualifier_leaderboard_view
+  where age_group = 'Open'
+    and gender_division in ('Men', 'Women')
+),
+cutoff as (
+  select
+    ranked.category_id,
+    ranked.total_score,
+    ranked.topped_count,
+    ranked.counting_attempt_total
+  from ranked
+  cross join config
+  where ranked.category_row_number = config.finals_cutoff
+)
+select
+  1,
+  ranked.climber_id,
+  ranked.name,
+  ranked.category_id,
+  ranked.display_category,
+  ranked.gender_division,
+  ranked.age_group,
+  ranked.category_rank,
+  ranked.category_row_number > config.finals_cutoff
+from ranked
+cross join config
+left join cutoff using (category_id)
+where ranked.category_row_number <= config.finals_cutoff
+   or (
+     config.finals_tie_advances
+     and cutoff.category_id is not null
+     and ranked.category_row_number > config.finals_cutoff
+     and ranked.total_score = cutoff.total_score
+     and ranked.topped_count = cutoff.topped_count
+     and ranked.counting_attempt_total = cutoff.counting_attempt_total
+   );
+
+update public.active_event_config
+set
+  format = 'ifsc_finals_format',
+  stage_mode = 'finals',
+  qualifier_locked_at = now(),
+  finals_started_at = now(),
+  finals_problem_count = 4
+where id = 1;
 
 insert into public.final_attempts (climber_id, climb_number, top, zone, attempts_to_top, attempts_to_zone, entered_by)
 select seed.id, data.climb_number, data.top, data.zone, data.attempts_to_top, data.attempts_to_zone, 'staff'
