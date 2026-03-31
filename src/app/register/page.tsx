@@ -4,18 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
-import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { getCompetitionSnapshot, registerClimber, type CompetitionSnapshot } from "@/lib/db";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [authError, setAuthError] = useState("");
   const [error, setError] = useState("");
   const [successLink, setSuccessLink] = useState("");
   const [name, setName] = useState("");
@@ -34,16 +28,8 @@ export default function RegisterPage() {
         setError(nextError instanceof Error ? nextError.message : "Unable to load registration options.");
       })
       .finally(() => setLoading(false));
-
-    getAuthState()
-      .then((state) => setProfile(state.profile))
-      .catch((nextError) => {
-        setAuthError(nextError instanceof Error ? nextError.message : "Unable to read the staff session.");
-      })
-      .finally(() => setAuthLoading(false));
   }, []);
 
-  const canRegister = isStaffRole(profile?.role);
   const selectedChoice = useMemo(
     () => snapshot?.registrationChoices.find((choice) => choice.category.id === categoryId) ?? null,
     [categoryId, snapshot]
@@ -62,31 +48,10 @@ export default function RegisterPage() {
     }
   }, [availableSlots, timeSlotId]);
 
-  const handleAuthSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setAuthLoading(true);
-    setAuthError("");
-
-    try {
-      const state = await signInWithRole(email, password);
-      setProfile(state.profile);
-      setPassword("");
-    } catch (nextError) {
-      setAuthError(nextError instanceof Error ? nextError.message : "Unable to sign in.");
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
     setSuccessLink("");
-
-    if (!canRegister) {
-      setError("Judge or admin login is required to register climbers.");
-      return;
-    }
 
     if (!name.trim() || !climberNumber.trim() || !province.trim() || !categoryId) {
       setError("Name, climber number, province, and category are required.");
@@ -131,55 +96,30 @@ export default function RegisterPage() {
     <main className="page-shell">
       <div className="content-frame space-y-6">
         <SiteHeader
-          status={
-            canRegister ? (
-              <button onClick={() => void signOutUser().then(() => setProfile(null))} className="status-pill border-green-500/20 bg-green-500/10 text-green-200">
-                {profile?.role} signed in
-              </button>
-            ) : (
-              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">Staff sign-in required</div>
-            )
-          }
+          status={<div className="status-pill border-green-500/20 bg-green-500/10 text-green-200">Public self-registration open</div>}
         />
-
-        {!canRegister ? (
-          <section className="card">
-            <div>
-              <div className="eyebrow">Front desk access</div>
-              <h1 className="section-title mt-4 text-4xl sm:text-5xl">Sign in to register climbers</h1>
-            </div>
-            <form onSubmit={handleAuthSubmit} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="judge@gym.com" className="input-field" />
-              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="input-field" />
-              <button type="submit" disabled={authLoading} className="btn-primary">
-                {authLoading ? "Signing in..." : "Sign in"}
-              </button>
-            </form>
-            {authError ? <div className="mt-4 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{authError}</div> : null}
-          </section>
-        ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
           <section className="card">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="eyebrow">Registration</div>
-                <h1 className="section-title mt-4 text-4xl sm:text-5xl">Create a climber entry</h1>
+                <h1 className="section-title mt-4 text-4xl sm:text-5xl">Register yourself</h1>
               </div>
-              <div className="status-pill border-accent/20 bg-accent/10 text-red-100">
-                {canRegister ? "Authorized" : "Locked"}
+              <div className="status-pill border-green-500/20 bg-green-500/10 text-green-200">
+                No staff login needed
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
-                <input type="text" value={name} onChange={(event) => setName(event.target.value)} className="input-field" placeholder="Climber name" disabled={!canRegister || loading} />
-                <input type="text" value={climberNumber} onChange={(event) => setClimberNumber(event.target.value)} className="input-field" placeholder="Climber number" disabled={!canRegister || loading} />
+                <input type="text" value={name} onChange={(event) => setName(event.target.value)} className="input-field" placeholder="Climber name" disabled={loading} />
+                <input type="text" value={climberNumber} onChange={(event) => setClimberNumber(event.target.value)} className="input-field" placeholder="Climber number" disabled={loading} />
               </div>
-              <input type="text" value={province} onChange={(event) => setProvince(event.target.value)} className="input-field" placeholder="Province" disabled={!canRegister || loading} />
+              <input type="text" value={province} onChange={(event) => setProvince(event.target.value)} className="input-field" placeholder="Province" disabled={loading} />
 
               <div className="grid gap-4 md:grid-cols-2">
-                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="input-field" disabled={!canRegister || loading}>
+                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="input-field" disabled={loading}>
                   <option value="">Select category</option>
                   {snapshot?.event.categories.map((category) => (
                     <option key={category.id} value={category.id}>
@@ -187,7 +127,7 @@ export default function RegisterPage() {
                     </option>
                   ))}
                 </select>
-                <select value={timeSlotId} onChange={(event) => setTimeSlotId(event.target.value)} className="input-field" disabled={!canRegister || loading || !availableSlots.length}>
+                <select value={timeSlotId} onChange={(event) => setTimeSlotId(event.target.value)} className="input-field" disabled={loading || !availableSlots.length}>
                   <option value="">{availableSlots.length ? "Select time slot" : "No slots required"}</option>
                   {availableSlots.map((slot) => (
                     <option key={slot.id} value={slot.id} disabled={slot.remaining_capacity <= 0}>
@@ -201,7 +141,7 @@ export default function RegisterPage() {
               {successLink ? <div className="rounded-[1.3rem] border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-200">Private qualifier link created: {successLink}</div> : null}
 
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                <button type="submit" disabled={!canRegister || loading} className="btn-primary w-full">
+                <button type="submit" disabled={loading} className="btn-primary w-full">
                   {loading ? "Registering..." : "Register climber"}
                 </button>
                 <Link href="/scorecard" className="btn-ghost w-full justify-center sm:w-auto">

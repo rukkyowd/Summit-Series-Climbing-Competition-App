@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import SiteHeader from "@/components/site-header";
+import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import { FORMAT_TEMPLATES, formatSupportsFinals, getTimeSlotLabel } from "@/lib/scoring";
@@ -14,6 +15,11 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const refresh = async () => {
     try {
@@ -30,6 +36,12 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     void refresh();
+    getAuthState()
+      .then((state) => setProfile(state.profile))
+      .catch((nextError) => {
+        setAuthError(nextError instanceof Error ? nextError.message : "Unable to read the staff session.");
+      })
+      .finally(() => setAuthLoading(false));
   }, []);
 
   useEffect(() => {
@@ -52,13 +64,10 @@ export default function LeaderboardPage() {
     };
   }, []);
 
-  const categories = useMemo(() => {
-    if (!snapshot) {
-      return [];
-    }
+  const canSeeStaffDetails = isStaffRole(profile?.role);
+  const showingAllCategories = selectedCategory === ALL_CATEGORIES;
 
-    return snapshot.event.categories;
-  }, [snapshot]);
+  const categories = useMemo(() => snapshot?.event.categories ?? [], [snapshot]);
 
   const qualifierRows = useMemo(() => {
     if (!snapshot) {
@@ -90,13 +99,27 @@ export default function LeaderboardPage() {
     });
   }, [selectedCategory, snapshot]);
 
-  const showingAllCategories = selectedCategory === ALL_CATEGORIES;
-
   const lastUpdated = updatedAt?.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   });
+
+  const handleAuthSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+
+    try {
+      const state = await signInWithRole(email, password);
+      setProfile(state.profile);
+      setPassword("");
+    } catch (nextError) {
+      setAuthError(nextError instanceof Error ? nextError.message : "Unable to sign in.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   return (
     <main className="page-shell">
@@ -117,14 +140,22 @@ export default function LeaderboardPage() {
         <section className="card">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="eyebrow">Public competition board</div>
-              <h1 className="section-title mt-4 text-4xl sm:text-5xl">{snapshot?.event.name ?? "Live standings"}</h1>
+              <div className="eyebrow">Competition board</div>
+              <h1 className="section-title mt-4 text-4xl sm:text-5xl">
+                {snapshot?.event.name ?? "Live standings"}
+              </h1>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
-                Public category pages show participants, live qualifier rankings, exact counting climbs, and finals results when the event format includes them.
+                Public users see qualifier totals and finals tops and zones. Judge and admin accounts can also see the counting-climb breakdown and full finals attempts detail.
               </p>
             </div>
-            <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-              {snapshot?.event.qualifier_counting_climbs ?? 6} counting climbs
+            <div
+              className={`status-pill ${
+                canSeeStaffDetails
+                  ? "border-green-500/20 bg-green-500/10 text-green-200"
+                  : "border-white/10 bg-white/[0.03] text-slate-300"
+              }`}
+            >
+              {canSeeStaffDetails ? "Staff detail view" : "Public summary view"}
             </div>
           </div>
 
@@ -145,7 +176,60 @@ export default function LeaderboardPage() {
           </div>
         </section>
 
-        {error ? <div className="rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div> : null}
+        <section className="card">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="eyebrow">Leaderboard access</div>
+              <h2 className="section-title mt-4 text-3xl">
+                {canSeeStaffDetails ? `Signed in as ${profile?.role}` : "Public leaderboard mode"}
+              </h2>
+              <p className="mt-3 text-sm text-slate-300">
+                {canSeeStaffDetails
+                  ? "Counting top-six qualifier climbs and full finals attempt detail are visible."
+                  : "Sign in as a judge or admin to reveal the counting top-six qualifier climbs and attempts-to-top / attempts-to-zone in finals."}
+              </p>
+            </div>
+            {canSeeStaffDetails ? (
+              <button onClick={() => void signOutUser().then(() => setProfile(null))} className="btn-ghost">
+                Sign out
+              </button>
+            ) : null}
+          </div>
+
+          {!canSeeStaffDetails ? (
+            <form onSubmit={handleAuthSubmit} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="judge@gym.com"
+                className="input-field"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Password"
+                className="input-field"
+              />
+              <button type="submit" disabled={authLoading} className="btn-primary">
+                {authLoading ? "Signing in..." : "Staff sign in"}
+              </button>
+            </form>
+          ) : null}
+
+          {authError ? (
+            <div className="mt-4 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+              {authError}
+            </div>
+          ) : null}
+        </section>
+
+        {error ? (
+          <div className="rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+            {error}
+          </div>
+        ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
           <section className="card">
@@ -191,10 +275,10 @@ export default function LeaderboardPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="eyebrow">Qualifiers</div>
-                <h2 className="section-title mt-4 text-3xl">Best-{snapshot?.event.qualifier_counting_climbs ?? 6} live rankings</h2>
+                <h2 className="section-title mt-4 text-3xl">Qualifier rankings</h2>
               </div>
               <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                Exact counting climbs shown
+                {canSeeStaffDetails ? `Best-${snapshot?.event.qualifier_counting_climbs ?? 6} detail shown` : "Totals only"}
               </div>
             </div>
 
@@ -208,24 +292,34 @@ export default function LeaderboardPage() {
                       <div>
                         <div className="meta-label">#{entry.overall_rank} overall | #{entry.category_rank} category</div>
                         <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
-                        <div className="mt-1 text-sm text-slate-300">{entry.display_category} | {entry.province}</div>
+                        <div className="mt-1 text-sm text-slate-300">
+                          {entry.display_category} | {entry.province}
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className="meta-label">Qualifier total</div>
-                        <div className="mt-2 font-display text-4xl text-chalk">{entry.total_score.toLocaleString()}</div>
+                        <div className="mt-2 font-display text-4xl text-chalk">
+                          {entry.total_score.toLocaleString()}
+                        </div>
                       </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {entry.counting_climbs.length ? (
-                        entry.counting_climbs.map((climb) => (
-                          <span key={climb.climb_number} className="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-yellow-100">
-                            B{climb.climb_number.toString().padStart(2, "0")} · {climb.score} · {climb.attempt_count} att
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-slate-300">No counting tops yet.</span>
-                      )}
-                    </div>
+
+                    {canSeeStaffDetails ? (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {entry.counting_climbs.length ? (
+                          entry.counting_climbs.map((climb) => (
+                            <span
+                              key={climb.climb_number}
+                              className="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-yellow-100"
+                            >
+                              B{climb.climb_number.toString().padStart(2, "0")} - {climb.score} - {climb.attempt_count} att
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm text-slate-300">No counting tops yet.</span>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -255,11 +349,14 @@ export default function LeaderboardPage() {
                       <div>
                         <div className="text-lg font-semibold text-chalk">{entry.name}</div>
                         <div className="mt-1 text-sm text-slate-300">
-                          {entry.display_category} | Qualifier rank #{entry.qualifier_rank}
+                          {entry.display_category}
+                          {canSeeStaffDetails ? ` | Qualifier rank #${entry.qualifier_rank}` : ""}
                         </div>
                       </div>
-                      {entry.advanced_with_tie ? (
-                        <span className="status-pill border-yellow-400/20 bg-yellow-400/10 text-yellow-200">Tie advance</span>
+                      {canSeeStaffDetails && entry.advanced_with_tie ? (
+                        <span className="status-pill border-yellow-400/20 bg-yellow-400/10 text-yellow-200">
+                          Tie advance
+                        </span>
                       ) : null}
                     </div>
                   ))
@@ -276,7 +373,7 @@ export default function LeaderboardPage() {
                   <h2 className="section-title mt-4 text-3xl">IFSC standings</h2>
                 </div>
                 <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                  Tops, zones, attempts
+                  {canSeeStaffDetails ? "Tops, zones, attempts" : "Tops and zones"}
                 </div>
               </div>
 
@@ -290,11 +387,31 @@ export default function LeaderboardPage() {
                           <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
                           <div className="mt-1 text-sm text-slate-300">{entry.display_category}</div>
                         </div>
-                        <div className="grid gap-2 text-right sm:grid-cols-2">
-                          <div><div className="meta-label">Tops</div><div className="mt-1 text-3xl font-semibold text-chalk">{entry.tops}</div></div>
-                          <div><div className="meta-label">Zones</div><div className="mt-1 text-3xl font-semibold text-chalk">{entry.zones}</div></div>
-                          <div><div className="meta-label">Att. to top</div><div className="mt-1 text-xl font-semibold text-chalk">{entry.attempts_to_top}</div></div>
-                          <div><div className="meta-label">Att. to zone</div><div className="mt-1 text-xl font-semibold text-chalk">{entry.attempts_to_zone}</div></div>
+                        <div className={`grid gap-2 text-right ${canSeeStaffDetails ? "sm:grid-cols-2" : ""}`}>
+                          <div>
+                            <div className="meta-label">Tops</div>
+                            <div className="mt-1 text-3xl font-semibold text-chalk">{entry.tops}</div>
+                          </div>
+                          <div>
+                            <div className="meta-label">Zones</div>
+                            <div className="mt-1 text-3xl font-semibold text-chalk">{entry.zones}</div>
+                          </div>
+                          {canSeeStaffDetails ? (
+                            <>
+                              <div>
+                                <div className="meta-label">Att. to top</div>
+                                <div className="mt-1 text-xl font-semibold text-chalk">
+                                  {entry.attempts_to_top}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="meta-label">Att. to zone</div>
+                                <div className="mt-1 text-xl font-semibold text-chalk">
+                                  {entry.attempts_to_zone}
+                                </div>
+                              </div>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     </div>

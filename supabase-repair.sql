@@ -35,6 +35,9 @@ begin
     drop policy if exists "Staff update climbers" on public.climbers;
     drop policy if exists "Staff delete climbers" on public.climbers;
     drop policy if exists "climbers public read" on public.climbers;
+    drop policy if exists "climbers public insert" on public.climbers;
+    drop policy if exists "climbers staff update" on public.climbers;
+    drop policy if exists "climbers staff delete" on public.climbers;
     drop policy if exists "climbers staff write" on public.climbers;
   end if;
 
@@ -303,10 +306,19 @@ create policy "climbers public read"
 on public.climbers for select
 using (true);
 
-create policy "climbers staff write"
-on public.climbers for all to authenticated
+create policy "climbers public insert"
+on public.climbers for insert
+with check (true);
+
+create policy "climbers staff update"
+on public.climbers for update to authenticated
 using (public.is_staff())
 with check (public.is_staff());
+
+create policy "climbers staff delete"
+on public.climbers for delete to authenticated
+using (public.is_staff())
+;
 
 create policy "qualifier attempts public read"
 on public.qualifier_attempts for select
