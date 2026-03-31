@@ -126,24 +126,20 @@ export default function LeaderboardPage() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedCategory(ALL_CATEGORIES)}
-              className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.22em] ${selectedCategory === ALL_CATEGORIES ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}
+          <div className="mt-5 max-w-sm">
+            <label className="meta-label mb-2 block">Category view</label>
+            <select
+              value={selectedCategory}
+              onChange={(event) => setSelectedCategory(event.target.value)}
+              className="input-field"
             >
-              All categories
-            </button>
-            {categories.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                onClick={() => setSelectedCategory(category.id)}
-                className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.22em] ${selectedCategory === category.id ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}
-              >
-                {category.display_name}
-              </button>
-            ))}
+              <option value={ALL_CATEGORIES}>All categories</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.display_name}
+                </option>
+              ))}
+            </select>
           </div>
         </section>
 
