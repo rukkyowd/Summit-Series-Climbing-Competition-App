@@ -476,6 +476,7 @@ export async function saveEventConfig(input: SaveEventConfigInput) {
     qualifier_counting_climbs: payload.qualifier_counting_climbs,
     finals_cutoff: payload.finals_cutoff,
     finals_tie_advances: payload.finals_tie_advances,
+    finals_eligible_age_groups: payload.finals_eligible_age_groups,
     qualifier_locked_at: payload.qualifier_locked_at,
     finals_started_at: payload.finals_started_at,
     finals_problem_count: payload.finals_problem_count,

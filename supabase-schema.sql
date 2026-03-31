@@ -187,10 +187,12 @@ create table public.active_event_config (
   qualifier_counting_climbs integer not null default 6 check (qualifier_counting_climbs between 1 and 20),
   finals_cutoff integer not null default 6 check (finals_cutoff in (6, 8)),
   finals_tie_advances boolean not null default true,
+  finals_eligible_age_groups jsonb not null default '["Open"]'::jsonb,
   qualifier_locked_at timestamptz,
   finals_started_at timestamptz,
   finals_problem_count integer not null default 4 check (finals_problem_count = 4),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  check (jsonb_typeof(finals_eligible_age_groups) = 'array')
 );
 
 insert into public.active_event_config (
@@ -203,11 +205,12 @@ insert into public.active_event_config (
   qualifier_counting_climbs,
   finals_cutoff,
   finals_tie_advances,
+  finals_eligible_age_groups,
   qualifier_locked_at,
   finals_started_at,
   finals_problem_count
 )
-values (1, 'Current Event', 'scramble', 'qualifier', 30, 80, 6, 6, true, null, null, 4)
+values (1, 'Current Event', 'scramble', 'qualifier', 30, 80, 6, 6, true, '["Open"]'::jsonb, null, null, 4)
 on conflict (id) do nothing;
 
 create trigger active_event_config_set_updated_at
@@ -653,6 +656,7 @@ begin
     qualifier_counting_climbs = 6,
     finals_cutoff = 6,
     finals_tie_advances = true,
+    finals_eligible_age_groups = '["Open"]'::jsonb,
     qualifier_locked_at = null,
     finals_started_at = null,
     finals_problem_count = 4
@@ -710,8 +714,12 @@ begin
   with ranked as (
     select *
     from public.qualifier_leaderboard_view
-    where age_group = 'Open'
-      and gender_division in ('Men', 'Women')
+    where gender_division in ('Men', 'Women')
+      and exists (
+        select 1
+        from jsonb_array_elements_text(v_event.finals_eligible_age_groups) as eligible(age_group)
+        where eligible.age_group = qualifier_leaderboard_view.age_group
+      )
   ),
   cutoff as (
     select

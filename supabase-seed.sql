@@ -8,6 +8,7 @@ insert into public.active_event_config (
   qualifier_counting_climbs,
   finals_cutoff,
   finals_tie_advances,
+  finals_eligible_age_groups,
   qualifier_locked_at,
   finals_started_at,
   finals_problem_count
@@ -22,6 +23,7 @@ values (
   6,
   6,
   true,
+  '["Open"]'::jsonb,
   null,
   null,
   4
@@ -36,6 +38,7 @@ set
   qualifier_counting_climbs = excluded.qualifier_counting_climbs,
   finals_cutoff = excluded.finals_cutoff,
   finals_tie_advances = excluded.finals_tie_advances,
+  finals_eligible_age_groups = excluded.finals_eligible_age_groups,
   qualifier_locked_at = excluded.qualifier_locked_at,
   finals_started_at = excluded.finals_started_at,
   finals_problem_count = excluded.finals_problem_count;
@@ -153,8 +156,13 @@ with config as (
 ranked as (
   select *
   from public.qualifier_leaderboard_view
-  where age_group = 'Open'
-    and gender_division in ('Men', 'Women')
+  cross join config
+  where gender_division in ('Men', 'Women')
+    and exists (
+      select 1
+      from jsonb_array_elements_text(config.finals_eligible_age_groups) as eligible(age_group)
+      where eligible.age_group = qualifier_leaderboard_view.age_group
+    )
 ),
 cutoff as (
   select

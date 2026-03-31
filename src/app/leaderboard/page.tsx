@@ -14,7 +14,6 @@ import {
 } from "@/lib/scoring";
 
 const ALL_CATEGORIES = "all";
-const FINALS_CATEGORY_ORDER = ["Men / Open", "Women / Open"] as const;
 
 function FinalsResultCell({
   top,
@@ -120,8 +119,7 @@ function FinalsResultsTable({
 export default function LeaderboardPage() {
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
-  const [selectedFinalsCategory, setSelectedFinalsCategory] =
-    useState<(typeof FINALS_CATEGORY_ORDER)[number]>("Men / Open");
+  const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -208,21 +206,28 @@ export default function LeaderboardPage() {
       return new Map<string, FinalsLeaderboardEntry[]>();
     }
 
-    return FINALS_CATEGORY_ORDER.reduce((groups, categoryName) => {
-      groups.set(
-        categoryName,
-        snapshot.finalsLeaderboard.filter((entry) => entry.display_category === categoryName)
-      );
-      return groups;
-    }, new Map<string, FinalsLeaderboardEntry[]>());
+    const groups = new Map<string, FinalsLeaderboardEntry[]>();
+    snapshot.finalsLeaderboard.forEach((entry) => {
+      const list = groups.get(entry.display_category) ?? [];
+      list.push(entry);
+      groups.set(entry.display_category, list);
+    });
+    return groups;
   }, [snapshot]);
+
+  const finalsCategoryOrder = useMemo(() => {
+    const names = new Set<string>();
+    finalists.forEach((entry) => names.add(entry.display_category));
+    snapshot?.finalsLeaderboard.forEach((entry) => names.add(entry.display_category));
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }, [finalists, snapshot]);
 
   useEffect(() => {
     if (!finalsActive) {
       return;
     }
 
-    const availableCategory = FINALS_CATEGORY_ORDER.find((categoryName) => {
+    const availableCategory = finalsCategoryOrder.find((categoryName) => {
       return (finalistsByDisplayCategory.get(categoryName)?.length ?? 0) > 0 || (finalsGroups.get(categoryName)?.length ?? 0) > 0;
     });
 
@@ -236,7 +241,7 @@ export default function LeaderboardPage() {
     ) {
       setSelectedFinalsCategory(availableCategory);
     }
-  }, [finalistsByDisplayCategory, finalsActive, finalsGroups, selectedFinalsCategory]);
+  }, [finalistsByDisplayCategory, finalsActive, finalsGroups, finalsCategoryOrder, selectedFinalsCategory]);
 
   const activeFinalists = useMemo(() => {
     return finalistsByDisplayCategory.get(selectedFinalsCategory) ?? [];
@@ -246,7 +251,15 @@ export default function LeaderboardPage() {
     return finalsGroups.get(selectedFinalsCategory) ?? [];
   }, [finalsGroups, selectedFinalsCategory]);
 
-  const activeFinalsToggleLabel = selectedFinalsCategory === "Men / Open" ? "Show Women / Open finals" : "Show Men / Open finals";
+  const activeFinalsToggleLabel = useMemo(() => {
+    if (!finalsCategoryOrder.length || !selectedFinalsCategory) {
+      return "Next finals category";
+    }
+
+    const currentIndex = finalsCategoryOrder.indexOf(selectedFinalsCategory);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % finalsCategoryOrder.length : 0;
+    return `Show ${finalsCategoryOrder[nextIndex]}`;
+  }, [finalsCategoryOrder, selectedFinalsCategory]);
 
   const lastUpdated = updatedAt?.toLocaleTimeString([], {
     hour: "2-digit",
@@ -349,9 +362,15 @@ export default function LeaderboardPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setSelectedFinalsCategory((current) =>
-                      current === "Men / Open" ? "Women / Open" : "Men / Open"
-                    )
+                    setSelectedFinalsCategory((current) => {
+                      if (!finalsCategoryOrder.length) {
+                        return current;
+                      }
+
+                      const currentIndex = finalsCategoryOrder.indexOf(current);
+                      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % finalsCategoryOrder.length : 0;
+                      return finalsCategoryOrder[nextIndex];
+                    })
                   }
                   className="btn-ghost"
                 >

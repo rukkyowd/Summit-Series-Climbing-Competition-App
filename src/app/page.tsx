@@ -6,6 +6,7 @@ import SiteHeader from "@/components/site-header";
 import { getAuthState, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { advanceEventToFinals, getCompetitionSnapshot, resetActiveEvent, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
 import {
+  CATEGORY_AGE_GROUPS,
   DEFAULT_FINALS_CUTOFF,
   DEFAULT_MAX_CLIMBERS,
   DEFAULT_QUALIFIER_COUNTING_CLIMBS,
@@ -136,6 +137,7 @@ export default function HomePage() {
             qualifier_counting_climbs: draft.qualifier_counting_climbs,
             finals_cutoff: draft.finals_cutoff,
             finals_tie_advances: draft.finals_tie_advances,
+            finals_eligible_age_groups: draft.finals_eligible_age_groups,
             stage_mode: draft.stage_mode,
             qualifier_locked_at: draft.qualifier_locked_at,
             finals_started_at: draft.finals_started_at,
@@ -159,7 +161,7 @@ export default function HomePage() {
     }
 
     const confirmed = window.confirm(
-      "Advance this scramble to finals? This will freeze registration and qualifier scoring, snapshot Men / Open and Women / Open finalists, clear any finals attempts, and switch the event into the 2025 IFSC points finals format."
+      "Advance this scramble to finals? This will freeze registration and qualifier scoring, snapshot finalists for the configured Men and Women finals age groups, clear any finals attempts, and switch the event into the 2025 IFSC points finals format."
     );
 
     if (!confirmed) {
@@ -470,7 +472,8 @@ export default function HomePage() {
                     <p>`Qualifier boulders`: how many qualifier problems climbers can log.</p>
                     <p>`Climber cap`: the maximum number of registrations allowed.</p>
                     <p>`Counting climbs`: how many best qualifier climbs count toward ranking.</p>
-                    <p>`Finals cutoff`: how many `Men / Open` and `Women / Open` climbers advance, before tie extensions.</p>
+                    <p>`Finals cutoff`: how many climbers advance per finals-eligible category, before tie extensions.</p>
+                    <p>`Finals age groups`: which Men and Women age groups are allowed to advance to finals.</p>
                   </div>
                 </div>
 
@@ -518,12 +521,57 @@ export default function HomePage() {
                 </p>
 
                 <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                  <div className="meta-label">Finals age groups</div>
+                  <p className="mt-3 text-sm text-slate-300">
+                    Choose which age groups can reach finals. This applies to Men and Women divisions for the selected age groups.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {CATEGORY_AGE_GROUPS.map((ageGroup) => {
+                      const selected = draft.finals_eligible_age_groups.includes(ageGroup);
+
+                      return (
+                        <label
+                          key={ageGroup}
+                          className={`cursor-pointer rounded-full border px-4 py-2 text-sm transition-colors ${
+                            selected
+                              ? "border-green-500/30 bg-green-500/10 text-green-200"
+                              : "border-white/10 bg-white/[0.03] text-slate-300"
+                          } ${!canSave || finalsActive ? "opacity-60" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={selected}
+                            disabled={!canSave || finalsActive}
+                            onChange={(event) => {
+                              const next = event.target.checked
+                                ? [...draft.finals_eligible_age_groups, ageGroup]
+                                : draft.finals_eligible_age_groups.filter((entry) => entry !== ageGroup);
+
+                              setDraft({
+                                ...draft,
+                                finals_eligible_age_groups: next.length ? next : draft.finals_eligible_age_groups,
+                              });
+                            }}
+                          />
+                          {ageGroup}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-sm text-slate-400">
+                    Current finals categories:{" "}
+                    {draft.finals_eligible_age_groups.map((ageGroup) => `Men / ${ageGroup} and Women / ${ageGroup}`).join(", ")}
+                  </p>
+                </div>
+
+                <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
                   <div className="meta-label">Registration categories</div>
                   <p className="mt-3 text-sm text-slate-300">
                     Registration always includes the full category grid by default: Men, Women, and X across Youth D, Youth C, Youth B, Youth A, Junior, Rec, Masters, and Open.
                   </p>
                   <p className="mt-3 text-sm text-slate-400">
-                    Finals advancement is limited to Men / Open and Women / Open. When a scramble is advanced to finals, the app freezes qualifiers and switches into the 2025 IFSC points finals format with four finals boulders.
+                    Finals advancement follows the selected finals age groups for Men and Women. When a scramble is advanced to finals, the app freezes qualifiers and switches into the 2025 IFSC points finals format with four finals boulders.
                   </p>
                 </div>
 

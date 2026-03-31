@@ -3,6 +3,7 @@ export const DEFAULT_MAX_CLIMBERS = 80;
 export const DEFAULT_QUALIFIER_COUNTING_CLIMBS = 6;
 export const DEFAULT_FINALS_CUTOFF = 6;
 export const DEFAULT_FINALS_PROBLEM_COUNT = 4;
+export const DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS = ["Open"] as const;
 export const QUALIFIER_PENALTY_PER_EXTRA_ATTEMPT = 200;
 export const QUALIFIER_MAX_PENALIZED_EXTRA_ATTEMPTS = 3;
 export const FINAL_TOP_POINTS = 25;
@@ -83,6 +84,7 @@ export interface EventConfig {
   qualifier_counting_climbs: number;
   finals_cutoff: 6 | 8;
   finals_tie_advances: boolean;
+  finals_eligible_age_groups: string[];
   qualifier_locked_at: string | null;
   finals_started_at: string | null;
   finals_problem_count: number;
@@ -271,8 +273,26 @@ export function getDefaultEventCategories(): EventCategory[] {
   );
 }
 
-export function isFinalsEligibleCategory(genderDivision: string, ageGroup: string) {
-  return ageGroup === "Open" && (genderDivision === "Men" || genderDivision === "Women");
+export function normalizeFinalsEligibleAgeGroups(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS];
+  }
+
+  const allowed = new Set(CATEGORY_AGE_GROUPS);
+  const normalized = value.filter((entry): entry is string => typeof entry === "string" && allowed.has(entry as CategoryAgeGroup));
+
+  return normalized.length ? normalized : [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS];
+}
+
+export function isFinalsEligibleCategory(
+  event: Pick<EventConfig, "finals_eligible_age_groups">,
+  genderDivision: string,
+  ageGroup: string
+) {
+  return (
+    (genderDivision === "Men" || genderDivision === "Women") &&
+    event.finals_eligible_age_groups.includes(ageGroup)
+  );
 }
 
 export const FORMAT_TEMPLATES: FormatTemplate[] = [
@@ -368,6 +388,7 @@ export const DEFAULT_EVENT_CONFIG: EventConfig = {
   qualifier_counting_climbs: DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   finals_cutoff: DEFAULT_FINALS_CUTOFF,
   finals_tie_advances: true,
+  finals_eligible_age_groups: [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS],
   qualifier_locked_at: null,
   finals_started_at: null,
   finals_problem_count: DEFAULT_FINALS_PROBLEM_COUNT,
@@ -404,7 +425,7 @@ export function getEventWorkflowGuide(
       summary:
         "Registration is closed, finalists move as one group through four finals boulders, and judges control all scoring.",
       notes: [
-        "Only Men / Open and Women / Open can advance to finals in this app.",
+        "Finals advancement follows the event's configured finals age groups across Men and Women divisions.",
         "Finals scoring uses the 2025 IFSC points system, with qualifier rank used for count-back.",
         "Climbers should follow the official presentation, observation, transit, and start order instead of self-scoring.",
       ],
@@ -641,6 +662,7 @@ export function normalizeEventConfig(
     finals_cutoff:
       clampNumber(event?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6,
     finals_tie_advances: event?.finals_tie_advances ?? true,
+    finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(event?.finals_eligible_age_groups),
     qualifier_locked_at: event?.qualifier_locked_at ?? null,
     finals_started_at: event?.finals_started_at ?? null,
     finals_problem_count: clampNumber(
@@ -962,7 +984,7 @@ export function pickFinalists(
   const byCategory = new Map<string, QualifierLeaderboardEntry[]>();
 
   qualifierEntries.forEach((entry) => {
-    if (!isFinalsEligibleCategory(entry.gender_division, entry.age_group)) {
+    if (!isFinalsEligibleCategory(event, entry.gender_division, entry.age_group)) {
       return;
     }
 

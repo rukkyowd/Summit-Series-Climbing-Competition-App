@@ -178,7 +178,9 @@ function ScorecardContent() {
   }, [climber, snapshot]);
 
   const finalsEligible = climber
-    ? isFinalsEligibleCategory(climber.gender_division, climber.age_group)
+    ? snapshot
+      ? isFinalsEligibleCategory(snapshot.event, climber.gender_division, climber.age_group)
+      : false
     : false;
   const qualifierLocked = snapshot?.event.stage_mode === "finals";
   const activeScheduleBlock = useMemo(
@@ -610,7 +612,7 @@ function ScorecardContent() {
             {!canJudge ? (
               <p className="mt-4 text-sm text-slate-300">Finals scoring requires a judge or admin session.</p>
             ) : !finalsEligible ? (
-              <p className="mt-4 text-sm text-slate-300">Only Men / Open and Women / Open advance to finals.</p>
+              <p className="mt-4 text-sm text-slate-300">This climber&apos;s age group is not enabled for finals in the current event setup.</p>
             ) : !finalists.has(climber.id) ? (
               <p className="mt-4 text-sm text-slate-300">This climber has not advanced into finals for the current cutoff.</p>
             ) : !finalsStaffScoringOpen ? (
