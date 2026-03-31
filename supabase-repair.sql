@@ -248,6 +248,49 @@ as $$
   )
 $$;
 
+create table public.event_categories (
+  id uuid primary key default gen_random_uuid(),
+  event_id integer not null references public.active_event_config(id) on delete cascade default 1,
+  gender_division text not null,
+  age_group text not null,
+  display_name text not null,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (event_id, gender_division, age_group)
+);
+
+create table public.event_time_slots (
+  id uuid primary key default gen_random_uuid(),
+  event_id integer not null references public.active_event_config(id) on delete cascade default 1,
+  label text not null,
+  phase_type text not null default 'custom' check (phase_type in ('check_in', 'technical_meeting', 'isolation', 'qualifier_round', 'wall_reset', 'observation', 'finals_round', 'results', 'custom')),
+  audience_label text not null default '',
+  is_active boolean not null default false,
+  start_time text,
+  end_time text,
+  capacity integer not null check (capacity > 0),
+  eligible_category_ids jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  check (jsonb_typeof(eligible_category_ids) = 'array')
+);
+
+create table public.climbers (
+  id uuid primary key default gen_random_uuid(),
+  event_id integer not null references public.active_event_config(id) on delete cascade default 1,
+  name text not null,
+  climber_number text not null,
+  province text not null,
+  category_id uuid references public.event_categories(id) on delete set null,
+  gender_division text not null,
+  age_group text not null,
+  display_category text not null,
+  time_slot_id uuid references public.event_time_slots(id) on delete set null,
+  access_token text not null unique,
+  access_token_created_at timestamptz not null default now(),
+  registered_at timestamptz not null default now(),
+  unique (event_id, climber_number)
+);
+
 create or replace function public.registration_open()
 returns boolean
 language sql
@@ -353,49 +396,6 @@ as $$
       true
     )
 $$;
-
-create table public.event_categories (
-  id uuid primary key default gen_random_uuid(),
-  event_id integer not null references public.active_event_config(id) on delete cascade default 1,
-  gender_division text not null,
-  age_group text not null,
-  display_name text not null,
-  sort_order integer not null default 0,
-  created_at timestamptz not null default now(),
-  unique (event_id, gender_division, age_group)
-);
-
-create table public.event_time_slots (
-  id uuid primary key default gen_random_uuid(),
-  event_id integer not null references public.active_event_config(id) on delete cascade default 1,
-  label text not null,
-  phase_type text not null default 'custom' check (phase_type in ('check_in', 'technical_meeting', 'isolation', 'qualifier_round', 'wall_reset', 'observation', 'finals_round', 'results', 'custom')),
-  audience_label text not null default '',
-  is_active boolean not null default false,
-  start_time text,
-  end_time text,
-  capacity integer not null check (capacity > 0),
-  eligible_category_ids jsonb not null default '[]'::jsonb,
-  created_at timestamptz not null default now(),
-  check (jsonb_typeof(eligible_category_ids) = 'array')
-);
-
-create table public.climbers (
-  id uuid primary key default gen_random_uuid(),
-  event_id integer not null references public.active_event_config(id) on delete cascade default 1,
-  name text not null,
-  climber_number text not null,
-  province text not null,
-  category_id uuid references public.event_categories(id) on delete set null,
-  gender_division text not null,
-  age_group text not null,
-  display_category text not null,
-  time_slot_id uuid references public.event_time_slots(id) on delete set null,
-  access_token text not null unique,
-  access_token_created_at timestamptz not null default now(),
-  registered_at timestamptz not null default now(),
-  unique (event_id, climber_number)
-);
 
 create table public.qualifier_attempts (
   id uuid primary key default gen_random_uuid(),
