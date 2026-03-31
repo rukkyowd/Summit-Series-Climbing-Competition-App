@@ -78,6 +78,7 @@ begin
     drop policy if exists "final attempts staff write" on public.final_attempts;
   end if;
 end $$;
+drop function if exists public.reset_active_event();
 drop function if exists public.advance_event_to_finals();
 drop function if exists public.finals_open();
 drop function if exists public.qualifiers_open();
@@ -502,6 +503,51 @@ end;
 $$;
 
 grant execute on function public.submit_qualifier_attempt(text, integer, integer, boolean) to anon, authenticated;
+
+create or replace function public.reset_active_event()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can reset the active event';
+  end if;
+
+  delete from public.final_attempts
+  where event_id = 1;
+
+  delete from public.event_finalists
+  where event_id = 1;
+
+  delete from public.qualifier_attempts
+  where event_id = 1;
+
+  delete from public.climbers
+  where event_id = 1;
+
+  delete from public.event_time_slots
+  where event_id = 1;
+
+  update public.active_event_config
+  set
+    name = 'Current Event',
+    format = 'scramble',
+    stage_mode = 'qualifier',
+    total_climbs = 30,
+    max_climbers = 80,
+    qualifier_counting_climbs = 6,
+    finals_cutoff = 6,
+    finals_tie_advances = true,
+    qualifier_locked_at = null,
+    finals_started_at = null,
+    finals_problem_count = 4
+  where id = 1;
+end;
+$$;
+
+grant execute on function public.reset_active_event() to authenticated;
 
 create or replace function public.advance_event_to_finals()
 returns void

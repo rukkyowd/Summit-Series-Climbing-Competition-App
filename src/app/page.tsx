@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
 import { getAuthState, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
-import { advanceEventToFinals, getCompetitionSnapshot, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
+import { advanceEventToFinals, getCompetitionSnapshot, resetActiveEvent, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
 import {
   DEFAULT_FINALS_CUTOFF,
   DEFAULT_MAX_CLIMBERS,
@@ -157,6 +157,34 @@ export default function HomePage() {
           setMessage("Event advanced to finals. Registration and qualifier scoring are now locked.");
         } catch (nextError) {
           setError(nextError instanceof Error ? nextError.message : "Unable to advance the event to finals.");
+        }
+      })();
+    });
+  };
+
+  const resetEvent = () => {
+    if (!canSave) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Reset the active event back to default? This will delete all climbers, qualifier attempts, finalist snapshots, finals attempts, time slots, and restore the default scramble setup."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setMessage("");
+    setError("");
+    startTransition(() => {
+      void (async () => {
+        try {
+          await resetActiveEvent();
+          await load();
+          setMessage("Active event reset to defaults.");
+        } catch (nextError) {
+          setError(nextError instanceof Error ? nextError.message : "Unable to reset the active event.");
         }
       })();
     });
@@ -417,6 +445,9 @@ export default function HomePage() {
                   ) : null}
                   <button type="button" onClick={save} disabled={!canSave || isPending || finalsActive} className="btn-primary">
                     {isPending ? "Saving..." : "Save active event"}
+                  </button>
+                  <button type="button" onClick={resetEvent} disabled={!canSave || isPending} className="btn-ghost">
+                    {isPending ? "Working..." : "Reset event"}
                   </button>
                   <button type="button" onClick={() => setDraft(snapshot ? cloneEvent(snapshot.event) : null)} className="btn-ghost">
                     Reset draft

@@ -481,6 +481,17 @@ export async function advanceEventToFinals() {
   return getCompetitionSnapshot();
 }
 
+export async function resetActiveEvent() {
+  ensureConfigured();
+
+  const { error } = await supabase.rpc("reset_active_event");
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getCompetitionSnapshot();
+}
+
 export async function registerClimber(input: RegisterClimberInput) {
   ensureConfigured();
 
