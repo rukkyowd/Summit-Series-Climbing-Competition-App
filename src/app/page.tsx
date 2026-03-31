@@ -87,6 +87,7 @@ export default function HomePage() {
 
   const canSave = profile?.role === "admin";
   const supportsFinals = draft ? formatSupportsFinals(draft.format) : false;
+  const canConfigureFinalsAdvancement = draft ? draft.format === "scramble" || supportsFinals : false;
   const finalsActive = draft?.stage_mode === "finals";
   const canAdvanceToFinals = canSave && draft?.format === "scramble" && draft.stage_mode === "qualifier";
   const leader = snapshot?.qualifierLeaderboard[0] ?? null;
@@ -115,8 +116,8 @@ export default function HomePage() {
             total_climbs: draft.total_climbs,
             max_climbers: draft.max_climbers,
             qualifier_counting_climbs: draft.qualifier_counting_climbs,
-            finals_cutoff: supportsFinals ? draft.finals_cutoff : DEFAULT_FINALS_CUTOFF,
-            finals_tie_advances: supportsFinals ? draft.finals_tie_advances : true,
+            finals_cutoff: draft.finals_cutoff,
+            finals_tie_advances: draft.finals_tie_advances,
             stage_mode: draft.stage_mode,
             qualifier_locked_at: draft.qualifier_locked_at,
             finals_started_at: draft.finals_started_at,
@@ -378,27 +379,60 @@ export default function HomePage() {
                   </div>
                 ) : null}
 
+                <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+                  <div className="meta-label">What these controls do</div>
+                  <div className="mt-3 space-y-2">
+                    <p>`Event name`: the title shown across the app.</p>
+                    <p>`Format`: the competition mode and scoring flow.</p>
+                    <p>`Qualifier boulders`: how many qualifier problems climbers can log.</p>
+                    <p>`Climber cap`: the maximum number of registrations allowed.</p>
+                    <p>`Counting climbs`: how many best qualifier climbs count toward ranking.</p>
+                    <p>`Finals cutoff`: how many `Men / Open` and `Women / Open` climbers advance, before tie extensions.</p>
+                  </div>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
-                  <input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="Event name" />
-                  <select value={draft.format} onChange={(event) => setDraft({ ...draft, format: event.target.value as EventConfig["format"] })} disabled={!canSave || finalsActive} className="input-field">
-                    {FORMAT_TEMPLATES.map((template) => <option key={template.value} value={template.value}>{template.label}</option>)}
-                  </select>
+                  <label className="text-sm text-slate-300">
+                    <span className="meta-label mb-2 block">Event name</span>
+                    <input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="Event name" />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    <span className="meta-label mb-2 block">Format template</span>
+                    <select value={draft.format} onChange={(event) => setDraft({ ...draft, format: event.target.value as EventConfig["format"] })} disabled={!canSave || finalsActive} className="input-field">
+                      {FORMAT_TEMPLATES.map((template) => <option key={template.value} value={template.value}>{template.label}</option>)}
+                    </select>
+                  </label>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Total climbs" />
-                  <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Climber cap" />
-                  <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Counting climbs" />
-                  <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : 6 })} disabled={!canSave || !supportsFinals || finalsActive} className="input-field">
-                    <option value={6}>Top 6 finals</option>
-                    <option value={8}>Top 8 finals</option>
-                  </select>
+                  <label className="text-sm text-slate-300">
+                    <span className="meta-label mb-2 block">Qualifier boulders</span>
+                    <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Total climbs" />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    <span className="meta-label mb-2 block">Climber cap</span>
+                    <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Climber cap" />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    <span className="meta-label mb-2 block">Counting climbs</span>
+                    <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Counting climbs" />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    <span className="meta-label mb-2 block">Finals cutoff</span>
+                    <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : 6 })} disabled={!canSave || !canConfigureFinalsAdvancement || finalsActive} className="input-field">
+                      <option value={6}>Top 6 finals</option>
+                      <option value={8}>Top 8 finals</option>
+                    </select>
+                  </label>
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-slate-300">
-                  <input type="checkbox" checked={draft.finals_tie_advances} onChange={(event) => setDraft({ ...draft, finals_tie_advances: event.target.checked })} disabled={!canSave || !supportsFinals || finalsActive} />
+                  <input type="checkbox" checked={draft.finals_tie_advances} onChange={(event) => setDraft({ ...draft, finals_tie_advances: event.target.checked })} disabled={!canSave || !canConfigureFinalsAdvancement || finalsActive} />
                   Advance ties at the cutoff
                 </label>
+                <p className="text-sm text-slate-400">
+                  This applies to the finals handoff from scramble too, so you can set top 6 or top 8 before advancing the event.
+                </p>
 
                 <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
                   <div className="meta-label">Registration categories</div>
@@ -452,6 +486,9 @@ export default function HomePage() {
                   <button type="button" onClick={() => setDraft(snapshot ? cloneEvent(snapshot.event) : null)} className="btn-ghost">
                     Reset draft
                   </button>
+                </div>
+                <div className="text-sm text-slate-400">
+                  `Advance to finals` freezes qualifiers and starts finals. `Save active event` keeps your setup changes. `Reset event` wipes the live event back to the default scramble setup. `Reset draft` only discards unsaved edits on this page.
                 </div>
               </div>
             ) : (

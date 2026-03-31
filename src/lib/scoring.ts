@@ -326,7 +326,6 @@ export function normalizeEventConfig(
   timeSlots: EventTimeSlot[] = []
 ): EventConfig {
   const nextFormat = (event?.format ?? DEFAULT_EVENT_CONFIG.format) as EventFormat;
-  const supportsFinals = formatSupportsFinals(nextFormat);
   const normalizedCategories = (categories.length ? categories : getDefaultEventCategories())
     .map((category, index) => ({
       ...category,
@@ -355,9 +354,8 @@ export function normalizeEventConfig(
       20,
       DEFAULT_QUALIFIER_COUNTING_CLIMBS
     ),
-    finals_cutoff: supportsFinals
-      ? (clampNumber(event?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6)
-      : DEFAULT_FINALS_CUTOFF,
+    finals_cutoff:
+      clampNumber(event?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6,
     finals_tie_advances: event?.finals_tie_advances ?? true,
     qualifier_locked_at: event?.qualifier_locked_at ?? null,
     finals_started_at: event?.finals_started_at ?? null,
