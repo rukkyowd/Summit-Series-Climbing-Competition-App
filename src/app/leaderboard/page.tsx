@@ -90,6 +90,8 @@ export default function LeaderboardPage() {
     });
   }, [selectedCategory, snapshot]);
 
+  const showingAllCategories = selectedCategory === ALL_CATEGORIES;
+
   const lastUpdated = updatedAt?.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -166,8 +168,12 @@ export default function LeaderboardPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="meta-label">Category rank</div>
-                        <div className="mt-2 text-2xl font-semibold text-chalk">#{entry.category_rank}</div>
+                        <div className="meta-label">
+                          {showingAllCategories ? "Overall rank" : "Category rank"}
+                        </div>
+                        <div className="mt-2 text-2xl font-semibold text-chalk">
+                          #{showingAllCategories ? entry.overall_rank : entry.category_rank}
+                        </div>
                         <div className="mt-1 text-xs text-slate-400">
                           {snapshot ? getTimeSlotLabel(entry.time_slot_id, snapshot.event) : "No slot"}
                         </div>
