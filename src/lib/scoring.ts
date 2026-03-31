@@ -13,10 +13,24 @@ export const EVENT_FORMATS = [
   "ifsc_finals_format",
 ] as const;
 
+export const CATEGORY_DIVISIONS = ["Men", "Women", "X"] as const;
+export const CATEGORY_AGE_GROUPS = [
+  "Youth D",
+  "Youth C",
+  "Youth B",
+  "Youth A",
+  "Junior",
+  "Rec",
+  "Masters",
+  "Open",
+] as const;
+
 export type EventFormat = (typeof EVENT_FORMATS)[number];
 export type AttemptEnteredBy = "climber" | "staff";
 export type FinalEnteredBy = "staff";
 export type StageMode = "qualifier" | "finals";
+export type CategoryDivision = (typeof CATEGORY_DIVISIONS)[number];
+export type CategoryAgeGroup = (typeof CATEGORY_AGE_GROUPS)[number];
 
 export interface EventCategory {
   id: string;

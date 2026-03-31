@@ -6,11 +6,14 @@ import SiteHeader from "@/components/site-header";
 import { getAuthState, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { getCompetitionSnapshot, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
 import {
+  CATEGORY_AGE_GROUPS,
+  CATEGORY_DIVISIONS,
   DEFAULT_FINALS_CUTOFF,
   DEFAULT_MAX_CLIMBERS,
   DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   DEFAULT_TOTAL_CLIMBS,
   FORMAT_TEMPLATES,
+  buildDisplayCategory,
   formatSupportsFinals,
   formatTimeRange,
   type EventCategory,
@@ -38,12 +41,13 @@ function cloneEvent(event: EventConfig): EventConfig {
 }
 
 function makeCategory(index: number): EventCategory {
+  const division = CATEGORY_DIVISIONS[index % CATEGORY_DIVISIONS.length];
   return {
     id: makeId(),
     event_id: 1,
-    gender_division: index === 0 ? "Open" : "",
-    age_group: index === 0 ? "All ages" : "",
-    display_name: index === 0 ? "Open / All ages" : "",
+    gender_division: division,
+    age_group: "Open",
+    display_name: buildDisplayCategory(division, "Open"),
     sort_order: index,
   };
 }
@@ -145,7 +149,16 @@ export default function HomePage() {
         ? {
             ...current,
             categories: current.categories.map((category) =>
-              category.id === categoryId ? { ...category, ...patch } : category
+              category.id === categoryId
+                ? {
+                    ...category,
+                    ...patch,
+                    display_name: buildDisplayCategory(
+                      patch.gender_division ?? category.gender_division,
+                      patch.age_group ?? category.age_group
+                    ),
+                  }
+                : category
             ),
           }
         : current
@@ -362,9 +375,33 @@ export default function HomePage() {
                     {draft.categories.map((category, index) => (
                       <div key={category.id} className="card-muted space-y-3">
                         <div className="grid gap-3 md:grid-cols-3">
-                          <input type="text" value={category.gender_division} onChange={(event) => updateCategory(category.id, { gender_division: event.target.value })} disabled={!canSave} className="input-field" placeholder="Gender / division" />
-                          <input type="text" value={category.age_group} onChange={(event) => updateCategory(category.id, { age_group: event.target.value })} disabled={!canSave} className="input-field" placeholder="Age group" />
-                          <input type="text" value={category.display_name} onChange={(event) => updateCategory(category.id, { display_name: event.target.value })} disabled={!canSave} className="input-field" placeholder="Display label" />
+                          <select
+                            value={category.gender_division}
+                            onChange={(event) => updateCategory(category.id, { gender_division: event.target.value })}
+                            disabled={!canSave}
+                            className="input-field"
+                          >
+                            {Array.from(new Set([...CATEGORY_DIVISIONS, category.gender_division])).map((division) => (
+                              <option key={division} value={division}>
+                                {division}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={category.age_group}
+                            onChange={(event) => updateCategory(category.id, { age_group: event.target.value })}
+                            disabled={!canSave}
+                            className="input-field"
+                          >
+                            {Array.from(new Set([...CATEGORY_AGE_GROUPS, category.age_group])).map((ageGroup) => (
+                              <option key={ageGroup} value={ageGroup}>
+                                {ageGroup}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="input-field flex items-center text-slate-200">
+                            {buildDisplayCategory(category.gender_division, category.age_group)}
+                          </div>
                         </div>
                         <button type="button" onClick={() => setDraft({ ...draft, categories: draft.categories.filter((entry) => entry.id !== category.id).map((entry, nextIndex) => ({ ...entry, sort_order: nextIndex })) })} disabled={!canSave || draft.categories.length <= 1} className="btn-ghost">
                           Remove category {index + 1}
