@@ -2,33 +2,46 @@ insert into public.active_event_config (
   id,
   name,
   format,
+  stage_mode,
   total_climbs,
   max_climbers,
   qualifier_counting_climbs,
   finals_cutoff,
-  finals_tie_advances
+  finals_tie_advances,
+  qualifier_locked_at,
+  finals_started_at,
+  finals_problem_count
 )
 values (
   1,
   'Spring Boulder Jam',
-  'ifsc_finals_format',
+  'scramble',
+  'qualifier',
   12,
   48,
   6,
   6,
-  true
+  true,
+  null,
+  null,
+  4
 )
 on conflict (id) do update
 set
   name = excluded.name,
   format = excluded.format,
+  stage_mode = excluded.stage_mode,
   total_climbs = excluded.total_climbs,
   max_climbers = excluded.max_climbers,
   qualifier_counting_climbs = excluded.qualifier_counting_climbs,
   finals_cutoff = excluded.finals_cutoff,
-  finals_tie_advances = excluded.finals_tie_advances;
+  finals_tie_advances = excluded.finals_tie_advances,
+  qualifier_locked_at = excluded.qualifier_locked_at,
+  finals_started_at = excluded.finals_started_at,
+  finals_problem_count = excluded.finals_problem_count;
 
 delete from public.final_attempts;
+delete from public.event_finalists;
 delete from public.qualifier_attempts;
 delete from public.climbers;
 delete from public.event_time_slots;
@@ -120,6 +133,8 @@ join (
     ('105', 4, 1, true)
 ) as data(climber_number, climb_number, attempt_count, topped)
   on data.climber_number = seed.climber_number;
+
+select public.advance_event_to_finals();
 
 insert into public.final_attempts (climber_id, climb_number, top, zone, attempts_to_top, attempts_to_zone, entered_by)
 select seed.id, data.climb_number, data.top, data.zone, data.attempts_to_top, data.attempts_to_zone, 'staff'

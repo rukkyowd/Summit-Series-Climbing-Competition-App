@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
 import { getAuthState, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
-import { getCompetitionSnapshot, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
+import { advanceEventToFinals, getCompetitionSnapshot, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
 import {
   DEFAULT_FINALS_CUTOFF,
   DEFAULT_MAX_CLIMBERS,
   DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   DEFAULT_TOTAL_CLIMBS,
   FORMAT_TEMPLATES,
+  formatStageLabel,
   formatSupportsFinals,
   formatTimeRange,
   type EventConfig,
@@ -86,6 +87,8 @@ export default function HomePage() {
 
   const canSave = profile?.role === "admin";
   const supportsFinals = draft ? formatSupportsFinals(draft.format) : false;
+  const finalsActive = draft?.stage_mode === "finals";
+  const canAdvanceToFinals = canSave && draft?.format === "scramble" && draft.stage_mode === "qualifier";
   const leader = snapshot?.qualifierLeaderboard[0] ?? null;
   const stats = useMemo(
     () => ({
@@ -114,6 +117,10 @@ export default function HomePage() {
             qualifier_counting_climbs: draft.qualifier_counting_climbs,
             finals_cutoff: supportsFinals ? draft.finals_cutoff : DEFAULT_FINALS_CUTOFF,
             finals_tie_advances: supportsFinals ? draft.finals_tie_advances : true,
+            stage_mode: draft.stage_mode,
+            qualifier_locked_at: draft.qualifier_locked_at,
+            finals_started_at: draft.finals_started_at,
+            finals_problem_count: draft.finals_problem_count,
             categories: [],
             time_slots: draft.time_slots,
           });
@@ -122,6 +129,34 @@ export default function HomePage() {
           setMessage("Event setup saved.");
         } catch (nextError) {
           setError(nextError instanceof Error ? nextError.message : "Unable to save the event.");
+        }
+      })();
+    });
+  };
+
+  const advanceToFinals = () => {
+    if (!canAdvanceToFinals) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Advance this scramble to finals? This will freeze registration and qualifier scoring, snapshot Men / Open and Women / Open finalists, clear any finals attempts, and switch the event into the 2025 IFSC points finals format."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setMessage("");
+    setError("");
+    startTransition(() => {
+      void (async () => {
+        try {
+          await advanceEventToFinals();
+          await load();
+          setMessage("Event advanced to finals. Registration and qualifier scoring are now locked.");
+        } catch (nextError) {
+          setError(nextError instanceof Error ? nextError.message : "Unable to advance the event to finals.");
         }
       })();
     });
@@ -162,6 +197,9 @@ export default function HomePage() {
             <>
               <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
                 {snapshot ? FORMAT_TEMPLATES.find((item) => item.value === snapshot.event.format)?.label : "Loading"}
+              </div>
+              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                {snapshot ? formatStageLabel(snapshot.event.stage_mode) : "Stage"}
               </div>
               <Link href="/leaderboard" className="nav-pill">
                 Public standings
@@ -251,6 +289,9 @@ export default function HomePage() {
                     <div className="mt-2 text-2xl font-semibold text-chalk">
                       {FORMAT_TEMPLATES.find((item) => item.value === snapshot.event.format)?.label}
                     </div>
+                    <div className="mt-3 text-sm text-slate-300">
+                      Current stage: {formatStageLabel(snapshot.event.stage_mode)}
+                    </div>
                     <p className="mt-3 text-sm text-slate-300">
                       {FORMAT_TEMPLATES.find((item) => item.value === snapshot.event.format)?.description}
                     </p>
@@ -303,25 +344,31 @@ export default function HomePage() {
 
             {draft ? (
               <div className="mt-6 space-y-6">
+                {finalsActive ? (
+                  <div className="rounded-[1.4rem] border border-green-500/20 bg-green-500/10 px-4 py-4 text-sm text-green-100">
+                    Finals are active. The event format and qualifier settings are locked so the live finals standings stay stable.
+                  </div>
+                ) : null}
+
                 <div className="grid gap-4 md:grid-cols-2">
-                  <input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} disabled={!canSave} className="input-field" placeholder="Event name" />
-                  <select value={draft.format} onChange={(event) => setDraft({ ...draft, format: event.target.value as EventConfig["format"] })} disabled={!canSave} className="input-field">
+                  <input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="Event name" />
+                  <select value={draft.format} onChange={(event) => setDraft({ ...draft, format: event.target.value as EventConfig["format"] })} disabled={!canSave || finalsActive} className="input-field">
                     {FORMAT_TEMPLATES.map((template) => <option key={template.value} value={template.value}>{template.label}</option>)}
                   </select>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} disabled={!canSave} className="input-field" placeholder="Total climbs" />
-                  <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} disabled={!canSave} className="input-field" placeholder="Climber cap" />
-                  <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} disabled={!canSave} className="input-field" placeholder="Counting climbs" />
-                  <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : 6 })} disabled={!canSave || !supportsFinals} className="input-field">
+                  <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Total climbs" />
+                  <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Climber cap" />
+                  <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} disabled={!canSave || finalsActive} className="input-field" placeholder="Counting climbs" />
+                  <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : 6 })} disabled={!canSave || !supportsFinals || finalsActive} className="input-field">
                     <option value={6}>Top 6 finals</option>
                     <option value={8}>Top 8 finals</option>
                   </select>
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-slate-300">
-                  <input type="checkbox" checked={draft.finals_tie_advances} onChange={(event) => setDraft({ ...draft, finals_tie_advances: event.target.checked })} disabled={!canSave || !supportsFinals} />
+                  <input type="checkbox" checked={draft.finals_tie_advances} onChange={(event) => setDraft({ ...draft, finals_tie_advances: event.target.checked })} disabled={!canSave || !supportsFinals || finalsActive} />
                   Advance ties at the cutoff
                 </label>
 
@@ -331,31 +378,31 @@ export default function HomePage() {
                     Registration always includes the full category grid by default: Men, Women, and X across Youth D, Youth C, Youth B, Youth A, Junior, Rec, Masters, and Open.
                   </p>
                   <p className="mt-3 text-sm text-slate-400">
-                    Finals advancement is limited to Men / Open and Women / Open. There is no event-level category setup required anymore.
+                    Finals advancement is limited to Men / Open and Women / Open. When a scramble is advanced to finals, the app freezes qualifiers and switches into the 2025 IFSC points finals format with four finals boulders.
                   </p>
                 </div>
 
                 <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="meta-label">Time slots</div>
-                      <p className="mt-2 text-sm text-slate-300">Time slots are open to all categories by default.</p>
-                    </div>
-                    <button type="button" onClick={() => setDraft({ ...draft, time_slots: [...draft.time_slots, makeSlot()] })} disabled={!canSave} className="btn-ghost">Add slot</button>
+                      <div>
+                        <div className="meta-label">Time slots</div>
+                        <p className="mt-2 text-sm text-slate-300">Time slots are open to all categories by default.</p>
+                      </div>
+                    <button type="button" onClick={() => setDraft({ ...draft, time_slots: [...draft.time_slots, makeSlot()] })} disabled={!canSave || finalsActive} className="btn-ghost">Add slot</button>
                   </div>
                   <div className="mt-4 space-y-4">
                     {draft.time_slots.map((slot) => (
                       <div key={slot.id} className="card-muted space-y-4">
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          <input type="text" value={slot.label} onChange={(event) => updateSlot(slot.id, { label: event.target.value })} disabled={!canSave} className="input-field" placeholder="Slot label" />
-                          <input type="text" value={slot.start_time ?? ""} onChange={(event) => updateSlot(slot.id, { start_time: event.target.value })} disabled={!canSave} className="input-field" placeholder="Start time" />
-                          <input type="text" value={slot.end_time ?? ""} onChange={(event) => updateSlot(slot.id, { end_time: event.target.value })} disabled={!canSave} className="input-field" placeholder="End time" />
-                          <input type="number" min={1} value={slot.capacity} onChange={(event) => updateSlot(slot.id, { capacity: Number(event.target.value) || 1 })} disabled={!canSave} className="input-field" placeholder="Capacity" />
+                          <input type="text" value={slot.label} onChange={(event) => updateSlot(slot.id, { label: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="Slot label" />
+                          <input type="text" value={slot.start_time ?? ""} onChange={(event) => updateSlot(slot.id, { start_time: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="Start time" />
+                          <input type="text" value={slot.end_time ?? ""} onChange={(event) => updateSlot(slot.id, { end_time: event.target.value })} disabled={!canSave || finalsActive} className="input-field" placeholder="End time" />
+                          <input type="number" min={1} value={slot.capacity} onChange={(event) => updateSlot(slot.id, { capacity: Number(event.target.value) || 1 })} disabled={!canSave || finalsActive} className="input-field" placeholder="Capacity" />
                         </div>
                         <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
                           This slot is available to every registration category.
                         </div>
-                        <button type="button" onClick={() => setDraft({ ...draft, time_slots: draft.time_slots.filter((entry) => entry.id !== slot.id) })} disabled={!canSave} className="btn-ghost">Remove slot</button>
+                        <button type="button" onClick={() => setDraft({ ...draft, time_slots: draft.time_slots.filter((entry) => entry.id !== slot.id) })} disabled={!canSave || finalsActive} className="btn-ghost">Remove slot</button>
                       </div>
                     ))}
                     {!draft.time_slots.length ? <p className="text-sm text-slate-300">No slots configured yet.</p> : null}
@@ -363,7 +410,12 @@ export default function HomePage() {
                 </div>
 
                 <div className="flex flex-wrap gap-3">
-                  <button type="button" onClick={save} disabled={!canSave || isPending} className="btn-primary">
+                  {canAdvanceToFinals ? (
+                    <button type="button" onClick={advanceToFinals} disabled={isPending} className="btn-primary judge-action-secondary">
+                      {isPending ? "Advancing..." : "Advance to finals"}
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={save} disabled={!canSave || isPending || finalsActive} className="btn-primary">
                     {isPending ? "Saving..." : "Save active event"}
                   </button>
                   <button type="button" onClick={() => setDraft(snapshot ? cloneEvent(snapshot.event) : null)} className="btn-ghost">

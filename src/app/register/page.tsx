@@ -106,22 +106,30 @@ export default function RegisterPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="eyebrow">Registration</div>
-                <h1 className="section-title mt-4 text-4xl sm:text-5xl">Register yourself</h1>
+                <h1 className="section-title mt-4 text-4xl sm:text-5xl">
+                  {snapshot?.event.stage_mode === "finals" ? "Registration closed" : "Register yourself"}
+                </h1>
               </div>
               <div className="status-pill border-green-500/20 bg-green-500/10 text-green-200">
-                No staff login needed
+                {snapshot?.event.stage_mode === "finals" ? "Finals active" : "No staff login needed"}
               </div>
             </div>
 
+            {snapshot?.event.stage_mode === "finals" ? (
+              <div className="mt-6 rounded-[1.3rem] border border-yellow-400/20 bg-yellow-400/10 px-4 py-4 text-sm text-yellow-100">
+                This event has already advanced to finals, so new climber registration is closed and qualifier scorecards are now read-only.
+              </div>
+            ) : null}
+
             <form onSubmit={handleSubmit} className="mt-6 space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
-                <input type="text" value={name} onChange={(event) => setName(event.target.value)} className="input-field" placeholder="Climber name" disabled={loading} />
-                <input type="text" value={climberNumber} onChange={(event) => setClimberNumber(event.target.value)} className="input-field" placeholder="Climber number" disabled={loading} />
+                <input type="text" value={name} onChange={(event) => setName(event.target.value)} className="input-field" placeholder="Climber name" disabled={loading || snapshot?.event.stage_mode === "finals"} />
+                <input type="text" value={climberNumber} onChange={(event) => setClimberNumber(event.target.value)} className="input-field" placeholder="Climber number" disabled={loading || snapshot?.event.stage_mode === "finals"} />
               </div>
-              <input type="text" value={province} onChange={(event) => setProvince(event.target.value)} className="input-field" placeholder="Province" disabled={loading} />
+              <input type="text" value={province} onChange={(event) => setProvince(event.target.value)} className="input-field" placeholder="Province" disabled={loading || snapshot?.event.stage_mode === "finals"} />
 
               <div className="grid gap-4 md:grid-cols-2">
-                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="input-field" disabled={loading}>
+                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="input-field" disabled={loading || snapshot?.event.stage_mode === "finals"}>
                   <option value="">Select category</option>
                   {snapshot?.event.categories.map((category) => (
                     <option key={category.id} value={category.id}>
@@ -129,7 +137,7 @@ export default function RegisterPage() {
                     </option>
                   ))}
                 </select>
-                <select value={timeSlotId} onChange={(event) => setTimeSlotId(event.target.value)} className="input-field" disabled={loading || !availableSlots.length}>
+                <select value={timeSlotId} onChange={(event) => setTimeSlotId(event.target.value)} className="input-field" disabled={loading || !availableSlots.length || snapshot?.event.stage_mode === "finals"}>
                   <option value="">{availableSlots.length ? "Select time slot" : "No slots required"}</option>
                   {availableSlots.map((slot) => (
                     <option key={slot.id} value={slot.id} disabled={slot.remaining_capacity <= 0}>
@@ -143,8 +151,8 @@ export default function RegisterPage() {
               {successLink ? <div className="rounded-[1.3rem] border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-200">Private qualifier link created: {successLink}</div> : null}
 
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                <button type="submit" disabled={loading} className="btn-primary w-full">
-                  {loading ? "Registering..." : "Register climber"}
+                <button type="submit" disabled={loading || snapshot?.event.stage_mode === "finals"} className="btn-primary w-full">
+                  {snapshot?.event.stage_mode === "finals" ? "Registration closed" : loading ? "Registering..." : "Register climber"}
                 </button>
                 <Link href="/scorecard" className="btn-ghost w-full justify-center sm:w-auto">
                   Open scorecards

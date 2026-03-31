@@ -18,6 +18,9 @@ import {
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
+  buildFinalProblemResults,
+  calculateFinalAttemptPoints,
+  formatFinalPoints,
   formatSupportsFinals,
   getClimbs,
   getTimeSlotLabel,
@@ -101,6 +104,8 @@ function ScorecardContent() {
       .on("postgres_changes", { event: "*", schema: "public", table: "climbers" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "qualifier_attempts" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "final_attempts" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_finalists" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "active_event_config" }, load)
       .subscribe();
 
     return () => {
@@ -120,12 +125,16 @@ function ScorecardContent() {
 
     getClimbs(snapshot.event.total_climbs).forEach((climb) => {
       const qualifierAttempt = climber.qualifier_attempts.find((attempt) => attempt.climb_number === climb.number);
-      const finalsAttempt = climber.final_attempts.find((attempt) => attempt.climb_number === climb.number);
 
       nextQualifier[climb.number] = {
         attemptCount: qualifierAttempt?.attempt_count ?? 0,
         topped: qualifierAttempt?.topped ?? false,
       };
+    });
+
+    getClimbs(snapshot.event.finals_problem_count).forEach((climb) => {
+      const finalsAttempt = climber.final_attempts.find((attempt) => attempt.climb_number === climb.number);
+
       nextFinals[climb.number] = {
         top: finalsAttempt?.top ?? false,
         zone: finalsAttempt?.zone ?? false,
@@ -161,9 +170,33 @@ function ScorecardContent() {
 
     return snapshot.finalsLeaderboard.find((entry) => entry.climber_id === climber.id) ?? null;
   }, [climber, snapshot]);
+
   const finalsEligible = climber
     ? isFinalsEligibleCategory(climber.gender_division, climber.age_group)
     : false;
+  const qualifierLocked = snapshot?.event.stage_mode === "finals";
+  const liveFinalProblemResults = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    return buildFinalProblemResults(
+      Object.entries(finalsDrafts).map(([climbNumber, draft]) => ({
+        event_id: snapshot.event.id,
+        climber_id: climber?.id ?? "",
+        climb_number: Number(climbNumber),
+        top: draft.top,
+        zone: draft.zone,
+        attempts_to_top: draft.top ? draft.attemptsToTop : null,
+        attempts_to_zone: draft.zone ? draft.attemptsToZone : null,
+        entered_by: "staff" as const,
+      })),
+      snapshot.event.finals_problem_count
+    );
+  }, [climber?.id, finalsDrafts, snapshot]);
+  const liveFinalTotalPoints = useMemo(() => {
+    return liveFinalProblemResults.reduce((sum, problem) => sum + problem.points, 0);
+  }, [liveFinalProblemResults]);
 
   const runLookup = async (query: string) => {
     try {
@@ -191,7 +224,7 @@ function ScorecardContent() {
   };
 
   const saveQualifier = async (climbNumber: number) => {
-    if (!climber) {
+    if (!climber || qualifierLocked) {
       return;
     }
 
@@ -377,10 +410,15 @@ function ScorecardContent() {
                   <div className="mt-3 text-sm text-slate-300">
                     {climberEntry ? `Overall #${climberEntry.overall_rank} | Category #${climberEntry.category_rank}` : "Waiting for first score"}
                   </div>
+                  {qualifierLocked ? (
+                    <div className="mt-3 text-sm text-yellow-100">
+                      Qualifiers are archived because this event has already advanced to finals.
+                    </div>
+                  ) : null}
                   <div className="mt-4 flex flex-wrap gap-2">
                     {climberEntry?.counting_climbs.map((entry) => (
                       <span key={entry.climb_number} className="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-3 py-2 text-xs uppercase tracking-[0.22em] text-yellow-100">
-                        B{entry.climb_number.toString().padStart(2, "0")} · {entry.score}
+                        B{entry.climb_number.toString().padStart(2, "0")} - {entry.score}
                       </span>
                     ))}
                     {!climberEntry?.counting_climbs.length ? <span className="text-sm text-slate-300">No counting tops yet.</span> : null}
@@ -389,6 +427,7 @@ function ScorecardContent() {
               ) : (
                 <>
                   <div className="meta-label">Finals status</div>
+                  <div className="mt-3 font-display text-5xl text-chalk">{finalsEntry ? formatFinalPoints(finalsEntry.total_points) : "0.0"}</div>
                   <div className="mt-3 text-sm text-slate-300">
                     {!finalsEligible
                       ? "This category does not advance to finals."
@@ -419,9 +458,15 @@ function ScorecardContent() {
                 <h2 className="section-title mt-4 text-3xl">Self-scored attempts by boulder</h2>
               </div>
               <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                {canJudge ? "Saving as staff override" : "Saving from private link"}
+                {qualifierLocked ? "Qualifier round closed" : canJudge ? "Saving as staff override" : "Saving from private link"}
               </div>
             </div>
+
+            {qualifierLocked ? (
+              <p className="mt-4 text-sm text-slate-300">
+                Qualifier entries are read-only because the event has already advanced to finals.
+              </p>
+            ) : null}
 
             <div className="mt-5 grid gap-4 xl:grid-cols-2">
               {(snapshot ? getClimbs(snapshot.event.total_climbs) : []).map((climb) => {
@@ -433,7 +478,7 @@ function ScorecardContent() {
                         <div className="meta-label">Boulder {climb.number.toString().padStart(2, "0")}</div>
                         <div className="mt-2 text-xl font-semibold text-chalk">{climb.base_points} base points</div>
                       </div>
-                      <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving} className="btn-primary">
+                      <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving || qualifierLocked} className="btn-primary">
                         Save
                       </button>
                     </div>
@@ -453,6 +498,7 @@ function ScorecardContent() {
                               },
                             }))
                           }
+                          disabled={qualifierLocked}
                           className="input-field mt-2"
                         />
                       </label>
@@ -460,6 +506,7 @@ function ScorecardContent() {
                         <input
                           type="checkbox"
                           checked={draft.topped}
+                          disabled={qualifierLocked}
                           onChange={(event) =>
                             setQualifierDrafts((current) => ({
                               ...current,
@@ -483,7 +530,7 @@ function ScorecardContent() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="eyebrow">Finals</div>
-                <h2 className="section-title mt-4 text-3xl">Judge-operated IFSC scoring</h2>
+                <h2 className="section-title mt-4 text-3xl">Judge-operated IFSC points scoring</h2>
               </div>
               <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
                 {canJudge ? "Judge entry only" : "Read-only"}
@@ -497,68 +544,86 @@ function ScorecardContent() {
             ) : !finalists.has(climber.id) ? (
               <p className="mt-4 text-sm text-slate-300">This climber has not advanced into finals for the current cutoff.</p>
             ) : (
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                {(snapshot ? getClimbs(snapshot.event.total_climbs) : []).map((climb) => {
-                  const draft = finalsDrafts[climb.number] ?? {
-                    top: false,
-                    zone: false,
-                    attemptsToTop: 0,
-                    attemptsToZone: 0,
-                  };
+              <div className="mt-5 space-y-5">
+                <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+                  <div className="meta-label">Live finals points</div>
+                  <div className="mt-3 font-display text-5xl text-chalk">{formatFinalPoints(liveFinalTotalPoints)}</div>
+                  <div className="mt-3 text-sm text-slate-300">
+                    Ranked by finals points, then count-back to qualifier rank #{finalsEntry?.previous_round_rank ?? 0}.
+                  </div>
+                </div>
 
-                  return (
-                    <div key={climb.number} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="meta-label">Boulder {climb.number.toString().padStart(2, "0")}</div>
-                          <div className="mt-2 text-xl font-semibold text-chalk">Finals attempt</div>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {(snapshot ? getClimbs(snapshot.event.finals_problem_count) : []).map((climb) => {
+                    const draft = finalsDrafts[climb.number] ?? {
+                      top: false,
+                      zone: false,
+                      attemptsToTop: 0,
+                      attemptsToZone: 0,
+                    };
+                    const problemPoints = calculateFinalAttemptPoints({
+                      climb_number: climb.number,
+                      top: draft.top,
+                      zone: draft.zone,
+                      attempts_to_top: draft.top ? draft.attemptsToTop : null,
+                      attempts_to_zone: draft.zone ? draft.attemptsToZone : null,
+                    });
+
+                    return (
+                      <div key={climb.number} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="meta-label">Boulder {climb.number.toString().padStart(2, "0")}</div>
+                            <div className="mt-2 text-xl font-semibold text-chalk">Finals attempt</div>
+                            <div className="mt-2 text-sm text-slate-300">Current points: {formatFinalPoints(problemPoints)}</div>
+                          </div>
+                          <button type="button" onClick={() => void saveFinals(climb.number)} disabled={saving} className="btn-primary">
+                            Save
+                          </button>
                         </div>
-                        <button type="button" onClick={() => void saveFinals(climb.number)} disabled={saving} className="btn-primary">
-                          Save
-                        </button>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        <label className="flex items-center gap-2 text-sm text-slate-300">
-                          <input
-                            type="checkbox"
-                            checked={draft.zone}
-                            onChange={(event) =>
-                              setFinalsDrafts((current) => ({
-                                ...current,
-                                [climb.number]: {
-                                  ...draft,
-                                  zone: event.target.checked,
-                                },
-                              }))
-                            }
-                          />
-                          Zone secured
-                        </label>
-                        <label className="flex items-center gap-2 text-sm text-slate-300">
-                          <input
-                            type="checkbox"
-                            checked={draft.top}
-                            onChange={(event) =>
-                              setFinalsDrafts((current) => ({
-                                ...current,
-                                [climb.number]: {
-                                  ...draft,
-                                  top: event.target.checked,
-                                  zone: event.target.checked ? true : draft.zone,
-                                },
-                              }))
-                            }
-                          />
-                          Top secured
-                        </label>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <input type="number" min={0} value={draft.attemptsToZone} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToZone: Number(event.target.value) || 0 } }))} className="input-field" placeholder="Attempts to zone" />
-                          <input type="number" min={0} value={draft.attemptsToTop} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToTop: Number(event.target.value) || 0 } }))} className="input-field" placeholder="Attempts to top" />
+                        <div className="mt-4 space-y-3">
+                          <label className="flex items-center gap-2 text-sm text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={draft.zone}
+                              onChange={(event) =>
+                                setFinalsDrafts((current) => ({
+                                  ...current,
+                                  [climb.number]: {
+                                    ...draft,
+                                    zone: event.target.checked,
+                                  },
+                                }))
+                              }
+                            />
+                            Zone secured
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={draft.top}
+                              onChange={(event) =>
+                                setFinalsDrafts((current) => ({
+                                  ...current,
+                                  [climb.number]: {
+                                    ...draft,
+                                    top: event.target.checked,
+                                    zone: event.target.checked ? true : draft.zone,
+                                  },
+                                }))
+                              }
+                            />
+                            Top secured
+                          </label>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <input type="number" min={0} value={draft.attemptsToZone} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToZone: Number(event.target.value) || 0 } }))} className="input-field" placeholder="Attempts to zone" />
+                            <input type="number" min={0} value={draft.attemptsToTop} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToTop: Number(event.target.value) || 0 } }))} className="input-field" placeholder="Attempts to top" />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             )}
           </section>

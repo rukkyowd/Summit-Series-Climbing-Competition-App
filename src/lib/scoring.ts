@@ -2,8 +2,12 @@ export const DEFAULT_TOTAL_CLIMBS = 30;
 export const DEFAULT_MAX_CLIMBERS = 80;
 export const DEFAULT_QUALIFIER_COUNTING_CLIMBS = 6;
 export const DEFAULT_FINALS_CUTOFF = 6;
+export const DEFAULT_FINALS_PROBLEM_COUNT = 4;
 export const QUALIFIER_PENALTY_PER_EXTRA_ATTEMPT = 200;
 export const QUALIFIER_MAX_PENALIZED_EXTRA_ATTEMPTS = 3;
+export const FINAL_TOP_POINTS = 25;
+export const FINAL_ZONE_POINTS = 10;
+export const FINAL_ATTEMPT_DEDUCTION = 0.1;
 export const ACTIVE_EVENT_ID = 1;
 
 export const EVENT_FORMATS = [
@@ -57,11 +61,15 @@ export interface EventConfig {
   id: number;
   name: string;
   format: EventFormat;
+  stage_mode: StageMode;
   total_climbs: number;
   max_climbers: number;
   qualifier_counting_climbs: number;
   finals_cutoff: 6 | 8;
   finals_tie_advances: boolean;
+  qualifier_locked_at: string | null;
+  finals_started_at: string | null;
+  finals_problem_count: number;
   updated_at?: string;
   categories: EventCategory[];
   time_slots: EventTimeSlot[];
@@ -156,6 +164,15 @@ export interface QualifierLeaderboardEntry {
   category_rank: number;
 }
 
+export interface FinalProblemResult {
+  climb_number: number;
+  top: boolean;
+  zone: boolean;
+  attempts_to_top: number | null;
+  attempts_to_zone: number | null;
+  points: number;
+}
+
 export interface FinalsLeaderboardEntry {
   climber_id: string;
   name: string;
@@ -165,6 +182,8 @@ export interface FinalsLeaderboardEntry {
   display_category: string;
   gender_division: string;
   age_group: string;
+  total_points: number;
+  previous_round_rank: number;
   tops: number;
   zones: number;
   attempts_to_top: number;
@@ -172,6 +191,7 @@ export interface FinalsLeaderboardEntry {
   overall_rank: number;
   category_rank: number;
   attempts: FinalAttempt[];
+  problem_results: FinalProblemResult[];
 }
 
 export interface FinalistSelection {
@@ -179,8 +199,11 @@ export interface FinalistSelection {
   name: string;
   category_id: string | null;
   display_category: string;
+  gender_division: string;
+  age_group: string;
   qualifier_rank: number;
   advanced_with_tie: boolean;
+  created_at?: string;
 }
 
 export interface RegistrationChoice {
@@ -189,6 +212,7 @@ export interface RegistrationChoice {
 }
 
 export interface FinalsSummary {
+  total_points: number;
   tops: number;
   zones: number;
   attempts_to_top: number;
@@ -255,11 +279,15 @@ export const DEFAULT_EVENT_CONFIG: EventConfig = {
   id: ACTIVE_EVENT_ID,
   name: "Current Event",
   format: "scramble",
+  stage_mode: "qualifier",
   total_climbs: DEFAULT_TOTAL_CLIMBS,
   max_climbers: DEFAULT_MAX_CLIMBERS,
   qualifier_counting_climbs: DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   finals_cutoff: DEFAULT_FINALS_CUTOFF,
   finals_tie_advances: true,
+  qualifier_locked_at: null,
+  finals_started_at: null,
+  finals_problem_count: DEFAULT_FINALS_PROBLEM_COUNT,
   categories: [],
   time_slots: [],
 };
@@ -270,6 +298,14 @@ export function getFormatTemplate(format: EventFormat): FormatTemplate {
 
 export function formatSupportsFinals(format: EventFormat) {
   return getFormatTemplate(format).supports_finals;
+}
+
+export function isQualifierStage(event: Pick<EventConfig, "stage_mode">) {
+  return event.stage_mode === "qualifier";
+}
+
+export function isFinalsStage(event: Pick<EventConfig, "stage_mode">) {
+  return event.stage_mode === "finals";
 }
 
 export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
@@ -304,10 +340,13 @@ export function normalizeEventConfig(
         left.sort_order - right.sort_order || left.display_name.localeCompare(right.display_name)
     );
 
+  const nextStageMode = (event?.stage_mode ?? DEFAULT_EVENT_CONFIG.stage_mode) as StageMode;
+
   return {
     id: ACTIVE_EVENT_ID,
     name: event?.name?.trim() || DEFAULT_EVENT_CONFIG.name,
     format: nextFormat,
+    stage_mode: nextStageMode === "finals" ? "finals" : "qualifier",
     total_climbs: clampNumber(event?.total_climbs, 1, 200, DEFAULT_TOTAL_CLIMBS),
     max_climbers: clampNumber(event?.max_climbers, 1, 1000, DEFAULT_MAX_CLIMBERS),
     qualifier_counting_climbs: clampNumber(
@@ -320,6 +359,14 @@ export function normalizeEventConfig(
       ? (clampNumber(event?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6)
       : DEFAULT_FINALS_CUTOFF,
     finals_tie_advances: event?.finals_tie_advances ?? true,
+    qualifier_locked_at: event?.qualifier_locked_at ?? null,
+    finals_started_at: event?.finals_started_at ?? null,
+    finals_problem_count: clampNumber(
+      event?.finals_problem_count,
+      DEFAULT_FINALS_PROBLEM_COUNT,
+      DEFAULT_FINALS_PROBLEM_COUNT,
+      DEFAULT_FINALS_PROBLEM_COUNT
+    ),
     updated_at: event?.updated_at,
     categories: normalizedCategories,
     time_slots: timeSlots
@@ -479,22 +526,73 @@ export function compareQualifierEntries(left: QualifierLeaderboardEntry, right: 
   return left.name.localeCompare(right.name);
 }
 
-export function summarizeFinalsAttempts(attempts: FinalAttempt[]): FinalsSummary {
-  return attempts.reduce<FinalsSummary>(
-    (summary, attempt) => {
-      if (attempt.top) {
+export function normalizeSuccessfulAttempts(attemptCount: number | null | undefined) {
+  if (typeof attemptCount !== "number" || Number.isNaN(attemptCount)) {
+    return 1;
+  }
+
+  return Math.max(1, Math.round(attemptCount));
+}
+
+function roundTenths(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+export function calculateFinalAttemptPoints(attempt: Partial<FinalAttempt>) {
+  const topPoints = attempt.top
+    ? FINAL_TOP_POINTS - (normalizeSuccessfulAttempts(attempt.attempts_to_top) - 1) * FINAL_ATTEMPT_DEDUCTION
+    : 0;
+  const zonePoints = attempt.zone
+    ? FINAL_ZONE_POINTS - (normalizeSuccessfulAttempts(attempt.attempts_to_zone) - 1) * FINAL_ATTEMPT_DEDUCTION
+    : 0;
+
+  return Math.max(0, roundTenths(Math.max(topPoints, zonePoints)));
+}
+
+export function buildFinalProblemResults(
+  attempts: FinalAttempt[],
+  finalsProblemCount: number
+): FinalProblemResult[] {
+  const attemptMap = new Map<number, FinalAttempt>();
+
+  attempts.forEach((attempt) => {
+    attemptMap.set(attempt.climb_number, attempt);
+  });
+
+  return Array.from({ length: finalsProblemCount }, (_, index) => {
+    const climbNumber = index + 1;
+    const attempt = attemptMap.get(climbNumber);
+
+    return {
+      climb_number: climbNumber,
+      top: attempt?.top ?? false,
+      zone: attempt?.zone ?? false,
+      attempts_to_top: attempt?.top ? normalizeSuccessfulAttempts(attempt.attempts_to_top) : null,
+      attempts_to_zone: attempt?.zone ? normalizeSuccessfulAttempts(attempt.attempts_to_zone) : null,
+      points: calculateFinalAttemptPoints(attempt ?? { climb_number: climbNumber, top: false, zone: false }),
+    };
+  });
+}
+
+export function summarizeFinalProblemResults(problemResults: FinalProblemResult[]): FinalsSummary {
+  return problemResults.reduce<FinalsSummary>(
+    (summary, problem) => {
+      summary.total_points = roundTenths(summary.total_points + problem.points);
+
+      if (problem.top) {
         summary.tops += 1;
-        summary.attempts_to_top += attempt.attempts_to_top ?? 0;
+        summary.attempts_to_top += problem.attempts_to_top ?? 0;
       }
 
-      if (attempt.zone) {
+      if (problem.zone) {
         summary.zones += 1;
-        summary.attempts_to_zone += attempt.attempts_to_zone ?? 0;
+        summary.attempts_to_zone += problem.attempts_to_zone ?? 0;
       }
 
       return summary;
     },
     {
+      total_points: 0,
       tops: 0,
       zones: 0,
       attempts_to_top: 0,
@@ -503,27 +601,44 @@ export function summarizeFinalsAttempts(attempts: FinalAttempt[]): FinalsSummary
   );
 }
 
-export function buildFinalsLeaderboard(climbers: ClimberWithAttempts[]): FinalsLeaderboardEntry[] {
-  const entries = climbers.map((climber) => {
-    const summary = summarizeFinalsAttempts(climber.final_attempts);
+export function buildFinalsLeaderboard(
+  climbers: ClimberWithAttempts[],
+  finalists: FinalistSelection[],
+  event: EventConfig
+): FinalsLeaderboardEntry[] {
+  const climberMap = new Map(climbers.map((climber) => [climber.id, climber]));
 
-    return {
-      climber_id: climber.id,
-      name: climber.name,
-      climber_number: climber.climber_number,
-      province: climber.province,
-      category_id: climber.category_id,
-      display_category: climber.display_category,
-      gender_division: climber.gender_division,
-      age_group: climber.age_group,
-      tops: summary.tops,
-      zones: summary.zones,
-      attempts_to_top: summary.attempts_to_top,
-      attempts_to_zone: summary.attempts_to_zone,
-      overall_rank: 0,
-      category_rank: 0,
-      attempts: [...climber.final_attempts].sort((left, right) => left.climb_number - right.climb_number),
-    };
+  const entries = finalists.flatMap((finalist) => {
+    const climber = climberMap.get(finalist.climber_id);
+    if (!climber) {
+      return [];
+    }
+
+    const problemResults = buildFinalProblemResults(climber.final_attempts, event.finals_problem_count);
+    const summary = summarizeFinalProblemResults(problemResults);
+
+    return [
+      {
+        climber_id: climber.id,
+        name: climber.name,
+        climber_number: climber.climber_number,
+        province: climber.province,
+        category_id: climber.category_id,
+        display_category: climber.display_category,
+        gender_division: climber.gender_division,
+        age_group: climber.age_group,
+        total_points: summary.total_points,
+        previous_round_rank: finalist.qualifier_rank,
+        tops: summary.tops,
+        zones: summary.zones,
+        attempts_to_top: summary.attempts_to_top,
+        attempts_to_zone: summary.attempts_to_zone,
+        overall_rank: 0,
+        category_rank: 0,
+        attempts: [...climber.final_attempts].sort((left, right) => left.climb_number - right.climb_number),
+        problem_results: problemResults,
+      },
+    ];
   });
 
   entries.sort(compareFinalsEntries);
@@ -531,20 +646,12 @@ export function buildFinalsLeaderboard(climbers: ClimberWithAttempts[]): FinalsL
 }
 
 export function compareFinalsEntries(left: FinalsLeaderboardEntry, right: FinalsLeaderboardEntry) {
-  if (right.tops !== left.tops) {
-    return right.tops - left.tops;
+  if (right.total_points !== left.total_points) {
+    return right.total_points - left.total_points;
   }
 
-  if (right.zones !== left.zones) {
-    return right.zones - left.zones;
-  }
-
-  if (left.attempts_to_top !== right.attempts_to_top) {
-    return left.attempts_to_top - right.attempts_to_top;
-  }
-
-  if (left.attempts_to_zone !== right.attempts_to_zone) {
-    return left.attempts_to_zone - right.attempts_to_zone;
+  if (left.previous_round_rank !== right.previous_round_rank) {
+    return left.previous_round_rank - right.previous_round_rank;
   }
 
   return left.name.localeCompare(right.name);
@@ -554,10 +661,6 @@ export function pickFinalists(
   qualifierEntries: QualifierLeaderboardEntry[],
   event: EventConfig
 ): FinalistSelection[] {
-  if (!formatSupportsFinals(event.format)) {
-    return [];
-  }
-
   const byCategory = new Map<string, QualifierLeaderboardEntry[]>();
 
   qualifierEntries.forEach((entry) => {
@@ -584,6 +687,8 @@ export function pickFinalists(
           name: entry.name,
           category_id: entry.category_id,
           display_category: entry.display_category,
+          gender_division: entry.gender_division,
+          age_group: entry.age_group,
           qualifier_rank: entry.category_rank,
           advanced_with_tie: false,
         });
@@ -605,6 +710,8 @@ export function pickFinalists(
           name: entry.name,
           category_id: entry.category_id,
           display_category: entry.display_category,
+          gender_division: entry.gender_division,
+          age_group: entry.age_group,
           qualifier_rank: entry.category_rank,
           advanced_with_tie: !withinCutoff,
         });
@@ -617,7 +724,11 @@ export function pickFinalists(
       return left.display_category.localeCompare(right.display_category);
     }
 
-    return left.qualifier_rank - right.qualifier_rank;
+    if (left.qualifier_rank !== right.qualifier_rank) {
+      return left.qualifier_rank - right.qualifier_rank;
+    }
+
+    return left.name.localeCompare(right.name);
   });
 }
 
@@ -689,6 +800,10 @@ export function formatTimeRange(startTime: string | null, endTime: string | null
   }
 
   return startTime ?? endTime ?? "Time TBD";
+}
+
+export function formatFinalPoints(points: number) {
+  return points.toFixed(1);
 }
 
 function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number) {
@@ -764,9 +879,7 @@ function sameRank(left: unknown, right: unknown) {
   const finalsRight = right as FinalsLeaderboardEntry;
 
   return (
-    finalsLeft.tops === finalsRight.tops &&
-    finalsLeft.zones === finalsRight.zones &&
-    finalsLeft.attempts_to_top === finalsRight.attempts_to_top &&
-    finalsLeft.attempts_to_zone === finalsRight.attempts_to_zone
+    finalsLeft.total_points === finalsRight.total_points &&
+    finalsLeft.previous_round_rank === finalsRight.previous_round_rank
   );
 }

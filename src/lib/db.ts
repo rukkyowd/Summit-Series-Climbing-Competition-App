@@ -7,12 +7,11 @@ import {
   buildQualifierLeaderboard,
   buildRegistrationChoices,
   createCategoryKey,
-  formatSupportsFinals,
+  isFinalsStage,
+  isQualifierStage,
   normalizeEventConfig,
-  pickFinalists,
   type Climber,
   type ClimberWithAttempts,
-  type EventCategory,
   type EventConfig,
   type EventTimeSlot,
   type FinalAttempt,
@@ -79,6 +78,18 @@ function arrayifyIds(value: unknown) {
   return [] as string[];
 }
 
+function assertQualifierOpen(event: EventConfig, message: string) {
+  if (!isQualifierStage(event)) {
+    throw new Error(message);
+  }
+}
+
+function assertFinalsOpen(event: EventConfig, message: string) {
+  if (!isFinalsStage(event)) {
+    throw new Error(message);
+  }
+}
+
 async function fetchEventRow() {
   const { data, error } = await publicSupabase
     .from("active_event_config")
@@ -135,10 +146,7 @@ async function fetchClimberRows() {
     name: row.name ?? "Unknown climber",
     climber_number: row.climber_number ?? "",
     province: row.province ?? "",
-    category_id: createCategoryKey(
-      row.gender_division ?? "Open",
-      row.age_group ?? "Open"
-    ),
+    category_id: createCategoryKey(row.gender_division ?? "Open", row.age_group ?? "Open"),
     gender_division: row.gender_division ?? "Open",
     age_group: row.age_group ?? "Open",
     display_category:
@@ -198,6 +206,32 @@ async function fetchFinalAttempts() {
   }));
 }
 
+async function fetchFinalists() {
+  const { data, error } = await publicSupabase
+    .from("event_finalists")
+    .select("*")
+    .eq("event_id", ACTIVE_EVENT_ID)
+    .order("display_category", { ascending: true })
+    .order("qualifier_rank", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return [] as FinalistSelection[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    climber_id: row.climber_id,
+    name: row.name ?? "Unknown climber",
+    category_id: row.category_id ?? null,
+    display_category: row.display_category ?? "Open",
+    gender_division: row.gender_division ?? "Open",
+    age_group: row.age_group ?? "Open",
+    qualifier_rank: row.qualifier_rank ?? 0,
+    advanced_with_tie: row.advanced_with_tie ?? false,
+    created_at: row.created_at ?? undefined,
+  }));
+}
+
 function joinCompetitionData(
   climbers: Climber[],
   qualifierAttempts: QualifierAttempt[],
@@ -252,12 +286,14 @@ export async function getAllClimbersWithAttempts() {
 export async function getCompetitionSnapshot(): Promise<CompetitionSnapshot> {
   ensureConfigured();
 
-  const [event, climbers] = await Promise.all([getActiveEventConfig(), getAllClimbersWithAttempts()]);
+  const [event, climbers, finalists] = await Promise.all([
+    getActiveEventConfig(),
+    getAllClimbersWithAttempts(),
+    fetchFinalists(),
+  ]);
   const qualifierLeaderboard = buildQualifierLeaderboard(climbers, event);
-  const finalists = pickFinalists(qualifierLeaderboard, event);
-  const finalistIds = new Set(finalists.map((finalist) => finalist.climber_id));
-  const finalsLeaderboard = formatSupportsFinals(event.format)
-    ? buildFinalsLeaderboard(climbers.filter((climber) => finalistIds.has(climber.id)))
+  const finalsLeaderboard = isFinalsStage(event)
+    ? buildFinalsLeaderboard(climbers, finalists, event)
     : [];
 
   return {
@@ -395,11 +431,15 @@ export async function saveEventConfig(input: SaveEventConfigInput) {
     id: ACTIVE_EVENT_ID,
     name: payload.name,
     format: payload.format,
+    stage_mode: payload.stage_mode,
     total_climbs: payload.total_climbs,
     max_climbers: payload.max_climbers,
     qualifier_counting_climbs: payload.qualifier_counting_climbs,
     finals_cutoff: payload.finals_cutoff,
     finals_tie_advances: payload.finals_tie_advances,
+    qualifier_locked_at: payload.qualifier_locked_at,
+    finals_started_at: payload.finals_started_at,
+    finals_problem_count: payload.finals_problem_count,
   });
 
   if (eventError) {
@@ -430,10 +470,23 @@ export async function saveEventConfig(input: SaveEventConfigInput) {
   return getActiveEventConfig();
 }
 
+export async function advanceEventToFinals() {
+  ensureConfigured();
+
+  const { error } = await supabase.rpc("advance_event_to_finals");
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getCompetitionSnapshot();
+}
+
 export async function registerClimber(input: RegisterClimberInput) {
   ensureConfigured();
 
   const snapshot = await getCompetitionSnapshot();
+  assertQualifierOpen(snapshot.event, "Registration is closed because the event has already advanced to finals.");
+
   const existing = snapshot.climbers.find(
     (climber) => climber.climber_number.toLowerCase() === cleanString(input.climberNumber).toLowerCase()
   );
@@ -499,6 +552,9 @@ export async function updateQualifierAttemptByStaff(
 ) {
   ensureConfigured();
 
+  const event = await getActiveEventConfig();
+  assertQualifierOpen(event, "Qualifier scoring is locked because the event has advanced to finals.");
+
   const { data, error } = await supabase
     .from("qualifier_attempts")
     .upsert(
@@ -531,6 +587,9 @@ export async function updateQualifierAttemptByToken(
   topped: boolean
 ) {
   ensureConfigured();
+
+  const event = await getActiveEventConfig();
+  assertQualifierOpen(event, "Qualifier scoring is locked because the event has advanced to finals.");
 
   const { data, error } = await publicSupabase.rpc("submit_qualifier_attempt", {
     p_access_token: cleanString(accessToken),
@@ -582,6 +641,13 @@ export async function updateFinalAttempt(
   attemptsToZone: number | null
 ) {
   ensureConfigured();
+
+  const snapshot = await getCompetitionSnapshot();
+  assertFinalsOpen(snapshot.event, "Finals scoring is not available until the event advances to finals.");
+
+  if (!snapshot.finalists.some((entry) => entry.climber_id === climberId)) {
+    throw new Error("Only finalists can receive finals scores.");
+  }
 
   const { data, error } = await supabase
     .from("final_attempts")

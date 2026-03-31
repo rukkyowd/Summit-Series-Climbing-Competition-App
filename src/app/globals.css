@@ -286,6 +286,55 @@ body::after {
   transition: width 0.5s ease;
 }
 
+.finals-grid {
+  grid-template-columns: 0.7fr 2.3fr 1fr repeat(4, 0.8fr) 1fr 0.7fr 0.7fr 0.8fr 0.8fr;
+}
+
+.finals-problem-box {
+  width: 2.75rem;
+  height: 3.8rem;
+  border-radius: 0.7rem;
+  border: 2px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.finals-problem-box__top,
+.finals-problem-box__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.finals-problem-box__top {
+  flex: 1;
+  background: #2fc15a;
+  color: #ffffff;
+}
+
+.finals-problem-box__bottom {
+  height: 1.15rem;
+  background: #2fc15a;
+  color: #ffffff;
+}
+
+.finals-problem-box-top {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 8px 18px rgba(47, 193, 90, 0.18);
+}
+
+.finals-problem-box__bottom-zone {
+  height: 1.25rem;
+}
+
 .shake {
   animation: shake 0.3s ease;
 }
