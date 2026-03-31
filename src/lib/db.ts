@@ -1,372 +1,667 @@
 import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
-import type {
-  ClimbAttempt,
-  ClimbNumber,
-  ClimberWithAttempts,
-  LeaderboardViewRow,
+import {
+  ACTIVE_EVENT_ID,
+  DEFAULT_EVENT_CONFIG,
+  buildDisplayCategory,
+  buildFinalsLeaderboard,
+  buildQualifierLeaderboard,
+  buildRegistrationChoices,
+  formatSupportsFinals,
+  normalizeCategoryDisplay,
+  normalizeEventConfig,
+  pickFinalists,
+  type Climber,
+  type ClimberWithAttempts,
+  type EventCategory,
+  type EventConfig,
+  type EventTimeSlot,
+  type FinalAttempt,
+  type FinalsLeaderboardEntry,
+  type FinalistSelection,
+  type QualifierAttempt,
+  type QualifierLeaderboardEntry,
+  type RegistrationChoice,
 } from "./scoring";
-import { buildLeaderboard, getCompetitionSettings } from "./scoring";
+
+export interface RegisterClimberInput {
+  name: string;
+  climberNumber: string;
+  province: string;
+  categoryId: string;
+  timeSlotId: string | null;
+}
+
+export interface SaveEventConfigInput extends Omit<EventConfig, "id" | "updated_at"> {}
+
+export interface CompetitionSnapshot {
+  event: EventConfig;
+  climbers: ClimberWithAttempts[];
+  qualifierLeaderboard: QualifierLeaderboardEntry[];
+  finalsLeaderboard: FinalsLeaderboardEntry[];
+  finalists: FinalistSelection[];
+  registrationChoices: RegistrationChoice[];
+}
 
 function ensureConfigured() {
   assertSupabaseConfigured();
 }
 
-export async function registerClimber(name: string, climberNumber: string, category: string) {
-  ensureConfigured();
+function cleanString(value: string) {
+  return value.trim();
+}
 
-  const { data: existing } = await supabase
-    .from("climbers")
-    .select("id")
-    .eq("climber_number", climberNumber)
-    .maybeSingle();
+function createAccessToken() {
+  const safeRandom =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "")
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 
-  if (existing) {
-    throw new Error(`Climber number ${climberNumber} is already registered.`);
+  return safeRandom.slice(0, 32);
+}
+
+function createId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
 
-  const { data, error } = await supabase
-    .from("climbers")
-    .insert({
-      name: name.trim(),
-      climber_number: climberNumber.trim(),
-      category: category.trim(),
-    })
-    .select()
-    .single();
+  return `generated-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
-  if (error) throw new Error(error.message);
+function arrayifyIds(value: unknown) {
+  if (!value) {
+    return [] as string[];
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === "string");
+  }
+
+  return [] as string[];
+}
+
+async function fetchEventRow() {
+  const { data, error } = await publicSupabase
+    .from("active_event_config")
+    .select("*")
+    .eq("id", ACTIVE_EVENT_ID)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
   return data;
 }
 
-export async function getClimberByNumber(climberNumber: string) {
-  ensureConfigured();
+async function fetchEventCategories() {
+  const { data, error } = await publicSupabase
+    .from("event_categories")
+    .select("*")
+    .eq("event_id", ACTIVE_EVENT_ID)
+    .order("sort_order", { ascending: true })
+    .order("display_name", { ascending: true });
 
+  if (error) {
+    return [] as EventCategory[];
+  }
+
+  return ((data ?? []) as any[]).map((row, index) => ({
+    id: row.id ?? createId(),
+    event_id: ACTIVE_EVENT_ID,
+    gender_division: row.gender_division ?? "Open",
+    age_group: row.age_group ?? "All ages",
+    display_name: normalizeCategoryDisplay(row),
+    sort_order: row.sort_order ?? index,
+    created_at: row.created_at,
+  }));
+}
+
+async function fetchTimeSlots() {
+  const { data, error } = await publicSupabase
+    .from("event_time_slots")
+    .select("*")
+    .eq("event_id", ACTIVE_EVENT_ID)
+    .order("label", { ascending: true });
+
+  if (error) {
+    return [] as EventTimeSlot[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    id: row.id ?? createId(),
+    event_id: ACTIVE_EVENT_ID,
+    label: row.label ?? "Open slot",
+    start_time: row.start_time ?? null,
+    end_time: row.end_time ?? null,
+    capacity: row.capacity ?? DEFAULT_EVENT_CONFIG.max_climbers,
+    eligible_category_ids: arrayifyIds(row.eligible_category_ids),
+    created_at: row.created_at,
+  }));
+}
+
+async function fetchClimberRows() {
   const { data, error } = await publicSupabase
     .from("climbers")
-    .select("*, climb_attempts(*)")
-    .eq("climber_number", climberNumber)
-    .maybeSingle();
+    .select(
+      "id, event_id, name, climber_number, province, category_id, gender_division, age_group, display_category, time_slot_id, registered_at"
+    )
+    .eq("event_id", ACTIVE_EVENT_ID)
+    .order("registered_at", { ascending: true });
 
-  if (error || !data) return null;
-  return data as ClimberWithAttempts;
+  if (error) {
+    return [] as Climber[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    id: row.id,
+    event_id: ACTIVE_EVENT_ID,
+    name: row.name ?? "Unknown climber",
+    climber_number: row.climber_number ?? "",
+    province: row.province ?? "",
+    category_id: row.category_id ?? null,
+    gender_division: row.gender_division ?? "Open",
+    age_group: row.age_group ?? "All ages",
+    display_category:
+      row.display_category ?? buildDisplayCategory(row.gender_division ?? "Open", row.age_group ?? "All ages"),
+    time_slot_id: row.time_slot_id ?? null,
+    access_token: "",
+    access_token_created_at: undefined,
+    registered_at: row.registered_at ?? undefined,
+  }));
+}
+
+async function fetchQualifierAttempts() {
+  const { data, error } = await publicSupabase
+    .from("qualifier_attempts")
+    .select("*")
+    .eq("event_id", ACTIVE_EVENT_ID)
+    .order("climb_number", { ascending: true });
+
+  if (error) {
+    return [] as QualifierAttempt[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    id: row.id,
+    event_id: ACTIVE_EVENT_ID,
+    climber_id: row.climber_id,
+    climb_number: row.climb_number ?? 1,
+    attempt_count: row.attempt_count ?? 0,
+    topped: row.topped ?? false,
+    entered_by: row.entered_by ?? "climber",
+    updated_at: row.updated_at ?? undefined,
+  }));
+}
+
+async function fetchFinalAttempts() {
+  const { data, error } = await publicSupabase
+    .from("final_attempts")
+    .select("*")
+    .eq("event_id", ACTIVE_EVENT_ID)
+    .order("climb_number", { ascending: true });
+
+  if (error) {
+    return [] as FinalAttempt[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    id: row.id,
+    event_id: ACTIVE_EVENT_ID,
+    climber_id: row.climber_id,
+    climb_number: row.climb_number ?? 1,
+    top: row.top ?? false,
+    zone: row.zone ?? false,
+    attempts_to_top: row.attempts_to_top ?? null,
+    attempts_to_zone: row.attempts_to_zone ?? null,
+    entered_by: "staff" as const,
+    updated_at: row.updated_at ?? undefined,
+  }));
+}
+
+function joinCompetitionData(
+  climbers: Climber[],
+  qualifierAttempts: QualifierAttempt[],
+  finalAttempts: FinalAttempt[]
+) {
+  const qualifierMap = new Map<string, QualifierAttempt[]>();
+  const finalsMap = new Map<string, FinalAttempt[]>();
+
+  qualifierAttempts.forEach((attempt) => {
+    const list = qualifierMap.get(attempt.climber_id) ?? [];
+    list.push(attempt);
+    qualifierMap.set(attempt.climber_id, list);
+  });
+
+  finalAttempts.forEach((attempt) => {
+    const list = finalsMap.get(attempt.climber_id) ?? [];
+    list.push(attempt);
+    finalsMap.set(attempt.climber_id, list);
+  });
+
+  return climbers.map((climber) => ({
+    ...climber,
+    qualifier_attempts: qualifierMap.get(climber.id) ?? [],
+    final_attempts: finalsMap.get(climber.id) ?? [],
+  }));
+}
+
+function validateSlotForCategory(slot: EventTimeSlot, categoryId: string) {
+  return !slot.eligible_category_ids.length || slot.eligible_category_ids.includes(categoryId);
+}
+
+export async function getActiveEventConfig() {
+  ensureConfigured();
+
+  const [eventRow, categories, timeSlots] = await Promise.all([
+    fetchEventRow(),
+    fetchEventCategories(),
+    fetchTimeSlots(),
+  ]);
+
+  return normalizeEventConfig(eventRow, categories, timeSlots);
+}
+
+export async function getAllClimbersWithAttempts() {
+  ensureConfigured();
+
+  const [climbers, qualifierAttempts, finalAttempts] = await Promise.all([
+    fetchClimberRows(),
+    fetchQualifierAttempts(),
+    fetchFinalAttempts(),
+  ]);
+
+  return joinCompetitionData(climbers, qualifierAttempts, finalAttempts);
+}
+
+export async function getCompetitionSnapshot(): Promise<CompetitionSnapshot> {
+  ensureConfigured();
+
+  const [event, climbers] = await Promise.all([getActiveEventConfig(), getAllClimbersWithAttempts()]);
+  const qualifierLeaderboard = buildQualifierLeaderboard(climbers, event);
+  const finalists = pickFinalists(qualifierLeaderboard, event);
+  const finalistIds = new Set(finalists.map((finalist) => finalist.climber_id));
+  const finalsLeaderboard = formatSupportsFinals(event.format)
+    ? buildFinalsLeaderboard(climbers.filter((climber) => finalistIds.has(climber.id)))
+    : [];
+
+  return {
+    event,
+    climbers,
+    qualifierLeaderboard,
+    finalsLeaderboard,
+    finalists,
+    registrationChoices: buildRegistrationChoices(
+      event,
+      climbers.map((climber) => climber)
+    ),
+  };
 }
 
 export async function getClimberById(id: string) {
   ensureConfigured();
 
-  const { data, error } = await publicSupabase
-    .from("climbers")
-    .select("*, climb_attempts(*)")
-    .eq("id", id)
-    .maybeSingle();
+  const [event, climbers] = await Promise.all([getActiveEventConfig(), getAllClimbersWithAttempts()]);
+  const climber = climbers.find((entry) => entry.id === id) ?? null;
 
-  if (error || !data) return null;
-  return data as ClimberWithAttempts;
-}
-
-export async function getAllClimbersWithAttempts(): Promise<ClimberWithAttempts[]> {
-  ensureConfigured();
-
-  const { data, error } = await publicSupabase
-    .from("climbers")
-    .select("*, climb_attempts(*)")
-    .order("climber_number", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return (data as ClimberWithAttempts[]) ?? [];
-}
-
-export async function getCompetitionCategories(): Promise<string[]> {
-  ensureConfigured();
-
-  const { data, error } = await publicSupabase
-    .from("climbers")
-    .select("category")
-    .order("category", { ascending: true });
-
-  if (error) {
-    return ["Open"];
+  if (!climber) {
+    return null;
   }
 
-  const categories = new Set(
-    (data ?? [])
-      .map((entry) => entry.category)
-      .filter((value): value is string => Boolean(value?.trim()))
-  );
-  const values = Array.from(categories);
-  return values.length ? values : ["Open"];
+  return {
+    climber,
+    event,
+  };
 }
 
-export async function getLeaderboardRows(category?: string | null): Promise<LeaderboardViewRow[]> {
+export async function getClimberByNumber(climberNumber: string) {
   ensureConfigured();
 
-  let query = publicSupabase.from("leaderboard_view").select("*");
+  const [event, climbers] = await Promise.all([getActiveEventConfig(), getAllClimbersWithAttempts()]);
+  const normalized = cleanString(climberNumber).toLowerCase();
+  const climber =
+    climbers.find((entry) => entry.climber_number.toLowerCase() === normalized) ?? null;
 
-  if (category) {
-    query = query.eq("category", category);
+  if (!climber) {
+    return null;
   }
 
-  const { data, error } = await query;
+  return {
+    climber,
+    event,
+  };
+}
 
-  if (!error && data) {
-    const rows = (data as LeaderboardViewRow[]).map((row) => ({
-      ...row,
-      category: row.category ?? "Open",
-    }));
+export async function getClimberByAccessToken(token: string) {
+  ensureConfigured();
 
-    rows.sort((left, right) => {
-      if ((right.total_score ?? 0) !== (left.total_score ?? 0)) {
-        return (right.total_score ?? 0) - (left.total_score ?? 0);
-      }
-      if ((left.total_time_seconds ?? 0) !== (right.total_time_seconds ?? 0)) {
-        return (left.total_time_seconds ?? 0) - (right.total_time_seconds ?? 0);
-      }
-      return left.name.localeCompare(right.name);
-    });
-
-    let overallRank = 1;
-    const categoryRanks: Record<string, number> = {};
-    const categoryCounts: Record<string, number> = {};
-    const previousByCategory: Record<string, LeaderboardViewRow | undefined> = {};
-
-    return rows.map((row, index) => {
-      if (
-        index > 0 &&
-        (row.total_score !== rows[index - 1].total_score ||
-          row.total_time_seconds !== rows[index - 1].total_time_seconds)
-      ) {
-        overallRank = index + 1;
-      }
-
-      const rowCategory = row.category ?? "Open";
-      categoryCounts[rowCategory] = (categoryCounts[rowCategory] ?? 0) + 1;
-
-      const previous = previousByCategory[rowCategory];
-      if (
-        !previous ||
-        previous.total_score !== row.total_score ||
-        previous.total_time_seconds !== row.total_time_seconds
-      ) {
-        categoryRanks[rowCategory] = categoryCounts[rowCategory];
-      }
-
-      previousByCategory[rowCategory] = row;
-
-      return {
-        ...row,
-        overall_rank: row.overall_rank ?? overallRank,
-        category_rank: row.category_rank ?? categoryRanks[rowCategory],
-      };
-    });
-  }
-
-  const [climbers, settings] = await Promise.all([
-    getAllClimbersWithAttempts(),
-    getCompetitionSettings(true),
+  const [event, qualifierAttempts, finalAttempts, climberRow] = await Promise.all([
+    getActiveEventConfig(),
+    fetchQualifierAttempts(),
+    fetchFinalAttempts(),
+    publicSupabase
+      .from("climbers")
+      .select("*")
+      .eq("event_id", ACTIVE_EVENT_ID)
+      .eq("access_token", cleanString(token))
+      .maybeSingle(),
   ]);
 
-  const fallbackBoard = buildLeaderboard(
-    category ? climbers.filter((climber) => (climber.category ?? "Open") === category) : climbers,
-    settings
+  if (climberRow.error || !climberRow.data) {
+    return null;
+  }
+
+  const climber = joinCompetitionData(
+    [
+      {
+        id: climberRow.data.id,
+        event_id: ACTIVE_EVENT_ID,
+        name: climberRow.data.name ?? "Unknown climber",
+        climber_number: climberRow.data.climber_number ?? "",
+        province: climberRow.data.province ?? "",
+        category_id: climberRow.data.category_id ?? null,
+        gender_division: climberRow.data.gender_division ?? "Open",
+        age_group: climberRow.data.age_group ?? "All ages",
+        display_category:
+          climberRow.data.display_category ??
+          buildDisplayCategory(climberRow.data.gender_division ?? "Open", climberRow.data.age_group ?? "All ages"),
+        time_slot_id: climberRow.data.time_slot_id ?? null,
+        access_token: climberRow.data.access_token ?? "",
+        access_token_created_at: climberRow.data.access_token_created_at ?? undefined,
+        registered_at: climberRow.data.registered_at ?? undefined,
+      },
+    ],
+    qualifierAttempts,
+    finalAttempts
+  )[0];
+
+  return {
+    climber,
+    event,
+  };
+}
+
+export async function searchClimbers(query: string) {
+  ensureConfigured();
+
+  const climbers = await getAllClimbersWithAttempts();
+  const normalized = cleanString(query).toLowerCase();
+
+  if (!normalized) {
+    return climbers;
+  }
+
+  return climbers.filter((climber) => {
+    return (
+      climber.name.toLowerCase().includes(normalized) ||
+      climber.climber_number.toLowerCase().includes(normalized) ||
+      climber.province.toLowerCase().includes(normalized) ||
+      climber.display_category.toLowerCase().includes(normalized)
+    );
+  });
+}
+
+export async function saveEventConfig(input: SaveEventConfigInput) {
+  ensureConfigured();
+
+  const payload = normalizeEventConfig(
+    {
+      ...input,
+      id: ACTIVE_EVENT_ID,
+    },
+    input.categories,
+    input.time_slots
   );
 
-  return fallbackBoard.map((entry) => ({
-    climber_id: entry.climber_id,
-    name: entry.name,
-    climber_number: entry.climber_number,
-    category: entry.category ?? "Open",
-    total_score: entry.total_score,
-    total_time_seconds: entry.total_time_seconds,
-    completed_climbs: entry.completed_routes,
-    highest_completed_climb: entry.highest_completed_climb,
-    overall_rank: entry.rank,
-    category_rank: entry.rank,
-  }));
+  const { error: eventError } = await supabase.from("active_event_config").upsert({
+    id: ACTIVE_EVENT_ID,
+    name: payload.name,
+    format: payload.format,
+    total_climbs: payload.total_climbs,
+    max_climbers: payload.max_climbers,
+    qualifier_counting_climbs: payload.qualifier_counting_climbs,
+    finals_cutoff: payload.finals_cutoff,
+    finals_tie_advances: payload.finals_tie_advances,
+  });
+
+  if (eventError) {
+    throw new Error(eventError.message);
+  }
+
+  await supabase.from("event_categories").delete().eq("event_id", ACTIVE_EVENT_ID);
+  await supabase.from("event_time_slots").delete().eq("event_id", ACTIVE_EVENT_ID);
+
+  if (payload.categories.length) {
+    const { error } = await supabase.from("event_categories").insert(
+      payload.categories.map((category, index) => ({
+        id: category.id || createId(),
+        event_id: ACTIVE_EVENT_ID,
+        gender_division: cleanString(category.gender_division),
+        age_group: cleanString(category.age_group),
+        display_name: normalizeCategoryDisplay(category),
+        sort_order: category.sort_order ?? index,
+      }))
+    );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  if (payload.time_slots.length) {
+    const { error } = await supabase.from("event_time_slots").insert(
+      payload.time_slots.map((slot) => ({
+        id: slot.id || createId(),
+        event_id: ACTIVE_EVENT_ID,
+        label: cleanString(slot.label),
+        start_time: slot.start_time ? cleanString(slot.start_time) : null,
+        end_time: slot.end_time ? cleanString(slot.end_time) : null,
+        capacity: slot.capacity,
+        eligible_category_ids: slot.eligible_category_ids,
+      }))
+    );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  return getActiveEventConfig();
 }
 
-export async function getOrCreateAttempt(
-  climberId: string,
-  climbNumber: ClimbNumber
-): Promise<ClimbAttempt> {
+export async function registerClimber(input: RegisterClimberInput) {
   ensureConfigured();
 
-  const { data: existing } = await supabase
-    .from("climb_attempts")
+  const snapshot = await getCompetitionSnapshot();
+  const existing = snapshot.climbers.find(
+    (climber) => climber.climber_number.toLowerCase() === cleanString(input.climberNumber).toLowerCase()
+  );
+
+  if (existing) {
+    throw new Error(`Climber number ${input.climberNumber} is already registered.`);
+  }
+
+  if (snapshot.climbers.length >= snapshot.event.max_climbers) {
+    throw new Error("This event is already at the configured climber capacity.");
+  }
+
+  const category = snapshot.event.categories.find((entry) => entry.id === input.categoryId);
+  if (!category) {
+    throw new Error("Please choose a valid category.");
+  }
+
+  let slot: EventTimeSlot | null = null;
+  if (input.timeSlotId) {
+    slot = snapshot.event.time_slots.find((entry) => entry.id === input.timeSlotId) ?? null;
+    if (!slot) {
+      throw new Error("Please choose a valid time slot.");
+    }
+
+    if (!validateSlotForCategory(slot, category.id)) {
+      throw new Error("That time slot is not available for the selected category.");
+    }
+
+    const slotCount = snapshot.climbers.filter((climber) => climber.time_slot_id === slot?.id).length;
+    if (slotCount >= slot.capacity) {
+      throw new Error("That time slot is already full.");
+    }
+  } else if (snapshot.event.time_slots.length > 0) {
+    throw new Error("Please choose a time slot.");
+  }
+
+  const payload = {
+    event_id: ACTIVE_EVENT_ID,
+    name: cleanString(input.name),
+    climber_number: cleanString(input.climberNumber),
+    province: cleanString(input.province),
+    category_id: category.id,
+    gender_division: cleanString(category.gender_division),
+    age_group: cleanString(category.age_group),
+    display_category: category.display_name,
+    time_slot_id: slot?.id ?? null,
+    access_token: createAccessToken(),
+  };
+
+  const { data, error } = await supabase.from("climbers").insert(payload).select("*").single();
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as Climber;
+}
+
+export async function updateQualifierAttemptByStaff(
+  climberId: string,
+  climbNumber: number,
+  attemptCount: number,
+  topped: boolean
+) {
+  ensureConfigured();
+
+  const { data, error } = await supabase
+    .from("qualifier_attempts")
+    .upsert(
+      {
+        event_id: ACTIVE_EVENT_ID,
+        climber_id: climberId,
+        climb_number: climbNumber,
+        attempt_count: attemptCount,
+        topped,
+        entered_by: "staff",
+      },
+      {
+        onConflict: "climber_id,climb_number",
+      }
+    )
     .select("*")
-    .eq("climber_id", climberId)
-    .eq("climb_number", climbNumber)
-    .maybeSingle();
-
-  if (existing) return existing as ClimbAttempt;
-
-  const startedAt = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("climb_attempts")
-    .insert({
-      climber_id: climberId,
-      climb_number: climbNumber,
-      failed_attempts: 0,
-      completed: false,
-      started_at: startedAt,
-    })
-    .select()
     .single();
 
-  if (error) throw new Error(error.message);
-  return data as ClimbAttempt;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as QualifierAttempt;
 }
 
-export async function getAttemptSnapshot(
-  climberId: string,
-  climbNumber: ClimbNumber
-): Promise<ClimbAttempt | null> {
+export async function updateQualifierAttemptByToken(
+  accessToken: string,
+  climbNumber: number,
+  attemptCount: number,
+  topped: boolean
+) {
   ensureConfigured();
 
-  const { data, error } = await publicSupabase
-    .from("climb_attempts")
+  const { data, error } = await publicSupabase.rpc("submit_qualifier_attempt", {
+    p_access_token: cleanString(accessToken),
+    p_climb_number: climbNumber,
+    p_attempt_count: attemptCount,
+    p_topped: topped,
+  });
+
+  if (!error) {
+    return data;
+  }
+
+  const climberLookup = await getClimberByAccessToken(accessToken);
+  if (!climberLookup?.climber) {
+    throw new Error("Private qualifier link not recognized.");
+  }
+
+  const { data: fallbackData, error: fallbackError } = await publicSupabase
+    .from("qualifier_attempts")
+    .upsert(
+      {
+        event_id: ACTIVE_EVENT_ID,
+        climber_id: climberLookup.climber.id,
+        climb_number: climbNumber,
+        attempt_count: attemptCount,
+        topped,
+        entered_by: "climber",
+      },
+      {
+        onConflict: "climber_id,climb_number",
+      }
+    )
     .select("*")
-    .eq("climber_id", climberId)
-    .eq("climb_number", climbNumber)
-    .maybeSingle();
+    .single();
 
-  if (error) throw new Error(error.message);
-  return (data as ClimbAttempt | null) ?? null;
-}
-
-export async function startClimbAttempt(
-  climberId: string,
-  climbNumber: ClimbNumber,
-  startedAtIso = new Date().toISOString()
-): Promise<ClimbAttempt> {
-  ensureConfigured();
-  const attempt = await getOrCreateAttempt(climberId, climbNumber);
-
-  if (attempt.completed) {
-    throw new Error("Completed climbs must be reset before a new timed attempt starts.");
+  if (fallbackError) {
+    throw new Error(error.message || fallbackError.message);
   }
 
-  const { data, error } = await supabase
-    .from("climb_attempts")
-    .update({
-      started_at: startedAtIso,
-      completed_at: null,
-    })
-    .eq("id", attempt.id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as ClimbAttempt;
+  return fallbackData as QualifierAttempt;
 }
 
-export async function addFailedAttempt(
+export async function updateFinalAttempt(
   climberId: string,
-  climbNumber: ClimbNumber
-): Promise<ClimbAttempt> {
+  climbNumber: number,
+  top: boolean,
+  zone: boolean,
+  attemptsToTop: number | null,
+  attemptsToZone: number | null
+) {
   ensureConfigured();
-  const attempt = await getOrCreateAttempt(climberId, climbNumber);
 
-  if (attempt.completed) {
-    throw new Error("Cannot add a fail to a completed climb.");
+  const { data, error } = await supabase
+    .from("final_attempts")
+    .upsert(
+      {
+        event_id: ACTIVE_EVENT_ID,
+        climber_id: climberId,
+        climb_number: climbNumber,
+        top,
+        zone,
+        attempts_to_top: top ? attemptsToTop : null,
+        attempts_to_zone: zone ? attemptsToZone : null,
+        entered_by: "staff",
+      },
+      {
+        onConflict: "climber_id,climb_number",
+      }
+    )
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
   }
 
-  const { data, error } = await supabase
-    .from("climb_attempts")
-    .update({ failed_attempts: attempt.failed_attempts + 1 })
-    .eq("id", attempt.id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as ClimbAttempt;
+  return data as FinalAttempt;
 }
 
-export async function removeLastFail(
-  climberId: string,
-  climbNumber: ClimbNumber
-): Promise<ClimbAttempt> {
-  ensureConfigured();
-  const attempt = await getOrCreateAttempt(climberId, climbNumber);
-
-  if (attempt.completed) throw new Error("Cannot undo fails on a completed climb.");
-  if (attempt.failed_attempts === 0) throw new Error("No fails to remove.");
-
-  const { data, error } = await supabase
-    .from("climb_attempts")
-    .update({ failed_attempts: attempt.failed_attempts - 1 })
-    .eq("id", attempt.id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as ClimbAttempt;
-}
-
-export async function completeClimb(
-  climberId: string,
-  climbNumber: ClimbNumber,
-  completionTimeSeconds: number,
-  startedAtIso?: string
-): Promise<ClimbAttempt> {
-  ensureConfigured();
-  const attempt = await getOrCreateAttempt(climberId, climbNumber);
-
-  if (attempt.completed) {
-    throw new Error("Climb already marked complete.");
-  }
-
-  const { data, error } = await supabase
-    .from("climb_attempts")
-    .update({
-      completed: true,
-      completion_time_seconds: completionTimeSeconds,
-      started_at: startedAtIso ?? attempt.started_at ?? new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", attempt.id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as ClimbAttempt;
-}
-
-export async function resetClimb(
-  climberId: string,
-  climbNumber: ClimbNumber
-): Promise<ClimbAttempt> {
-  ensureConfigured();
-  const attempt = await getOrCreateAttempt(climberId, climbNumber);
-
-  const { data, error } = await supabase
-    .from("climb_attempts")
-    .update({
-      completed: false,
-      failed_attempts: 0,
-      completion_time_seconds: null,
-      started_at: new Date().toISOString(),
-      completed_at: null,
-    })
-    .eq("id", attempt.id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as ClimbAttempt;
-}
-
-export async function deleteClimber(climberId: string): Promise<void> {
+export async function deleteClimber(climberId: string) {
   ensureConfigured();
 
   const { error } = await supabase.from("climbers").delete().eq("id", climberId);
-
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
-export async function deleteAllClimbers(): Promise<void> {
+export async function deleteAllClimbers() {
   ensureConfigured();
 
-  const { error } = await supabase.from("climbers").delete().not("id", "is", null);
-
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.from("climbers").delete().eq("event_id", ACTIVE_EVENT_ID);
+  if (error) {
+    throw new Error(error.message);
+  }
 }

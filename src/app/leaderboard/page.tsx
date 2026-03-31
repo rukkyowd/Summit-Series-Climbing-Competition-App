@@ -1,354 +1,309 @@
 "use client";
 
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SiteHeader from "@/components/site-header";
-import { getCompetitionCategories, getLeaderboardRows } from "@/lib/db";
+import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
-import {
-  formatTime,
-  mapLeaderboardViewRowToEntry,
-  TOTAL_CLIMBS,
-  type LeaderboardEntry,
-} from "@/lib/scoring";
+import { FORMAT_TEMPLATES, formatSupportsFinals, getTimeSlotLabel } from "@/lib/scoring";
 
-const TOP_N = 10;
-const ALL_CATEGORIES = "All Categories";
-
-const RANK_BADGES: Record<number, { label: string; tone: string }> = {
-  1: { label: "1st", tone: "text-yellow-300 border-yellow-400/20 bg-yellow-400/10" },
-  2: { label: "2nd", tone: "text-slate-200 border-slate-300/20 bg-slate-300/10" },
-  3: { label: "3rd", tone: "text-amber-300 border-amber-400/20 bg-amber-400/10" },
-};
-
-function AnimatedNumber({ value, className }: { value: number; className?: string }) {
-  const [displayValue, setDisplayValue] = useState(value);
-  const previousValue = useRef(value);
-
-  useEffect(() => {
-    const startValue = previousValue.current;
-    const endValue = value;
-
-    if (startValue === endValue) {
-      return;
-    }
-
-    let frame = 0;
-    const duration = 500;
-    const startedAt = performance.now();
-
-    const tick = (timestamp: number) => {
-      const progress = Math.min((timestamp - startedAt) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplayValue(Math.round(startValue + (endValue - startValue) * eased));
-
-      if (progress < 1) {
-        frame = requestAnimationFrame(tick);
-      } else {
-        previousValue.current = endValue;
-      }
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
-
-  return <span className={className}>{displayValue.toLocaleString()}</span>;
-}
-
-function LeaderboardSkeleton() {
-  return (
-    <div className="divide-y divide-white/5">
-      {[0, 1, 2, 3].map((index) => (
-        <div key={index} className="px-4 py-5 sm:px-6">
-          <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
-            <div className="flex items-center justify-center gap-3">
-              <div className="skeleton-block h-12 w-16 rounded-full" />
-              <div className="skeleton-block h-12 w-20 rounded-full" />
-            </div>
-            <div className="space-y-3">
-              <div className="skeleton-block mx-auto h-8 w-48" />
-              <div className="skeleton-block mx-auto h-3 w-full max-w-sm" />
-            </div>
-            <div className="skeleton-block mx-auto h-20 w-28" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StatChip({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">
-      {label} {value}
-    </span>
-  );
-}
-
-function LeaderboardRow({
-  entry,
-  index,
-  prevRank,
-}: {
-  entry: LeaderboardEntry;
-  index: number;
-  prevRank: number | undefined;
-}) {
-  const badge = RANK_BADGES[entry.rank];
-  const rankChanged = prevRank !== undefined && prevRank !== entry.rank;
-  const rowStyle = {
-    animationDelay: `${index * 0.05}s`,
-    viewTransitionName: `leaderboard-${entry.climber_id}`,
-  } as CSSProperties;
-
-  return (
-    <div
-      className={`leaderboard-row px-4 py-4 sm:px-6 ${rankChanged ? "animate-pulse" : ""} ${
-        entry.rank === 1 ? "bg-yellow-400/5" : ""
-      }`}
-      style={rowStyle}
-    >
-      <div className="grid gap-4 text-center md:grid-cols-[auto_1fr_auto] md:items-center">
-        <div className="flex items-center justify-center gap-3">
-          <div
-            className={`inline-flex min-w-14 items-center justify-center rounded-full border px-3 py-2 text-sm font-mono uppercase tracking-[0.22em] ${
-              badge ? badge.tone : "border-white/10 bg-white/[0.03] text-slate-400"
-            }`}
-          >
-            {badge ? badge.label : `#${entry.rank}`}
-          </div>
-          <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono uppercase tracking-[0.22em] text-slate-300">
-            #{entry.climber_number}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <h3 className="section-title text-3xl sm:text-4xl">{entry.name.toUpperCase()}</h3>
-            {entry.category !== "Open" ? (
-              <span className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                {entry.category}
-              </span>
-            ) : null}
-            {rankChanged ? (
-              <span className="status-pill border-accent/20 bg-accent/10 text-red-100">
-                Position Changed
-              </span>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <StatChip label="Completed" value={`${entry.completed_routes}/${TOTAL_CLIMBS}`} />
-            <StatChip
-              label="Highest"
-              value={entry.highest_completed_climb ? `C${entry.highest_completed_climb}` : "--"}
-            />
-            <StatChip label="Time" value={formatTime(entry.total_time_seconds)} />
-          </div>
-        </div>
-
-        <div className="rounded-[1.6rem] border border-white/10 bg-black/20 px-4 py-3 text-center">
-          <div className="meta-label">Total</div>
-          <AnimatedNumber
-            value={entry.total_score}
-            className="mt-2 block font-display text-4xl leading-none text-chalk"
-          />
-          <div className="mt-2 text-sm text-slate-300">{entry.completed_routes} Climbs Completed</div>
-        </div>
-      </div>
-    </div>
-  );
-}
+const ALL_CATEGORIES = "all";
 
 export default function LeaderboardPage() {
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
   const [loading, setLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  const [pulse, setPulse] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const prevRanksRef = useRef<Record<string, number>>({});
+  const [error, setError] = useState("");
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  const categoryScoped = selectedCategory !== ALL_CATEGORIES;
-
-  const refreshLeaderboard = useCallback(async () => {
+  const refresh = async () => {
     try {
-      const [rows, availableCategories] = await Promise.all([
-        getLeaderboardRows(categoryScoped ? selectedCategory : null),
-        getCompetitionCategories(),
-      ]);
-
-      const board = rows
-        .map((row) => mapLeaderboardViewRowToEntry(row, categoryScoped))
-        .slice(0, TOP_N);
-
-      const applyUpdate = () => {
-        setLeaderboard(board);
-        setCategories(availableCategories);
-        setLastUpdate(new Date());
-        setPulse(true);
-        window.setTimeout(() => setPulse(false), 500);
-      };
-
-      if ("startViewTransition" in document) {
-        (
-          document as Document & {
-            startViewTransition?: (update: () => void) => void;
-          }
-        ).startViewTransition?.(applyUpdate);
-      } else {
-        applyUpdate();
-      }
-
-      setLoadError("");
-    } catch (error) {
-      console.error("Failed to refresh leaderboard:", error);
-      setLoadError(error instanceof Error ? error.message : "Unable to load leaderboard.");
+      const nextSnapshot = await getCompetitionSnapshot();
+      setSnapshot(nextSnapshot);
+      setUpdatedAt(new Date());
+      setError("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to load the public standings.");
     } finally {
       setLoading(false);
     }
-  }, [categoryScoped, selectedCategory]);
+  };
 
   useEffect(() => {
-    refreshLeaderboard();
-  }, [refreshLeaderboard]);
+    void refresh();
+  }, []);
 
   useEffect(() => {
-    if (!supabaseConfigured) return;
+    if (!supabaseConfigured) {
+      return;
+    }
 
     const channel = publicSupabase
-      .channel("leaderboard-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "climb_attempts" }, refreshLeaderboard)
-      .on("postgres_changes", { event: "*", schema: "public", table: "climbers" }, refreshLeaderboard)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "competition_settings" },
-        refreshLeaderboard
-      )
+      .channel("public-competition")
+      .on("postgres_changes", { event: "*", schema: "public", table: "active_event_config" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_categories" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_time_slots" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "climbers" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "qualifier_attempts" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "final_attempts" }, refresh)
       .subscribe();
 
     return () => {
       publicSupabase.removeChannel(channel);
     };
-  }, [refreshLeaderboard]);
+  }, []);
 
-  useEffect(() => {
-    const nextRanks: Record<string, number> = {};
-    leaderboard.forEach((entry) => {
-      nextRanks[entry.climber_id] = entry.rank;
+  const categories = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    return snapshot.event.categories;
+  }, [snapshot]);
+
+  const qualifierRows = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    return snapshot.qualifierLeaderboard.filter((entry) => {
+      return selectedCategory === ALL_CATEGORIES || entry.category_id === selectedCategory;
     });
-    prevRanksRef.current = nextRanks;
-  }, [leaderboard]);
+  }, [selectedCategory, snapshot]);
 
-  const filterOptions = useMemo(
-    () => [ALL_CATEGORIES, ...categories.filter((category) => category !== ALL_CATEGORIES)],
-    [categories]
-  );
-  const showCategoryFilters = filterOptions.length > 2;
+  const finalsRows = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
 
-  const lastUpdateLabel = lastUpdate?.toLocaleTimeString([], {
+    return snapshot.finalsLeaderboard.filter((entry) => {
+      return selectedCategory === ALL_CATEGORIES || entry.category_id === selectedCategory;
+    });
+  }, [selectedCategory, snapshot]);
+
+  const finalists = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    return snapshot.finalists.filter((entry) => {
+      return selectedCategory === ALL_CATEGORIES || entry.category_id === selectedCategory;
+    });
+  }, [selectedCategory, snapshot]);
+
+  const lastUpdated = updatedAt?.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   });
 
-  const status = (
-    <>
-      <div
-        className={`status-pill ${
-          pulse
-            ? "border-green-400/30 bg-green-500/10 text-green-300"
-            : "border-white/10 bg-white/[0.03] text-slate-300"
-        }`}
-      >
-        <span className={`h-2 w-2 rounded-full ${pulse ? "bg-green-400" : "bg-slate-600"}`} />
-        Live
-        {lastUpdateLabel ? <span className="text-slate-200">{lastUpdateLabel}</span> : null}
-      </div>
-      <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-        {showCategoryFilters ? (categoryScoped ? selectedCategory : "All divisions") : "Open"}
-      </div>
-    </>
-  );
-
   return (
     <main className="page-shell">
-      <div className="content-frame space-y-5">
-        <SiteHeader status={status} />
-
-        <div className="space-y-4 text-center">
-          <div className="meta-label">Summit Series Standings</div>
-          <h1 className="section-title text-4xl sm:text-5xl">Live Leaderboard</h1>
-          <p className="mx-auto max-w-2xl text-sm text-slate-300">Live standings update from Supabase in real time.</p>
-        </div>
-
-        <section className="card overflow-hidden p-0">
-          <div className="border-b border-white/10 px-4 py-4 sm:px-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 text-center sm:text-left">
-                <div>
-                  <div className="meta-label">Current Order</div>
-                  <h2 className="section-title mt-2 text-3xl">
-                    Top {TOP_N} {showCategoryFilters ? (categoryScoped ? selectedCategory : "Across All Categories") : ""}
-                  </h2>
-                </div>
-                <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
-                  Score First, Lowest Time Second
-                </div>
+      <div className="content-frame space-y-6">
+        <SiteHeader
+          status={
+            <>
+              <div className="status-pill border-green-500/20 bg-green-500/10 text-green-200">
+                Live {lastUpdated ?? ""}
               </div>
+              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                {snapshot ? FORMAT_TEMPLATES.find((item) => item.value === snapshot.event.format)?.label : "Loading"}
+              </div>
+            </>
+          }
+        />
 
-              {showCategoryFilters ? (
-                <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                  {filterOptions.map((category) => (
-                    <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className={`rounded-full border px-4 py-2 text-xs font-mono uppercase tracking-[0.22em] transition-colors ${
-                        selectedCategory === category
-                          ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200"
-                          : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20"
-                      }`}
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+        <section className="card">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="eyebrow">Public competition board</div>
+              <h1 className="section-title mt-4 text-4xl sm:text-5xl">{snapshot?.event.name ?? "Live standings"}</h1>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
+                Public category pages show participants, live qualifier rankings, exact counting climbs, and finals results when the event format includes them.
+              </p>
+            </div>
+            <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+              {snapshot?.event.qualifier_counting_climbs ?? 6} counting climbs
             </div>
           </div>
 
-          {loadError ? (
-            <div className="border-b border-accent/20 bg-accent/10 px-6 py-4 text-sm text-accent">
-              {loadError}
-            </div>
-          ) : null}
-
-          {loading ? (
-            <LeaderboardSkeleton />
-          ) : leaderboard.length === 0 ? (
-            <div className="px-6 py-20 text-center">
-              <div className="meta-label">Waiting for Scores</div>
-              <h3 className="section-title mt-4 text-4xl text-slate-300">
-                No entries in this category yet.
-              </h3>
-              <p className="mt-3 text-sm text-slate-300">
-                Score updates will appear here as soon as climbers in this division finish routes.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-white/5">
-              {leaderboard.map((entry, index) => (
-                <LeaderboardRow
-                  key={entry.climber_id}
-                  entry={entry}
-                  index={index}
-                  prevRank={prevRanksRef.current[entry.climber_id]}
-                />
-              ))}
-            </div>
-          )}
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory(ALL_CATEGORIES)}
+              className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.22em] ${selectedCategory === ALL_CATEGORIES ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}
+            >
+              All categories
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setSelectedCategory(category.id)}
+                className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.22em] ${selectedCategory === category.id ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}
+              >
+                {category.display_name}
+              </button>
+            ))}
+          </div>
         </section>
+
+        {error ? <div className="rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div> : null}
+
+        <section className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+          <section className="card">
+            <div>
+              <div className="eyebrow">Participants</div>
+              <h2 className="section-title mt-4 text-3xl">Category roster</h2>
+            </div>
+
+            {loading ? (
+              <p className="mt-4 text-sm text-slate-300">Loading participants...</p>
+            ) : qualifierRows.length ? (
+              <div className="mt-5 space-y-3">
+                {qualifierRows.map((entry) => (
+                  <div key={entry.climber_id} className="card-muted">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-lg font-semibold text-chalk">{entry.name}</div>
+                        <div className="mt-1 text-sm text-slate-300">
+                          #{entry.climber_number} | {entry.display_category} | {entry.province}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="meta-label">Category rank</div>
+                        <div className="mt-2 text-2xl font-semibold text-chalk">#{entry.category_rank}</div>
+                        <div className="mt-1 text-xs text-slate-400">
+                          {snapshot ? getTimeSlotLabel(entry.time_slot_id, snapshot.event) : "No slot"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-slate-300">No climbers in this category yet.</p>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow">Qualifiers</div>
+                <h2 className="section-title mt-4 text-3xl">Best-{snapshot?.event.qualifier_counting_climbs ?? 6} live rankings</h2>
+              </div>
+              <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                Exact counting climbs shown
+              </div>
+            </div>
+
+            {loading ? (
+              <p className="mt-4 text-sm text-slate-300">Loading qualifier rankings...</p>
+            ) : qualifierRows.length ? (
+              <div className="mt-5 space-y-4">
+                {qualifierRows.map((entry) => (
+                  <div key={entry.climber_id} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="meta-label">#{entry.overall_rank} overall | #{entry.category_rank} category</div>
+                        <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
+                        <div className="mt-1 text-sm text-slate-300">{entry.display_category} | {entry.province}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="meta-label">Qualifier total</div>
+                        <div className="mt-2 font-display text-4xl text-chalk">{entry.total_score.toLocaleString()}</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {entry.counting_climbs.length ? (
+                        entry.counting_climbs.map((climb) => (
+                          <span key={climb.climb_number} className="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-yellow-100">
+                            B{climb.climb_number.toString().padStart(2, "0")} · {climb.score} · {climb.attempt_count} att
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-slate-300">No counting tops yet.</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-slate-300">Qualifier rankings will appear here once scores are entered.</p>
+            )}
+          </section>
+        </section>
+
+        {snapshot && formatSupportsFinals(snapshot.event.format) ? (
+          <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+            <section className="card">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="eyebrow">Finalists</div>
+                  <h2 className="section-title mt-4 text-3xl">Advancement list</h2>
+                </div>
+                <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                  Cutoff: top {snapshot.event.finals_cutoff}
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {finalists.length ? (
+                  finalists.map((entry) => (
+                    <div key={entry.climber_id} className="card-muted flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-lg font-semibold text-chalk">{entry.name}</div>
+                        <div className="mt-1 text-sm text-slate-300">
+                          {entry.display_category} | Qualifier rank #{entry.qualifier_rank}
+                        </div>
+                      </div>
+                      {entry.advanced_with_tie ? (
+                        <span className="status-pill border-yellow-400/20 bg-yellow-400/10 text-yellow-200">Tie advance</span>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-300">No finalists have qualified yet.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="card">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="eyebrow">Finals</div>
+                  <h2 className="section-title mt-4 text-3xl">IFSC standings</h2>
+                </div>
+                <div className="status-pill border-white/10 bg-white/[0.03] text-slate-300">
+                  Tops, zones, attempts
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {finalsRows.length ? (
+                  finalsRows.map((entry) => (
+                    <div key={entry.climber_id} className="rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="meta-label">#{entry.overall_rank} overall | #{entry.category_rank} category</div>
+                          <div className="mt-2 text-2xl font-semibold text-chalk">{entry.name}</div>
+                          <div className="mt-1 text-sm text-slate-300">{entry.display_category}</div>
+                        </div>
+                        <div className="grid gap-2 text-right sm:grid-cols-2">
+                          <div><div className="meta-label">Tops</div><div className="mt-1 text-3xl font-semibold text-chalk">{entry.tops}</div></div>
+                          <div><div className="meta-label">Zones</div><div className="mt-1 text-3xl font-semibold text-chalk">{entry.zones}</div></div>
+                          <div><div className="meta-label">Att. to top</div><div className="mt-1 text-xl font-semibold text-chalk">{entry.attempts_to_top}</div></div>
+                          <div><div className="meta-label">Att. to zone</div><div className="mt-1 text-xl font-semibold text-chalk">{entry.attempts_to_zone}</div></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-300">Finals standings will appear here after judge scoring begins.</p>
+                )}
+              </div>
+            </section>
+          </section>
+        ) : null}
       </div>
     </main>
   );

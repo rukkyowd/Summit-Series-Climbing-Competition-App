@@ -1,282 +1,728 @@
-// ============================================================
-// SCORING ENGINE
-// Shared scoring helpers plus database-backed competition settings.
-// ============================================================
+export const DEFAULT_TOTAL_CLIMBS = 30;
+export const DEFAULT_MAX_CLIMBERS = 80;
+export const DEFAULT_QUALIFIER_COUNTING_CLIMBS = 6;
+export const DEFAULT_FINALS_CUTOFF = 6;
+export const QUALIFIER_PENALTY_PER_EXTRA_ATTEMPT = 200;
+export const QUALIFIER_MAX_PENALIZED_EXTRA_ATTEMPTS = 3;
+export const ACTIVE_EVENT_ID = 1;
 
-import { assertSupabaseConfigured, publicSupabase } from "./supabase";
+export const EVENT_FORMATS = [
+  "scramble",
+  "five_on_five_off",
+  "flash_format",
+  "ifsc_finals_format",
+] as const;
 
-export const TOTAL_CLIMBS = 30;
+export type EventFormat = (typeof EVENT_FORMATS)[number];
+export type AttemptEnteredBy = "climber" | "staff";
+export type FinalEnteredBy = "staff";
+export type StageMode = "qualifier" | "finals";
 
-export interface CompetitionSettings {
-  penalty_per_fail: number;
-  max_penalized_fails: number;
+export interface EventCategory {
+  id: string;
+  event_id: number;
+  gender_division: string;
+  age_group: string;
+  display_name: string;
+  sort_order: number;
+  created_at?: string;
 }
 
-export const DEFAULT_COMPETITION_SETTINGS: CompetitionSettings = {
-  penalty_per_fail: 200,
-  max_penalized_fails: 3,
-};
+export interface EventTimeSlot {
+  id: string;
+  event_id: number;
+  label: string;
+  start_time: string | null;
+  end_time: string | null;
+  capacity: number;
+  eligible_category_ids: string[];
+  created_at?: string;
+}
 
-const CLIMB_COLORS = ["#2ECC71", "#3498DB", "#E63946", "#F4D03F", "#FF9F43"] as const;
-
-let cachedSettings: CompetitionSettings | null = null;
-
-export const CLIMBS = Array.from({ length: TOTAL_CLIMBS }, (_, index) => {
-  const number = index + 1;
-
-  return {
-    number,
-    label: `Climb ${number.toString().padStart(2, "0")}`,
-    basePoints: number * 1000,
-    color: CLIMB_COLORS[index % CLIMB_COLORS.length],
-  };
-});
-
-export type ClimbNumber = number;
-export type ClimbDifficulty = "easy" | "medium" | "hard";
-
-export interface ClimbAttempt {
-  id?: string;
-  climber_id: string;
-  climb_number: ClimbNumber;
-  failed_attempts: number;
-  completed: boolean;
-  completion_time_seconds: number | null;
-  started_at?: string;
-  completed_at?: string | null;
+export interface EventConfig {
+  id: number;
+  name: string;
+  format: EventFormat;
+  total_climbs: number;
+  max_climbers: number;
+  qualifier_counting_climbs: number;
+  finals_cutoff: 6 | 8;
+  finals_tie_advances: boolean;
+  updated_at?: string;
+  categories: EventCategory[];
+  time_slots: EventTimeSlot[];
 }
 
 export interface Climber {
   id: string;
+  event_id: number;
   name: string;
   climber_number: string;
-  category: string;
+  province: string;
+  category_id: string | null;
+  gender_division: string;
+  age_group: string;
+  display_category: string;
+  time_slot_id: string | null;
+  access_token: string;
+  access_token_created_at?: string;
   registered_at?: string;
 }
 
+export interface QualifierAttempt {
+  id?: string;
+  event_id: number;
+  climber_id: string;
+  climb_number: number;
+  attempt_count: number;
+  topped: boolean;
+  entered_by: AttemptEnteredBy;
+  updated_at?: string;
+}
+
+export interface FinalAttempt {
+  id?: string;
+  event_id: number;
+  climber_id: string;
+  climb_number: number;
+  top: boolean;
+  zone: boolean;
+  attempts_to_top: number | null;
+  attempts_to_zone: number | null;
+  entered_by: FinalEnteredBy;
+  updated_at?: string;
+}
+
 export interface ClimberWithAttempts extends Climber {
-  climb_attempts: ClimbAttempt[];
+  qualifier_attempts: QualifierAttempt[];
+  final_attempts: FinalAttempt[];
 }
 
-export interface LeaderboardEntry {
+export interface FormatTemplate {
+  value: EventFormat;
+  label: string;
+  short_label: string;
+  description: string;
+  supports_finals: boolean;
+  scheduling_hint: string;
+}
+
+export interface ClimbDefinition {
+  number: number;
+  label: string;
+  base_points: number;
+}
+
+export interface QualifierClimbScore {
+  climb_number: number;
+  topped: boolean;
+  attempt_count: number;
+  extra_attempts: number;
+  base_points: number;
+  score: number;
+  counting: boolean;
+}
+
+export interface QualifierLeaderboardEntry {
   climber_id: string;
   name: string;
   climber_number: string;
-  category: string;
-  route_scores: number[];
-  completed_routes: number;
-  highest_completed_climb: number;
+  province: string;
+  category_id: string | null;
+  display_category: string;
+  gender_division: string;
+  age_group: string;
+  time_slot_id: string | null;
   total_score: number;
-  total_time_seconds: number;
-  rank: number;
+  counting_climbs: QualifierClimbScore[];
+  all_climbs: QualifierClimbScore[];
+  topped_count: number;
+  counting_attempt_total: number;
+  overall_rank: number;
+  category_rank: number;
 }
 
-export interface LeaderboardViewRow {
+export interface FinalsLeaderboardEntry {
   climber_id: string;
   name: string;
   climber_number: string;
-  category?: string | null;
-  total_score: number;
-  total_time_seconds: number;
-  completed_climbs: number;
-  highest_completed_climb: number;
-  overall_rank?: number | null;
-  category_rank?: number | null;
+  province: string;
+  category_id: string | null;
+  display_category: string;
+  gender_division: string;
+  age_group: string;
+  tops: number;
+  zones: number;
+  attempts_to_top: number;
+  attempts_to_zone: number;
+  overall_rank: number;
+  category_rank: number;
+  attempts: FinalAttempt[];
 }
 
-export function getClimbDifficulty(climbNumber: ClimbNumber): ClimbDifficulty {
-  if (climbNumber <= 10) return "easy";
-  if (climbNumber <= 20) return "medium";
-  return "hard";
+export interface FinalistSelection {
+  climber_id: string;
+  name: string;
+  category_id: string | null;
+  display_category: string;
+  qualifier_rank: number;
+  advanced_with_tie: boolean;
 }
 
-export async function getCompetitionSettings(forceRefresh = false): Promise<CompetitionSettings> {
-  if (cachedSettings && !forceRefresh) {
-    return cachedSettings;
+export interface RegistrationChoice {
+  category: EventCategory;
+  slots: Array<EventTimeSlot & { remaining_capacity: number }>;
+}
+
+export interface FinalsSummary {
+  tops: number;
+  zones: number;
+  attempts_to_top: number;
+  attempts_to_zone: number;
+}
+
+export const FORMAT_TEMPLATES: FormatTemplate[] = [
+  {
+    value: "scramble",
+    label: "Scramble",
+    short_label: "Scramble",
+    description: "Open qualifier scoring with self-scored best-six counting climbs and live rankings.",
+    supports_finals: false,
+    scheduling_hint: "Best for open gym sessions with flexible arrival and broad live visibility.",
+  },
+  {
+    value: "five_on_five_off",
+    label: "Five on five off",
+    short_label: "5 on / 5 off",
+    description: "Qualifier scoring with the same best-six ranking model plus slot-aware rotation planning.",
+    supports_finals: false,
+    scheduling_hint: "Best when athletes rotate through fixed groups and time windows.",
+  },
+  {
+    value: "flash_format",
+    label: "Flash format",
+    short_label: "Flash",
+    description: "Qualifier scoring with flash-format labeling and scheduled session metadata.",
+    supports_finals: false,
+    scheduling_hint: "Best for sessioned rounds where athletes move with set start information.",
+  },
+  {
+    value: "ifsc_finals_format",
+    label: "IFSC finals format",
+    short_label: "IFSC finals",
+    description: "Qualifier best-six scoring that feeds a separate IFSC-style finals stage.",
+    supports_finals: true,
+    scheduling_hint: "Best when the event includes a judge-operated finals round after qualifiers.",
+  },
+];
+
+export const DEFAULT_EVENT_CONFIG: EventConfig = {
+  id: ACTIVE_EVENT_ID,
+  name: "Current Event",
+  format: "scramble",
+  total_climbs: DEFAULT_TOTAL_CLIMBS,
+  max_climbers: DEFAULT_MAX_CLIMBERS,
+  qualifier_counting_climbs: DEFAULT_QUALIFIER_COUNTING_CLIMBS,
+  finals_cutoff: DEFAULT_FINALS_CUTOFF,
+  finals_tie_advances: true,
+  categories: [],
+  time_slots: [],
+};
+
+export function getFormatTemplate(format: EventFormat): FormatTemplate {
+  return FORMAT_TEMPLATES.find((template) => template.value === format) ?? FORMAT_TEMPLATES[0];
+}
+
+export function formatSupportsFinals(format: EventFormat) {
+  return getFormatTemplate(format).supports_finals;
+}
+
+export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
+  return [genderDivision.trim(), ageGroup.trim()].filter(Boolean).join(" / ") || "Open";
+}
+
+export function normalizeCategoryDisplay(category: Partial<EventCategory>) {
+  if (category.display_name?.trim()) {
+    return category.display_name.trim();
   }
 
-  try {
-    assertSupabaseConfigured();
-
-    const { data, error } = await publicSupabase
-      .from("competition_settings")
-      .select("penalty_per_fail, max_penalized_fails")
-      .eq("id", 1)
-      .single();
-
-    if (error || !data) {
-      cachedSettings = DEFAULT_COMPETITION_SETTINGS;
-      return cachedSettings;
-    }
-
-    cachedSettings = {
-      penalty_per_fail: data.penalty_per_fail ?? DEFAULT_COMPETITION_SETTINGS.penalty_per_fail,
-      max_penalized_fails:
-        data.max_penalized_fails ?? DEFAULT_COMPETITION_SETTINGS.max_penalized_fails,
-    };
-
-    return cachedSettings;
-  } catch {
-    cachedSettings = DEFAULT_COMPETITION_SETTINGS;
-    return cachedSettings;
-  }
+  return buildDisplayCategory(category.gender_division ?? "", category.age_group ?? "");
 }
 
-export function clearCompetitionSettingsCache() {
-  cachedSettings = null;
-}
+export function normalizeEventConfig(
+  event: Partial<EventConfig> | null | undefined,
+  categories: EventCategory[] = [],
+  timeSlots: EventTimeSlot[] = []
+): EventConfig {
+  const nextFormat = (event?.format ?? DEFAULT_EVENT_CONFIG.format) as EventFormat;
+  const supportsFinals = formatSupportsFinals(nextFormat);
 
-export function calculateClimbScore(
-  climbNumber: ClimbNumber,
-  failedAttempts: number,
-  completed: boolean,
-  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
-): number {
-  if (!completed) return 0;
-
-  const climb = CLIMBS.find((entry) => entry.number === climbNumber);
-  if (!climb) return 0;
-
-  const cappedFails = Math.min(failedAttempts, settings.max_penalized_fails);
-  const penalty = cappedFails * settings.penalty_per_fail;
-  return climb.basePoints - penalty;
-}
-
-export function calculateTotalScore(
-  attempts: ClimbAttempt[],
-  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
-): number {
-  return attempts.reduce((total, attempt) => {
-    return (
-      total +
-      calculateClimbScore(
-        attempt.climb_number,
-        attempt.failed_attempts,
-        attempt.completed,
-        settings
-      )
-    );
-  }, 0);
-}
-
-export function calculateTotalTime(attempts: ClimbAttempt[]): number {
-  return attempts.reduce((total, attempt) => {
-    if (attempt.completed && attempt.completion_time_seconds != null) {
-      return total + attempt.completion_time_seconds;
-    }
-    return total;
-  }, 0);
-}
-
-export function countCompletedRoutes(attempts: ClimbAttempt[]): number {
-  return attempts.filter((attempt) => attempt.completed).length;
-}
-
-export function getHighestCompletedClimb(attempts: ClimbAttempt[]): number {
-  return attempts
-    .filter((attempt) => attempt.completed)
-    .reduce((highest, attempt) => Math.max(highest, attempt.climb_number), 0);
-}
-
-export function getRouteScores(
-  attempts: ClimbAttempt[],
-  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
-): number[] {
-  return CLIMBS.map((climb) => {
-    const attempt = attempts.find((entry) => entry.climb_number === climb.number);
-
-    return attempt
-      ? calculateClimbScore(climb.number, attempt.failed_attempts, attempt.completed, settings)
-      : 0;
-  });
-}
-
-export function mapLeaderboardViewRowToEntry(
-  row: LeaderboardViewRow,
-  categoryScoped = false
-): LeaderboardEntry {
   return {
-    climber_id: row.climber_id,
-    name: row.name,
-    climber_number: row.climber_number,
-    category: row.category ?? "Open",
-    route_scores: [],
-    completed_routes: row.completed_climbs,
-    highest_completed_climb: row.highest_completed_climb,
-    total_score: row.total_score,
-    total_time_seconds: row.total_time_seconds,
-    rank: (categoryScoped ? row.category_rank : row.overall_rank) ?? 0,
+    id: ACTIVE_EVENT_ID,
+    name: event?.name?.trim() || DEFAULT_EVENT_CONFIG.name,
+    format: nextFormat,
+    total_climbs: clampNumber(event?.total_climbs, 1, 200, DEFAULT_TOTAL_CLIMBS),
+    max_climbers: clampNumber(event?.max_climbers, 1, 1000, DEFAULT_MAX_CLIMBERS),
+    qualifier_counting_climbs: clampNumber(
+      event?.qualifier_counting_climbs,
+      1,
+      20,
+      DEFAULT_QUALIFIER_COUNTING_CLIMBS
+    ),
+    finals_cutoff: supportsFinals
+      ? (clampNumber(event?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6)
+      : DEFAULT_FINALS_CUTOFF,
+    finals_tie_advances: event?.finals_tie_advances ?? true,
+    updated_at: event?.updated_at,
+    categories: categories
+      .map((category, index) => ({
+        ...category,
+        event_id: ACTIVE_EVENT_ID,
+        sort_order: category.sort_order ?? index,
+        display_name: normalizeCategoryDisplay(category),
+      }))
+      .sort((left, right) => left.sort_order - right.sort_order || left.display_name.localeCompare(right.display_name)),
+    time_slots: timeSlots
+      .map((slot) => ({
+        ...slot,
+        event_id: ACTIVE_EVENT_ID,
+        eligible_category_ids: [...(slot.eligible_category_ids ?? [])],
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
   };
 }
 
-export const MAX_TOTAL_SCORE = CLIMBS.reduce((sum, climb) => sum + climb.basePoints, 0);
+export function getClimbs(totalClimbs: number): ClimbDefinition[] {
+  return Array.from({ length: totalClimbs }, (_, index) => {
+    const number = index + 1;
 
-export function buildLeaderboard(
+    return {
+      number,
+      label: `Boulder ${number.toString().padStart(2, "0")}`,
+      base_points: number * 1000,
+    };
+  });
+}
+
+export function getClimbByNumber(totalClimbs: number, climbNumber: number) {
+  return getClimbs(totalClimbs).find((climb) => climb.number === climbNumber) ?? null;
+}
+
+export function calculateQualifierClimbScore(climbNumber: number, attemptCount: number, topped: boolean) {
+  if (!topped) {
+    return 0;
+  }
+
+  const climb = getClimbByNumber(Math.max(climbNumber, DEFAULT_TOTAL_CLIMBS), climbNumber);
+  const basePoints = climb?.base_points ?? climbNumber * 1000;
+  const extraAttempts = Math.max(0, attemptCount - 1);
+  const cappedAttempts = Math.min(extraAttempts, QUALIFIER_MAX_PENALIZED_EXTRA_ATTEMPTS);
+
+  return Math.max(0, basePoints - cappedAttempts * QUALIFIER_PENALTY_PER_EXTRA_ATTEMPT);
+}
+
+export function buildQualifierScoreList(
+  attempts: QualifierAttempt[],
+  totalClimbs: number,
+  countingClimbCount: number
+): QualifierClimbScore[] {
+  const attemptMap = new Map<number, QualifierAttempt>();
+
+  attempts.forEach((attempt) => {
+    attemptMap.set(attempt.climb_number, attempt);
+  });
+
+  const scores = getClimbs(totalClimbs).map((climb) => {
+    const attempt = attemptMap.get(climb.number);
+    const topped = attempt?.topped ?? false;
+    const attemptCount = attempt?.attempt_count ?? 0;
+    const extraAttempts = topped ? Math.max(0, attemptCount - 1) : Math.max(0, attemptCount);
+
+    return {
+      climb_number: climb.number,
+      topped,
+      attempt_count: attemptCount,
+      extra_attempts: extraAttempts,
+      base_points: climb.base_points,
+      score: calculateQualifierClimbScore(climb.number, attemptCount, topped),
+      counting: false,
+    };
+  });
+
+  const countingNumbers = new Set(
+    [...scores]
+      .filter((score) => score.score > 0)
+      .sort(compareQualifierClimbScores)
+      .slice(0, countingClimbCount)
+      .map((score) => score.climb_number)
+  );
+
+  return scores.map((score) => ({
+    ...score,
+    counting: countingNumbers.has(score.climb_number),
+  }));
+}
+
+export function compareQualifierClimbScores(left: QualifierClimbScore, right: QualifierClimbScore) {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+
+  if (right.climb_number !== left.climb_number) {
+    return right.climb_number - left.climb_number;
+  }
+
+  return left.attempt_count - right.attempt_count;
+}
+
+export function buildQualifierLeaderboard(
   climbers: ClimberWithAttempts[],
-  settings: CompetitionSettings = DEFAULT_COMPETITION_SETTINGS
-): LeaderboardEntry[] {
+  event: EventConfig
+): QualifierLeaderboardEntry[] {
   const entries = climbers.map((climber) => {
-    const route_scores = getRouteScores(climber.climb_attempts, settings);
-    const total_score = route_scores.reduce((sum, score) => sum + score, 0);
-    const total_time_seconds = calculateTotalTime(climber.climb_attempts);
+    const allClimbs = buildQualifierScoreList(
+      climber.qualifier_attempts,
+      event.total_climbs,
+      event.qualifier_counting_climbs
+    );
+    const countingClimbs = [...allClimbs]
+      .filter((climb) => climb.counting)
+      .sort(compareQualifierClimbScores);
+    const totalScore = countingClimbs.reduce((sum, climb) => sum + climb.score, 0);
+    const toppedCount = countingClimbs.filter((climb) => climb.topped).length;
+    const countingAttemptTotal = countingClimbs.reduce((sum, climb) => sum + climb.attempt_count, 0);
 
     return {
       climber_id: climber.id,
       name: climber.name,
       climber_number: climber.climber_number,
-      category: climber.category,
-      route_scores,
-      completed_routes: countCompletedRoutes(climber.climb_attempts),
-      highest_completed_climb: getHighestCompletedClimb(climber.climb_attempts),
-      total_score,
-      total_time_seconds,
-      rank: 0,
+      province: climber.province,
+      category_id: climber.category_id,
+      display_category: climber.display_category,
+      gender_division: climber.gender_division,
+      age_group: climber.age_group,
+      time_slot_id: climber.time_slot_id,
+      total_score: totalScore,
+      counting_climbs: countingClimbs,
+      all_climbs: allClimbs,
+      topped_count: toppedCount,
+      counting_attempt_total: countingAttemptTotal,
+      overall_rank: 0,
+      category_rank: 0,
     };
   });
 
-  entries.sort((a, b) => {
-    if (b.total_score !== a.total_score) return b.total_score - a.total_score;
-    if (a.total_time_seconds !== b.total_time_seconds) {
-      return a.total_time_seconds - b.total_time_seconds;
-    }
+  entries.sort(compareQualifierEntries);
 
-    return a.name.localeCompare(b.name);
+  return assignRanks(entries, "overall_rank", "category_rank");
+}
+
+export function compareQualifierEntries(left: QualifierLeaderboardEntry, right: QualifierLeaderboardEntry) {
+  if (right.total_score !== left.total_score) {
+    return right.total_score - left.total_score;
+  }
+
+  if (right.topped_count !== left.topped_count) {
+    return right.topped_count - left.topped_count;
+  }
+
+  if (left.counting_attempt_total !== right.counting_attempt_total) {
+    return left.counting_attempt_total - right.counting_attempt_total;
+  }
+
+  const leftHighest = left.counting_climbs[0]?.climb_number ?? 0;
+  const rightHighest = right.counting_climbs[0]?.climb_number ?? 0;
+  if (rightHighest !== leftHighest) {
+    return rightHighest - leftHighest;
+  }
+
+  return left.name.localeCompare(right.name);
+}
+
+export function summarizeFinalsAttempts(attempts: FinalAttempt[]): FinalsSummary {
+  return attempts.reduce<FinalsSummary>(
+    (summary, attempt) => {
+      if (attempt.top) {
+        summary.tops += 1;
+        summary.attempts_to_top += attempt.attempts_to_top ?? 0;
+      }
+
+      if (attempt.zone) {
+        summary.zones += 1;
+        summary.attempts_to_zone += attempt.attempts_to_zone ?? 0;
+      }
+
+      return summary;
+    },
+    {
+      tops: 0,
+      zones: 0,
+      attempts_to_top: 0,
+      attempts_to_zone: 0,
+    }
+  );
+}
+
+export function buildFinalsLeaderboard(climbers: ClimberWithAttempts[]): FinalsLeaderboardEntry[] {
+  const entries = climbers.map((climber) => {
+    const summary = summarizeFinalsAttempts(climber.final_attempts);
+
+    return {
+      climber_id: climber.id,
+      name: climber.name,
+      climber_number: climber.climber_number,
+      province: climber.province,
+      category_id: climber.category_id,
+      display_category: climber.display_category,
+      gender_division: climber.gender_division,
+      age_group: climber.age_group,
+      tops: summary.tops,
+      zones: summary.zones,
+      attempts_to_top: summary.attempts_to_top,
+      attempts_to_zone: summary.attempts_to_zone,
+      overall_rank: 0,
+      category_rank: 0,
+      attempts: [...climber.final_attempts].sort((left, right) => left.climb_number - right.climb_number),
+    };
   });
 
-  let rank = 1;
-  for (let index = 0; index < entries.length; index += 1) {
-    if (
-      index > 0 &&
-      (entries[index].total_score !== entries[index - 1].total_score ||
-        entries[index].total_time_seconds !== entries[index - 1].total_time_seconds)
-    ) {
-      rank = index + 1;
-    }
-    entries[index].rank = rank;
+  entries.sort(compareFinalsEntries);
+  return assignRanks(entries, "overall_rank", "category_rank");
+}
+
+export function compareFinalsEntries(left: FinalsLeaderboardEntry, right: FinalsLeaderboardEntry) {
+  if (right.tops !== left.tops) {
+    return right.tops - left.tops;
   }
+
+  if (right.zones !== left.zones) {
+    return right.zones - left.zones;
+  }
+
+  if (left.attempts_to_top !== right.attempts_to_top) {
+    return left.attempts_to_top - right.attempts_to_top;
+  }
+
+  if (left.attempts_to_zone !== right.attempts_to_zone) {
+    return left.attempts_to_zone - right.attempts_to_zone;
+  }
+
+  return left.name.localeCompare(right.name);
+}
+
+export function pickFinalists(
+  qualifierEntries: QualifierLeaderboardEntry[],
+  event: EventConfig
+): FinalistSelection[] {
+  if (!formatSupportsFinals(event.format)) {
+    return [];
+  }
+
+  const byCategory = new Map<string, QualifierLeaderboardEntry[]>();
+
+  qualifierEntries.forEach((entry) => {
+    const key = entry.category_id ?? "__uncategorized__";
+    const next = byCategory.get(key) ?? [];
+    next.push(entry);
+    byCategory.set(key, next);
+  });
+
+  const finalists: FinalistSelection[] = [];
+
+  byCategory.forEach((entries) => {
+    const cutoffIndex = event.finals_cutoff - 1;
+    const cutoffEntry = entries[cutoffIndex];
+
+    if (!cutoffEntry) {
+      entries.forEach((entry) => {
+        finalists.push({
+          climber_id: entry.climber_id,
+          name: entry.name,
+          category_id: entry.category_id,
+          display_category: entry.display_category,
+          qualifier_rank: entry.category_rank,
+          advanced_with_tie: false,
+        });
+      });
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const withinCutoff = entry.category_rank <= event.finals_cutoff;
+      const tiedAtCutoff =
+        event.finals_tie_advances &&
+        entry.total_score === cutoffEntry.total_score &&
+        entry.topped_count === cutoffEntry.topped_count &&
+        entry.counting_attempt_total === cutoffEntry.counting_attempt_total;
+
+      if (withinCutoff || tiedAtCutoff) {
+        finalists.push({
+          climber_id: entry.climber_id,
+          name: entry.name,
+          category_id: entry.category_id,
+          display_category: entry.display_category,
+          qualifier_rank: entry.category_rank,
+          advanced_with_tie: !withinCutoff,
+        });
+      }
+    });
+  });
+
+  return finalists.sort((left, right) => {
+    if (left.display_category !== right.display_category) {
+      return left.display_category.localeCompare(right.display_category);
+    }
+
+    return left.qualifier_rank - right.qualifier_rank;
+  });
+}
+
+export function buildRegistrationChoices(event: EventConfig, climbers: Climber[]): RegistrationChoice[] {
+  const slotCounts = new Map<string, number>();
+  climbers.forEach((climber) => {
+    if (climber.time_slot_id) {
+      slotCounts.set(climber.time_slot_id, (slotCounts.get(climber.time_slot_id) ?? 0) + 1);
+    }
+  });
+
+  return event.categories.map((category) => {
+    const slots = event.time_slots
+      .filter((slot) => {
+        if (!slot.eligible_category_ids.length) {
+          return true;
+        }
+
+        return slot.eligible_category_ids.includes(category.id);
+      })
+      .map((slot) => ({
+        ...slot,
+        remaining_capacity: Math.max(0, slot.capacity - (slotCounts.get(slot.id) ?? 0)),
+      }));
+
+    return {
+      category,
+      slots,
+    };
+  });
+}
+
+export function getCategoryName(
+  categoryId: string | null | undefined,
+  event: EventConfig,
+  fallback?: string
+) {
+  if (!categoryId) {
+    return fallback ?? "Uncategorized";
+  }
+
+  return event.categories.find((category) => category.id === categoryId)?.display_name ?? fallback ?? "Uncategorized";
+}
+
+export function getTimeSlotLabel(slotId: string | null | undefined, event: EventConfig) {
+  if (!slotId) {
+    return "No slot";
+  }
+
+  return event.time_slots.find((slot) => slot.id === slotId)?.label ?? "No slot";
+}
+
+export function formatAttemptsLabel(attemptCount: number, succeeded: boolean) {
+  if (!attemptCount) {
+    return succeeded ? "Top on first go" : "No attempts";
+  }
+
+  const label = attemptCount === 1 ? "1 attempt" : `${attemptCount} attempts`;
+  return succeeded ? label : `${label} logged`;
+}
+
+export function formatStageLabel(stage: StageMode) {
+  return stage === "finals" ? "Finals" : "Qualifiers";
+}
+
+export function formatTimeRange(startTime: string | null, endTime: string | null) {
+  if (startTime && endTime) {
+    return `${startTime} - ${endTime}`;
+  }
+
+  return startTime ?? endTime ?? "Time TBD";
+}
+
+function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function assignRanks<T extends { category_id: string | null }>(
+  entries: T[],
+  overallKey: keyof T,
+  categoryKey: keyof T
+) {
+  let overallRank = 1;
+  const categoryPosition = new Map<string, number>();
+  const categorySeen = new Map<string, number>();
+
+  entries.forEach((entry, index) => {
+    if (index > 0 && !sameRank(entries[index - 1], entry)) {
+      overallRank = index + 1;
+    }
+
+    const categoryId = entry.category_id ?? "__uncategorized__";
+    const seen = (categorySeen.get(categoryId) ?? 0) + 1;
+    categorySeen.set(categoryId, seen);
+
+    if (seen === 1 || !sameRank(findPreviousInCategory(entries, index - 1, categoryId), entry)) {
+      categoryPosition.set(categoryId, seen);
+    }
+
+    (entry as unknown as Record<string, number>)[overallKey as string] = overallRank;
+    (entry as unknown as Record<string, number>)[categoryKey as string] =
+      categoryPosition.get(categoryId) ?? seen;
+  });
 
   return entries;
 }
 
-export function formatTime(totalSeconds: number): string {
-  if (!totalSeconds) return "0:00";
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-export function parseTimeInput(input: string): number | null {
-  const trimmed = input.trim();
-
-  if (trimmed.includes(":")) {
-    const [minutesRaw, secondsRaw] = trimmed.split(":");
-    const minutes = parseInt(minutesRaw, 10);
-    const seconds = parseInt(secondsRaw, 10);
-    if (isNaN(minutes) || isNaN(seconds) || seconds >= 60) return null;
-    return minutes * 60 + seconds;
+function findPreviousInCategory<T extends { category_id: string | null }>(
+  entries: T[],
+  index: number,
+  categoryId: string
+) {
+  for (let cursor = index; cursor >= 0; cursor -= 1) {
+    const entry = entries[cursor];
+    if ((entry.category_id ?? "__uncategorized__") === categoryId) {
+      return entry;
+    }
   }
 
-  const seconds = parseInt(trimmed, 10);
-  if (isNaN(seconds) || seconds < 0) return null;
-  return seconds;
+  return null;
+}
+
+function sameRank(left: unknown, right: unknown) {
+  if (!left || !right) {
+    return false;
+  }
+
+  if ("total_score" in (left as Record<string, unknown>) && "total_score" in (right as Record<string, unknown>)) {
+    const qualifierLeft = left as QualifierLeaderboardEntry;
+    const qualifierRight = right as QualifierLeaderboardEntry;
+
+    return (
+      qualifierLeft.total_score === qualifierRight.total_score &&
+      qualifierLeft.topped_count === qualifierRight.topped_count &&
+      qualifierLeft.counting_attempt_total === qualifierRight.counting_attempt_total
+    );
+  }
+
+  const finalsLeft = left as FinalsLeaderboardEntry;
+  const finalsRight = right as FinalsLeaderboardEntry;
+
+  return (
+    finalsLeft.tops === finalsRight.tops &&
+    finalsLeft.zones === finalsRight.zones &&
+    finalsLeft.attempts_to_top === finalsRight.attempts_to_top &&
+    finalsLeft.attempts_to_zone === finalsRight.attempts_to_zone
+  );
 }
