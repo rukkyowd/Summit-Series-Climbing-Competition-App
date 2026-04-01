@@ -14,6 +14,7 @@ import {
   formatSchedulePhaseLabel,
   formatTimeRange,
   getActiveScheduleBlock,
+  getEventWorkflowGuide,
   getTimeSlotLabel,
 } from "@/lib/scoring";
 
@@ -65,6 +66,10 @@ export default function CompetitionOverviewPage() {
 
   const activeBlock = useMemo(
     () => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null),
+    [snapshot]
+  );
+  const workflowGuide = useMemo(
+    () => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null),
     [snapshot]
   );
 
@@ -123,6 +128,19 @@ export default function CompetitionOverviewPage() {
               </section>
 
               <section className="results-card">
+                {workflowGuide ? (
+                  <div className="results-meta-card">
+                    <div className="results-kicker">Format guide</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{workflowGuide.headline}</div>
+                    <p className="mt-3 text-slate-600">{workflowGuide.summary}</p>
+                    <div className="mt-4 space-y-2 text-sm text-slate-600">
+                      {workflowGuide.notes.map((note) => (
+                        <div key={note}>{note}</div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="results-kicker">Competition snapshot</div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div className="results-meta-card">

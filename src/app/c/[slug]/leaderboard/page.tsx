@@ -8,7 +8,7 @@ import FinalsResultsTable from "@/components/finals-results-table";
 import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
-import { formatSupportsFinals, type FinalsLeaderboardEntry } from "@/lib/scoring";
+import { formatFinalPoints, formatSupportsFinals, formatUsesOfficialQualifierPoints, type FinalsLeaderboardEntry } from "@/lib/scoring";
 
 export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
@@ -68,6 +68,7 @@ export default function CompetitionLeaderboardPage() {
 
   const canSeeStaff = isStaffRole(profile?.role);
   const finalsActive = snapshot?.competition.stage_mode === "finals" && !!snapshot && formatSupportsFinals(snapshot.competition.format);
+  const officialQualifierFormat = snapshot ? formatUsesOfficialQualifierPoints(snapshot.competition.format) : false;
   const categories = useMemo(() => snapshot?.competition.categories ?? [], [snapshot]);
   const qualifierRows = useMemo(() => {
     if (!snapshot) {
@@ -192,8 +193,16 @@ export default function CompetitionLeaderboardPage() {
                   <div>Name</div>
                   <div>Province</div>
                   <div>Category</div>
-                  <div>Score</div>
-                  <div>{canSeeStaff ? "Counting climbs" : "Tops"}</div>
+                  <div>{officialQualifierFormat ? "Points" : "Score"}</div>
+                  <div>
+                    {canSeeStaff
+                      ? officialQualifierFormat
+                        ? "Round breakdown"
+                        : "Counting climbs"
+                      : officialQualifierFormat
+                        ? "T / Z"
+                        : "Tops"}
+                  </div>
                 </div>
                 {qualifierRows.map((entry) => (
                   <div key={entry.climber_id} className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.4fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
@@ -206,11 +215,21 @@ export default function CompetitionLeaderboardPage() {
                     </div>
                     <div>{entry.province}</div>
                     <div>{entry.display_category}</div>
-                    <div className="font-semibold text-slate-950">{entry.total_score.toLocaleString()}</div>
+                    <div className="font-semibold text-slate-950">
+                      {officialQualifierFormat ? formatFinalPoints(entry.total_score) : entry.total_score.toLocaleString()}
+                    </div>
                     <div>
                       {canSeeStaff
-                        ? entry.counting_climbs.map((climb) => `B${String(climb.climb_number).padStart(2, "0")} ${climb.score}`).join(", ")
-                        : `${entry.topped_count} tops`}
+                        ? entry.counting_climbs
+                            .map((climb) =>
+                              officialQualifierFormat
+                                ? `B${String(climb.climb_number).padStart(2, "0")} ${formatFinalPoints(climb.score)}`
+                                : `B${String(climb.climb_number).padStart(2, "0")} ${climb.score}`
+                            )
+                            .join(", ")
+                        : officialQualifierFormat
+                          ? `${entry.topped_count}T / ${entry.zone_count}Z`
+                          : `${entry.topped_count} tops`}
                     </div>
                   </div>
                 ))}

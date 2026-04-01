@@ -24,8 +24,10 @@ import {
   canClimberSelfScoreQualifier,
   canStaffScoreFinals,
   canStaffScoreQualifier,
+  calculateQualifierAttemptPoints,
   calculateFinalAttemptPoints,
   formatFinalPoints,
+  formatUsesOfficialQualifierPoints,
   formatSchedulePhaseLabel,
   getActiveScheduleBlock,
   getClimbs,
@@ -34,7 +36,13 @@ import {
   type ClimberWithAttempts,
 } from "@/lib/scoring";
 
-type QualifierDraft = { attemptCount: number; topped: boolean };
+type QualifierDraft = {
+  attemptCount: number;
+  zone: boolean;
+  topped: boolean;
+  attemptsToTop: number;
+  attemptsToZone: number;
+};
 type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
 
 function ScorecardContent() {
@@ -135,7 +143,14 @@ function ScorecardContent() {
       const qualifierAttempt = climber.qualifier_attempts.find((attempt) => attempt.climb_number === climb.number);
       nextQualifier[climb.number] = {
         attemptCount: qualifierAttempt?.attempt_count ?? 0,
+        zone: qualifierAttempt?.zone ?? qualifierAttempt?.topped ?? false,
         topped: qualifierAttempt?.topped ?? false,
+        attemptsToTop: qualifierAttempt?.attempts_to_top ?? qualifierAttempt?.attempt_count ?? 0,
+        attemptsToZone:
+          qualifierAttempt?.attempts_to_zone ??
+          qualifierAttempt?.attempts_to_top ??
+          qualifierAttempt?.attempt_count ??
+          0,
       };
     });
 
@@ -160,6 +175,7 @@ function ScorecardContent() {
   const qualifierSelfScoringOpen = snapshot ? canClimberSelfScoreQualifier(snapshot.competition) : false;
   const qualifierStaffScoringOpen = snapshot ? canStaffScoreQualifier(snapshot.competition) : false;
   const finalsStaffScoringOpen = snapshot ? canStaffScoreFinals(snapshot.competition) : false;
+  const officialQualifierFormat = snapshot ? formatUsesOfficialQualifierPoints(snapshot.competition.format) : false;
   const activeScheduleBlock = useMemo(() => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null), [snapshot]);
   const finalsEligible = climber && snapshot ? isFinalsEligibleCategory(snapshot.competition, climber.gender_division, climber.age_group) : false;
 
@@ -228,10 +244,21 @@ function ScorecardContent() {
 
     try {
       const draft = qualifierDrafts[climbNumber];
+      const attemptCount = officialQualifierFormat
+        ? draft.topped
+          ? draft.attemptsToTop
+          : draft.zone
+            ? draft.attemptsToZone
+            : 0
+        : draft.attemptCount;
       if (canJudge) {
-        await updateQualifierAttemptByStaff(snapshot.competition.id, climber.id, climbNumber, draft.attemptCount, draft.topped);
+        await updateQualifierAttemptByStaff(snapshot.competition.id, climber.id, climbNumber, attemptCount, draft.topped, {
+          zone: officialQualifierFormat ? draft.zone || draft.topped : draft.topped,
+          attemptsToTop: officialQualifierFormat && draft.topped ? draft.attemptsToTop : null,
+          attemptsToZone: officialQualifierFormat && (draft.zone || draft.topped) ? draft.attemptsToZone : null,
+        });
       } else {
-        await updateQualifierAttemptByToken(token, snapshot.competition.id, climbNumber, draft.attemptCount, draft.topped);
+        await updateQualifierAttemptByToken(token, snapshot.competition.id, climbNumber, attemptCount, draft.topped);
       }
       await load();
       setMessage(`Qualifier score saved for boulder ${climbNumber}.`);
@@ -380,10 +407,19 @@ function ScorecardContent() {
               {stage === "qualifier" ? (
                 <>
                   <div className="results-kicker">Qualifier status</div>
-                  <div className="mt-2 text-5xl font-semibold text-slate-950">{climberEntry?.total_score.toLocaleString() ?? 0}</div>
+                  <div className="mt-2 text-5xl font-semibold text-slate-950">
+                    {officialQualifierFormat
+                      ? formatFinalPoints(climberEntry?.total_score ?? 0)
+                      : climberEntry?.total_score.toLocaleString() ?? 0}
+                  </div>
                   <div className="mt-3 text-sm text-slate-600">
                     {climberEntry ? `Overall #${climberEntry.overall_rank} | Category #${climberEntry.category_rank}` : "Waiting for first score"}
                   </div>
+                  {officialQualifierFormat ? (
+                    <div className="mt-4 text-sm text-slate-600">
+                      {climberEntry ? `${climberEntry.topped_count} tops | ${climberEntry.zone_count} zones` : "Judge-entered CEC points round"}
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -413,37 +449,164 @@ function ScorecardContent() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="results-kicker">Qualifiers</div>
-                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Qualifier attempts by boulder</h2>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-950">
+                  {officialQualifierFormat ? "CEC flash qualifier scoring" : "Qualifier attempts by boulder"}
+                </h2>
               </div>
               <div className="results-chip">
-                {qualifierLocked ? "Qualifier round closed" : canJudge ? "Judge entry" : "Private scoring"}
+                {qualifierLocked ? "Qualifier round closed" : canJudge ? "Judge entry" : officialQualifierFormat ? "Read-only" : "Private scoring"}
               </div>
             </div>
 
             <div className="mt-5 grid gap-4 xl:grid-cols-2">
               {(snapshot ? getClimbs(snapshot.competition.total_climbs) : []).map((climb) => {
-                const draft = qualifierDrafts[climb.number] ?? { attemptCount: 0, topped: false };
+                const draft = qualifierDrafts[climb.number] ?? {
+                  attemptCount: 0,
+                  zone: false,
+                  topped: false,
+                  attemptsToTop: 0,
+                  attemptsToZone: 0,
+                };
+                const officialPoints = calculateQualifierAttemptPoints({
+                  competition_id: snapshot?.competition.id ?? "",
+                  climber_id: climber.id,
+                  climb_number: climb.number,
+                  attempt_count: draft.attemptCount,
+                  zone: draft.zone || draft.topped,
+                  topped: draft.topped,
+                  attempts_to_top: draft.topped ? draft.attemptsToTop : null,
+                  attempts_to_zone: draft.zone || draft.topped ? draft.attemptsToZone : null,
+                  entered_by: canJudge ? "staff" : "climber",
+                });
                 return (
                   <div key={climb.number} className="results-meta-card">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="results-kicker">Boulder {String(climb.number).padStart(2, "0")}</div>
-                        <div className="mt-2 text-xl font-semibold text-slate-950">{climb.base_points} base points</div>
+                        <div className="mt-2 text-xl font-semibold text-slate-950">
+                          {officialQualifierFormat ? `Current points: ${formatFinalPoints(officialPoints)}` : `${climb.base_points} base points`}
+                        </div>
                       </div>
-                      <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving || qualifierLocked || (canJudge ? !qualifierStaffScoringOpen : !qualifierSelfScoringOpen)} className="results-primary-button">
+                      <button
+                        type="button"
+                        onClick={() => void saveQualifier(climb.number)}
+                        disabled={
+                          saving ||
+                          qualifierLocked ||
+                          (canJudge ? !qualifierStaffScoringOpen : !qualifierSelfScoringOpen) ||
+                          (!canJudge && officialQualifierFormat)
+                        }
+                        className="results-primary-button"
+                      >
                         Save
                       </button>
                     </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-2">
-                        <span className="text-sm font-medium text-slate-700">Attempts</span>
-                        <input type="number" min={0} value={draft.attemptCount} onChange={(event) => setQualifierDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptCount: Number(event.target.value) || 0 } }))} className="results-input" />
-                      </label>
-                      <label className="results-toggle self-end">
-                        <input type="checkbox" checked={draft.topped} onChange={(event) => setQualifierDrafts((current) => ({ ...current, [climb.number]: { ...draft, topped: event.target.checked } }))} />
-                        <span>Top recorded</span>
-                      </label>
-                    </div>
+                    {officialQualifierFormat ? (
+                      <div className="mt-4 space-y-3">
+                        <label className="results-toggle">
+                          <input
+                            type="checkbox"
+                            checked={draft.zone || draft.topped}
+                            onChange={(event) =>
+                              setQualifierDrafts((current) => ({
+                                ...current,
+                                [climb.number]: {
+                                  ...draft,
+                                  zone: event.target.checked,
+                                  topped: event.target.checked ? draft.topped : false,
+                                },
+                              }))
+                            }
+                          />
+                          <span>Zone recorded</span>
+                        </label>
+                        <label className="results-toggle">
+                          <input
+                            type="checkbox"
+                            checked={draft.topped}
+                            onChange={(event) =>
+                              setQualifierDrafts((current) => ({
+                                ...current,
+                                [climb.number]: {
+                                  ...draft,
+                                  topped: event.target.checked,
+                                  zone: event.target.checked ? true : draft.zone,
+                                },
+                              }))
+                            }
+                          />
+                          <span>Top recorded</span>
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Attempts to zone</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={draft.attemptsToZone}
+                              onChange={(event) =>
+                                setQualifierDrafts((current) => ({
+                                  ...current,
+                                  [climb.number]: { ...draft, attemptsToZone: Number(event.target.value) || 0 },
+                                }))
+                              }
+                              className="results-input"
+                            />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Attempts to top</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={draft.attemptsToTop}
+                              onChange={(event) =>
+                                setQualifierDrafts((current) => ({
+                                  ...current,
+                                  [climb.number]: { ...draft, attemptsToTop: Number(event.target.value) || 0 },
+                                }))
+                              }
+                              className="results-input"
+                            />
+                          </label>
+                        </div>
+                        {!canJudge ? (
+                          <div className="text-sm text-slate-600">
+                            CEC flash qualifiers are judge-operated. Climbers can use this page to follow live scoring, but staff enters the official results.
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <label className="space-y-2">
+                          <span className="text-sm font-medium text-slate-700">Attempts</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={draft.attemptCount}
+                            onChange={(event) =>
+                              setQualifierDrafts((current) => ({
+                                ...current,
+                                [climb.number]: { ...draft, attemptCount: Number(event.target.value) || 0 },
+                              }))
+                            }
+                            className="results-input"
+                          />
+                        </label>
+                        <label className="results-toggle self-end">
+                          <input
+                            type="checkbox"
+                            checked={draft.topped}
+                            onChange={(event) =>
+                              setQualifierDrafts((current) => ({
+                                ...current,
+                                [climb.number]: { ...draft, topped: event.target.checked, zone: event.target.checked },
+                              }))
+                            }
+                          />
+                          <span>Top recorded</span>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 );
               })}

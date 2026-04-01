@@ -187,9 +187,15 @@ create table public.qualifier_attempts (
   climber_id uuid not null references public.climbers(id) on delete cascade,
   climb_number integer not null check (climb_number > 0),
   attempt_count integer not null check (attempt_count >= 0),
+  zone boolean not null default false,
   topped boolean not null default false,
+  attempts_to_top integer,
+  attempts_to_zone integer,
   entered_by text not null check (entered_by in ('climber', 'staff')),
   updated_at timestamptz not null default now(),
+  check (not topped or zone),
+  check (attempts_to_top is null or attempts_to_top > 0),
+  check (attempts_to_zone is null or attempts_to_zone > 0),
   unique (climber_id, climb_number)
 );
 
@@ -385,7 +391,10 @@ begin
     climber_id,
     climb_number,
     attempt_count,
+    zone,
     topped,
+    attempts_to_top,
+    attempts_to_zone,
     entered_by
   )
   values (
@@ -394,12 +403,18 @@ begin
     p_climb_number,
     greatest(p_attempt_count, 0),
     p_topped,
+    p_topped,
+    case when p_topped then greatest(p_attempt_count, 1) else null end,
+    case when p_topped then greatest(p_attempt_count, 1) else null end,
     'climber'
   )
   on conflict (climber_id, climb_number) do update
   set
     attempt_count = excluded.attempt_count,
+    zone = excluded.zone,
     topped = excluded.topped,
+    attempts_to_top = excluded.attempts_to_top,
+    attempts_to_zone = excluded.attempts_to_zone,
     entered_by = 'climber',
     updated_at = now()
   returning *
@@ -449,11 +464,26 @@ begin
       c.age_group,
       q.climb_number,
       q.attempt_count,
+      coalesce(q.zone, q.topped, false) as zone,
       q.topped,
+      q.attempts_to_top,
+      q.attempts_to_zone,
       case
+        when v_competition.format = 'flash_format'
+          then greatest(
+            case
+              when q.topped then greatest(0::numeric, 25 - (greatest(coalesce(q.attempts_to_top, q.attempt_count, 1), 1) - 1) * 0.1)
+              else 0::numeric
+            end,
+            case
+              when coalesce(q.zone, q.topped, false)
+                then greatest(0::numeric, 10 - (greatest(coalesce(q.attempts_to_zone, q.attempts_to_top, q.attempt_count, 1), 1) - 1) * 0.1)
+              else 0::numeric
+            end
+          )
         when q.topped
           then greatest(0, q.climb_number * 1000 - least(greatest(q.attempt_count - 1, 0), 3) * 200)
-        else 0
+        else 0::numeric
       end as score
     from public.climbers c
     left join public.qualifier_attempts q on q.climber_id = c.id
@@ -469,9 +499,12 @@ begin
           order by score desc, climb_number desc, attempt_count asc
         ) as score_row
       from climber_scores
-      where score > 0
+      where score > 0::numeric
     ) ranked_scores
-    where score_row <= v_competition.qualifier_counting_climbs
+    where score_row <= case
+      when v_competition.format = 'flash_format' then v_competition.total_climbs
+      else v_competition.qualifier_counting_climbs
+    end
   ),
   qualifier_totals as (
     select
@@ -481,9 +514,19 @@ begin
       c.display_category,
       c.gender_division,
       c.age_group,
-      coalesce(sum(cs.score), 0) as total_score,
+      coalesce(sum(cs.score), 0::numeric) as total_score,
       coalesce(count(*) filter (where cs.topped), 0) as topped_count,
-      coalesce(sum(cs.attempt_count), 0) as counting_attempt_total
+      coalesce(count(*) filter (where cs.zone), 0) as zone_count,
+      coalesce(
+        sum(
+          case
+            when cs.topped then greatest(coalesce(cs.attempts_to_top, cs.attempt_count, 0), 0)
+            when cs.zone then greatest(coalesce(cs.attempts_to_zone, cs.attempt_count, 0), 0)
+            else greatest(coalesce(cs.attempt_count, 0), 0)
+          end
+        ),
+        0
+      ) as counting_attempt_total
     from public.climbers c
     left join counting_scores cs on cs.climber_id = c.id
     where c.competition_id = p_competition_id
@@ -494,7 +537,7 @@ begin
       qualifier_totals.*,
       row_number() over (
         partition by category_id
-        order by total_score desc, topped_count desc, counting_attempt_total asc, name asc
+        order by total_score desc, topped_count desc, zone_count desc, counting_attempt_total asc, name asc
       ) as category_rank
     from qualifier_totals
     where gender_division in ('Men', 'Women')
@@ -507,6 +550,7 @@ begin
       category_id,
       total_score,
       topped_count,
+      zone_count,
       counting_attempt_total
     from ranked
     where category_rank = v_competition.finals_cutoff
@@ -541,6 +585,7 @@ begin
        and ranked.category_rank > v_competition.finals_cutoff
        and ranked.total_score = cutoff.total_score
        and ranked.topped_count = cutoff.topped_count
+       and ranked.zone_count = cutoff.zone_count
        and ranked.counting_attempt_total = cutoff.counting_attempt_total
      );
 

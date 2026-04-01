@@ -30,6 +30,10 @@ import {
   formatTimeRange,
   getActiveScheduleBlock,
   getEventWorkflowGuide,
+  getRecommendedFinalsCutoff,
+  getRecommendedQualifierClimbCount,
+  getRecommendedQualifierCountingClimbs,
+  formatUsesOfficialQualifierPoints,
   normalizeCompetition,
   parseScheduleTimeToMinutes,
   slugifyCompetitionName,
@@ -196,6 +200,7 @@ export default function HomePage() {
   const featured = liveNow[0] ?? filteredSummaries[0] ?? null;
   const orderedDraftBlocks = useMemo(() => (draft ? sortBlocks(draft.schedule_blocks) : []), [draft]);
   const supportsFinals = draft ? formatSupportsFinals(draft.format) || draft.format === "scramble" : false;
+  const officialQualifierFormat = draft ? formatUsesOfficialQualifierPoints(draft.format) : false;
   const workflowGuide = useMemo(() => (draft ? getEventWorkflowGuide(draft) : null), [draft]);
   const activeBlock = useMemo(() => (draft ? getActiveScheduleBlock(draft) : null), [draft]);
 
@@ -455,7 +460,21 @@ export default function HomePage() {
                     <input value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Slug" />
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <select value={draft.format} onChange={(event) => setDraft({ ...draft, format: event.target.value as Competition["format"] })} className="results-input">
+                    <select
+                      value={draft.format}
+                      onChange={(event) => {
+                        const nextFormat = event.target.value as Competition["format"];
+                        setDraft({
+                          ...draft,
+                          format: nextFormat,
+                          total_climbs: getRecommendedQualifierClimbCount(nextFormat),
+                          qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(nextFormat),
+                          finals_cutoff: getRecommendedFinalsCutoff(nextFormat),
+                          discipline_label: "Boulder",
+                        });
+                      }}
+                      className="results-input"
+                    >
                       {FORMAT_TEMPLATES.map((template) => (
                         <option key={template.value} value={template.value}>
                           {template.label}
@@ -519,7 +538,24 @@ export default function HomePage() {
                     </label>
                     <label className="space-y-2">
                       <span className="text-sm font-medium text-slate-700">Counting climbs</span>
-                      <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} className="results-input" />
+                      <input
+                        type="number"
+                        min={1}
+                        value={draft.qualifier_counting_climbs}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS,
+                          })
+                        }
+                        className="results-input"
+                        disabled={officialQualifierFormat}
+                      />
+                      <div className="text-xs text-slate-500">
+                        {officialQualifierFormat
+                          ? "CEC flash qualifiers count every problem, so this stays locked to the round problem count."
+                          : "Used for scramble-style best-N qualifier scoring."}
+                      </div>
                     </label>
                     <label className="space-y-2">
                       <span className="text-sm font-medium text-slate-700">Finals cutoff</span>

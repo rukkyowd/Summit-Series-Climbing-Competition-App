@@ -4,6 +4,8 @@ export const DEFAULT_QUALIFIER_COUNTING_CLIMBS = 6;
 export const DEFAULT_FINALS_CUTOFF = 6;
 export const DEFAULT_FINALS_PROBLEM_COUNT = 4;
 export const DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS = ["Open"] as const;
+export const DEFAULT_CEC_FLASH_PROBLEMS = 6;
+export const DEFAULT_CEC_SENIOR_NATIONALS_PROBLEMS = 12;
 export const QUALIFIER_PENALTY_PER_EXTRA_ATTEMPT = 200;
 export const QUALIFIER_MAX_PENALIZED_EXTRA_ATTEMPTS = 3;
 export const FINAL_TOP_POINTS = 25;
@@ -134,7 +136,10 @@ export interface QualifierAttempt {
   climber_id: string;
   climb_number: number;
   attempt_count: number;
+  zone: boolean;
   topped: boolean;
+  attempts_to_top: number | null;
+  attempts_to_zone: number | null;
   entered_by: AttemptEnteredBy;
   updated_at?: string;
 }
@@ -180,9 +185,12 @@ export interface ClimbDefinition {
 
 export interface QualifierClimbScore {
   climb_number: number;
+  zone: boolean;
   topped: boolean;
   attempt_count: number;
   extra_attempts: number;
+  attempts_to_top: number | null;
+  attempts_to_zone: number | null;
   base_points: number;
   score: number;
   counting: boolean;
@@ -202,6 +210,7 @@ export interface QualifierLeaderboardEntry {
   counting_climbs: QualifierClimbScore[];
   all_climbs: QualifierClimbScore[];
   topped_count: number;
+  zone_count: number;
   counting_attempt_total: number;
   overall_rank: number;
   category_rank: number;
@@ -336,23 +345,26 @@ export const FORMAT_TEMPLATES: FormatTemplate[] = [
     value: "five_on_five_off",
     label: "Five on five off",
     short_label: "5 on / 5 off",
-    description: "Competitive qualifier mode for fixed start lists, five-on and five-off rotations, and stricter session timing.",
+    description: "Legacy fixed-rotation qualifier mode for local events that still want staff-run scoring and tighter athlete flow.",
     supports_finals: false,
     scheduling_hint: "Best when athletes rotate through fixed groups, transit zones, and official time windows.",
   },
   {
     value: "flash_format",
-    label: "Flash format",
-    short_label: "Flash",
-    description: "Qualifier scoring with flash-format labeling and scheduled session metadata.",
-    supports_finals: false,
-    scheduling_hint: "Best for sessioned rounds where athletes move with set start information.",
+    label: "CEC Boulder Flash Qualifier",
+    short_label: "CEC Flash",
+    description:
+      "Official-style CEC boulder qualifier with six problems, four minutes on and four minutes off, 15-second transitions, and 2025 points scoring.",
+    supports_finals: true,
+    scheduling_hint:
+      "Best for sanctioned-style flash qualifiers where staff score tops, zones, and attempts while athletes rotate through fixed problems.",
   },
   {
     value: "ifsc_finals_format",
-    label: "IFSC finals format",
-    short_label: "IFSC finals",
-    description: "Judge-operated finals mode with four finals boulders and the 2025 IFSC points system.",
+    label: "CEC / IFSC Isolation Finals",
+    short_label: "Isolation finals",
+    description:
+      "Judge-operated isolation final with four boulders, eight finalists by default, overlapping athlete flow, and the 2025 IFSC points system.",
     supports_finals: true,
     scheduling_hint: "Best when finalists move together through a dedicated finals round after qualifiers.",
   },
@@ -407,8 +419,26 @@ export function formatSupportsFinals(format: EventFormat) {
   return getFormatTemplate(format).supports_finals;
 }
 
+export function formatUsesOfficialQualifierPoints(format: EventFormat) {
+  return format === "flash_format";
+}
+
 export function formatUsesSelfScoredQualifiers(format: EventFormat) {
   return format === "scramble";
+}
+
+export function getRecommendedQualifierClimbCount(format: EventFormat) {
+  return formatUsesOfficialQualifierPoints(format) ? DEFAULT_CEC_FLASH_PROBLEMS : DEFAULT_TOTAL_CLIMBS;
+}
+
+export function getRecommendedQualifierCountingClimbs(format: EventFormat) {
+  return formatUsesOfficialQualifierPoints(format)
+    ? getRecommendedQualifierClimbCount(format)
+    : DEFAULT_QUALIFIER_COUNTING_CLIMBS;
+}
+
+export function getRecommendedFinalsCutoff(format: EventFormat) {
+  return format === "flash_format" || format === "ifsc_finals_format" ? 8 : DEFAULT_FINALS_CUTOFF;
 }
 
 export function normalizeQualifierEligibleAgeGroups(value: unknown) {
@@ -528,6 +558,9 @@ export function normalizeCompetition(
   const id = competition?.id ?? createCompetitionId();
   const name = competition?.name?.trim() || DEFAULT_COMPETITION.name;
   const nextFormat = (competition?.format ?? DEFAULT_COMPETITION.format) as EventFormat;
+  const defaultClimbCount = getRecommendedQualifierClimbCount(nextFormat);
+  const defaultCountingClimbs = getRecommendedQualifierCountingClimbs(nextFormat);
+  const defaultFinalsCutoff = getRecommendedFinalsCutoff(nextFormat);
   let activeBlockSeen = false;
 
   return {
@@ -545,15 +578,15 @@ export function normalizeCompetition(
     registration_closes_at: competition?.registration_closes_at ?? null,
     description: competition?.description?.trim() || "",
     hero_image_url: competition?.hero_image_url?.trim() || "",
-    total_climbs: clampNumber(competition?.total_climbs, 1, 200, DEFAULT_TOTAL_CLIMBS),
+    total_climbs: clampNumber(competition?.total_climbs, 1, 200, defaultClimbCount),
     max_climbers: clampNumber(competition?.max_climbers, 1, 1000, DEFAULT_MAX_CLIMBERS),
       qualifier_counting_climbs: clampNumber(
         competition?.qualifier_counting_climbs,
         1,
         20,
-        DEFAULT_QUALIFIER_COUNTING_CLIMBS
+        defaultCountingClimbs
       ),
-      finals_cutoff: clampNumber(competition?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6,
+      finals_cutoff: clampNumber(competition?.finals_cutoff, 6, 8, defaultFinalsCutoff) >= 8 ? 8 : 6,
       finals_tie_advances: competition?.finals_tie_advances ?? true,
       qualifier_eligible_age_groups: normalizeQualifierEligibleAgeGroups(competition?.qualifier_eligible_age_groups),
       finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(competition?.finals_eligible_age_groups),
@@ -690,18 +723,19 @@ export function getEventWorkflowGuide(
 ): EventWorkflowGuide {
   if (competition.stage_mode === "finals") {
     return {
-      headline: "Finals round live",
+      headline: "CEC / IFSC isolation final live",
       summary:
-        "Registration is closed, finalists move as one group through four finals boulders, and judges control all scoring.",
+        "Registration is closed, finalists move through four isolation-format boulders, and judges control every top, zone, and attempt.",
       notes: [
+        "CEC boulder finals follow the 2025 World Climbing points model: 25 for a top, 10 for the zone, minus 0.1 per failed try before the scoring hold.",
         "Finals advancement follows the competition's configured finals age groups across Men and Women divisions.",
-        "Finals scoring uses the 2025 IFSC points system, with qualifier rank used for count-back.",
-        "Climbers should follow the official presentation, observation, transit, and start order instead of self-scoring.",
+        "This round is run in isolation. No coach communication belongs in the active finals rotation.",
+        "The current app still models a direct qualifier-to-finals handoff rather than a separate CEC semifinal round.",
       ],
       roles: [
-        { role: "Admin", title: "Run the finals session", detail: "Keep the public finals board live, confirm finalists, and avoid reopening qualifier edits." },
-        { role: "Judge", title: "Enter top and zone results", detail: "Use the scorecard page to record zone, top, and attempts for each finalist on each finals boulder." },
-        { role: "Climber", title: "Follow finals call-up", detail: "Finalists do not self-score. They wait for their group movement and judge-recorded attempts." },
+        { role: "Admin", title: "Run the isolation round", detail: "Keep the public finals board live, confirm finalists, and avoid reopening qualifier edits once presentation and observation begin." },
+        { role: "Judge", title: "Record official scoring holds", detail: "Use the scorecard page to enter zone, top, attempts to zone, and attempts to top for each finalist on each finals boulder." },
+        { role: "Climber", title: "Compete under isolation rules", detail: "Finalists do not self-score. They wait for their official order, observation window, and judge-recorded attempts." },
       ],
     };
   }
@@ -727,19 +761,20 @@ export function getEventWorkflowGuide(
 
   if (competition.format === "flash_format") {
     return {
-      headline: "Flash-format qualifier",
+      headline: "CEC boulder flash qualifier",
       summary:
-        "This mode keeps qualifier scoring but is better for scheduled sessions where athletes move with set observation and start information.",
+        "This mode follows the official CEC flash qualifier pattern: six problems, four minutes on and four minutes off, a 15-second transition, and judge-operated points scoring.",
       notes: [
         `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
-        "Use schedule blocks to publish session timing, observation windows, and athlete groupings.",
-        "The website should guide athletes to the right session rather than make them guess which page matters next.",
-        "Staff can still review qualifier scoring while public users mainly need schedule clarity and live standings.",
+        "All qualifier boulders count in the standings. This is not a best-six scramble leaderboard.",
+        "Qualification scoring uses the 2025 points model: 25 for a top, 10 for the zone, minus 0.1 per failed try before the scoring hold.",
+        "Athletes can communicate outside their active climbing rotation, but no coaching belongs during the live rotation itself.",
+        "Use schedule blocks for check-in, technical meeting, isolation, and the round window so the public site mirrors the event day.",
       ],
       roles: [
-        { role: "Admin", title: "Label each session clearly", detail: "Make block names read like schedule items so families and athletes can quickly see what happens next." },
-        { role: "Judge", title: "Keep scoring aligned to the session", detail: "Use the scorecard page during the assigned flash round and avoid mixing athletes between sessions." },
-        { role: "Climber", title: "Watch your session timing", detail: "Check in for the published block, then follow staff instruction for observation and attempts." },
+        { role: "Admin", title: "Publish the official rhythm", detail: "Label the day with check-in, technical meeting, and round timing so athletes can follow the 4-on, 4-off flash structure." },
+        { role: "Judge", title: "Score with points, not scramble tops", detail: "Record zone, top, and attempts directly on the scorecard page during the flash round." },
+        { role: "Climber", title: "Treat the phone as info, not scoring", detail: "Use the site for timing, schedule, and rankings while judges enter the official scoring." },
       ],
     };
   }
@@ -790,39 +825,78 @@ export function calculateQualifierClimbScore(climbNumber: number, attemptCount: 
   return Math.max(0, basePoints - cappedAttempts * QUALIFIER_PENALTY_PER_EXTRA_ATTEMPT);
 }
 
+export function calculateQualifierAttemptPoints(attempt: Partial<QualifierAttempt>) {
+  const topPoints = attempt.topped
+    ? FINAL_TOP_POINTS - (normalizeSuccessfulAttempts(attempt.attempts_to_top) - 1) * FINAL_ATTEMPT_DEDUCTION
+    : 0;
+  const zonePoints = attempt.zone
+    ? FINAL_ZONE_POINTS - (normalizeSuccessfulAttempts(attempt.attempts_to_zone) - 1) * FINAL_ATTEMPT_DEDUCTION
+    : 0;
+
+  return Math.max(0, roundTenths(Math.max(topPoints, zonePoints)));
+}
+
 export function buildQualifierScoreList(
   attempts: QualifierAttempt[],
-  totalClimbs: number,
-  countingClimbCount: number
+  competition: Pick<Competition, "format" | "total_climbs" | "qualifier_counting_climbs">
 ): QualifierClimbScore[] {
+  const officialPointsQualifier = formatUsesOfficialQualifierPoints(competition.format);
   const attemptMap = new Map<number, QualifierAttempt>();
   attempts.forEach((attempt) => {
     attemptMap.set(attempt.climb_number, attempt);
   });
 
-  const scores = getClimbs(totalClimbs).map((climb) => {
+  const scores = getClimbs(competition.total_climbs).map((climb) => {
     const attempt = attemptMap.get(climb.number);
     const topped = attempt?.topped ?? false;
-    const attemptCount = attempt?.attempt_count ?? 0;
+    const zone = attempt?.zone ?? topped;
+    const attemptsToTop = topped ? normalizeSuccessfulAttempts(attempt?.attempts_to_top ?? attempt?.attempt_count) : null;
+    const attemptsToZone = zone
+      ? normalizeSuccessfulAttempts(attempt?.attempts_to_zone ?? attempt?.attempts_to_top ?? attempt?.attempt_count)
+      : null;
+    const attemptCount = officialPointsQualifier
+      ? topped
+        ? attemptsToTop ?? 0
+        : attemptsToZone ?? 0
+      : attempt?.attempt_count ?? 0;
     const extraAttempts = topped ? Math.max(0, attemptCount - 1) : Math.max(0, attemptCount);
 
     return {
       climb_number: climb.number,
+      zone,
       topped,
       attempt_count: attemptCount,
       extra_attempts: extraAttempts,
+      attempts_to_top: attemptsToTop,
+      attempts_to_zone: attemptsToZone,
       base_points: climb.base_points,
-      score: calculateQualifierClimbScore(climb.number, attemptCount, topped),
+      score: officialPointsQualifier
+        ? calculateQualifierAttemptPoints(
+            attempt ?? {
+              competition_id: "",
+              climber_id: "",
+              climb_number: climb.number,
+              attempt_count: 0,
+              zone: false,
+              topped: false,
+              attempts_to_top: null,
+              attempts_to_zone: null,
+              entered_by: "staff",
+            }
+          )
+        : calculateQualifierClimbScore(climb.number, attemptCount, topped),
       counting: false,
     };
   });
 
   const countingNumbers = new Set(
-    [...scores]
-      .filter((score) => score.score > 0)
-      .sort(compareQualifierClimbScores)
-      .slice(0, countingClimbCount)
-      .map((score) => score.climb_number)
+    officialPointsQualifier
+      ? scores.map((score) => score.climb_number)
+      : [...scores]
+          .filter((score) => score.score > 0)
+          .sort(compareQualifierClimbScores)
+          .slice(0, competition.qualifier_counting_climbs)
+          .map((score) => score.climb_number)
   );
 
   return scores.map((score) => ({
@@ -847,16 +921,25 @@ export function buildQualifierLeaderboard(
   climbers: ClimberWithAttempts[],
   competition: Competition
 ): QualifierLeaderboardEntry[] {
+  const officialPointsQualifier = formatUsesOfficialQualifierPoints(competition.format);
   const entries = climbers.map((climber) => {
-    const allClimbs = buildQualifierScoreList(
-      climber.qualifier_attempts,
-      competition.total_climbs,
-      competition.qualifier_counting_climbs
-    );
+    const allClimbs = buildQualifierScoreList(climber.qualifier_attempts, competition);
     const countingClimbs = [...allClimbs].filter((climb) => climb.counting).sort(compareQualifierClimbScores);
-    const totalScore = countingClimbs.reduce((sum, climb) => sum + climb.score, 0);
+    const totalScore = officialPointsQualifier
+      ? roundTenths(countingClimbs.reduce((sum, climb) => sum + climb.score, 0))
+      : countingClimbs.reduce((sum, climb) => sum + climb.score, 0);
     const toppedCount = countingClimbs.filter((climb) => climb.topped).length;
-    const countingAttemptTotal = countingClimbs.reduce((sum, climb) => sum + climb.attempt_count, 0);
+    const zoneCount = countingClimbs.filter((climb) => climb.zone).length;
+    const countingAttemptTotal = countingClimbs.reduce(
+      (sum, climb) =>
+        sum +
+        (climb.topped
+          ? climb.attempts_to_top ?? climb.attempt_count
+          : climb.zone
+            ? climb.attempts_to_zone ?? climb.attempt_count
+            : climb.attempt_count),
+      0
+    );
 
     return {
       climber_id: climber.id,
@@ -872,6 +955,7 @@ export function buildQualifierLeaderboard(
       counting_climbs: countingClimbs,
       all_climbs: allClimbs,
       topped_count: toppedCount,
+      zone_count: zoneCount,
       counting_attempt_total: countingAttemptTotal,
       overall_rank: 0,
       category_rank: 0,
@@ -888,6 +972,9 @@ export function compareQualifierEntries(left: QualifierLeaderboardEntry, right: 
   }
   if (right.topped_count !== left.topped_count) {
     return right.topped_count - left.topped_count;
+  }
+  if (right.zone_count !== left.zone_count) {
+    return right.zone_count - left.zone_count;
   }
   if (left.counting_attempt_total !== right.counting_attempt_total) {
     return left.counting_attempt_total - right.counting_attempt_total;
@@ -1066,6 +1153,7 @@ export function pickFinalists(qualifierEntries: QualifierLeaderboardEntry[], com
         competition.finals_tie_advances &&
         entry.total_score === cutoffEntry.total_score &&
         entry.topped_count === cutoffEntry.topped_count &&
+        entry.zone_count === cutoffEntry.zone_count &&
         entry.counting_attempt_total === cutoffEntry.counting_attempt_total;
 
       if (withinCutoff || tiedAtCutoff) {
@@ -1194,10 +1282,10 @@ export function buildHeroAccent(competition: Pick<Competition, "format">) {
   switch (competition.format) {
     case "ifsc_finals_format":
       return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(10,43,66,0.45))";
+    case "flash_format":
+      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(23,86,70,0.42))";
     case "five_on_five_off":
       return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(80,32,20,0.42))";
-    case "flash_format":
-      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(40,66,26,0.42))";
     default:
       return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(95,34,48,0.45))";
   }
@@ -1266,6 +1354,7 @@ function sameRank(left: unknown, right: unknown) {
     return (
       qualifierLeft.total_score === qualifierRight.total_score &&
       qualifierLeft.topped_count === qualifierRight.topped_count &&
+      qualifierLeft.zone_count === qualifierRight.zone_count &&
       qualifierLeft.counting_attempt_total === qualifierRight.counting_attempt_total
     );
   }

@@ -12,6 +12,9 @@ import {
   canStaffScoreQualifier,
   createCategoryKey,
   createCompetitionId,
+  getRecommendedFinalsCutoff,
+  getRecommendedQualifierClimbCount,
+  getRecommendedQualifierCountingClimbs,
   getActiveScheduleBlock,
   getDefaultCompetitionCategories,
   isQualifierEligibleCategory,
@@ -312,7 +315,10 @@ async function fetchQualifierAttempts(competitionIds: string[]) {
     climber_id: row.climber_id,
     climb_number: row.climb_number ?? 1,
     attempt_count: row.attempt_count ?? 0,
+    zone: row.zone ?? row.topped ?? false,
     topped: row.topped ?? false,
+    attempts_to_top: row.attempts_to_top ?? null,
+    attempts_to_zone: row.attempts_to_zone ?? null,
     entered_by: row.entered_by ?? "climber",
     updated_at: row.updated_at ?? undefined,
   }));
@@ -547,6 +553,9 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     hero_image_url: input.hero_image_url ?? "",
     status: "active",
     stage_mode: "qualifier",
+    total_climbs: getRecommendedQualifierClimbCount(input.format),
+    qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(input.format),
+    finals_cutoff: getRecommendedFinalsCutoff(input.format),
   });
 
   const { error } = await supabase.from("competitions").insert({
@@ -856,7 +865,12 @@ export async function updateQualifierAttemptByStaff(
   climberId: string,
   climbNumber: number,
   attemptCount: number,
-  topped: boolean
+  topped: boolean,
+  options?: {
+    zone?: boolean;
+    attemptsToTop?: number | null;
+    attemptsToZone?: number | null;
+  }
 ) {
   ensureConfigured();
 
@@ -874,7 +888,10 @@ export async function updateQualifierAttemptByStaff(
         climber_id: climberId,
         climb_number: climbNumber,
         attempt_count: attemptCount,
+        zone: options?.zone ?? topped,
         topped,
+        attempts_to_top: topped ? options?.attemptsToTop ?? attemptCount : null,
+        attempts_to_zone: (options?.zone ?? topped) ? options?.attemptsToZone ?? attemptCount : null,
         entered_by: "staff",
       },
       { onConflict: "climber_id,climb_number" }
