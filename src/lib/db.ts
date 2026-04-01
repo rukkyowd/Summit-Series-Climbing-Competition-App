@@ -675,6 +675,15 @@ export async function setCompetitionStatus(competitionId: string, status: Compet
   }
 }
 
+export async function deleteCompetition(competitionId: string) {
+  ensureConfigured();
+
+  const { error } = await supabase.from("competitions").delete().eq("id", competitionId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function advanceCompetitionToFinals(competitionId: string) {
   ensureConfigured();
 

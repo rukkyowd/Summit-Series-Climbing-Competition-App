@@ -221,9 +221,6 @@ on public.qualifier_attempts (competition_id, climber_id, climb_number);
 create index competition_finalists_competition_idx
 on public.competition_finalists (competition_id, display_category, qualifier_rank);
 
-create index final_attempts_competition_idx
-on public.final_attempts (competition_id, climber_id, climb_number);
-
 create table public.final_attempts (
   id uuid primary key default gen_random_uuid(),
   competition_id uuid not null references public.competitions(id) on delete cascade,
@@ -237,6 +234,9 @@ create table public.final_attempts (
   updated_at timestamptz not null default now(),
   unique (climber_id, climb_number)
 );
+
+create index final_attempts_competition_idx
+on public.final_attempts (competition_id, climber_id, climb_number);
 
 create or replace function public.registration_open_for_competition(p_competition_id uuid)
 returns boolean

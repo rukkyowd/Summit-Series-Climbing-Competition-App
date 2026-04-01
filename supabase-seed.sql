@@ -1,10 +1,30 @@
-delete from public.final_attempts;
-delete from public.competition_finalists;
-delete from public.qualifier_attempts;
-delete from public.climbers;
-delete from public.competition_schedule_blocks;
-delete from public.competition_categories;
-delete from public.competitions;
+do $$
+begin
+  if to_regclass('public.competitions') is null then
+    raise exception 'Missing multi-competition schema. Run supabase-repair.sql or supabase-schema.sql first.';
+  end if;
+
+  if to_regclass('public.final_attempts') is not null then
+    execute 'delete from public.final_attempts';
+  end if;
+  if to_regclass('public.competition_finalists') is not null then
+    execute 'delete from public.competition_finalists';
+  end if;
+  if to_regclass('public.qualifier_attempts') is not null then
+    execute 'delete from public.qualifier_attempts';
+  end if;
+  if to_regclass('public.climbers') is not null then
+    execute 'delete from public.climbers';
+  end if;
+  if to_regclass('public.competition_schedule_blocks') is not null then
+    execute 'delete from public.competition_schedule_blocks';
+  end if;
+  if to_regclass('public.competition_categories') is not null then
+    execute 'delete from public.competition_categories';
+  end if;
+
+  execute 'delete from public.competitions';
+end $$;
 
 insert into public.competitions (
   id,

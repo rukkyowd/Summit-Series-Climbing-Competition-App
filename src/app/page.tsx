@@ -8,6 +8,7 @@ import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } 
 import {
   advanceCompetitionToFinals,
   createCompetitionFromTemplate,
+  deleteCompetition,
   listCompetitionSummaries,
   resetCompetition,
   saveCompetitionConfig,
@@ -72,6 +73,37 @@ function sortBlocks(blocks: CompetitionScheduleBlock[]) {
 
     return left.label.localeCompare(right.label);
   });
+}
+
+function formatDateInputValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  return value.slice(0, 10);
+}
+
+function formatDateTimeLocalValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value.slice(0, 16);
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseDateTimeLocalValue(value: string) {
+  return value ? new Date(value).toISOString() : null;
 }
 
 export default function HomePage() {
@@ -437,10 +469,42 @@ export default function HomePage() {
                     <input value={draft.hero_image_url} onChange={(event) => setDraft({ ...draft, hero_image_url: event.target.value })} className="results-input" placeholder="Hero image URL" />
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <input type="date" value={draft.start_date ?? ""} onChange={(event) => setDraft({ ...draft, start_date: event.target.value || null })} className="results-input" />
-                    <input type="date" value={draft.end_date ?? ""} onChange={(event) => setDraft({ ...draft, end_date: event.target.value || null })} className="results-input" />
-                    <input type="datetime-local" value={draft.registration_opens_at ?? ""} onChange={(event) => setDraft({ ...draft, registration_opens_at: event.target.value || null })} className="results-input" />
-                    <input type="datetime-local" value={draft.registration_closes_at ?? ""} onChange={(event) => setDraft({ ...draft, registration_closes_at: event.target.value || null })} className="results-input" />
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Start date</span>
+                      <input
+                        type="date"
+                        value={formatDateInputValue(draft.start_date)}
+                        onChange={(event) => setDraft({ ...draft, start_date: event.target.value || null })}
+                        className="results-input"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">End date</span>
+                      <input
+                        type="date"
+                        value={formatDateInputValue(draft.end_date)}
+                        onChange={(event) => setDraft({ ...draft, end_date: event.target.value || null })}
+                        className="results-input"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Registration opens</span>
+                      <input
+                        type="datetime-local"
+                        value={formatDateTimeLocalValue(draft.registration_opens_at)}
+                        onChange={(event) => setDraft({ ...draft, registration_opens_at: parseDateTimeLocalValue(event.target.value) })}
+                        className="results-input"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Registration closes</span>
+                      <input
+                        type="datetime-local"
+                        value={formatDateTimeLocalValue(draft.registration_closes_at)}
+                        onChange={(event) => setDraft({ ...draft, registration_closes_at: parseDateTimeLocalValue(event.target.value) })}
+                        className="results-input"
+                      />
+                    </label>
                   </div>
                   <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className="results-textarea" placeholder="Competition description" />
 
@@ -596,6 +660,37 @@ export default function HomePage() {
                       className="results-secondary-button"
                     >
                       Reset competition
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!canSave) {
+                          return;
+                        }
+
+                        const confirmed = window.confirm(
+                          `Delete ${draft.name}? This will permanently remove its registrations, scorecards, schedule blocks, finalists, and results.`
+                        );
+                        if (!confirmed) {
+                          return;
+                        }
+
+                        startTransition(() => {
+                          void (async () => {
+                            try {
+                              await deleteCompetition(draft.id);
+                              await refreshAfterChange();
+                              setMessage("Competition deleted.");
+                            } catch (nextError) {
+                              setError(nextError instanceof Error ? nextError.message : "Unable to delete competition.");
+                            }
+                          })();
+                        });
+                      }}
+                      disabled={!canSave || isPending}
+                      className="results-secondary-button"
+                    >
+                      Delete competition
                     </button>
                   </div>
                 </div>
