@@ -1521,7 +1521,16 @@ export function formatCompetitionDateBadge(competition: Pick<Competition, "start
   const start = new Date(competition.start_date);
   const end = competition.end_date ? new Date(competition.end_date) : null;
   const month = start.toLocaleDateString(undefined, { month: "short" }).toUpperCase();
-  const day = end && !Number.isNaN(end.getTime()) ? `${start.getDate()} - ${end.getDate()}` : `${start.getDate()}`;
+  const sameValidEndDate =
+    end &&
+    !Number.isNaN(end.getTime()) &&
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+  const day =
+    end && !Number.isNaN(end.getTime()) && !sameValidEndDate
+      ? `${start.getDate()} - ${end.getDate()}`
+      : `${start.getDate()}`;
   return { month, day };
 }
 
