@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import { getAuthState, isStaffRole } from "@/lib/auth";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
@@ -23,6 +24,7 @@ export default function CompetitionOverviewPage() {
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showFormatGuide, setShowFormatGuide] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!slug) {
@@ -43,6 +45,12 @@ export default function CompetitionOverviewPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    void getAuthState()
+      .then((authState) => setShowFormatGuide(isStaffRole(authState.profile?.role)))
+      .catch(() => setShowFormatGuide(false));
+  }, []);
 
   useEffect(() => {
     if (!supabaseConfigured || !snapshot) {
@@ -126,7 +134,7 @@ export default function CompetitionOverviewPage() {
               </section>
 
               <section className="results-card">
-                {workflowGuide ? (
+                {workflowGuide && showFormatGuide ? (
                   <div className="results-meta-card">
                     <div className="results-kicker">Format guide</div>
                     <div className="mt-2 text-2xl font-semibold text-slate-950">{workflowGuide.headline}</div>
