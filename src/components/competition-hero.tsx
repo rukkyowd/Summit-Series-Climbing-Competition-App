@@ -6,6 +6,7 @@ import {
   buildHeroAccent,
   formatDateRange,
   formatDateTimeLabel,
+  getCompetitionLifecycleLabel,
   getFormatTemplate,
   isCompetitionLiveNow,
   type Competition,
@@ -18,6 +19,7 @@ export default function CompetitionHero({
 }) {
   const summary = getFormatTemplate(competition.format);
   const liveNow = isCompetitionLiveNow(competition);
+  const lifecycleLabel = getCompetitionLifecycleLabel(competition);
 
   return (
     <section className="results-card overflow-hidden">
@@ -37,7 +39,7 @@ export default function CompetitionHero({
             <span className="results-chip">{summary.label}</span>
             <span className={`results-chip ${liveNow ? "results-chip-live" : ""}`}>
               {liveNow ? <span className="results-live-dot" aria-hidden="true" /> : null}
-              {competition.stage_mode === "finals" ? "Finals active" : "Qualifiers live"}
+              {lifecycleLabel}
             </span>
           </div>
         </div>

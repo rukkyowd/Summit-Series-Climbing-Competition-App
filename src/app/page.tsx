@@ -6,7 +6,7 @@ import SiteHeader from "@/components/site-header";
 import CompetitionListCard from "@/components/competition-list-card";
 import { getAuthState, isStaffRole, type Profile } from "@/lib/auth";
 import { listCompetitionSummaries, type CompetitionSummary } from "@/lib/db";
-import { buildCompetitionPath, formatDateRange } from "@/lib/scoring";
+import { buildCompetitionPath, formatDateRange, getCompetitionLifecycleLabel } from "@/lib/scoring";
 
 export default function HomePage() {
   const [summaries, setSummaries] = useState<CompetitionSummary[]>([]);
@@ -51,6 +51,7 @@ export default function HomePage() {
   }, [search, summaries]);
 
   const featured = filtered.find((summary) => summary.live_now) ?? filtered[0] ?? null;
+  const featuredLifecycle = featured ? getCompetitionLifecycleLabel(featured.competition) : null;
 
   return (
     <main className="results-page">
@@ -100,6 +101,7 @@ export default function HomePage() {
                 </div>
                 <div className="mt-2 text-3xl font-semibold text-slate-950">{featured.competition.name}</div>
                 <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  <div>{featuredLifecycle}</div>
                   <div>{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
                   <div>{featured.competition.location_name || "Location TBD"}</div>
                 </div>

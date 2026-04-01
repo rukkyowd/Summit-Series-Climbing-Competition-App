@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   buildCompetitionPath,
+  getCompetitionLifecycleLabel,
   formatCompetitionDateBadge,
   formatDateLabel,
   formatDateRange,
@@ -17,6 +18,8 @@ export default function CompetitionListCard({
 }) {
   const { competition } = summary;
   const badge = formatCompetitionDateBadge(competition);
+  const lifecycleLabel = getCompetitionLifecycleLabel(competition);
+  const liveNow = lifecycleLabel === "Live / Ongoing";
 
   return (
     <Link href={buildCompetitionPath(competition.slug)} className="results-list-row">
@@ -25,6 +28,10 @@ export default function CompetitionListCard({
         <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
           <span>{competition.discipline_label}</span>
           <span>{getFormatTemplate(competition.format).label}</span>
+          <span className={`results-chip ${liveNow ? "results-chip-live" : ""}`}>
+            {liveNow ? <span className="results-live-dot" aria-hidden="true" /> : null}
+            {lifecycleLabel}
+          </span>
           {summary.active_schedule_block ? <span>{summary.active_schedule_block.label}</span> : null}
         </div>
       </div>
