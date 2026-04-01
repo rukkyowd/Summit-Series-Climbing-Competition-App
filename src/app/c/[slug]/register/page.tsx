@@ -8,12 +8,15 @@ import { getCompetitionSnapshot, registerClimber, type CompetitionSnapshot } fro
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
   canRegisterDuringCompetition,
+  CLIMBER_NUMBER_PATTERN,
   formatCompetitionPhaseLabel,
   getActiveScheduleBlock,
   getEventWorkflowGuide,
+  getRegistrationAssignmentHelpText,
+  getRegistrationAssignmentLabel,
+  isValidClimberNumber,
+  normalizeClimberNumberInput,
 } from "@/lib/scoring";
-
-const STEPS = ["Details", "Category", "Time slot", "Confirm"] as const;
 
 export default function CompetitionRegisterPage() {
   const params = useParams<{ slug: string }>();
@@ -62,6 +65,9 @@ export default function CompetitionRegisterPage() {
   const workflowGuide = useMemo(() => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null), [snapshot]);
   const activeScheduleBlock = useMemo(() => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null), [snapshot]);
   const registrationOpen = snapshot ? canRegisterDuringCompetition(snapshot.competition) : false;
+  const assignmentLabel = snapshot ? getRegistrationAssignmentLabel(snapshot.competition) : "Assignment";
+  const assignmentHelp = snapshot ? getRegistrationAssignmentHelpText(snapshot.competition) : "";
+  const steps = useMemo(() => ["Details", "Category", assignmentLabel, "Confirm"] as const, [assignmentLabel]);
 
   useEffect(() => {
     if (!availableSlots.length) {
@@ -82,6 +88,10 @@ export default function CompetitionRegisterPage() {
       }
       if (!climberNumber.trim()) {
         setFieldError({ field: "climberNumber", message: "Enter the climber number." });
+        return false;
+      }
+      if (!isValidClimberNumber(climberNumber)) {
+        setFieldError({ field: "climberNumber", message: "Climber numbers must be 1 to 4 digits." });
         return false;
       }
       if (!province.trim()) {
@@ -151,8 +161,8 @@ export default function CompetitionRegisterPage() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            {STEPS.map((label, index) => (
+            <div className="mt-5 flex flex-wrap gap-2">
+            {steps.map((label, index) => (
               <div key={label} className={index === step ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
                 {index + 1}. {label}
               </div>
@@ -203,7 +213,16 @@ export default function CompetitionRegisterPage() {
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-slate-700">Climber number</span>
-                    <input value={climberNumber} onChange={(event) => setClimberNumber(event.target.value)} className="results-input" placeholder="047" disabled={!registrationOpen || submitting} />
+                    <input
+                      value={climberNumber}
+                      onChange={(event) => setClimberNumber(normalizeClimberNumberInput(event.target.value))}
+                      className="results-input"
+                      placeholder="047"
+                      inputMode="numeric"
+                      pattern={CLIMBER_NUMBER_PATTERN.source}
+                      maxLength={4}
+                      disabled={!registrationOpen || submitting}
+                    />
                   </label>
                   <label className="space-y-2 md:col-span-2">
                     <span className="text-sm font-medium text-slate-700">Province</span>
@@ -234,6 +253,7 @@ export default function CompetitionRegisterPage() {
               {step === 2 ? (
                 availableSlots.length ? (
                   <div className="grid gap-3">
+                    <div className="results-meta-card text-slate-600">{assignmentHelp}</div>
                     {availableSlots.map((slot) => (
                       <button
                         key={slot.id}
@@ -250,7 +270,11 @@ export default function CompetitionRegisterPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="results-meta-card text-slate-600">This competition does not require a time slot selection.</div>
+                  <div className="results-meta-card text-slate-600">
+                    {snapshot?.competition.format === "scramble"
+                      ? "This competition does not require a time-slot selection."
+                      : "Staff can assign the official start group separately. No start-group selection is required here."}
+                  </div>
                 )
               ) : null}
 
@@ -260,7 +284,7 @@ export default function CompetitionRegisterPage() {
                   <div><span className="font-semibold text-slate-950">Number:</span> {climberNumber || "Not entered"}</div>
                   <div><span className="font-semibold text-slate-950">Province:</span> {province || "Not entered"}</div>
                   <div><span className="font-semibold text-slate-950">Category:</span> {selectedChoice?.category.display_name || "Not selected"}</div>
-                  <div><span className="font-semibold text-slate-950">Time slot:</span> {availableSlots.find((slot) => slot.id === timeSlotId)?.label || (availableSlots.length ? "Not selected" : "No slot required")}</div>
+                  <div><span className="font-semibold text-slate-950">{assignmentLabel}:</span> {availableSlots.find((slot) => slot.id === timeSlotId)?.label || (availableSlots.length ? "Not selected" : "No assignment required")}</div>
                 </div>
               ) : null}
 
@@ -268,8 +292,8 @@ export default function CompetitionRegisterPage() {
                 <button type="button" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0 || submitting} className="results-secondary-button">
                   Back
                 </button>
-                {step < STEPS.length - 1 ? (
-                  <button type="button" onClick={() => validateCurrentStep() && setStep((current) => Math.min(STEPS.length - 1, current + 1))} disabled={!registrationOpen || submitting} className="results-primary-button">
+                {step < steps.length - 1 ? (
+                  <button type="button" onClick={() => validateCurrentStep() && setStep((current) => Math.min(steps.length - 1, current + 1))} disabled={!registrationOpen || submitting} className="results-primary-button">
                     Continue
                   </button>
                 ) : (

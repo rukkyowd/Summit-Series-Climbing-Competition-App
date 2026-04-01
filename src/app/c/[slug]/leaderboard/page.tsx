@@ -12,7 +12,7 @@ export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
   const [error, setError] = useState("");
 
@@ -22,13 +22,20 @@ export default function CompetitionLeaderboardPage() {
       .catch((nextError) => setError(nextError instanceof Error ? nextError.message : "Unable to load rankings."));
   }, [slug]);
 
-  const categories = useMemo(() => snapshot?.competition.categories ?? [], [snapshot]);
+  const categories = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    const offeredCategories = snapshot.registrationChoices.map((choice) => choice.category);
+    return offeredCategories.length ? offeredCategories : snapshot.competition.categories;
+  }, [snapshot]);
   const qualifierRows = useMemo(() => {
     if (!snapshot) {
       return [];
     }
 
-    return snapshot.qualifierLeaderboard.filter((entry) => selectedCategory === "all" || entry.category_id === selectedCategory);
+    return snapshot.qualifierLeaderboard.filter((entry) => !selectedCategory || entry.category_id === selectedCategory);
   }, [selectedCategory, snapshot]);
 
   const finalsGroups = useMemo(() => {
@@ -48,6 +55,12 @@ export default function CompetitionLeaderboardPage() {
       setSelectedFinalsCategory(finalsCategories[0]);
     }
   }, [finalsCategories, selectedFinalsCategory]);
+
+  useEffect(() => {
+    if (!selectedCategory && categories.length) {
+      setSelectedCategory(categories[0].id);
+    }
+  }, [categories, selectedCategory]);
 
   const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
   const finalsActive = snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results";
@@ -87,9 +100,6 @@ export default function CompetitionLeaderboardPage() {
               <h1 className="mt-2 text-4xl font-semibold text-slate-950">Live qualifier rankings</h1>
 
               <div className="mt-5 flex flex-wrap gap-2 sticky top-24 z-20 bg-white/95 py-2 backdrop-blur">
-                <button type="button" onClick={() => setSelectedCategory("all")} className={selectedCategory === "all" ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
-                  All categories
-                </button>
                 {categories.map((category) => (
                   <button key={category.id} type="button" onClick={() => setSelectedCategory(category.id)} className={selectedCategory === category.id ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
                     {category.display_name}
@@ -112,7 +122,7 @@ export default function CompetitionLeaderboardPage() {
                     </div>
                     {qualifierRows.map((entry) => (
                       <div key={entry.climber_id} className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
-                        <div className="text-xl font-semibold text-slate-950">{selectedCategory === "all" ? entry.overall_rank : entry.category_rank}</div>
+                        <div className="text-xl font-semibold text-slate-950">{entry.category_rank}</div>
                         <div>
                           <div className="text-lg font-semibold text-slate-950">{entry.name}</div>
                           <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
@@ -120,7 +130,7 @@ export default function CompetitionLeaderboardPage() {
                         <div>{entry.province}</div>
                         <div>{entry.display_category}</div>
                         <div className="font-semibold text-slate-950">{Number.isInteger(entry.total_score) ? entry.total_score.toLocaleString() : formatFinalPoints(entry.total_score)}</div>
-                        <div>{entry.topped_count} tops · {entry.zone_count} zones</div>
+                        <div>{entry.topped_count} tops / {entry.zone_count} zones</div>
                       </div>
                     ))}
                   </div>

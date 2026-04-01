@@ -11,6 +11,7 @@ export const QUALIFIER_MAX_PENALIZED_EXTRA_ATTEMPTS = 3;
 export const FINAL_TOP_POINTS = 25;
 export const FINAL_ZONE_POINTS = 10;
 export const FINAL_ATTEMPT_DEDUCTION = 0.1;
+export const CLIMBER_NUMBER_PATTERN = /^\d{1,4}$/;
 
 export const COMPETITION_STATUSES = ["active", "archived"] as const;
 export const EVENT_FORMATS = [
@@ -841,12 +842,25 @@ export function getActiveScheduleBlock(competition: Pick<Competition, "schedule_
 }
 
 export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
-  return (
-    phaseType === "check_in" ||
-    phaseType === "technical_meeting" ||
-    phaseType === "qualifier_round" ||
-    phaseType === "custom"
-  );
+  return phaseType === "qualifier_round" || phaseType === "custom";
+}
+
+export function getRegistrationAssignmentLabel(competition: Pick<Competition, "format">) {
+  return formatUsesSelfScoredQualifiers(competition.format) ? "Time slot" : "Start group";
+}
+
+export function getRegistrationAssignmentHelpText(competition: Pick<Competition, "format">) {
+  return formatUsesSelfScoredQualifiers(competition.format)
+    ? "Choose the climbing window when you will be on the wall."
+    : "Choose the qualifier wave or start group. Staff can still publish the full official start list separately.";
+}
+
+export function normalizeClimberNumberInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, 4);
+}
+
+export function isValidClimberNumber(value: string) {
+  return CLIMBER_NUMBER_PATTERN.test(value.trim());
 }
 
 export function schedulePhaseAllowsQualifierScoring(phaseType: SchedulePhaseType) {

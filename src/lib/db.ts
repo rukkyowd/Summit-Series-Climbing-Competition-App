@@ -18,6 +18,7 @@ import {
   getRecommendedQualifierCountingClimbs,
   getActiveScheduleBlock,
   getDefaultCompetitionCategories,
+  isValidClimberNumber,
   isQualifierEligibleCategory,
   isCompetitionLiveNow,
   isFinalsStage,
@@ -548,9 +549,8 @@ function validateSlotForCategory(slot: CompetitionScheduleBlock, categoryId: str
 }
 
 async function syncCompetitionRounds(competition: Competition) {
-  const rounds: Array<Omit<CompetitionRound, "created_at">> = [
+  const rounds: Array<Omit<CompetitionRound, "id" | "created_at">> = [
     {
-      id: `${competition.id}-qualifier`,
       competition_id: competition.id,
       round_number: 1,
       name: "Qualifier",
@@ -564,7 +564,6 @@ async function syncCompetitionRounds(competition: Competition) {
       closed_at: competition.current_phase === "qualifier_open" ? null : competition.qualifier_locked_at,
     },
     {
-      id: `${competition.id}-finals`,
       competition_id: competition.id,
       round_number: 2,
       name: "Finals",
@@ -585,7 +584,7 @@ async function syncCompetitionRounds(competition: Competition) {
       finals_cutoff: round.finals_cutoff ?? null,
       counting_climbs: round.counting_climbs ?? null,
     })),
-    { onConflict: "id" }
+    { onConflict: "competition_id,round_number" }
   );
 
   if (error) {
@@ -1100,6 +1099,10 @@ export async function registerClimber(input: RegisterClimberInput) {
   );
   if (existing) {
     throw new Error(`Climber number ${input.climberNumber} is already registered as ${existing.name}.`);
+  }
+
+  if (!isValidClimberNumber(input.climberNumber)) {
+    throw new Error("Climber numbers must be 1 to 4 digits.");
   }
 
   if (snapshot.climbers.length >= snapshot.competition.max_climbers) {

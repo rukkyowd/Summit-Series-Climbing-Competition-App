@@ -22,6 +22,7 @@ import {
   type CompetitionSummary,
 } from "@/lib/db";
 import {
+  CATEGORY_AGE_GROUPS,
   DEFAULT_FINALS_CUTOFF,
   DEFAULT_MAX_CLIMBERS,
   DEFAULT_QUALIFIER_COUNTING_CLIMBS,
@@ -50,6 +51,14 @@ function cloneCompetition(competition: Competition): Competition {
       eligible_category_ids: [...block.eligible_category_ids],
     })),
   };
+}
+
+function toggleAgeGroup(current: string[], ageGroup: string) {
+  if (current.includes(ageGroup)) {
+    return current.filter((entry) => entry !== ageGroup);
+  }
+
+  return [...current, ageGroup];
 }
 
 export default function StaffDashboard({ initialCompetitionSlug }: { initialCompetitionSlug?: string }) {
@@ -379,6 +388,48 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                     <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className="results-secondary-button mt-4">
                       {draft.status === "active" ? "Archive competition" : "Reopen competition"}
                     </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="results-meta-card">
+                    <div className="results-kicker">Qualifier age groups</div>
+                    <div className="mt-2 text-sm text-slate-600">Registration and qualifier leaderboard tabs only show these age groups.</div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {CATEGORY_AGE_GROUPS.map((ageGroup) => {
+                        const active = draft.qualifier_eligible_age_groups.includes(ageGroup);
+                        return (
+                          <button
+                            key={ageGroup}
+                            type="button"
+                            onClick={() => setDraft({ ...draft, qualifier_eligible_age_groups: toggleAgeGroup(draft.qualifier_eligible_age_groups, ageGroup) })}
+                            className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                          >
+                            {ageGroup}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="results-meta-card">
+                    <div className="results-kicker">Finals age groups</div>
+                    <div className="mt-2 text-sm text-slate-600">Only these age groups can advance into finals selections.</div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {CATEGORY_AGE_GROUPS.map((ageGroup) => {
+                        const active = draft.finals_eligible_age_groups.includes(ageGroup);
+                        return (
+                          <button
+                            key={ageGroup}
+                            type="button"
+                            onClick={() => setDraft({ ...draft, finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, ageGroup) })}
+                            className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                          >
+                            {ageGroup}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
