@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
-import { getAuthState, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
+import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import { advanceEventToFinals, getCompetitionSnapshot, resetActiveEvent, saveEventConfig, type CompetitionSnapshot } from "@/lib/db";
 import {
   CATEGORY_AGE_GROUPS,
@@ -97,6 +97,7 @@ export default function HomePage() {
   }, []);
 
   const canSave = profile?.role === "admin";
+  const canSeeStaffControls = isStaffRole(profile?.role);
   const supportsFinals = draft ? formatSupportsFinals(draft.format) : false;
   const canConfigureFinalsAdvancement = draft ? draft.format === "scramble" || supportsFinals : false;
   const finalsActive = draft?.stage_mode === "finals";
@@ -291,39 +292,25 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className={`grid gap-4 ${canSeeStaffControls ? "xl:grid-cols-[0.95fr_1.05fr]" : ""}`}>
           <div className="space-y-4">
-            <section className="card">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <div className="eyebrow">Staff access</div>
-                  <h2 className="section-title mt-4 text-3xl">
-                    {profile ? `Signed in as ${profile.role}` : "Sign in to edit the event"}
-                  </h2>
-                </div>
-                {profile ? (
+            {canSeeStaffControls ? (
+              <section className="card">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="eyebrow">Staff access</div>
+                    <h2 className="section-title mt-4 text-3xl">Signed in as {profile?.role}</h2>
+                  </div>
                   <button onClick={() => void signOutUser().then(() => setProfile(null))} className="btn-ghost">
                     Sign out
                   </button>
-                ) : null}
-              </div>
+                </div>
 
-              {!profile ? (
-                <form onSubmit={signIn} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                  <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@gym.com" className="input-field" />
-                  <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="input-field" />
-                  <button type="submit" disabled={authLoading} className="btn-primary">
-                    {authLoading ? "Signing in..." : "Sign in"}
-                  </button>
-                </form>
-              ) : (
                 <p className="mt-3 text-sm text-slate-300">
-                  {canSave ? "Admin controls are unlocked." : "Judges can review the setup, but only admins can save changes."}
+                  {canSave ? "Admin controls are unlocked." : "Judge controls are available, but only admins can save event setup changes."}
                 </p>
-              )}
-
-              {authError ? <div className="mt-4 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{authError}</div> : null}
-            </section>
+              </section>
+            ) : null}
 
             <section className="card">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -442,40 +429,41 @@ export default function HomePage() {
             </section>
           </div>
 
-          <section className="card">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="eyebrow">Admin setup</div>
-                <h2 className="section-title mt-4 text-4xl">Configure the active event</h2>
-              </div>
-              <div className={`status-pill ${canSave ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}>
-                {canSave ? "Editable" : "Read-only"}
-              </div>
-            </div>
-
-            {error ? <div className="mt-5 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div> : null}
-            {message ? <div className="mt-5 rounded-[1.3rem] border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-200">{message}</div> : null}
-
-            {draft ? (
-              <div className="mt-6 space-y-6">
-                {finalsActive ? (
-                  <div className="rounded-[1.4rem] border border-green-500/20 bg-green-500/10 px-4 py-4 text-sm text-green-100">
-                    Finals are active. The event format and qualifier settings are locked so the live finals standings stay stable, but the schedule board can still be updated.
-                  </div>
-                ) : null}
-
-                <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-                  <div className="meta-label">What these controls do</div>
-                  <div className="mt-3 space-y-2">
-                    <p>`Event name`: the title shown across the app.</p>
-                    <p>`Format`: the competition mode and scoring flow.</p>
-                    <p>`Qualifier boulders`: how many qualifier problems climbers can log.</p>
-                    <p>`Climber cap`: the maximum number of registrations allowed.</p>
-                    <p>`Counting climbs`: how many best qualifier climbs count toward ranking.</p>
-                    <p>`Finals cutoff`: how many climbers advance per finals-eligible category, before tie extensions.</p>
-                    <p>`Finals age groups`: which Men and Women age groups are allowed to advance to finals.</p>
-                  </div>
+          {canSeeStaffControls ? (
+            <section className="card">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="eyebrow">Admin setup</div>
+                  <h2 className="section-title mt-4 text-4xl">Configure the active event</h2>
                 </div>
+                <div className={`status-pill ${canSave ? "border-green-500/20 bg-green-500/10 text-green-200" : "border-white/10 bg-white/[0.03] text-slate-300"}`}>
+                  {canSave ? "Editable" : "Read-only"}
+                </div>
+              </div>
+
+              {error ? <div className="mt-5 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div> : null}
+              {message ? <div className="mt-5 rounded-[1.3rem] border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-200">{message}</div> : null}
+
+              {draft ? (
+                <div className="mt-6 space-y-6">
+                  {finalsActive ? (
+                    <div className="rounded-[1.4rem] border border-green-500/20 bg-green-500/10 px-4 py-4 text-sm text-green-100">
+                      Finals are active. The event format and qualifier settings are locked so the live finals standings stay stable, but the schedule board can still be updated.
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+                    <div className="meta-label">What these controls do</div>
+                    <div className="mt-3 space-y-2">
+                      <p>`Event name`: the title shown across the app.</p>
+                      <p>`Format`: the competition mode and scoring flow.</p>
+                      <p>`Qualifier boulders`: how many qualifier problems climbers can log.</p>
+                      <p>`Climber cap`: the maximum number of registrations allowed.</p>
+                      <p>`Counting climbs`: how many best qualifier climbs count toward ranking.</p>
+                      <p>`Finals cutoff`: how many climbers advance per finals-eligible category, before tie extensions.</p>
+                      <p>`Finals age groups`: which Men and Women age groups are allowed to advance to finals.</p>
+                    </div>
+                  </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="text-sm text-slate-300">
@@ -635,11 +623,34 @@ export default function HomePage() {
                 <div className="text-sm text-slate-400">
                   `Advance to finals` freezes qualifiers and starts finals. `Save active event` keeps your setup changes. `Reset event` wipes the live event back to the default scramble setup. `Reset draft` only discards unsaved edits on this page.
                 </div>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-slate-300">Loading event setup...</p>
+              )}
+            </section>
+          ) : (
+            <section className="card">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="eyebrow">Staff access</div>
+                  <h2 className="section-title mt-4 text-3xl">Judge or admin sign-in</h2>
+                  <p className="mt-3 text-sm text-slate-300">
+                    Staff-only event controls are hidden until you sign in with a judge or admin account.
+                  </p>
+                </div>
               </div>
-            ) : (
-              <p className="mt-4 text-sm text-slate-300">Loading event setup...</p>
-            )}
-          </section>
+
+              <form onSubmit={signIn} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@gym.com" className="input-field" />
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="input-field" />
+                <button type="submit" disabled={authLoading} className="btn-primary">
+                  {authLoading ? "Signing in..." : "Sign in"}
+                </button>
+              </form>
+
+              {authError ? <div className="mt-4 rounded-[1.3rem] border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">{authError}</div> : null}
+            </section>
+          )}
         </section>
       </div>
     </main>
