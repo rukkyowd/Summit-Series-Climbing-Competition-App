@@ -716,7 +716,11 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
   const selectedFinalists = finalists
     .filter((entry) => entry.competition_id === competition.id)
     .map(({ competition_id, ...entry }) => entry);
-  const competitionFinalists = selectedFinalists.length ? selectedFinalists : projectedFinalists;
+  const liveProjectedFinalists =
+    competition.current_phase === "qualifier_open"
+      ? projectedFinalists.filter((entry) => !entry.advanced_with_tie)
+      : projectedFinalists;
+  const competitionFinalists = selectedFinalists.length ? selectedFinalists : liveProjectedFinalists;
   const finalsLeaderboard = isFinalsStage(competition)
     ? buildFinalsLeaderboard(joined, competitionFinalists, competition)
     : [];

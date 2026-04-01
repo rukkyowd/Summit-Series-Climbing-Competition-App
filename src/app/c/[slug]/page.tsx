@@ -16,6 +16,7 @@ import {
   getActiveScheduleBlock,
   getEventWorkflowGuide,
   getTimeSlotLabel,
+  isFinalsStage,
 } from "@/lib/scoring";
 
 export default function CompetitionOverviewPage() {
@@ -79,6 +80,11 @@ export default function CompetitionOverviewPage() {
     () => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null),
     [snapshot]
   );
+  const finalistsLabel = snapshot
+    ? snapshot.finalistsPersisted || isFinalsStage(snapshot.competition)
+      ? "Finalists"
+      : "Projected finalists"
+    : "Finalists";
 
   return (
     <main className="results-page">
@@ -154,8 +160,13 @@ export default function CompetitionOverviewPage() {
                     <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.climbers.length}</div>
                   </div>
                   <div className="results-meta-card">
-                    <div className="results-kicker">Finalists</div>
+                    <div className="results-kicker">{finalistsLabel}</div>
                     <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.finalists.length}</div>
+                    {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
+                      <div className="mt-2 text-sm text-slate-600">
+                        Live qualifier projections do not expand tie-advances until the round is closed.
+                      </div>
+                    ) : null}
                   </div>
                   <div className="results-meta-card">
                     <div className="results-kicker">Competition dates</div>
