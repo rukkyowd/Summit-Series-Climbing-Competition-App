@@ -885,6 +885,29 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
   return getCompetitionById(competitionId);
 }
 
+export async function setCompetitionLiveScheduleBlock(competitionId: string, blockId: string) {
+  ensureConfigured();
+
+  const { error: clearError } = await supabase
+    .from("competition_schedule_blocks")
+    .update({ is_active: false })
+    .eq("competition_id", competitionId);
+
+  if (clearError) {
+    throw new Error(clearError.message);
+  }
+
+  const { error: setError } = await supabase
+    .from("competition_schedule_blocks")
+    .update({ is_active: true })
+    .eq("competition_id", competitionId)
+    .eq("id", blockId);
+
+  if (setError) {
+    throw new Error(setError.message);
+  }
+}
+
 export async function setCompetitionStatus(competitionId: string, status: CompetitionStatus) {
   ensureConfigured();
 

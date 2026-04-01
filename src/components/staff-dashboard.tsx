@@ -15,6 +15,7 @@ import {
   getCompetitionSnapshot,
   listCompetitionSummaries,
   saveCompetitionConfig,
+  setCompetitionLiveScheduleBlock,
   setCompetitionPhase,
   setCompetitionStatus,
   undoCompetitionOperation,
@@ -47,6 +48,7 @@ import {
   getRegistrationAssignmentLabel,
   getSchedulePhaseDescription,
   isQualifierEligibleCategory,
+  parseScheduleTimeToMinutes,
   slugifyCompetitionName,
   type Competition,
   type CompetitionScheduleBlock,
@@ -254,6 +256,24 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
   );
+  const orderedScheduleBlocks = useMemo(() => {
+    if (!draft) {
+      return [] as CompetitionScheduleBlock[];
+    }
+
+    return draft.schedule_blocks
+      .map((block, index) => ({ block, index }))
+      .sort((left, right) => {
+        const startDiff =
+          parseScheduleTimeToMinutes(left.block.start_time) - parseScheduleTimeToMinutes(right.block.start_time);
+        if (startDiff !== 0) {
+          return startDiff;
+        }
+
+        return left.index - right.index;
+      })
+      .map((entry) => entry.block);
+  }, [draft]);
   const scheduleTemplates = useMemo(() => (draft ? buildScheduleBlockTemplates(draft) : []), [draft]);
   const qualifierCategories = useMemo(
     () =>
@@ -280,6 +300,67 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
 
     try {
       await setCompetitionPhase(competitionId, nextPhaseValue);
+      await refreshAfterChange(competitionId);
+      setMessage(successMessage);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to change competition phase.");
+    } finally {
+      setIsPhasePending(false);
+    }
+  };
+
+  const findScheduleBlockForPhase = (targetPhase: Competition["current_phase"], direction: -1 | 1) => {
+    const matches = orderedScheduleBlocks.filter(
+      (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === targetPhase
+    );
+
+    if (!matches.length) {
+      return null;
+    }
+
+    if (!liveScheduleBlock) {
+      return direction === -1 ? matches[matches.length - 1] : matches[0];
+    }
+
+    const currentIndex = orderedScheduleBlocks.findIndex((block) => block.id === liveScheduleBlock.id);
+    if (currentIndex < 0) {
+      return direction === -1 ? matches[matches.length - 1] : matches[0];
+    }
+
+    if (direction === 1) {
+      return (
+        orderedScheduleBlocks
+          .slice(currentIndex + 1)
+          .find((block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === targetPhase) ?? matches[0]
+      );
+    }
+
+    return (
+      [...orderedScheduleBlocks.slice(0, currentIndex)]
+        .reverse()
+        .find((block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === targetPhase) ??
+      matches[matches.length - 1]
+    );
+  };
+
+  const runPhaseNavigation = async (
+    competitionId: string,
+    nextPhaseValue: Competition["current_phase"],
+    direction: -1 | 1,
+    successMessage: string
+  ) => {
+    setError("");
+    setMessage("");
+    setIsPhasePending(true);
+
+    try {
+      await setCompetitionPhase(competitionId, nextPhaseValue);
+
+      const targetBlock = findScheduleBlockForPhase(nextPhaseValue, direction);
+      if (targetBlock) {
+        await setCompetitionLiveScheduleBlock(competitionId, targetBlock.id);
+      }
+
       await refreshAfterChange(competitionId);
       setMessage(successMessage);
     } catch (nextError) {
@@ -534,9 +615,10 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                             return;
                           }
 
-                          void runPhaseChange(
+                          void runPhaseNavigation(
                             draft.id,
                             previousPhase,
+                            -1,
                             `Competition moved to ${formatCompetitionPhaseLabel(previousPhase).toLowerCase()}.`
                           );
                         }}
@@ -559,7 +641,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                               confirmLabel: "End event",
                               expectedValue: draft.name,
                               action: async () => {
-                                await runPhaseChange(draft.id, nextPhase, "Competition moved to results.");
+                                await runPhaseNavigation(draft.id, nextPhase, 1, "Competition moved to results.");
                               },
                             });
                             return;
@@ -569,9 +651,10 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                             return;
                           }
 
-                          void runPhaseChange(
+                          void runPhaseNavigation(
                             draft.id,
                             nextPhase,
+                            1,
                             `Competition moved to ${formatCompetitionPhaseLabel(nextPhase).toLowerCase()}.`
                           );
                         }}
