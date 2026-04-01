@@ -19,6 +19,15 @@ export const EVENT_FORMATS = [
   "flash_format",
   "ifsc_finals_format",
 ] as const;
+export const COMPETITION_PHASES = [
+  "qualifier_open",
+  "qualifier_closed",
+  "wall_reset",
+  "observation",
+  "finals_open",
+  "finals_closed",
+  "results",
+] as const;
 export const SCHEDULE_PHASE_TYPES = [
   "check_in",
   "technical_meeting",
@@ -45,11 +54,23 @@ export const DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS = [...CATEGORY_AGE_GROUPS] as
 
 export type CompetitionStatus = (typeof COMPETITION_STATUSES)[number];
 export type EventFormat = (typeof EVENT_FORMATS)[number];
+export type CompetitionPhase = (typeof COMPETITION_PHASES)[number];
 export type StageMode = "qualifier" | "finals";
 export type AttemptEnteredBy = "climber" | "staff";
 export type FinalEnteredBy = "staff";
 export type SchedulePhaseType = (typeof SCHEDULE_PHASE_TYPES)[number];
 export type CategoryAgeGroup = (typeof CATEGORY_AGE_GROUPS)[number];
+
+export interface FormatCapabilities {
+  selfScoredQualifier: boolean;
+  officialPointsQualifier: boolean;
+  supportsZone: boolean;
+  supportsFinals: boolean;
+  finalsIsolation: boolean;
+  roundBased: boolean;
+  countingClimbsFixed: boolean;
+  qualifierScoringUnit: "climb_points" | "ifsc_points";
+}
 
 export interface CompetitionCategory {
   id: string;
@@ -81,6 +102,7 @@ export interface Competition {
   name: string;
   status: CompetitionStatus;
   format: EventFormat;
+  current_phase: CompetitionPhase;
   discipline_label: string;
   stage_mode: StageMode;
   location_name: string;
@@ -255,6 +277,7 @@ export interface FinalistSelection {
   age_group: string;
   qualifier_rank: number;
   advanced_with_tie: boolean;
+  climbing_order?: number;
   created_at?: string;
 }
 
@@ -305,6 +328,19 @@ export function buildCompetitionPath(slug: string, section?: "" | "register" | "
   }
 
   return `/c/${cleanSlug}/${section}`;
+}
+
+export function buildDisplayPath(slug: string) {
+  return `/c/${slug.trim()}/display`;
+}
+
+export function buildStaffCompetitionPath(slug: string, section?: "" | "judge" | "preflight") {
+  const cleanSlug = slug.trim();
+  if (!section) {
+    return `/staff/c/${cleanSlug}`;
+  }
+
+  return `/staff/c/${cleanSlug}/${section}`;
 }
 
 export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
@@ -371,6 +407,49 @@ export const FORMAT_TEMPLATES: FormatTemplate[] = [
   },
 ];
 
+const FORMAT_CAPABILITIES: Record<EventFormat, FormatCapabilities> = {
+  scramble: {
+    selfScoredQualifier: true,
+    officialPointsQualifier: false,
+    supportsZone: false,
+    supportsFinals: false,
+    finalsIsolation: false,
+    roundBased: false,
+    countingClimbsFixed: false,
+    qualifierScoringUnit: "climb_points",
+  },
+  five_on_five_off: {
+    selfScoredQualifier: false,
+    officialPointsQualifier: true,
+    supportsZone: true,
+    supportsFinals: true,
+    finalsIsolation: false,
+    roundBased: true,
+    countingClimbsFixed: true,
+    qualifierScoringUnit: "ifsc_points",
+  },
+  flash_format: {
+    selfScoredQualifier: false,
+    officialPointsQualifier: true,
+    supportsZone: true,
+    supportsFinals: true,
+    finalsIsolation: false,
+    roundBased: true,
+    countingClimbsFixed: true,
+    qualifierScoringUnit: "ifsc_points",
+  },
+  ifsc_finals_format: {
+    selfScoredQualifier: false,
+    officialPointsQualifier: true,
+    supportsZone: true,
+    supportsFinals: true,
+    finalsIsolation: true,
+    roundBased: true,
+    countingClimbsFixed: true,
+    qualifierScoringUnit: "ifsc_points",
+  },
+};
+
 export const SCHEDULE_PHASE_OPTIONS: SchedulePhaseOption[] = [
   { value: "check_in", label: "Check-in", description: "Good for arrival windows, late registration, waivers, and athlete check-in." },
   { value: "technical_meeting", label: "Technical meeting", description: "Use for rules briefings or round instructions before climbing starts." },
@@ -389,6 +468,7 @@ export const DEFAULT_COMPETITION: Competition = {
   name: "Current Competition",
   status: "active",
   format: "scramble",
+  current_phase: "qualifier_open",
   discipline_label: "Boulder",
   stage_mode: "qualifier",
   location_name: "",
@@ -416,16 +496,20 @@ export function getFormatTemplate(format: EventFormat) {
   return FORMAT_TEMPLATES.find((template) => template.value === format) ?? FORMAT_TEMPLATES[0];
 }
 
+export function getFormatCapabilities(format: EventFormat): FormatCapabilities {
+  return FORMAT_CAPABILITIES[format] ?? FORMAT_CAPABILITIES.scramble;
+}
+
 export function formatSupportsFinals(format: EventFormat) {
-  return getFormatTemplate(format).supports_finals;
+  return getFormatCapabilities(format).supportsFinals;
 }
 
 export function formatUsesOfficialQualifierPoints(format: EventFormat) {
-  return format === "flash_format" || format === "five_on_five_off";
+  return getFormatCapabilities(format).officialPointsQualifier;
 }
 
 export function formatUsesSelfScoredQualifiers(format: EventFormat) {
-  return format === "scramble";
+  return getFormatCapabilities(format).selfScoredQualifier;
 }
 
 export function getRecommendedQualifierClimbCount(format: EventFormat) {
@@ -440,6 +524,63 @@ export function getRecommendedQualifierCountingClimbs(format: EventFormat) {
 
 export function getRecommendedFinalsCutoff(format: EventFormat) {
   return format === "flash_format" || format === "ifsc_finals_format" ? 8 : DEFAULT_FINALS_CUTOFF;
+}
+
+export function phaseToStageMode(phase: CompetitionPhase): StageMode {
+  if (phase === "observation" || phase === "finals_open" || phase === "finals_closed" || phase === "results") {
+    return "finals";
+  }
+
+  return "qualifier";
+}
+
+export function formatCompetitionPhaseLabel(phase: CompetitionPhase) {
+  switch (phase) {
+    case "qualifier_open":
+      return "Qualifier live";
+    case "qualifier_closed":
+      return "Qualifier closed";
+    case "wall_reset":
+      return "Wall reset";
+    case "observation":
+      return "Observation";
+    case "finals_open":
+      return "Finals live";
+    case "finals_closed":
+      return "Finals closed";
+    case "results":
+      return "Results";
+    default:
+      return "Qualifier live";
+  }
+}
+
+export function getNextCompetitionPhase(phase: CompetitionPhase): CompetitionPhase | null {
+  const phases: CompetitionPhase[] = [
+    "qualifier_open",
+    "qualifier_closed",
+    "wall_reset",
+    "observation",
+    "finals_open",
+    "finals_closed",
+    "results",
+  ];
+  const index = phases.indexOf(phase);
+  return index >= 0 && index < phases.length - 1 ? phases[index + 1] : null;
+}
+
+export function getPreviousCompetitionPhase(phase: CompetitionPhase): CompetitionPhase | null {
+  const phases: CompetitionPhase[] = [
+    "qualifier_open",
+    "qualifier_closed",
+    "wall_reset",
+    "observation",
+    "finals_open",
+    "finals_closed",
+    "results",
+  ];
+  const index = phases.indexOf(phase);
+  return index > 0 ? phases[index - 1] : null;
 }
 
 export function normalizeQualifierEligibleAgeGroups(value: unknown) {
@@ -570,8 +711,11 @@ export function normalizeCompetition(
     name,
     status: (competition?.status ?? "active") as CompetitionStatus,
     format: nextFormat,
+    current_phase: (competition?.current_phase ?? (competition?.stage_mode === "finals" ? "finals_open" : "qualifier_open")) as CompetitionPhase,
     discipline_label: competition?.discipline_label?.trim() || "Boulder",
-    stage_mode: competition?.stage_mode === "finals" ? "finals" : "qualifier",
+    stage_mode: phaseToStageMode(
+      (competition?.current_phase ?? (competition?.stage_mode === "finals" ? "finals_open" : "qualifier_open")) as CompetitionPhase
+    ),
     location_name: competition?.location_name?.trim() || "",
     start_date: competition?.start_date ?? null,
     end_date: competition?.end_date ?? null,
@@ -593,7 +737,7 @@ export function normalizeCompetition(
       finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(competition?.finals_eligible_age_groups),
     qualifier_locked_at: competition?.qualifier_locked_at ?? null,
     finals_started_at: competition?.finals_started_at ?? null,
-    finals_problem_count: DEFAULT_FINALS_PROBLEM_COUNT,
+    finals_problem_count: clampNumber(competition?.finals_problem_count, 1, 8, DEFAULT_FINALS_PROBLEM_COUNT),
     updated_at: competition?.updated_at,
     categories: (categories.length ? categories : getDefaultCompetitionCategories(id))
       .map((category, index) => ({
@@ -658,71 +802,50 @@ export function schedulePhaseAllowsFinalsScoring(phaseType: SchedulePhaseType) {
   return phaseType === "finals_round" || phaseType === "custom";
 }
 
-export function canRegisterDuringCompetition(competition: Pick<Competition, "stage_mode" | "schedule_blocks">) {
-  if (competition.stage_mode !== "qualifier") {
-    return false;
-  }
-
-  const activeBlock = getActiveScheduleBlock(competition);
-  return activeBlock ? schedulePhaseAllowsRegistration(activeBlock.phase_type) : true;
+export function canRegisterDuringCompetition(competition: Pick<Competition, "current_phase">) {
+  return canRegisterForCompetition(competition);
 }
 
 export function canClimberSelfScoreQualifier(
-  competition: Pick<Competition, "format" | "stage_mode" | "schedule_blocks">
+  competition: Pick<Competition, "format" | "current_phase">
 ) {
-  if (competition.stage_mode !== "qualifier" || !formatUsesSelfScoredQualifiers(competition.format)) {
-    return false;
-  }
-
-  const activeBlock = getActiveScheduleBlock(competition);
-  return activeBlock ? schedulePhaseAllowsQualifierScoring(activeBlock.phase_type) : true;
+  return competition.current_phase === "qualifier_open" && formatUsesSelfScoredQualifiers(competition.format);
 }
 
-export function canStaffScoreQualifier(competition: Pick<Competition, "stage_mode" | "schedule_blocks">) {
-  if (competition.stage_mode !== "qualifier") {
-    return false;
-  }
-
-  const activeBlock = getActiveScheduleBlock(competition);
-  return activeBlock ? schedulePhaseAllowsQualifierScoring(activeBlock.phase_type) : true;
+export function canStaffScoreQualifier(competition: Pick<Competition, "current_phase">) {
+  return competition.current_phase === "qualifier_open";
 }
 
-export function canStaffScoreFinals(competition: Pick<Competition, "stage_mode" | "schedule_blocks">) {
-  if (competition.stage_mode !== "finals") {
-    return false;
-  }
+export function canStaffScoreFinals(competition: Pick<Competition, "current_phase">) {
+  return competition.current_phase === "finals_open";
+}
 
-  const activeBlock = getActiveScheduleBlock(competition);
-  return activeBlock ? schedulePhaseAllowsFinalsScoring(activeBlock.phase_type) : true;
+export function canRegisterForCompetition(competition: Pick<Competition, "current_phase">) {
+  return competition.current_phase === "qualifier_open";
 }
 
 export function isCompetitionLiveNow(
-  competition: Pick<Competition, "stage_mode" | "schedule_blocks" | "status">
+  competition: Pick<Competition, "current_phase" | "status">
 ) {
   if (competition.status !== "active") {
     return false;
   }
 
-  const activeBlock = getActiveScheduleBlock(competition);
-  if (!activeBlock) {
-    return competition.stage_mode === "qualifier";
-  }
-
-  return activeBlock.phase_type === "qualifier_round" || activeBlock.phase_type === "finals_round";
+  return competition.current_phase === "qualifier_open" || competition.current_phase === "finals_open";
 }
 
-export function isQualifierStage(competition: Pick<Competition, "stage_mode">) {
-  return competition.stage_mode === "qualifier";
+export function isQualifierStage(competition: Pick<Competition, "current_phase" | "stage_mode">) {
+  return phaseToStageMode(competition.current_phase) === "qualifier";
 }
 
-export function isFinalsStage(competition: Pick<Competition, "stage_mode">) {
-  return competition.stage_mode === "finals";
+export function isFinalsStage(competition: Pick<Competition, "current_phase" | "stage_mode">) {
+  return phaseToStageMode(competition.current_phase) === "finals";
 }
 
 export function getEventWorkflowGuide(
-  competition: Pick<Competition, "format" | "stage_mode" | "qualifier_eligible_age_groups" | "finals_eligible_age_groups">
+  competition: Pick<Competition, "format" | "current_phase" | "qualifier_eligible_age_groups" | "finals_eligible_age_groups">
 ): EventWorkflowGuide {
-  if (competition.stage_mode === "finals") {
+  if (phaseToStageMode(competition.current_phase) === "finals") {
     return {
       headline: "CEC / IFSC isolation final live",
       summary:

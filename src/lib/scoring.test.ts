@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+import {
+  canClimberSelfScoreQualifier,
+  canRegisterDuringCompetition,
+  getFormatCapabilities,
+  normalizeCompetition,
+  phaseToStageMode,
+} from "./scoring";
+
+describe("format capabilities", () => {
+  it("marks scramble as self-scored and not official points", () => {
+    expect(getFormatCapabilities("scramble")).toMatchObject({
+      selfScoredQualifier: true,
+      officialPointsQualifier: false,
+      supportsFinals: false,
+    });
+  });
+
+  it("marks flash as official points with fixed counting climbs", () => {
+    expect(getFormatCapabilities("flash_format")).toMatchObject({
+      selfScoredQualifier: false,
+      officialPointsQualifier: true,
+      countingClimbsFixed: true,
+      supportsFinals: true,
+    });
+  });
+});
+
+describe("competition phases", () => {
+  it("derives finals stage from observation and results phases", () => {
+    expect(phaseToStageMode("observation")).toBe("finals");
+    expect(phaseToStageMode("results")).toBe("finals");
+    expect(phaseToStageMode("wall_reset")).toBe("qualifier");
+  });
+
+  it("defaults registration and self scoring to closed unless qualifier_open", () => {
+    expect(canRegisterDuringCompetition({ current_phase: "qualifier_open" })).toBe(true);
+    expect(canRegisterDuringCompetition({ current_phase: "qualifier_closed" })).toBe(false);
+    expect(canClimberSelfScoreQualifier({ current_phase: "qualifier_open", format: "scramble" })).toBe(true);
+    expect(canClimberSelfScoreQualifier({ current_phase: "qualifier_closed", format: "scramble" })).toBe(false);
+  });
+});
+
+describe("competition normalization", () => {
+  it("derives stage mode from current phase and preserves finals problem count up to 8", () => {
+    const competition = normalizeCompetition({
+      id: "comp-1",
+      name: "Spring Send",
+      slug: "spring-send",
+      format: "flash_format",
+      current_phase: "finals_open",
+      finals_problem_count: 6,
+    });
+
+    expect(competition.stage_mode).toBe("finals");
+    expect(competition.current_phase).toBe("finals_open");
+    expect(competition.finals_problem_count).toBe(6);
+  });
+});

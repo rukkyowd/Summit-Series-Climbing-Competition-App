@@ -2,6 +2,7 @@ import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
 import {
   DEFAULT_COMPETITION,
   buildCompetitionPath,
+  buildStaffCompetitionPath,
   buildDisplayCategory,
   buildFinalsLeaderboard,
   buildRegistrationChoices,
@@ -27,6 +28,7 @@ import {
   type ClimberWithAttempts,
   type Competition,
   type CompetitionCategory,
+  type CompetitionPhase,
   type CompetitionScheduleBlock,
   type CompetitionStatus,
   type FinalAttempt,
@@ -70,6 +72,7 @@ export interface CompetitionSnapshot {
   finalsLeaderboard: FinalsLeaderboardEntry[];
   finalists: FinalistSelection[];
   registrationChoices: RegistrationChoice[];
+  undoAvailability?: CompetitionUndoAvailability;
 }
 
 export interface CompetitionSummary {
@@ -79,6 +82,12 @@ export interface CompetitionSummary {
   active_schedule_block: CompetitionScheduleBlock | null;
   registration_open: boolean;
   live_now: boolean;
+}
+
+export interface CompetitionUndoAvailability {
+  available: boolean;
+  expires_at: string | null;
+  operation_type: "advance" | "reset" | null;
 }
 
 function ensureConfigured() {
@@ -134,7 +143,7 @@ function assertRegistrationWindowOpen(competition: Competition) {
   assertQualifierOpen(competition, "Registration is closed because this competition has already advanced to finals.");
 
   if (!canRegisterDuringCompetition(competition)) {
-    throw new Error("Registration is not open during the current schedule block.");
+    throw new Error("Registration is not open during the current competition phase.");
   }
 }
 
@@ -142,7 +151,7 @@ function assertStaffQualifierWindowOpen(competition: Competition) {
   assertQualifierOpen(competition, "Qualifier scoring is locked because this competition has advanced to finals.");
 
   if (!canStaffScoreQualifier(competition)) {
-    throw new Error("Qualifier scoring is not open during the current schedule block.");
+    throw new Error("Qualifier scoring is not open during the current competition phase.");
   }
 }
 
@@ -150,7 +159,7 @@ function assertClimberQualifierWindowOpen(competition: Competition) {
   assertQualifierOpen(competition, "Qualifier scoring is locked because this competition has advanced to finals.");
 
   if (!canClimberSelfScoreQualifier(competition)) {
-    throw new Error("Private qualifier scoring is only open during the live scramble round.");
+    throw new Error("Private qualifier scoring is only open while qualifier scoring is live.");
   }
 }
 
@@ -158,7 +167,7 @@ function assertFinalsWindowOpen(competition: Competition) {
   assertFinalsOpen(competition, "Finals scoring is not available until this competition advances to finals.");
 
   if (!canStaffScoreFinals(competition)) {
-    throw new Error("Finals scoring is not open during the current schedule block.");
+    throw new Error("Finals scoring is not open during the current competition phase.");
   }
 }
 
@@ -380,8 +389,87 @@ async function fetchFinalists(competitionIds: string[]) {
     age_group: row.age_group ?? "Open",
     qualifier_rank: row.qualifier_rank ?? 0,
     advanced_with_tie: row.advanced_with_tie ?? false,
+    climbing_order: row.climbing_order ?? row.qualifier_rank ?? 0,
     created_at: row.created_at ?? undefined,
   }));
+}
+
+async function fetchOfficialQualifierLeaderboard(competitionId: string) {
+  const { data, error } = await publicSupabase.rpc("compute_qualifier_standings", {
+    p_competition_id: competitionId,
+  });
+
+  if (error) {
+    return [] as QualifierLeaderboardEntry[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    climber_id: row.climber_id,
+    name: row.name ?? "Unknown climber",
+    climber_number: row.climber_number ?? "",
+    province: row.province ?? "",
+    category_id: row.category_id ?? null,
+    display_category: row.display_category ?? "Open",
+    gender_division: row.gender_division ?? "Open",
+    age_group: row.age_group ?? "Open",
+    time_slot_id: row.time_slot_id ?? null,
+    total_score: Number(row.total_score ?? 0),
+    counting_climbs: [],
+    all_climbs: [],
+    topped_count: row.topped_count ?? 0,
+    zone_count: row.zone_count ?? 0,
+    counting_attempt_total: row.counting_attempt_total ?? 0,
+    overall_rank: row.overall_rank ?? 0,
+    category_rank: row.category_rank ?? 0,
+  }));
+}
+
+async function fetchProjectedFinalists(competitionId: string) {
+  const { data, error } = await publicSupabase.rpc("compute_finalist_selection", {
+    p_competition_id: competitionId,
+  });
+
+  if (error) {
+    return [] as FinalistSelection[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    climber_id: row.climber_id,
+    name: row.name ?? "Unknown climber",
+    category_id: row.category_id ?? null,
+    display_category: row.display_category ?? "Open",
+    gender_division: row.gender_division ?? "Open",
+    age_group: row.age_group ?? "Open",
+    qualifier_rank: row.qualifier_rank ?? 0,
+    advanced_with_tie: row.advanced_with_tie ?? false,
+    climbing_order: row.climbing_order ?? row.qualifier_rank ?? 0,
+  }));
+}
+
+async function fetchUndoAvailability(competitionId: string): Promise<CompetitionUndoAvailability> {
+  const { data, error } = await supabase
+    .from("competition_operations")
+    .select("operation_type, expires_at")
+    .eq("competition_id", competitionId)
+    .is("consumed_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) {
+    return {
+      available: false,
+      expires_at: null,
+      operation_type: null,
+    };
+  }
+
+  return {
+    available: true,
+    expires_at: data.expires_at ?? null,
+    operation_type: (data.operation_type as "advance" | "reset") ?? null,
+  };
 }
 
 function joinCompetitionData(
@@ -497,18 +585,43 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     throw new Error("Competition not found.");
   }
 
-  const [climbers, qualifierAttempts, finalAttempts, finalists] = await Promise.all([
+  const [climbers, qualifierAttempts, finalAttempts, finalists, officialQualifierLeaderboard, projectedFinalists, undoAvailability] = await Promise.all([
     fetchClimberRows([competition.id]),
     fetchQualifierAttempts([competition.id]),
     fetchFinalAttempts([competition.id]),
     fetchFinalists([competition.id]),
+    fetchOfficialQualifierLeaderboard(competition.id),
+    fetchProjectedFinalists(competition.id),
+    fetchUndoAvailability(competition.id).catch(() => ({
+      available: false,
+      expires_at: null,
+      operation_type: null,
+    })),
   ]);
 
   const joined = joinCompetitionData(climbers, qualifierAttempts, finalAttempts);
-  const qualifierLeaderboard = buildQualifierLeaderboard(joined, competition);
-  const competitionFinalists = finalists
+  const localQualifierLeaderboard = buildQualifierLeaderboard(joined, competition);
+  const officialQualifierMap = new Map(officialQualifierLeaderboard.map((entry) => [entry.climber_id, entry]));
+  const qualifierLeaderboard = localQualifierLeaderboard.map((entry) => {
+    const official = officialQualifierMap.get(entry.climber_id);
+    if (!official) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      total_score: official.total_score,
+      topped_count: official.topped_count,
+      zone_count: official.zone_count,
+      counting_attempt_total: official.counting_attempt_total,
+      overall_rank: official.overall_rank,
+      category_rank: official.category_rank,
+    };
+  });
+  const selectedFinalists = finalists
     .filter((entry) => entry.competition_id === competition.id)
     .map(({ competition_id, ...entry }) => entry);
+  const competitionFinalists = selectedFinalists.length ? selectedFinalists : projectedFinalists;
   const finalsLeaderboard = isFinalsStage(competition)
     ? buildFinalsLeaderboard(joined, competitionFinalists, competition)
     : [];
@@ -520,6 +633,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     finalsLeaderboard,
     finalists: competitionFinalists,
     registrationChoices: buildRegistrationChoices(competition, joined.map((climber) => climber)),
+    undoAvailability,
   };
 }
 
@@ -543,6 +657,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     slug,
     name,
     format: input.format,
+    current_phase: "qualifier_open",
     discipline_label: input.discipline_label ?? "Boulder",
     location_name: input.location_name ?? "",
     start_date: input.start_date ?? null,
@@ -564,6 +679,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     name: competition.name,
     status: competition.status,
     format: competition.format,
+    current_phase: competition.current_phase,
     discipline_label: competition.discipline_label,
     stage_mode: competition.stage_mode,
     location_name: competition.location_name,
@@ -627,6 +743,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
     name: payload.name,
     status: payload.status,
     format: payload.format,
+    current_phase: payload.current_phase,
     discipline_label: payload.discipline_label,
     stage_mode: payload.stage_mode,
     location_name: payload.location_name,
@@ -687,6 +804,36 @@ export async function setCompetitionStatus(competitionId: string, status: Compet
   }
 }
 
+export async function setCompetitionPhase(competitionId: string, nextPhase: CompetitionPhase, note?: string) {
+  ensureConfigured();
+
+  const { error } = await supabase.rpc("set_competition_phase", {
+    p_competition_id: competitionId,
+    p_next_phase: nextPhase,
+    p_note: note ?? null,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getCompetitionSnapshot(competitionId);
+}
+
+export async function undoCompetitionOperation(competitionId: string) {
+  ensureConfigured();
+
+  const { error } = await supabase.rpc("undo_last_competition_operation", {
+    p_competition_id: competitionId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getCompetitionSnapshot(competitionId);
+}
+
 export async function deleteCompetition(competitionId: string) {
   ensureConfigured();
 
@@ -705,6 +852,25 @@ export async function advanceCompetitionToFinals(competitionId: string) {
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  return getCompetitionSnapshot(competitionId);
+}
+
+export async function updateFinalistClimbingOrder(competitionId: string, orderedClimberIds: string[]) {
+  ensureConfigured();
+
+  for (let index = 0; index < orderedClimberIds.length; index += 1) {
+    const climberId = orderedClimberIds[index];
+    const { error } = await supabase
+      .from("competition_finalists")
+      .update({ climbing_order: index + 1 })
+      .eq("competition_id", competitionId)
+      .eq("climber_id", climberId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
   }
 
   return getCompetitionSnapshot(competitionId);
@@ -772,6 +938,19 @@ export async function getClimberByAccessToken(token: string) {
   };
 }
 
+export async function getClimberWithAttempts(competitionId: string, climberId: string) {
+  ensureConfigured();
+
+  const [climbers, qualifierAttempts, finalAttempts] = await Promise.all([
+    fetchClimberRows([competitionId]),
+    fetchQualifierAttempts([competitionId]),
+    fetchFinalAttempts([competitionId]),
+  ]);
+
+  const joined = joinCompetitionData(climbers, qualifierAttempts, finalAttempts);
+  return joined.find((entry) => entry.id === climberId) ?? null;
+}
+
 export async function searchClimbers(competitionId: string, query: string) {
   ensureConfigured();
 
@@ -801,7 +980,7 @@ export async function registerClimber(input: RegisterClimberInput) {
     (climber) => climber.climber_number.toLowerCase() === cleanString(input.climberNumber).toLowerCase()
   );
   if (existing) {
-    throw new Error(`Climber number ${input.climberNumber} is already registered.`);
+    throw new Error(`Climber number ${input.climberNumber} is already registered as ${existing.name}.`);
   }
 
   if (snapshot.climbers.length >= snapshot.competition.max_climbers) {
@@ -932,33 +1111,7 @@ export async function updateQualifierAttemptByToken(
   if (!error) {
     return data;
   }
-
-  const climberLookup = await getClimberByAccessToken(accessToken);
-  if (!climberLookup?.climber) {
-    throw new Error("Private qualifier link not recognized.");
-  }
-
-  const { data: fallbackData, error: fallbackError } = await publicSupabase
-    .from("qualifier_attempts")
-    .upsert(
-      {
-        competition_id: competitionId,
-        climber_id: climberLookup.climber.id,
-        climb_number: climbNumber,
-        attempt_count: attemptCount,
-        topped,
-        entered_by: "climber",
-      },
-      { onConflict: "climber_id,climb_number" }
-    )
-    .select("*")
-    .single();
-
-  if (fallbackError) {
-    throw new Error(error.message || fallbackError.message);
-  }
-
-  return fallbackData as QualifierAttempt;
+  throw new Error(error.message || "Unable to save qualifier attempt.");
 }
 
 export async function updateFinalAttempt(

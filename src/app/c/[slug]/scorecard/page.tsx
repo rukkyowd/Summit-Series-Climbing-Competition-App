@@ -1,266 +1,141 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useReducer, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
-import {
-  getClimberByAccessToken,
-  getClimberById,
-  getCompetitionSnapshot,
-  searchClimbers,
-  updateFinalAttempt,
-  updateQualifierAttemptByStaff,
-  updateQualifierAttemptByToken,
-  type CompetitionSnapshot,
-} from "@/lib/db";
-import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
+import CompetitionSubnav from "@/components/competition-subnav";
+import { getClimberByAccessToken, getClimberWithAttempts, getCompetitionSnapshot, updateQualifierAttemptByToken, type CompetitionSnapshot } from "@/lib/db";
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
-  buildFinalProblemResults,
   buildCompetitionPath,
+  buildQualifierLeaderboard,
   canClimberSelfScoreQualifier,
-  canStaffScoreFinals,
-  canStaffScoreQualifier,
-  calculateQualifierAttemptPoints,
-  calculateFinalAttemptPoints,
+  formatCompetitionPhaseLabel,
   formatFinalPoints,
-  formatUsesOfficialQualifierPoints,
-  formatSchedulePhaseLabel,
-  getActiveScheduleBlock,
   getClimbs,
-  getTimeSlotLabel,
-  isFinalsEligibleCategory,
   type ClimberWithAttempts,
 } from "@/lib/scoring";
 
-type QualifierDraft = {
-  attemptCount: number;
-  zone: boolean;
-  topped: boolean;
-  attemptsToTop: number;
-  attemptsToZone: number;
-};
-type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
+type DraftState = Record<number, { attemptCount: number; topped: boolean }>;
+
+type DraftAction =
+  | { type: "initialize"; climber: ClimberWithAttempts | null; totalClimbs: number }
+  | { type: "update"; climbNumber: number; patch: Partial<{ attemptCount: number; topped: boolean }> };
+
+function draftReducer(state: DraftState, action: DraftAction): DraftState {
+  switch (action.type) {
+    case "initialize": {
+      if (!action.climber) {
+        return {};
+      }
+
+      const next: DraftState = {};
+      getClimbs(action.totalClimbs).forEach((climb) => {
+        const attempt = action.climber?.qualifier_attempts.find((entry) => entry.climb_number === climb.number);
+        next[climb.number] = {
+          attemptCount: attempt?.attempt_count ?? 0,
+          topped: attempt?.topped ?? false,
+        };
+      });
+      return next;
+    }
+    case "update":
+      return {
+        ...state,
+        [action.climbNumber]: {
+          ...(state[action.climbNumber] ?? { attemptCount: 0, topped: false }),
+          ...action.patch,
+        },
+      };
+    default:
+      return state;
+  }
+}
 
 function ScorecardContent() {
   const params = useParams<{ slug: string }>();
-  const slug = typeof params?.slug === "string" ? params.slug : "";
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const slug = typeof params?.slug === "string" ? params.slug : "";
   const token = searchParams.get("token") ?? "";
-  const climberId = searchParams.get("id") ?? "";
+  const legacyClimberId = searchParams.get("id") ?? "";
   const stage = searchParams.get("stage") === "finals" ? "finals" : "qualifier";
-
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [climber, setClimber] = useState<ClimberWithAttempts | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [lookup, setLookup] = useState("");
-  const [results, setResults] = useState<ClimberWithAttempts[]>([]);
-  const [qualifierDrafts, setQualifierDrafts] = useState<Record<number, QualifierDraft>>({});
-  const [finalsDrafts, setFinalsDrafts] = useState<Record<number, FinalsDraft>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [authError, setAuthError] = useState("");
   const [message, setMessage] = useState("");
-
-  const canJudge = isStaffRole(profile?.role);
+  const [drafts, dispatch] = useReducer(draftReducer, {});
 
   useEffect(() => {
     if (token) {
       saveScorecardAccessToken(token, slug);
+      return;
     }
+
+    const query = legacyClimberId ? `?climberId=${legacyClimberId}&stage=${stage}` : stage === "finals" ? "?stage=finals" : "";
+    router.replace(`/staff/c/${slug}/judge${query}`);
+  }, [legacyClimberId, router, slug, stage, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    setLoading(true);
+    void Promise.all([getCompetitionSnapshot(slug), getClimberByAccessToken(token)])
+      .then(([nextSnapshot, nextClimberLookup]) => {
+        setSnapshot(nextSnapshot);
+        setClimber(nextClimberLookup?.climber ?? null);
+        dispatch({
+          type: "initialize",
+          climber: nextClimberLookup?.climber ?? null,
+          totalClimbs: nextSnapshot.competition.total_climbs,
+        });
+        setError("");
+      })
+      .catch((nextError) => {
+        setError(nextError instanceof Error ? nextError.message : "Unable to load the scorecard.");
+      })
+      .finally(() => setLoading(false));
   }, [slug, token]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-
-    try {
-      const nextSnapshot = await getCompetitionSnapshot(slug);
-      setSnapshot(nextSnapshot);
-
-      let selected: ClimberWithAttempts | null = null;
-      if (token) {
-        selected = (await getClimberByAccessToken(token))?.climber ?? null;
-      } else if (climberId) {
-        selected = (await getClimberById(climberId))?.climber ?? null;
-      }
-
-      setClimber(selected);
-      setError("");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to load the scorecard.");
-    } finally {
-      setLoading(false);
-    }
-  }, [climberId, slug, token]);
-
-  useEffect(() => {
-    void load();
-    getAuthState()
-      .then((state) => setProfile(state.profile))
-      .catch((nextError) => {
-        setAuthError(nextError instanceof Error ? nextError.message : "Unable to read the staff session.");
-      })
-      .finally(() => setAuthLoading(false));
-  }, [load]);
-
-  useEffect(() => {
-    if (!supabaseConfigured || !snapshot) {
-      return;
-    }
-
-    const competitionId = snapshot.competition.id;
-    const channel = publicSupabase
-      .channel(`scorecard-${competitionId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "climbers", filter: `competition_id=eq.${competitionId}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "qualifier_attempts", filter: `competition_id=eq.${competitionId}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "final_attempts", filter: `competition_id=eq.${competitionId}` }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "competition_finalists", filter: `competition_id=eq.${competitionId}` }, load)
-      .subscribe();
-
-    return () => {
-      publicSupabase.removeChannel(channel);
-    };
-  }, [load, snapshot]);
-
-  useEffect(() => {
-    if (!climber || !snapshot) {
-      setQualifierDrafts({});
-      setFinalsDrafts({});
-      return;
-    }
-
-    const nextQualifier: Record<number, QualifierDraft> = {};
-    const nextFinals: Record<number, FinalsDraft> = {};
-
-    getClimbs(snapshot.competition.total_climbs).forEach((climb) => {
-      const qualifierAttempt = climber.qualifier_attempts.find((attempt) => attempt.climb_number === climb.number);
-      nextQualifier[climb.number] = {
-        attemptCount: qualifierAttempt?.attempt_count ?? 0,
-        zone: qualifierAttempt?.zone ?? qualifierAttempt?.topped ?? false,
-        topped: qualifierAttempt?.topped ?? false,
-        attemptsToTop: qualifierAttempt?.attempts_to_top ?? qualifierAttempt?.attempt_count ?? 0,
-        attemptsToZone:
-          qualifierAttempt?.attempts_to_zone ??
-          qualifierAttempt?.attempts_to_top ??
-          qualifierAttempt?.attempt_count ??
-          0,
-      };
-    });
-
-    getClimbs(snapshot.competition.finals_problem_count).forEach((climb) => {
-      const finalsAttempt = climber.final_attempts.find((attempt) => attempt.climb_number === climb.number);
-      nextFinals[climb.number] = {
-        top: finalsAttempt?.top ?? false,
-        zone: finalsAttempt?.zone ?? false,
-        attemptsToTop: finalsAttempt?.attempts_to_top ?? 0,
-        attemptsToZone: finalsAttempt?.attempts_to_zone ?? 0,
-      };
-    });
-
-    setQualifierDrafts(nextQualifier);
-    setFinalsDrafts(nextFinals);
-  }, [climber, snapshot]);
-
-  const climberEntry = useMemo(() => snapshot?.qualifierLeaderboard.find((entry) => entry.climber_id === climber?.id) ?? null, [climber?.id, snapshot]);
-  const finalists = useMemo(() => new Set(snapshot?.finalists.map((entry) => entry.climber_id) ?? []), [snapshot]);
-  const finalsEntry = useMemo(() => snapshot?.finalsLeaderboard.find((entry) => entry.climber_id === climber?.id) ?? null, [climber?.id, snapshot]);
-  const qualifierLocked = snapshot?.competition.stage_mode === "finals";
-  const qualifierSelfScoringOpen = snapshot ? canClimberSelfScoreQualifier(snapshot.competition) : false;
-  const qualifierStaffScoringOpen = snapshot ? canStaffScoreQualifier(snapshot.competition) : false;
-  const finalsStaffScoringOpen = snapshot ? canStaffScoreFinals(snapshot.competition) : false;
-  const officialQualifierFormat = snapshot ? formatUsesOfficialQualifierPoints(snapshot.competition.format) : false;
-  const activeScheduleBlock = useMemo(() => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null), [snapshot]);
-  const finalsEligible = climber && snapshot ? isFinalsEligibleCategory(snapshot.competition, climber.gender_division, climber.age_group) : false;
-
-  const liveFinalTotalPoints = useMemo(() => {
-    if (!snapshot || !climber) {
-      return 0;
-    }
-
-    const results = buildFinalProblemResults(
-      Object.entries(finalsDrafts).map(([climbNumber, draft]) => ({
-        competition_id: snapshot.competition.id,
-        climber_id: climber.id,
-        climb_number: Number(climbNumber),
-        top: draft.top,
-        zone: draft.zone,
-        attempts_to_top: draft.top ? draft.attemptsToTop : null,
-        attempts_to_zone: draft.zone ? draft.attemptsToZone : null,
-        entered_by: "staff" as const,
-      })),
-      snapshot.competition.finals_problem_count
-    );
-
-    return results.reduce((sum, result) => sum + result.points, 0);
-  }, [climber, finalsDrafts, snapshot]);
-
-  const signIn = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setAuthLoading(true);
-    setAuthError("");
-
-    try {
-      const state = await signInWithRole(email, password);
-      setProfile(state.profile);
-      setPassword("");
-    } catch (nextError) {
-      setAuthError(nextError instanceof Error ? nextError.message : "Unable to sign in.");
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const runLookup = async (query: string) => {
-    if (!snapshot) {
-      return;
-    }
-
-    try {
-      const nextResults = await searchClimbers(snapshot.competition.id, query);
-      setResults(nextResults);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to search climbers.");
-    }
-  };
+  const qualifierEntry = useMemo(
+    () => snapshot?.qualifierLeaderboard.find((entry) => entry.climber_id === climber?.id) ?? null,
+    [climber?.id, snapshot]
+  );
+  const finalsEntry = useMemo(
+    () => snapshot?.finalsLeaderboard.find((entry) => entry.climber_id === climber?.id) ?? null,
+    [climber?.id, snapshot]
+  );
+  const qualifierOpen = snapshot ? canClimberSelfScoreQualifier(snapshot.competition) : false;
 
   const saveQualifier = async (climbNumber: number) => {
-    if (!climber || !snapshot) {
-      return;
-    }
-    if (qualifierLocked || (!canJudge && !qualifierSelfScoringOpen) || (canJudge && !qualifierStaffScoringOpen)) {
+    if (!snapshot || !climber) {
       return;
     }
 
+    const draft = drafts[climbNumber] ?? { attemptCount: 0, topped: false };
     setSaving(true);
     setError("");
     setMessage("");
 
     try {
-      const draft = qualifierDrafts[climbNumber];
-      const attemptCount = officialQualifierFormat
-        ? draft.topped
-          ? draft.attemptsToTop
-          : draft.zone
-            ? draft.attemptsToZone
-            : 0
-        : draft.attemptCount;
-      if (canJudge) {
-        await updateQualifierAttemptByStaff(snapshot.competition.id, climber.id, climbNumber, attemptCount, draft.topped, {
-          zone: officialQualifierFormat ? draft.zone || draft.topped : draft.topped,
-          attemptsToTop: officialQualifierFormat && draft.topped ? draft.attemptsToTop : null,
-          attemptsToZone: officialQualifierFormat && (draft.zone || draft.topped) ? draft.attemptsToZone : null,
+      await updateQualifierAttemptByToken(token, snapshot.competition.id, climbNumber, draft.attemptCount, draft.topped);
+      const refreshedClimber = await getClimberWithAttempts(snapshot.competition.id, climber.id);
+      if (refreshedClimber) {
+        const nextClimbers = snapshot.climbers.map((entry) => (entry.id === climber.id ? refreshedClimber : entry));
+        const nextQualifierLeaderboard = buildQualifierLeaderboard(nextClimbers, snapshot.competition);
+        setClimber(refreshedClimber);
+        setSnapshot({
+          ...snapshot,
+          climbers: nextClimbers,
+          qualifierLeaderboard: nextQualifierLeaderboard,
         });
-      } else {
-        await updateQualifierAttemptByToken(token, snapshot.competition.id, climbNumber, attemptCount, draft.topped);
       }
-      await load();
-      setMessage(`Qualifier score saved for boulder ${climbNumber}.`);
+      setMessage(`Saved boulder ${climbNumber}.`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to save qualifier score.");
     } finally {
@@ -268,100 +143,43 @@ function ScorecardContent() {
     }
   };
 
-  const saveFinals = async (climbNumber: number) => {
-    if (!climber || !snapshot || !canJudge || !finalsStaffScoringOpen) {
-      return;
-    }
+  if (!token) {
+    return (
+      <main className="results-page">
+        <div className="content-frame">
+          <section className="results-card text-slate-600">Redirecting staff scoring to the judge panel...</section>
+        </div>
+      </main>
+    );
+  }
 
-    setSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      const draft = finalsDrafts[climbNumber];
-      await updateFinalAttempt(
-        snapshot.competition.id,
-        climber.id,
-        climbNumber,
-        draft.top,
-        draft.zone,
-        draft.top ? draft.attemptsToTop : null,
-        draft.zone ? draft.attemptsToZone : null
-      );
-      await load();
-      setMessage(`Finals score saved for boulder ${climbNumber}.`);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to save finals score.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!climber) {
+  if (loading) {
     return (
       <main className="results-page">
         <div className="content-frame space-y-6">
           <SiteHeader light competitionSlug={slug} />
-
+          <CompetitionSubnav competitionSlug={slug} />
           <section className="results-card">
-            <div className="results-kicker">Scorecard access</div>
-            <h1 className="mt-2 text-4xl font-semibold text-slate-950">Open a climber scorecard</h1>
-            <p className="mt-4 max-w-3xl text-base leading-8 text-slate-600">
-              Private links open directly for climbers. Judges can sign in to search by name or number, open qualifier overrides, and enter finals attempts.
-            </p>
+            <div className="skeleton-block h-8 w-40" />
+            <div className="skeleton-block mt-4 h-20 w-full" />
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="skeleton-block h-40 w-full" />
+              <div className="skeleton-block h-40 w-full" />
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
-            {!canJudge ? (
-              <form onSubmit={signIn} className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="judge@gym.com" className="results-input" />
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="results-input" />
-                <button type="submit" disabled={authLoading} className="results-primary-button">
-                  {authLoading ? "Signing in..." : "Judge sign in"}
-                </button>
-              </form>
-            ) : (
-              <div className="mt-6 flex flex-wrap gap-3">
-                <div className="results-chip">{profile?.role} session active</div>
-                <button type="button" onClick={() => void signOutUser().then(() => setProfile(null))} className="results-secondary-button">
-                  Sign out
-                </button>
-              </div>
-            )}
-
-            {authError ? <div className="results-alert results-alert-error mt-4">{authError}</div> : null}
-            {error ? <div className="results-alert results-alert-error mt-4">{error}</div> : null}
-
-            {canJudge ? (
-              <div className="mt-6 space-y-4">
-                <form
-                  onSubmit={async (event) => {
-                    event.preventDefault();
-                    await runLookup(lookup);
-                  }}
-                  className="grid gap-3 md:grid-cols-[1fr_auto]"
-                >
-                  <input value={lookup} onChange={(event) => setLookup(event.target.value)} className="results-input" placeholder="Search by climber number, name, or province" />
-                  <button type="submit" className="results-primary-button">Search climbers</button>
-                </form>
-                <div className="space-y-3">
-                  {results.map((entry) => (
-                    <div key={entry.id} className="results-meta-card">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-lg font-semibold text-slate-950">{entry.name}</div>
-                          <div className="mt-1 text-sm text-slate-600">
-                            #{entry.climber_number} | {entry.display_category} | {entry.province}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Link href={`${buildCompetitionPath(slug, "scorecard")}?id=${entry.id}`} className="results-secondary-button">Qualifier</Link>
-                          <Link href={`${buildCompetitionPath(slug, "scorecard")}?id=${entry.id}&stage=finals`} className="results-primary-button">Finals</Link>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+  if (!snapshot || !climber) {
+    return (
+      <main className="results-page">
+        <div className="content-frame space-y-6">
+          <SiteHeader light competitionSlug={slug} />
+          <CompetitionSubnav competitionSlug={slug} />
+          <section className="results-card text-slate-600">
+            {error || "This private scorecard link is not valid anymore."}
           </section>
         </div>
       </main>
@@ -372,238 +190,89 @@ function ScorecardContent() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} />
+        <CompetitionSubnav competitionSlug={slug} />
+
+        {message ? <div className="results-alert results-alert-success">{message}</div> : null}
+        {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 
         <section className="results-card">
-          <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
               <div className="results-kicker">Climber #{climber.climber_number}</div>
               <h1 className="mt-2 text-5xl font-semibold text-slate-950">{climber.name}</h1>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="results-chip">{climber.display_category}</span>
                 <span className="results-chip">{climber.province}</span>
-                {snapshot ? <span className="results-chip">{getTimeSlotLabel(climber.time_slot_id, snapshot.competition)}</span> : null}
-                {token ? <span className="results-chip">Private link</span> : null}
+                <span className="results-chip">Private scorecard</span>
               </div>
               <div className="mt-6 flex flex-wrap gap-2">
-                <Link href={token ? `${buildCompetitionPath(slug, "scorecard")}?token=${token}` : `${buildCompetitionPath(slug, "scorecard")}?id=${climber.id}`} className={`results-secondary-button ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>Qualifier</Link>
-                <Link href={token ? `${buildCompetitionPath(slug, "scorecard")}?token=${token}&stage=finals` : `${buildCompetitionPath(slug, "scorecard")}?id=${climber.id}&stage=finals`} className={`results-secondary-button ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</Link>
+                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}`} className={`results-secondary-button ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>Qualifier</Link>
+                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}&stage=finals`} className={`results-secondary-button ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</Link>
               </div>
-              {activeScheduleBlock ? (
-                <div className="results-meta-card mt-6">
-                  <div className="results-kicker">Live schedule block</div>
-                  <div className="mt-2 text-xl font-semibold text-slate-950">{activeScheduleBlock.label}</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="results-chip">{formatSchedulePhaseLabel(activeScheduleBlock.phase_type)}</span>
-                    {activeScheduleBlock.audience_label ? <span className="results-chip">{activeScheduleBlock.audience_label}</span> : null}
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             <div className="results-meta-card">
+              <div className="results-kicker">Competition phase</div>
+              <div className="mt-2 text-3xl font-semibold text-slate-950">{formatCompetitionPhaseLabel(snapshot.competition.current_phase)}</div>
               {stage === "qualifier" ? (
-                <>
-                  <div className="results-kicker">Qualifier status</div>
-                  <div className="mt-2 text-5xl font-semibold text-slate-950">
-                    {officialQualifierFormat
-                      ? formatFinalPoints(climberEntry?.total_score ?? 0)
-                      : climberEntry?.total_score.toLocaleString() ?? 0}
-                  </div>
-                  <div className="mt-3 text-sm text-slate-600">
-                    {climberEntry ? `Overall #${climberEntry.overall_rank} | Category #${climberEntry.category_rank}` : "Waiting for first score"}
-                  </div>
-                  {officialQualifierFormat ? (
-                    <div className="mt-4 text-sm text-slate-600">
-                      {climberEntry ? `${climberEntry.topped_count} tops | ${climberEntry.zone_count} zones` : "Judge-entered CEC points round"}
-                    </div>
-                  ) : null}
-                </>
+                <div className="mt-4 text-sm text-slate-600">
+                  {qualifierEntry
+                    ? `Overall #${qualifierEntry.overall_rank} | Category #${qualifierEntry.category_rank}`
+                    : "No qualifier score recorded yet."}
+                </div>
               ) : (
-                <>
-                  <div className="results-kicker">Finals status</div>
-                  <div className="mt-2 text-5xl font-semibold text-slate-950">{finalsEntry ? formatFinalPoints(finalsEntry.total_points) : "0.0"}</div>
-                  <div className="mt-3 text-sm text-slate-600">
-                    {!finalsEligible
-                      ? "This category does not advance to finals."
-                      : finalists.has(climber.id)
-                      ? finalsEntry
-                        ? `Overall #${finalsEntry.overall_rank} | Category #${finalsEntry.category_rank}`
-                        : "Qualified for finals"
-                      : "Not currently inside the finals field"}
-                  </div>
-                  <div className="mt-4 text-sm text-slate-600">Live finals points: {formatFinalPoints(liveFinalTotalPoints)}</div>
-                </>
+                <div className="mt-4 text-sm text-slate-600">
+                  {finalsEntry
+                    ? `Overall #${finalsEntry.overall_rank} | Category #${finalsEntry.category_rank}`
+                    : "Finals scores will appear here once the round begins."}
+                </div>
               )}
             </div>
           </div>
         </section>
 
-        {message ? <div className="results-alert results-alert-success">{message}</div> : null}
-        {error ? <div className="results-alert results-alert-error">{error}</div> : null}
-
         {stage === "qualifier" ? (
           <section className="results-card">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="results-kicker">Qualifiers</div>
-                <h2 className="mt-2 text-3xl font-semibold text-slate-950">
-                  {officialQualifierFormat ? "CEC flash qualifier scoring" : "Qualifier attempts by boulder"}
-                </h2>
+                <div className="results-kicker">Qualifier scorecard</div>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Record your attempts</h2>
               </div>
-              <div className="results-chip">
-                {qualifierLocked ? "Qualifier round closed" : canJudge ? "Judge entry" : officialQualifierFormat ? "Read-only" : "Private scoring"}
-              </div>
+              <div className="results-chip">{qualifierOpen ? "Scoring open" : "Scoring closed"}</div>
             </div>
 
+            {!qualifierOpen ? (
+              <div className="results-meta-card mt-5 text-slate-600">
+                Private self-scoring is currently closed. Your saved qualifier attempts will remain visible here.
+              </div>
+            ) : null}
+
             <div className="mt-5 grid gap-4 xl:grid-cols-2">
-              {(snapshot ? getClimbs(snapshot.competition.total_climbs) : []).map((climb) => {
-                const draft = qualifierDrafts[climb.number] ?? {
-                  attemptCount: 0,
-                  zone: false,
-                  topped: false,
-                  attemptsToTop: 0,
-                  attemptsToZone: 0,
-                };
-                const officialPoints = calculateQualifierAttemptPoints({
-                  competition_id: snapshot?.competition.id ?? "",
-                  climber_id: climber.id,
-                  climb_number: climb.number,
-                  attempt_count: draft.attemptCount,
-                  zone: draft.zone || draft.topped,
-                  topped: draft.topped,
-                  attempts_to_top: draft.topped ? draft.attemptsToTop : null,
-                  attempts_to_zone: draft.zone || draft.topped ? draft.attemptsToZone : null,
-                  entered_by: canJudge ? "staff" : "climber",
-                });
+              {getClimbs(snapshot.competition.total_climbs).map((climb) => {
+                const draft = drafts[climb.number] ?? { attemptCount: 0, topped: false };
                 return (
                   <div key={climb.number} className="results-meta-card">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="results-kicker">Boulder {String(climb.number).padStart(2, "0")}</div>
-                        <div className="mt-2 text-xl font-semibold text-slate-950">
-                          {officialQualifierFormat ? `Current points: ${formatFinalPoints(officialPoints)}` : `${climb.base_points} base points`}
-                        </div>
+                        <div className="mt-2 text-xl font-semibold text-slate-950">{climb.base_points} base points</div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void saveQualifier(climb.number)}
-                        disabled={
-                          saving ||
-                          qualifierLocked ||
-                          (canJudge ? !qualifierStaffScoringOpen : !qualifierSelfScoringOpen) ||
-                          (!canJudge && officialQualifierFormat)
-                        }
-                        className="results-primary-button"
-                      >
+                      <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving || !qualifierOpen} className="results-primary-button">
                         Save
                       </button>
                     </div>
-                    {officialQualifierFormat ? (
-                      <div className="mt-4 space-y-3">
-                        <label className="results-toggle">
-                          <input
-                            type="checkbox"
-                            checked={draft.zone || draft.topped}
-                            onChange={(event) =>
-                              setQualifierDrafts((current) => ({
-                                ...current,
-                                [climb.number]: {
-                                  ...draft,
-                                  zone: event.target.checked,
-                                  topped: event.target.checked ? draft.topped : false,
-                                },
-                              }))
-                            }
-                          />
-                          <span>Zone recorded</span>
-                        </label>
-                        <label className="results-toggle">
-                          <input
-                            type="checkbox"
-                            checked={draft.topped}
-                            onChange={(event) =>
-                              setQualifierDrafts((current) => ({
-                                ...current,
-                                [climb.number]: {
-                                  ...draft,
-                                  topped: event.target.checked,
-                                  zone: event.target.checked ? true : draft.zone,
-                                },
-                              }))
-                            }
-                          />
-                          <span>Top recorded</span>
-                        </label>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="space-y-2">
-                            <span className="text-sm font-medium text-slate-700">Attempts to zone</span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={draft.attemptsToZone}
-                              onChange={(event) =>
-                                setQualifierDrafts((current) => ({
-                                  ...current,
-                                  [climb.number]: { ...draft, attemptsToZone: Number(event.target.value) || 0 },
-                                }))
-                              }
-                              className="results-input"
-                            />
-                          </label>
-                          <label className="space-y-2">
-                            <span className="text-sm font-medium text-slate-700">Attempts to top</span>
-                            <input
-                              type="number"
-                              min={0}
-                              value={draft.attemptsToTop}
-                              onChange={(event) =>
-                                setQualifierDrafts((current) => ({
-                                  ...current,
-                                  [climb.number]: { ...draft, attemptsToTop: Number(event.target.value) || 0 },
-                                }))
-                              }
-                              className="results-input"
-                            />
-                          </label>
-                        </div>
-                        {!canJudge ? (
-                          <div className="text-sm text-slate-600">
-                            CEC flash qualifiers are judge-operated. Climbers can use this page to follow live scoring, but staff enters the official results.
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <label className="space-y-2">
-                          <span className="text-sm font-medium text-slate-700">Attempts</span>
-                          <input
-                            type="number"
-                            min={0}
-                            value={draft.attemptCount}
-                            onChange={(event) =>
-                              setQualifierDrafts((current) => ({
-                                ...current,
-                                [climb.number]: { ...draft, attemptCount: Number(event.target.value) || 0 },
-                              }))
-                            }
-                            className="results-input"
-                          />
-                        </label>
-                        <label className="results-toggle self-end">
-                          <input
-                            type="checkbox"
-                            checked={draft.topped}
-                            onChange={(event) =>
-                              setQualifierDrafts((current) => ({
-                                ...current,
-                                [climb.number]: { ...draft, topped: event.target.checked, zone: event.target.checked },
-                              }))
-                            }
-                          />
-                          <span>Top recorded</span>
-                        </label>
-                      </div>
-                    )}
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Attempts</span>
+                        <input type="number" min={0} value={draft.attemptCount} onChange={(event) => dispatch({ type: "update", climbNumber: climb.number, patch: { attemptCount: Number(event.target.value) || 0 } })} className="results-input" />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Top recorded</span>
+                        <button type="button" onClick={() => dispatch({ type: "update", climbNumber: climb.number, patch: { topped: !draft.topped } })} className={`results-secondary-button ${draft.topped ? "results-secondary-button-active" : ""}`}>
+                          {draft.topped ? "Top" : "Not topped"}
+                        </button>
+                      </label>
+                    </div>
                   </div>
                 );
               })}
@@ -611,61 +280,20 @@ function ScorecardContent() {
           </section>
         ) : (
           <section className="results-card">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="results-kicker">Finals</div>
-                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Judge-operated IFSC points scoring</h2>
-              </div>
-              <div className="results-chip">{canJudge ? "Judge entry only" : "Read-only"}</div>
-            </div>
-
+            <div className="results-kicker">Finals</div>
+            <h2 className="mt-2 text-3xl font-semibold text-slate-950">Read-only finals scorecard</h2>
             <div className="mt-5 grid gap-4 xl:grid-cols-2">
-              {(snapshot ? getClimbs(snapshot.competition.finals_problem_count) : []).map((climb) => {
-                const draft = finalsDrafts[climb.number] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
-                const points = calculateFinalAttemptPoints({
-                  competition_id: snapshot?.competition.id ?? "",
-                  climber_id: climber.id,
-                  climb_number: climb.number,
-                  top: draft.top,
-                  zone: draft.zone,
-                  attempts_to_top: draft.top ? draft.attemptsToTop : null,
-                  attempts_to_zone: draft.zone ? draft.attemptsToZone : null,
-                });
-
-                return (
-                  <div key={climb.number} className="results-meta-card">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="results-kicker">Boulder {String(climb.number).padStart(2, "0")}</div>
-                        <div className="mt-2 text-xl font-semibold text-slate-950">Current points: {formatFinalPoints(points)}</div>
-                      </div>
-                      <button type="button" onClick={() => void saveFinals(climb.number)} disabled={saving || !canJudge || !finalsStaffScoringOpen} className="results-primary-button">
-                        Save
-                      </button>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      <label className="results-toggle">
-                        <input type="checkbox" checked={draft.zone} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, zone: event.target.checked } }))} />
-                        <span>Zone secured</span>
-                      </label>
-                      <label className="results-toggle">
-                        <input type="checkbox" checked={draft.top} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, top: event.target.checked, zone: event.target.checked ? true : draft.zone } }))} />
-                        <span>Top secured</span>
-                      </label>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="space-y-2">
-                            <span className="text-sm font-medium text-slate-700">Attempts to zone</span>
-                            <input type="number" min={0} value={draft.attemptsToZone} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" />
-                          </label>
-                          <label className="space-y-2">
-                            <span className="text-sm font-medium text-slate-700">Attempts to top</span>
-                            <input type="number" min={0} value={draft.attemptsToTop} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" />
-                          </label>
-                        </div>
-                    </div>
+              {snapshot.finalsLeaderboard.find((entry) => entry.climber_id === climber.id)?.problem_results.map((problem) => (
+                <div key={problem.climb_number} className="results-meta-card">
+                  <div className="results-kicker">Boulder {String(problem.climb_number).padStart(2, "0")}</div>
+                  <div className="mt-2 text-xl font-semibold text-slate-950">{formatFinalPoints(problem.points)} points</div>
+                  <div className="mt-3 text-sm text-slate-600">
+                    {problem.top ? `Top in ${problem.attempts_to_top} tries` : problem.zone ? `Zone in ${problem.attempts_to_zone} tries` : "No score recorded"}
                   </div>
-                );
-              })}
+                </div>
+              )) ?? (
+                <div className="results-meta-card text-slate-600">Finals scores will appear here once staff starts recording them.</div>
+              )}
             </div>
           </section>
         )}
