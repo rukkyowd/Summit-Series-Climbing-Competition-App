@@ -34,6 +34,7 @@ import {
   buildDisplayPath,
   buildStaffCompetitionPath,
   getCompetitionPhaseForSchedulePhase,
+  getCompetitionPhaseSequenceFromScheduleBlocks,
   formatCompetitionPhaseLabel,
   formatDateTimeLabel,
   formatSchedulePhaseLabel,
@@ -222,14 +223,30 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
   const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
-  const nextPhase = draft ? getNextCompetitionPhase(draft.current_phase) : null;
-  const previousPhase = draft ? getPreviousCompetitionPhase(draft.current_phase) : null;
-  const nextPhaseLabel = nextPhase === "results" ? "End event" : "Next";
   const canEditPhase = profile?.role === "admin";
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
     ? getCompetitionPhaseForSchedulePhase(liveScheduleBlock.phase_type)
     : null;
+  const scheduleDrivenPhases = useMemo(
+    () => (draft ? getCompetitionPhaseSequenceFromScheduleBlocks(draft.schedule_blocks) : []),
+    [draft]
+  );
+  const navigationPhase = impliedCompetitionPhase ?? draft?.current_phase ?? null;
+  const schedulePhaseIndex = navigationPhase ? scheduleDrivenPhases.indexOf(navigationPhase) : -1;
+  const nextPhase =
+    schedulePhaseIndex >= 0 && schedulePhaseIndex < scheduleDrivenPhases.length - 1
+      ? scheduleDrivenPhases[schedulePhaseIndex + 1]
+      : draft
+        ? getNextCompetitionPhase(draft.current_phase)
+        : null;
+  const previousPhase =
+    schedulePhaseIndex > 0
+      ? scheduleDrivenPhases[schedulePhaseIndex - 1]
+      : draft
+        ? getPreviousCompetitionPhase(draft.current_phase)
+        : null;
+  const nextPhaseLabel = nextPhase === "results" ? "End event" : "Next";
   const schedulePhaseMismatch = Boolean(
     draft && impliedCompetitionPhase && impliedCompetitionPhase !== draft.current_phase
   );
@@ -566,9 +583,15 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                     </div>
                   </div>
                   <div className="mt-4 text-sm text-slate-600">
-                    Competition phase controls scoring and which public standings are shown. The live schedule block is separate
-                    {liveScheduleBlock ? ` and is currently "${liveScheduleBlock.label}".` : "."}
+                    Competition phase controls scoring and which public standings are shown. When your schedule blocks imply a
+                    phase order, Previous and Next follow that event sequence first
+                    {liveScheduleBlock ? `, and the live block is currently "${liveScheduleBlock.label}".` : "."}
                   </div>
+                  {scheduleDrivenPhases.length ? (
+                    <div className="mt-3 text-sm text-slate-600">
+                      Schedule-driven sequence: {scheduleDrivenPhases.map((phase) => formatCompetitionPhaseLabel(phase)).join(" -> ")}
+                    </div>
+                  ) : null}
                   {liveScheduleBlock ? (
                     <div className="mt-3 rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
                       Live schedule block: <span className="font-semibold">{liveScheduleBlock.label}</span>

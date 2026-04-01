@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canClimberSelfScoreQualifier,
   canRegisterDuringCompetition,
+  getCompetitionPhaseSequenceFromScheduleBlocks,
   getCompetitionPhaseForSchedulePhase,
   getFormatCapabilities,
   normalizeCompetition,
@@ -46,6 +47,19 @@ describe("competition phases", () => {
     expect(getCompetitionPhaseForSchedulePhase("isolation")).toBe("observation");
     expect(getCompetitionPhaseForSchedulePhase("finals_round")).toBe("finals_open");
     expect(getCompetitionPhaseForSchedulePhase("custom")).toBeNull();
+  });
+
+  it("builds a phase sequence from schedule blocks without duplicate qualifier phases", () => {
+    expect(
+      getCompetitionPhaseSequenceFromScheduleBlocks([
+        { label: "Youth B", phase_type: "qualifier_round", start_time: "9:00 AM" },
+        { label: "Youth A", phase_type: "qualifier_round", start_time: "10:00 AM" },
+        { label: "Reset", phase_type: "wall_reset", start_time: "11:00 AM" },
+        { label: "Observe", phase_type: "observation", start_time: "12:00 PM" },
+        { label: "Finals", phase_type: "finals_round", start_time: "1:00 PM" },
+        { label: "Awards", phase_type: "results", start_time: "2:00 PM" },
+      ])
+    ).toEqual(["qualifier_open", "wall_reset", "observation", "finals_open", "results"]);
   });
 });
 

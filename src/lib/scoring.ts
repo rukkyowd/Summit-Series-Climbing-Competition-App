@@ -659,6 +659,45 @@ export function getCompetitionPhaseForSchedulePhase(phaseType: SchedulePhaseType
   }
 }
 
+export function getCompetitionPhaseSequenceFromScheduleBlocks(
+  scheduleBlocks: Pick<CompetitionScheduleBlock, "label" | "phase_type" | "start_time">[]
+) {
+  const ordered = scheduleBlocks
+    .map((block, index) => ({
+      block,
+      index,
+      phase: getCompetitionPhaseForSchedulePhase(block.phase_type),
+    }))
+    .filter(
+      (
+        entry
+      ): entry is {
+        block: Pick<CompetitionScheduleBlock, "label" | "phase_type" | "start_time">;
+        index: number;
+        phase: CompetitionPhase;
+      } => entry.phase !== null
+    )
+    .sort((left, right) => {
+      const startDiff =
+        parseScheduleTimeToMinutes(left.block.start_time) - parseScheduleTimeToMinutes(right.block.start_time);
+      if (startDiff !== 0) {
+        return startDiff;
+      }
+
+      return left.index - right.index;
+    });
+
+  const seen = new Set<CompetitionPhase>();
+  return ordered.flatMap((entry) => {
+    if (seen.has(entry.phase)) {
+      return [];
+    }
+
+    seen.add(entry.phase);
+    return [entry.phase];
+  });
+}
+
 export function normalizeQualifierEligibleAgeGroups(value: unknown) {
   if (!Array.isArray(value)) {
     return [...DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS];

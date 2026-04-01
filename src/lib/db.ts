@@ -25,6 +25,7 @@ import {
   isFinalsStage,
   isQualifierStage,
   normalizeCompetition,
+  phaseToStageMode,
   slugifyCompetitionName,
   type Climber,
   type ClimberWithAttempts,
@@ -93,6 +94,19 @@ export interface CompetitionUndoAvailability {
   available: boolean;
   expires_at: string | null;
   operation_type: "advance" | "reset" | null;
+}
+
+function dedupeFinalists<T extends FinalistSelection>(finalists: T[]) {
+  const seen = new Set<string>();
+
+  return finalists.filter((finalist) => {
+    if (!finalist.climber_id || seen.has(finalist.climber_id)) {
+      return false;
+    }
+
+    seen.add(finalist.climber_id);
+    return true;
+  });
 }
 
 function ensureConfigured() {
@@ -480,7 +494,7 @@ async function fetchProjectedFinalists(competitionId: string) {
     return [] as FinalistSelection[];
   }
 
-  return ((data ?? []) as any[]).map((row) => ({
+  return dedupeFinalists(((data ?? []) as any[]).map((row) => ({
     climber_id: row.climber_id,
     name: row.name ?? "Unknown climber",
     category_id: row.category_id ?? null,
@@ -490,7 +504,7 @@ async function fetchProjectedFinalists(competitionId: string) {
     qualifier_rank: row.qualifier_rank ?? 0,
     advanced_with_tie: row.advanced_with_tie ?? false,
     climbing_order: row.climbing_order ?? row.qualifier_rank ?? 0,
-  }));
+  })));
 }
 
 async function fetchUndoAvailability(competitionId: string): Promise<CompetitionUndoAvailability> {
@@ -689,7 +703,9 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     competition.current_phase === "qualifier_open"
       ? projectedFinalists.filter((entry) => !entry.advanced_with_tie)
       : projectedFinalists;
-  const competitionFinalists = selectedFinalists.length ? selectedFinalists : liveProjectedFinalists;
+  const competitionFinalists = dedupeFinalists(
+    selectedFinalists.length ? selectedFinalists : liveProjectedFinalists
+  );
   const finalsLeaderboard = isFinalsStage(competition)
     ? buildFinalsLeaderboard(joined, competitionFinalists, competition)
     : [];
@@ -905,6 +921,39 @@ export async function setCompetitionPhase(competitionId: string, nextPhase: Comp
       p_competition_id: competitionId,
       p_next_phase: nextPhase,
     }));
+  }
+
+  if (error && error.message.includes("Could not find the function public.set_competition_phase")) {
+    const competition = await getCompetitionById(competitionId);
+    if (!competition) {
+      throw new Error("Competition not found.");
+    }
+
+    const now = new Date().toISOString();
+    const qualifierLockedAt =
+      nextPhase === "qualifier_open"
+        ? null
+        : nextPhase === "observation" || nextPhase === "finals_open" || nextPhase === "finals_closed" || nextPhase === "results"
+          ? competition.qualifier_locked_at ?? now
+          : competition.qualifier_locked_at;
+    const finalsStartedAt =
+      nextPhase === "finals_open"
+        ? competition.finals_started_at ?? now
+        : nextPhase === "qualifier_open" || nextPhase === "qualifier_closed" || nextPhase === "wall_reset"
+          ? null
+          : competition.finals_started_at;
+
+    const fallback = await supabase
+      .from("competitions")
+      .update({
+        current_phase: nextPhase,
+        stage_mode: phaseToStageMode(nextPhase),
+        qualifier_locked_at: qualifierLockedAt,
+        finals_started_at: finalsStartedAt,
+      })
+      .eq("id", competitionId);
+
+    error = fallback.error ?? null;
   }
 
   if (error) {
