@@ -644,8 +644,9 @@ export default function StaffJudgePage() {
             {!finalsReady ? (
               <div className="results-meta-card mt-5 text-slate-600">{finalsBlockedMessage}</div>
             ) : (
-              <div className="mt-5 overflow-x-auto">
-                <div className="min-w-[900px]">
+              <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[900px]">
                   <div
                     className="grid gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"
                     style={{ gridTemplateColumns: `1.6fr repeat(${snapshot.competition.finals_problem_count}, minmax(7rem, 0.9fr))` }}
@@ -706,11 +707,69 @@ export default function StaffJudgePage() {
                     ))}
                   </div>
                 </div>
+                </div>
+                <div className="hidden xl:block xl:sticky xl:top-24">
+                  <div className="results-meta-card border-sky-100 bg-sky-50/40 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                    <div className="results-kicker">Finals editor</div>
+                    {selectedFinalist && selectedCell ? (
+                      <>
+                        <div className="mt-2 text-2xl font-semibold text-slate-950">
+                          {selectedFinalist.name} / Boulder {selectedCell.climbNumber}
+                        </div>
+                        <div className="mt-2 text-sm text-slate-600">
+                          Edit the selected finals cell here. Zone can stand alone, and recording a top automatically keeps the zone on.
+                        </div>
+                        {!finalsScoringOpen ? (
+                          <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                            {finalsBlockedMessage}
+                          </div>
+                        ) : null}
+                        {(() => {
+                          const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
+                          const current = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
+                          return (
+                            <div className="mt-5 grid gap-3">
+                              <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, zone: !current.zone, top: current.top && !current.zone ? false : current.top, attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.zone ? "results-secondary-button-active" : ""}`}>
+                                {current.zone ? "Zone recorded" : "Record zone"}
+                              </button>
+                              <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, top: !current.top, zone: !current.top ? true : current.zone, attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop, attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.top ? "results-secondary-button-active" : ""}`}>
+                                {current.top ? "Top recorded" : "Record top"}
+                              </button>
+                              <input type="number" min={0} value={current.attemptsToZone} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to zone" />
+                              <input type="number" min={0} value={current.attemptsToTop} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to top" />
+                              <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                                Live points: {formatFinalPoints((current.top ? 25 - Math.max(0, current.attemptsToTop - 1) * 0.1 : current.zone ? 10 - Math.max(0, current.attemptsToZone - 1) * 0.1 : 0))}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button type="button" onClick={clearFinalsCell} className="results-secondary-button">
+                                  Clear
+                                </button>
+                                <button type="button" onClick={() => void saveFinals()} disabled={saving || !finalsScoringOpen} className="results-primary-button flex-1">
+                                  Save finals cell
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <>
+                        <div className="mt-2 text-2xl font-semibold text-slate-950">Choose a finals cell</div>
+                        <div className="mt-2 text-sm text-slate-600">
+                          Tap any finalist x boulder cell in the grid and the editor will stay open here while you work through scores.
+                        </div>
+                        <div className="mt-5 rounded-[1.2rem] border border-dashed border-slate-300 bg-white/80 px-4 py-6 text-sm text-slate-500">
+                          Select a pending, zone, or top cell to start editing.
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
             {selectedFinalist && selectedCell && finalsReady ? (
-              <div className="results-meta-card mt-5">
+              <div className="results-meta-card mt-5 xl:hidden">
                 <div className="results-kicker">Edit finals cell</div>
                 <div className="mt-2 text-2xl font-semibold text-slate-950">
                   {selectedFinalist.name} / Boulder {selectedCell.climbNumber}
