@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
+import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { getAuthState, isStaffRole } from "@/lib/auth";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
+  formatCompetitionPhaseLabel,
   formatDateRange,
   formatSchedulePhaseLabel,
   formatTimeRange,
@@ -26,6 +28,7 @@ export default function CompetitionOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showFormatGuide, setShowFormatGuide] = useState(false);
+  const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
 
   const refresh = useCallback(async () => {
     if (!slug) {
@@ -85,6 +88,32 @@ export default function CompetitionOverviewPage() {
       ? "Finalists"
       : "Projected finalists"
     : "Finalists";
+  const finalsGroups = useMemo(() => {
+    const groups = new Map<string, CompetitionSnapshot["finalsLeaderboard"]>();
+    snapshot?.finalsLeaderboard.forEach((entry) => {
+      const next = groups.get(entry.display_category) ?? [];
+      next.push(entry);
+      groups.set(entry.display_category, next);
+    });
+    return groups;
+  }, [snapshot]);
+  const finalsCategories = useMemo(() => Array.from(finalsGroups.keys()).sort(), [finalsGroups]);
+  const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
+  const finalsActive =
+    snapshot?.competition.current_phase === "finals_open" ||
+    snapshot?.competition.current_phase === "finals_closed" ||
+    snapshot?.competition.current_phase === "results";
+
+  useEffect(() => {
+    if (!selectedFinalsCategory && finalsCategories.length) {
+      setSelectedFinalsCategory(finalsCategories[0]);
+      return;
+    }
+
+    if (selectedFinalsCategory && !finalsGroups.has(selectedFinalsCategory)) {
+      setSelectedFinalsCategory(finalsCategories[0] ?? "");
+    }
+  }, [finalsCategories, finalsGroups, selectedFinalsCategory]);
 
   return (
     <main className="results-page">
@@ -220,6 +249,37 @@ export default function CompetitionOverviewPage() {
                 </div>
               </section>
             </section>
+
+            {finalsActive ? (
+              finalsRows.length ? (
+                <>
+                  <section className="results-card">
+                    <div className="results-kicker">Finals results</div>
+                    <h2 className="mt-2 text-3xl font-semibold text-slate-950">Final standings</h2>
+                    <div className="mt-3 text-sm text-slate-600">
+                      Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
+                    </div>
+                    <div className="finals-category-picker mt-5">
+                      {finalsCategories.map((category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          onClick={() => setSelectedFinalsCategory(category)}
+                          className={category === selectedFinalsCategory ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  <FinalsResultsTable title={selectedFinalsCategory} rows={finalsRows} />
+                </>
+              ) : (
+                <section className="results-card text-slate-600">
+                  Finals are active, but no finals scores have been entered yet.
+                </section>
+              )
+            ) : null}
           </>
         ) : loading ? (
           <section className="results-card text-slate-600">Loading competition...</section>

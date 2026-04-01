@@ -222,6 +222,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
   const nextPhase = draft ? getNextCompetitionPhase(draft.current_phase) : null;
   const previousPhase = draft ? getPreviousCompetitionPhase(draft.current_phase) : null;
+  const nextPhaseLabel = nextPhase === "results" ? "End event" : "Next";
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
@@ -493,11 +494,32 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                       </button>
                       <button
                         type="button"
-                        onClick={() => nextPhase && void setCompetitionPhase(draft.id, nextPhase).then(() => refreshAfterChange(draft.id))}
+                        onClick={() => {
+                          if (!nextPhase) {
+                            return;
+                          }
+
+                          if (nextPhase === "results") {
+                            setConfirming({
+                              title: "End event",
+                              description: "This moves the competition into the results phase so public pages show the final standings instead of live scoring.",
+                              confirmLabel: "End event",
+                              expectedValue: draft.name,
+                              action: async () => {
+                                await setCompetitionPhase(draft.id, nextPhase);
+                                await refreshAfterChange(draft.id);
+                                setMessage("Competition moved to results.");
+                              },
+                            });
+                            return;
+                          }
+
+                          void setCompetitionPhase(draft.id, nextPhase).then(() => refreshAfterChange(draft.id));
+                        }}
                         disabled={!nextPhase || isPending}
                         className="results-primary-button"
                       >
-                        Next
+                        {nextPhaseLabel}
                       </button>
                     </div>
                   </div>
