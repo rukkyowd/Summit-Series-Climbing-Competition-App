@@ -23,7 +23,6 @@ import {
   isCompetitionLiveNow,
   isFinalsStage,
   isQualifierStage,
-  getRoundStatusForCompetition,
   normalizeCompetition,
   slugifyCompetitionName,
   type Climber,
@@ -551,46 +550,15 @@ function validateSlotForCategory(slot: CompetitionScheduleBlock, categoryId: str
 }
 
 async function syncCompetitionRounds(competition: Competition) {
-  const rounds: Array<Omit<CompetitionRound, "id" | "created_at">> = [
-    {
-      competition_id: competition.id,
-      round_number: 1,
-      name: "Qualifier",
-      round_type: "qualifier",
-      format: competition.format,
-      status: getRoundStatusForCompetition(competition, "qualifier"),
-      problem_count: competition.total_climbs,
-      counting_climbs: competition.qualifier_counting_climbs,
-      finals_cutoff: competition.finals_cutoff,
-      started_at: competition.current_phase === "qualifier_open" ? competition.registration_opens_at : null,
-      closed_at: competition.current_phase === "qualifier_open" ? null : competition.qualifier_locked_at,
-    },
-    {
-      competition_id: competition.id,
-      round_number: 2,
-      name: "Finals",
-      round_type: "finals",
-      format: "ifsc_finals_format",
-      status: getRoundStatusForCompetition(competition, "finals"),
-      problem_count: competition.finals_problem_count,
-      counting_climbs: null,
-      finals_cutoff: competition.finals_cutoff,
-      started_at: competition.finals_started_at,
-      closed_at: competition.current_phase === "finals_closed" || competition.current_phase === "results" ? new Date().toISOString() : null,
-    },
-  ];
-
-  const { error } = await supabase.from("competition_rounds").upsert(
-    rounds.map((round) => ({
-      ...round,
-      finals_cutoff: round.finals_cutoff ?? null,
-      counting_climbs: round.counting_climbs ?? null,
-    })),
-    { onConflict: "competition_id,round_number" }
-  );
+  const { error } = await supabase.rpc("sync_competition_rounds", {
+    p_competition_id: competition.id,
+  });
 
   if (error) {
-    throw new Error(error.message);
+    console.warn("Unable to sync competition rounds", {
+      competitionId: competition.id,
+      error: error.message,
+    });
   }
 }
 

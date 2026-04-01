@@ -111,6 +111,27 @@ function ScorecardContent() {
     [climber?.id, snapshot]
   );
   const qualifierOpen = snapshot ? canClimberSelfScoreQualifier(snapshot.competition) : false;
+  const qualifierClimbScores = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    return (
+      qualifierEntry?.all_climbs ??
+      getClimbs(snapshot.competition.total_climbs).map((climb) => ({
+        climb_number: climb.number,
+        zone: false,
+        topped: false,
+        attempt_count: 0,
+        extra_attempts: 0,
+        attempts_to_top: null,
+        attempts_to_zone: null,
+        base_points: climb.base_points,
+        score: 0,
+        counting: false,
+      }))
+    );
+  }, [qualifierEntry?.all_climbs, snapshot]);
 
   const saveQualifier = async (climbNumber: number) => {
     if (!snapshot || !climber) {
@@ -236,46 +257,72 @@ function ScorecardContent() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="results-kicker">Qualifier scorecard</div>
-                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Record your attempts</h2>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-950">
+                  {qualifierOpen ? "Record your attempts" : "Read-only qualifier scorecard"}
+                </h2>
               </div>
               <div className="results-chip">{qualifierOpen ? "Scoring open" : "Scoring closed"}</div>
             </div>
 
             {!qualifierOpen ? (
               <div className="results-meta-card mt-5 text-slate-600">
-                Private self-scoring is currently closed. Your saved qualifier attempts will remain visible here.
+                Private self-scoring is currently closed. Your saved score for each boulder remains visible here in read-only mode.
               </div>
             ) : null}
 
             <div className="mt-5 grid gap-4 xl:grid-cols-2">
-              {getClimbs(snapshot.competition.total_climbs).map((climb) => {
-                const draft = drafts[climb.number] ?? { attemptCount: 0, topped: false };
-                return (
-                  <div key={climb.number} className="results-meta-card">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="results-kicker">Boulder {String(climb.number).padStart(2, "0")}</div>
-                        <div className="mt-2 text-xl font-semibold text-slate-950">{climb.base_points} base points</div>
+              {qualifierOpen
+                ? getClimbs(snapshot.competition.total_climbs).map((climb) => {
+                    const draft = drafts[climb.number] ?? { attemptCount: 0, topped: false };
+                    return (
+                      <div key={climb.number} className="results-meta-card">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="results-kicker">Boulder {String(climb.number).padStart(2, "0")}</div>
+                            <div className="mt-2 text-xl font-semibold text-slate-950">{climb.base_points} base points</div>
+                          </div>
+                          <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving || !qualifierOpen} className="results-primary-button">
+                            Save
+                          </button>
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <label className="space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Attempts</span>
+                            <input type="number" min={0} value={draft.attemptCount} onChange={(event) => dispatch({ type: "update", climbNumber: climb.number, patch: { attemptCount: Number(event.target.value) || 0 } })} className="results-input" />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Top recorded</span>
+                            <button type="button" onClick={() => dispatch({ type: "update", climbNumber: climb.number, patch: { topped: !draft.topped } })} className={`results-secondary-button ${draft.topped ? "results-secondary-button-active" : ""}`}>
+                              {draft.topped ? "Top" : "Not topped"}
+                            </button>
+                          </label>
+                        </div>
                       </div>
-                      <button type="button" onClick={() => void saveQualifier(climb.number)} disabled={saving || !qualifierOpen} className="results-primary-button">
-                        Save
-                      </button>
+                    );
+                  })
+                : qualifierClimbScores.map((climb) => (
+                    <div key={climb.climb_number} className="results-meta-card">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="results-kicker">Boulder {String(climb.climb_number).padStart(2, "0")}</div>
+                          <div className="mt-2 text-xl font-semibold text-slate-950">
+                            {Number.isInteger(climb.score) ? climb.score.toLocaleString() : formatFinalPoints(climb.score)} points
+                          </div>
+                        </div>
+                        {climb.counting ? <div className="results-chip">Counting score</div> : null}
+                      </div>
+                      <div className="mt-3 text-sm text-slate-600">
+                        {climb.topped
+                          ? `Top in ${climb.attempt_count} ${climb.attempt_count === 1 ? "try" : "tries"}`
+                          : climb.attempt_count > 0
+                            ? `${climb.attempt_count} attempts logged, no top recorded`
+                            : "No score recorded"}
+                      </div>
+                      <div className="mt-2 text-sm text-slate-500">
+                        Base value: {climb.base_points.toLocaleString()}
+                      </div>
                     </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-2">
-                        <span className="text-sm font-medium text-slate-700">Attempts</span>
-                        <input type="number" min={0} value={draft.attemptCount} onChange={(event) => dispatch({ type: "update", climbNumber: climb.number, patch: { attemptCount: Number(event.target.value) || 0 } })} className="results-input" />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-medium text-slate-700">Top recorded</span>
-                        <button type="button" onClick={() => dispatch({ type: "update", climbNumber: climb.number, patch: { topped: !draft.topped } })} className={`results-secondary-button ${draft.topped ? "results-secondary-button-active" : ""}`}>
-                          {draft.topped ? "Top" : "Not topped"}
-                        </button>
-                      </label>
-                    </div>
-                  </div>
-                );
-              })}
+                  ))}
             </div>
           </section>
         ) : (
