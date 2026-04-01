@@ -32,7 +32,7 @@ export default function CompetitionRegisterPage() {
     getCompetitionSnapshot(slug)
       .then((nextSnapshot) => {
         setSnapshot(nextSnapshot);
-        setCategoryId(nextSnapshot.competition.categories[0]?.id ?? "");
+        setCategoryId(nextSnapshot.registrationChoices[0]?.category.id ?? "");
       })
       .catch((nextError) => {
         setError(nextError instanceof Error ? nextError.message : "Unable to load registration options.");
@@ -159,9 +159,9 @@ export default function CompetitionRegisterPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="results-input" disabled={!registrationOpen || snapshot?.competition.stage_mode === "finals"}>
                 <option value="">Select category</option>
-                {snapshot?.competition.categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.display_name}
+                {snapshot?.registrationChoices.map((choice) => (
+                  <option key={choice.category.id} value={choice.category.id}>
+                    {choice.category.display_name}
                   </option>
                 ))}
               </select>

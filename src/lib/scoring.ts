@@ -39,6 +39,7 @@ export const CATEGORY_AGE_GROUPS = [
   "Masters",
   "Open",
 ] as const;
+export const DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS = [...CATEGORY_AGE_GROUPS] as const;
 
 export type CompetitionStatus = (typeof COMPETITION_STATUSES)[number];
 export type EventFormat = (typeof EVENT_FORMATS)[number];
@@ -92,6 +93,7 @@ export interface Competition {
   qualifier_counting_climbs: number;
   finals_cutoff: 6 | 8;
   finals_tie_advances: boolean;
+  qualifier_eligible_age_groups: string[];
   finals_eligible_age_groups: string[];
   qualifier_locked_at: string | null;
   finals_started_at: string | null;
@@ -388,6 +390,7 @@ export const DEFAULT_COMPETITION: Competition = {
   qualifier_counting_climbs: DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   finals_cutoff: DEFAULT_FINALS_CUTOFF,
   finals_tie_advances: true,
+  qualifier_eligible_age_groups: [...DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS],
   finals_eligible_age_groups: [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS],
   qualifier_locked_at: null,
   finals_started_at: null,
@@ -406,6 +409,19 @@ export function formatSupportsFinals(format: EventFormat) {
 
 export function formatUsesSelfScoredQualifiers(format: EventFormat) {
   return format === "scramble";
+}
+
+export function normalizeQualifierEligibleAgeGroups(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS];
+  }
+
+  const allowed = new Set(CATEGORY_AGE_GROUPS);
+  const normalized = value.filter(
+    (entry): entry is string => typeof entry === "string" && allowed.has(entry as CategoryAgeGroup)
+  );
+
+  return normalized.length ? normalized : [...DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS];
 }
 
 export function normalizeFinalsEligibleAgeGroups(value: unknown) {
@@ -430,6 +446,13 @@ export function isFinalsEligibleCategory(
     (genderDivision === "Men" || genderDivision === "Women") &&
     competition.finals_eligible_age_groups.includes(ageGroup)
   );
+}
+
+export function isQualifierEligibleCategory(
+  competition: Pick<Competition, "qualifier_eligible_age_groups">,
+  ageGroup: string
+) {
+  return competition.qualifier_eligible_age_groups.includes(ageGroup);
 }
 
 export function parseScheduleTimeToMinutes(value: string | null | undefined) {
@@ -524,15 +547,16 @@ export function normalizeCompetition(
     hero_image_url: competition?.hero_image_url?.trim() || "",
     total_climbs: clampNumber(competition?.total_climbs, 1, 200, DEFAULT_TOTAL_CLIMBS),
     max_climbers: clampNumber(competition?.max_climbers, 1, 1000, DEFAULT_MAX_CLIMBERS),
-    qualifier_counting_climbs: clampNumber(
-      competition?.qualifier_counting_climbs,
-      1,
-      20,
-      DEFAULT_QUALIFIER_COUNTING_CLIMBS
-    ),
-    finals_cutoff: clampNumber(competition?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6,
-    finals_tie_advances: competition?.finals_tie_advances ?? true,
-    finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(competition?.finals_eligible_age_groups),
+      qualifier_counting_climbs: clampNumber(
+        competition?.qualifier_counting_climbs,
+        1,
+        20,
+        DEFAULT_QUALIFIER_COUNTING_CLIMBS
+      ),
+      finals_cutoff: clampNumber(competition?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6,
+      finals_tie_advances: competition?.finals_tie_advances ?? true,
+      qualifier_eligible_age_groups: normalizeQualifierEligibleAgeGroups(competition?.qualifier_eligible_age_groups),
+      finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(competition?.finals_eligible_age_groups),
     qualifier_locked_at: competition?.qualifier_locked_at ?? null,
     finals_started_at: competition?.finals_started_at ?? null,
     finals_problem_count: DEFAULT_FINALS_PROBLEM_COUNT,
@@ -662,7 +686,7 @@ export function isFinalsStage(competition: Pick<Competition, "stage_mode">) {
 }
 
 export function getEventWorkflowGuide(
-  competition: Pick<Competition, "format" | "stage_mode" | "finals_eligible_age_groups">
+  competition: Pick<Competition, "format" | "stage_mode" | "qualifier_eligible_age_groups" | "finals_eligible_age_groups">
 ): EventWorkflowGuide {
   if (competition.stage_mode === "finals") {
     return {
@@ -688,6 +712,7 @@ export function getEventWorkflowGuide(
       summary:
         "This mode fits youth competitive qualifiers with an official start list, a prescribed order, and a five-on, five-off rhythm.",
       notes: [
+        `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
         "Athletes should start on the assigned boulder and rotate in order; no ad hoc rescheduling.",
         "Rest periods match the rotation window, and climbers move through transit without watching unattempted boulders.",
         "Use schedule blocks as check-in, isolation, and round windows so the phone view mirrors the day-of schedule.",
@@ -706,6 +731,7 @@ export function getEventWorkflowGuide(
       summary:
         "This mode keeps qualifier scoring but is better for scheduled sessions where athletes move with set observation and start information.",
       notes: [
+        `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
         "Use schedule blocks to publish session timing, observation windows, and athlete groupings.",
         "The website should guide athletes to the right session rather than make them guess which page matters next.",
         "Staff can still review qualifier scoring while public users mainly need schedule clarity and live standings.",
@@ -723,6 +749,7 @@ export function getEventWorkflowGuide(
     summary:
       "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
     notes: [
+      `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
       "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
       "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
       "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
@@ -1075,17 +1102,19 @@ export function buildRegistrationChoices(competition: Competition, climbers: Cli
     }
   });
 
-  return competition.categories.map((category) => {
-    const slots = competition.schedule_blocks
-      .filter((block) => schedulePhaseAllowsRegistration(block.phase_type))
-      .filter((block) => !block.eligible_category_ids.length || block.eligible_category_ids.includes(category.id))
-      .map((block) => ({
-        ...block,
-        remaining_capacity: Math.max(0, block.capacity - (slotCounts.get(block.id) ?? 0)),
-      }));
+  return competition.categories
+    .filter((category) => isQualifierEligibleCategory(competition, category.age_group))
+    .map((category) => {
+      const slots = competition.schedule_blocks
+        .filter((block) => schedulePhaseAllowsRegistration(block.phase_type))
+        .filter((block) => !block.eligible_category_ids.length || block.eligible_category_ids.includes(category.id))
+        .map((block) => ({
+          ...block,
+          remaining_capacity: Math.max(0, block.capacity - (slotCounts.get(block.id) ?? 0)),
+        }));
 
-    return { category, slots };
-  });
+      return { category, slots };
+    });
 }
 
 export function getTimeSlotLabel(slotId: string | null | undefined, competition: Competition) {

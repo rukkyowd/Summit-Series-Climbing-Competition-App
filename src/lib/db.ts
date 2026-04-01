@@ -14,6 +14,7 @@ import {
   createCompetitionId,
   getActiveScheduleBlock,
   getDefaultCompetitionCategories,
+  isQualifierEligibleCategory,
   isCompetitionLiveNow,
   isFinalsStage,
   isQualifierStage,
@@ -568,6 +569,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     qualifier_counting_climbs: competition.qualifier_counting_climbs,
     finals_cutoff: competition.finals_cutoff,
     finals_tie_advances: competition.finals_tie_advances,
+    qualifier_eligible_age_groups: competition.qualifier_eligible_age_groups,
     finals_eligible_age_groups: competition.finals_eligible_age_groups,
     qualifier_locked_at: null,
     finals_started_at: null,
@@ -630,6 +632,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
     qualifier_counting_climbs: payload.qualifier_counting_climbs,
     finals_cutoff: payload.finals_cutoff,
     finals_tie_advances: payload.finals_tie_advances,
+    qualifier_eligible_age_groups: payload.qualifier_eligible_age_groups,
     finals_eligible_age_groups: payload.finals_eligible_age_groups,
     qualifier_locked_at: payload.qualifier_locked_at,
     finals_started_at: payload.finals_started_at,
@@ -799,6 +802,9 @@ export async function registerClimber(input: RegisterClimberInput) {
   const category = snapshot.competition.categories.find((entry) => entry.id === input.categoryId);
   if (!category) {
     throw new Error("Please choose a valid category.");
+  }
+  if (!isQualifierEligibleCategory(snapshot.competition, category.age_group)) {
+    throw new Error("That age group is not enabled for qualifier registration in this competition.");
   }
 
   let slot: CompetitionScheduleBlock | null = null;

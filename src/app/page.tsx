@@ -509,13 +509,54 @@ export default function HomePage() {
                   <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className="results-textarea" placeholder="Competition description" />
 
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} className="results-input" placeholder="Qualifier boulders" />
-                    <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} className="results-input" placeholder="Climber cap" />
-                    <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} className="results-input" placeholder="Counting climbs" />
-                    <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF })} className="results-input" disabled={!supportsFinals}>
-                      <option value={6}>Top 6 finals</option>
-                      <option value={8}>Top 8 finals</option>
-                    </select>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Qualifier boulders</span>
+                      <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} className="results-input" />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Climber cap</span>
+                      <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} className="results-input" />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Counting climbs</span>
+                      <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} className="results-input" />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Finals cutoff</span>
+                      <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF })} className="results-input" disabled={!supportsFinals}>
+                        <option value={6}>Top 6 finals</option>
+                        <option value={8}>Top 8 finals</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="results-meta-card">
+                    <div className="results-kicker">Qualifier age groups</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {CATEGORY_AGE_GROUPS.map((ageGroup) => {
+                        const selected = draft.qualifier_eligible_age_groups.includes(ageGroup);
+                        return (
+                          <label key={ageGroup} className={`results-select-chip ${selected ? "results-select-chip-active" : ""}`}>
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={selected}
+                              onChange={(event) => {
+                                const next = event.target.checked
+                                  ? [...draft.qualifier_eligible_age_groups, ageGroup]
+                                  : draft.qualifier_eligible_age_groups.filter((entry) => entry !== ageGroup);
+
+                                setDraft({
+                                  ...draft,
+                                  qualifier_eligible_age_groups: next.length ? next : draft.qualifier_eligible_age_groups,
+                                });
+                              }}
+                            />
+                            {ageGroup}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="results-meta-card">

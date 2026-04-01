@@ -435,8 +435,11 @@ function ScorecardContent() {
                       </button>
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <input type="number" min={0} value={draft.attemptCount} onChange={(event) => setQualifierDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptCount: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts" />
-                      <label className="results-toggle">
+                      <label className="space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Attempts</span>
+                        <input type="number" min={0} value={draft.attemptCount} onChange={(event) => setQualifierDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptCount: Number(event.target.value) || 0 } }))} className="results-input" />
+                      </label>
+                      <label className="results-toggle self-end">
                         <input type="checkbox" checked={draft.topped} onChange={(event) => setQualifierDrafts((current) => ({ ...current, [climb.number]: { ...draft, topped: event.target.checked } }))} />
                         <span>Top recorded</span>
                       </label>
@@ -489,10 +492,16 @@ function ScorecardContent() {
                         <input type="checkbox" checked={draft.top} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, top: event.target.checked, zone: event.target.checked ? true : draft.zone } }))} />
                         <span>Top secured</span>
                       </label>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <input type="number" min={0} value={draft.attemptsToZone} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to zone" />
-                        <input type="number" min={0} value={draft.attemptsToTop} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to top" />
-                      </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Attempts to zone</span>
+                            <input type="number" min={0} value={draft.attemptsToZone} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Attempts to top</span>
+                            <input type="number" min={0} value={draft.attemptsToTop} onChange={(event) => setFinalsDrafts((current) => ({ ...current, [climb.number]: { ...draft, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" />
+                          </label>
+                        </div>
                     </div>
                   </div>
                 );

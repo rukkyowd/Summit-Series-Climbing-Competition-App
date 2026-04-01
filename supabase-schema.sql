@@ -121,12 +121,14 @@ create table public.competitions (
   qualifier_counting_climbs integer not null default 6 check (qualifier_counting_climbs between 1 and 20),
   finals_cutoff integer not null default 6 check (finals_cutoff in (6, 8)),
   finals_tie_advances boolean not null default true,
+  qualifier_eligible_age_groups jsonb not null default '["Youth D","Youth C","Youth B","Youth A","Junior","Rec","Masters","Open"]'::jsonb,
   finals_eligible_age_groups jsonb not null default '["Open"]'::jsonb,
   qualifier_locked_at timestamptz,
   finals_started_at timestamptz,
   finals_problem_count integer not null default 4 check (finals_problem_count = 4),
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
+  check (jsonb_typeof(qualifier_eligible_age_groups) = 'array'),
   check (jsonb_typeof(finals_eligible_age_groups) = 'array')
 );
 
@@ -602,6 +604,7 @@ begin
     qualifier_counting_climbs = 6,
     finals_cutoff = 6,
     finals_tie_advances = true,
+    qualifier_eligible_age_groups = '["Youth D","Youth C","Youth B","Youth A","Junior","Rec","Masters","Open"]'::jsonb,
     finals_eligible_age_groups = '["Open"]'::jsonb,
     qualifier_locked_at = null,
     finals_started_at = null,

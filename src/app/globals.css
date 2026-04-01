@@ -414,27 +414,96 @@ body::after {
   grid-template-columns: 0.7fr 2.3fr 1fr repeat(4, 0.8fr) 1fr 0.7fr 0.7fr 0.8fr 0.8fr;
 }
 
+.finals-table-shell {
+  border-radius: 1.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fbfaf6;
+  overflow: hidden;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+.finals-table-header {
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  background: #f4f0e6;
+  color: rgba(15, 23, 42, 0.56);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.finals-table-row {
+  gap: 1rem;
+  padding: 1.15rem 1.5rem;
+  min-height: 5.45rem;
+  transition: background-color 160ms ease;
+}
+
+.finals-table-row:hover {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.finals-rank {
+  font-size: 2rem;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(15, 23, 42, 0.96);
+}
+
+.finals-athlete-name {
+  font-size: 1.12rem;
+  font-weight: 500;
+  line-height: 1.15;
+  color: rgba(15, 23, 42, 0.96);
+}
+
+.finals-athlete-subline {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(15, 23, 42, 0.48);
+}
+
+.finals-province {
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(15, 23, 42, 0.6);
+}
+
 .finals-problem-box {
-  width: 2.75rem;
-  height: 3.8rem;
+  width: 3.1rem;
+  height: 3.4rem;
   border-radius: 0.7rem;
-  border: 2px solid rgba(15, 23, 42, 0.12);
-  background: #ffffff;
+  border: 1px solid rgba(120, 113, 108, 0.22);
+  background: #fffefb;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
+  align-items: center;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .finals-problem-box__top,
 .finals-problem-box__bottom {
   display: flex;
+  width: 100%;
   align-items: center;
   justify-content: flex-end;
   padding-right: 0.35rem;
   font-size: 1rem;
   font-weight: 700;
+}
+
+.finals-problem-box-empty {
+  font-size: 1.6rem;
+  font-weight: 400;
+  color: rgba(15, 23, 42, 0.42);
 }
 
 .finals-problem-box__top {
@@ -457,6 +526,20 @@ body::after {
 
 .finals-problem-box__bottom-zone {
   height: 1.25rem;
+}
+
+.finals-metric {
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.finals-metric-strong {
+  color: rgba(15, 23, 42, 0.96);
+}
+
+.finals-metric-dim {
+  color: rgba(15, 23, 42, 0.26);
 }
 
 .shake {
