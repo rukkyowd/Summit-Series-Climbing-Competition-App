@@ -155,6 +155,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     expectedValue?: string;
     action: () => Promise<void>;
   }>(null);
+  const [shareOrigin, setShareOrigin] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -187,6 +188,12 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setShareOrigin(window.location.origin);
+    }
+  }, []);
+
   const selectedSummary = useMemo(
     () => allSummaries.find((entry) => entry.competition.id === selectedCompetitionId) ?? null,
     [allSummaries, selectedCompetitionId]
@@ -205,10 +212,13 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
       .catch(() => setSnapshot(null));
   }, [selectedSummary]);
 
-  const publicUrl = draft ? buildCompetitionPath(draft.slug) : "";
-  const registerUrl = draft ? buildCompetitionPath(draft.slug, "register") : "";
+  const publicPath = draft ? buildCompetitionPath(draft.slug) : "";
+  const registerPath = draft ? buildCompetitionPath(draft.slug, "register") : "";
   const judgeUrl = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "";
-  const displayUrl = draft ? buildDisplayPath(draft.slug) : "";
+  const displayPath = draft ? buildDisplayPath(draft.slug) : "";
+  const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
+  const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
+  const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
   const nextPhase = draft ? getNextCompetitionPhase(draft.current_phase) : null;
   const previousPhase = draft ? getPreviousCompetitionPhase(draft.current_phase) : null;
   const finalsOrder = useMemo(
@@ -454,12 +464,12 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   <div>
                     <div className="results-kicker">Competition setup</div>
                     <h2 className="mt-2 text-3xl font-semibold text-slate-950">{draft.name}</h2>
-                    <div className="mt-2 text-sm text-slate-600">{publicUrl}</div>
+                    <div className="mt-2 text-sm text-slate-600">{publicUrl || publicPath}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Link href={publicUrl} className="results-secondary-button">Public page</Link>
+                    <Link href={publicPath} className="results-secondary-button">Public page</Link>
                     <Link href={judgeUrl} className="results-secondary-button">Judge panel</Link>
-                    <Link href={displayUrl} className="results-secondary-button">Display</Link>
+                    <Link href={displayPath} className="results-secondary-button">Display</Link>
                     <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button">Preflight</Link>
                   </div>
                 </div>
@@ -783,15 +793,15 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                 <div className="results-meta-card">
                   <div className="results-kicker">Share links</div>
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
-                    <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl}</div>
-                    <div><span className="font-semibold text-slate-950">Register:</span> {registerUrl}</div>
-                    <div><span className="font-semibold text-slate-950">Display:</span> {displayUrl}</div>
+                    <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl || publicPath}</div>
+                    <div><span className="font-semibold text-slate-950">Register:</span> {registerUrl || registerPath}</div>
+                    <div><span className="font-semibold text-slate-950">Display:</span> {displayUrl || displayPath}</div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button type="button" onClick={() => void navigator.clipboard.writeText(publicUrl)} className="results-secondary-button">Copy overview</button>
                     <button type="button" onClick={() => void navigator.clipboard.writeText(registerUrl)} className="results-secondary-button">Copy register</button>
                   </div>
-                  <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registerUrl || publicUrl)}`} alt="Registration QR code" width={160} height={160} unoptimized className="mt-4 rounded-[1.2rem] border border-slate-200 bg-white p-2" />
+                  <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(publicUrl || publicPath)}`} alt="Competition overview QR code" width={160} height={160} unoptimized className="mt-4 rounded-[1.2rem] border border-slate-200 bg-white p-2" />
                 </div>
 
                 {snapshot?.rounds?.length ? (
