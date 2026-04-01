@@ -7,6 +7,7 @@ import {
   formatDateRange,
   formatDateTimeLabel,
   getFormatTemplate,
+  isCompetitionLiveNow,
   type Competition,
 } from "@/lib/scoring";
 
@@ -16,6 +17,7 @@ export default function CompetitionHero({
   competition: Competition;
 }) {
   const summary = getFormatTemplate(competition.format);
+  const liveNow = isCompetitionLiveNow(competition);
 
   return (
     <section className="results-card overflow-hidden">
@@ -33,7 +35,10 @@ export default function CompetitionHero({
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="results-chip">{competition.discipline_label}</span>
             <span className="results-chip">{summary.label}</span>
-            <span className="results-chip">{competition.stage_mode === "finals" ? "Finals active" : "Qualifiers live"}</span>
+            <span className={`results-chip ${liveNow ? "results-chip-live" : ""}`}>
+              {liveNow ? <span className="results-live-dot" aria-hidden="true" /> : null}
+              {competition.stage_mode === "finals" ? "Finals active" : "Qualifiers live"}
+            </span>
           </div>
         </div>
       </div>

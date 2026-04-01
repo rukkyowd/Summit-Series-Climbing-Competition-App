@@ -325,6 +325,8 @@ export interface EventWorkflowGuide {
   roles: WorkflowRoleGuide[];
 }
 
+export type CompetitionLifecycleLabel = "Live / Ongoing" | "Upcoming" | "Future" | "Past";
+
 export function createCategoryKey(genderDivision: string, ageGroup: string) {
   return `${genderDivision}::${ageGroup}`;
 }
@@ -901,6 +903,43 @@ export function isCompetitionLiveNow(
   }
 
   return competition.current_phase === "qualifier_open" || competition.current_phase === "finals_open";
+}
+
+function parseDateOnlyBoundary(value: string | null | undefined, endOfDay = false) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = endOfDay ? `${value}T23:59:59.999` : `${value}T00:00:00.000`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function getCompetitionLifecycleLabel(
+  competition: Pick<Competition, "status" | "current_phase" | "start_date" | "end_date">
+): CompetitionLifecycleLabel {
+  const now = new Date();
+  const start = parseDateOnlyBoundary(competition.start_date, false);
+  const end = parseDateOnlyBoundary(competition.end_date ?? competition.start_date, true);
+
+  if (isCompetitionLiveNow(competition)) {
+    return "Live / Ongoing";
+  }
+
+  if (end && now > end) {
+    return "Past";
+  }
+
+  if (start && end && now >= start && now <= end) {
+    return "Live / Ongoing";
+  }
+
+  if (start && start > now) {
+    const daysUntilStart = Math.ceil((start.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return daysUntilStart <= 14 ? "Upcoming" : "Future";
+  }
+
+  return competition.status === "active" ? "Upcoming" : "Past";
 }
 
 export function isQualifierStage(competition: Pick<Competition, "current_phase" | "stage_mode">) {
