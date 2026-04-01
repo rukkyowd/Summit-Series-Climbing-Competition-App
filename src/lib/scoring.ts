@@ -612,6 +612,41 @@ export function canStaffScoreFinals(event: Pick<EventConfig, "stage_mode" | "tim
   return activeBlock ? schedulePhaseAllowsFinalsScoring(activeBlock.phase_type) : true;
 }
 
+function parseScheduleTimeToMinutes(value: string | null | undefined) {
+  if (!value) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  const match = normalized.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  const hourValue = Number(match[1]);
+  const minuteValue = Number(match[2]);
+  const meridiem = match[3];
+
+  if (
+    Number.isNaN(hourValue) ||
+    Number.isNaN(minuteValue) ||
+    hourValue < 1 ||
+    hourValue > 12 ||
+    minuteValue < 0 ||
+    minuteValue > 59
+  ) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  let hour24 = hourValue % 12;
+  if (meridiem === "PM") {
+    hour24 += 12;
+  }
+
+  return hour24 * 60 + minuteValue;
+}
+
 export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
   return [genderDivision.trim(), ageGroup.trim()].filter(Boolean).join(" / ") || "Open";
 }
@@ -692,6 +727,12 @@ export function normalizeEventConfig(
       .sort((left, right) => {
         if (left.is_active !== right.is_active) {
           return left.is_active ? -1 : 1;
+        }
+
+        const leftStart = parseScheduleTimeToMinutes(left.start_time);
+        const rightStart = parseScheduleTimeToMinutes(right.start_time);
+        if (leftStart !== rightStart) {
+          return leftStart - rightStart;
         }
 
         return left.label.localeCompare(right.label);
