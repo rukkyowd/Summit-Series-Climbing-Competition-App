@@ -77,16 +77,16 @@ export default function HomePage() {
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 
         <section className="results-card">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div>
               <div className="results-kicker">Events</div>
-              <h1 className="mt-3 text-4xl font-semibold text-slate-950 sm:text-5xl">Find your competition</h1>
-              <p className="mt-3 max-w-3xl text-base leading-8 text-slate-600">
+              <h1 className="mt-3 text-3xl font-semibold text-slate-950 sm:text-5xl">Find your competition</h1>
+              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 sm:leading-8">
                 Public routes now stay competition-first. Choose the event you are climbing in to open registration, scorecards, rankings, and the live display.
               </p>
             </div>
             {featured ? (
-              <Link href={buildCompetitionPath(featured.competition.slug)} className="results-primary-button">
+              <Link href={buildCompetitionPath(featured.competition.slug)} className="results-primary-button w-full sm:w-auto">
                 Open featured competition
               </Link>
             ) : null}
@@ -117,7 +117,7 @@ export default function HomePage() {
           />
 
           <div className="mt-8 space-y-4">
-            <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-4 px-6 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <div className="hidden grid-cols-[2fr_1fr_1fr_auto] gap-4 px-6 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 md:grid">
               <div>Event</div>
               <div>Location</div>
               <div>Registration deadline</div>

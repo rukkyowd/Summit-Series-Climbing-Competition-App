@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import {
@@ -27,6 +27,15 @@ import {
 type QualifierDraftState = Record<string, { attemptCount: number; topped: boolean }>;
 type FinalsDraftState = Record<string, { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number }>;
 
+function shouldQueueFailedSave(error: unknown) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /failed to fetch|networkerror|network request failed|load failed|fetch/i.test(message);
+}
+
 export default function StaffJudgePage() {
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
@@ -46,25 +55,36 @@ export default function StaffJudgePage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [queuedCount, setQueuedCount] = useState(0);
+  const flushingQueueRef = useRef(false);
 
   const flushOfflineQueue = useCallback(async () => {
-    const queue = readOfflineQueue();
-    for (const item of queue) {
-      try {
-        if (item.type === "qualifier") {
-          await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped);
-        } else {
-          await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
-        }
-        removeOfflineItem(item.id);
-      } catch {
-        break;
-      }
+    if (flushingQueueRef.current) {
+      return;
     }
-    setQueuedCount(readOfflineQueue().length);
-    if (snapshot) {
-      const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
-      setSnapshot(refreshed);
+
+    flushingQueueRef.current = true;
+    const queue = readOfflineQueue();
+    try {
+      for (const item of queue) {
+        try {
+          if (item.type === "qualifier") {
+            await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped);
+          } else {
+            await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
+          }
+          removeOfflineItem(item.id);
+        } catch {
+          break;
+        }
+      }
+
+      setQueuedCount(readOfflineQueue().length);
+      if (snapshot) {
+        const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
+        setSnapshot(refreshed);
+      }
+    } finally {
+      flushingQueueRef.current = false;
     }
   }, [snapshot]);
 
@@ -113,12 +133,23 @@ export default function StaffJudgePage() {
   useEffect(() => {
     const syncQueuedCount = () => setQueuedCount(readOfflineQueue().length);
     syncQueuedCount();
+    if (typeof navigator !== "undefined" && navigator.onLine && readOfflineQueue().length > 0) {
+      void flushOfflineQueue();
+    }
     const onOnline = () => {
       syncQueuedCount();
       void flushOfflineQueue();
     };
+    const retryTimer = window.setInterval(() => {
+      if (typeof navigator !== "undefined" && navigator.onLine && readOfflineQueue().length > 0) {
+        void flushOfflineQueue();
+      }
+    }, 15000);
     window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.clearInterval(retryTimer);
+    };
   }, [flushOfflineQueue]);
 
   const qualifierClimbers = useMemo(() => {
@@ -246,18 +277,26 @@ export default function StaffJudgePage() {
       }));
       setMessage(`Saved qualifier score for boulder ${selectedBoulder}.`);
     } catch (nextError) {
-      enqueueOfflineItem({
-        id: `qualifier-${climberId}-${selectedBoulder}`,
-        type: "qualifier",
-        competitionId: snapshot.competition.id,
-        climberId,
-        climbNumber: selectedBoulder,
-        attemptCount: draft.attemptCount,
-        topped: draft.topped,
-        createdAt: new Date().toISOString(),
-      });
-      setQueuedCount(readOfflineQueue().length);
-      setError(nextError instanceof Error ? `${nextError.message} Score queued and will retry when connection returns.` : "Unable to save qualifier score. Score queued for retry.");
+      if (shouldQueueFailedSave(nextError)) {
+        enqueueOfflineItem({
+          id: `qualifier-${climberId}-${selectedBoulder}`,
+          type: "qualifier",
+          competitionId: snapshot.competition.id,
+          climberId,
+          climbNumber: selectedBoulder,
+          attemptCount: draft.attemptCount,
+          topped: draft.topped,
+          createdAt: new Date().toISOString(),
+        });
+        setQueuedCount(readOfflineQueue().length);
+        setError(
+          nextError instanceof Error
+            ? `${nextError.message} Score queued locally and will retry automatically.`
+            : "Unable to save qualifier score right now. Score queued for retry."
+        );
+      } else {
+        setError(nextError instanceof Error ? nextError.message : "Unable to save qualifier score.");
+      }
     } finally {
       setSaving(false);
     }
@@ -291,20 +330,28 @@ export default function StaffJudgePage() {
       }));
       setMessage(`Saved finals score for boulder ${selectedCell.climbNumber}.`);
     } catch (nextError) {
-      enqueueOfflineItem({
-        id: `finals-${selectedCell.climberId}-${selectedCell.climbNumber}`,
-        type: "finals",
-        competitionId: snapshot.competition.id,
-        climberId: selectedCell.climberId,
-        climbNumber: selectedCell.climbNumber,
-        top: draft.top,
-        zone: draft.zone,
-        attemptsToTop: draft.top ? draft.attemptsToTop : null,
-        attemptsToZone: draft.zone ? draft.attemptsToZone : null,
-        createdAt: new Date().toISOString(),
-      });
-      setQueuedCount(readOfflineQueue().length);
-      setError(nextError instanceof Error ? `${nextError.message} Score queued and will retry when connection returns.` : "Unable to save finals score. Score queued for retry.");
+      if (shouldQueueFailedSave(nextError)) {
+        enqueueOfflineItem({
+          id: `finals-${selectedCell.climberId}-${selectedCell.climbNumber}`,
+          type: "finals",
+          competitionId: snapshot.competition.id,
+          climberId: selectedCell.climberId,
+          climbNumber: selectedCell.climbNumber,
+          top: draft.top,
+          zone: draft.zone,
+          attemptsToTop: draft.top ? draft.attemptsToTop : null,
+          attemptsToZone: draft.zone ? draft.attemptsToZone : null,
+          createdAt: new Date().toISOString(),
+        });
+        setQueuedCount(readOfflineQueue().length);
+        setError(
+          nextError instanceof Error
+            ? `${nextError.message} Score queued locally and will retry automatically.`
+            : "Unable to save finals score right now. Score queued for retry."
+        );
+      } else {
+        setError(nextError instanceof Error ? nextError.message : "Unable to save finals score.");
+      }
     } finally {
       setSaving(false);
     }
@@ -410,7 +457,7 @@ export default function StaffJudgePage() {
           </div>
           {queuedCount > 0 ? (
             <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              {queuedCount} score {queuedCount === 1 ? "is" : "are"} queued locally. They will retry automatically when the network returns.
+              {queuedCount} score {queuedCount === 1 ? "is" : "are"} queued locally. They will retry automatically as soon as saving is available again.
             </div>
           ) : null}
         </section>

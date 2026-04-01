@@ -79,7 +79,7 @@ export default function CompetitionLeaderboardPage() {
               <>
                 <section className="results-card">
                   <div className="results-kicker">Finals</div>
-                  <h1 className="mt-2 text-4xl font-semibold text-slate-950">Finals standings</h1>
+                  <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">Finals standings</h1>
                   <div className="mt-3 text-sm text-slate-600">Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}</div>
                   <div className="finals-category-picker mt-5">
                     {finalsCategories.map((category) => (
@@ -97,9 +97,9 @@ export default function CompetitionLeaderboardPage() {
           ) : (
             <section className="results-card">
               <div className="results-kicker">Qualifier standings</div>
-              <h1 className="mt-2 text-4xl font-semibold text-slate-950">Live qualifier rankings</h1>
+              <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">Live qualifier rankings</h1>
 
-              <div className="mt-5 flex flex-wrap gap-2 sticky top-24 z-20 bg-white/95 py-2 backdrop-blur">
+              <div className="sticky top-20 z-20 mt-5 flex flex-wrap gap-2 bg-white/95 py-2 backdrop-blur sm:top-24">
                 {categories.map((category) => (
                   <button key={category.id} type="button" onClick={() => setSelectedCategory(category.id)} className={selectedCategory === category.id ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
                     {category.display_name}
@@ -110,31 +110,60 @@ export default function CompetitionLeaderboardPage() {
               {!qualifierRows.length ? (
                 <div className="results-meta-card mt-5 text-slate-600">Scoring has not started yet. Check back during the qualifier round.</div>
               ) : (
-                <div className="mt-6 overflow-x-auto">
-                  <div className="min-w-[920px]">
-                    <div className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      <div>Rank</div>
-                      <div>Name</div>
-                      <div>Province</div>
-                      <div>Category</div>
-                      <div>Score</div>
-                      <div>Summary</div>
-                    </div>
+                <>
+                  <div className="mt-6 space-y-3 md:hidden">
                     {qualifierRows.map((entry) => (
-                      <div key={entry.climber_id} className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
-                        <div className="text-xl font-semibold text-slate-950">{entry.category_rank}</div>
-                        <div>
-                          <div className="text-lg font-semibold text-slate-950">{entry.name}</div>
-                          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
+                      <div key={entry.climber_id} className="results-meta-card">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="results-kicker">Rank #{entry.category_rank}</div>
+                            <div className="mt-2 text-lg font-semibold text-slate-950">{entry.name}</div>
+                            <div className="mt-1 text-sm text-slate-600">
+                              #{entry.climber_number} | {entry.province}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="results-kicker">Score</div>
+                            <div className="font-semibold text-slate-950">
+                              {Number.isInteger(entry.total_score) ? entry.total_score.toLocaleString() : formatFinalPoints(entry.total_score)}
+                            </div>
+                          </div>
                         </div>
-                        <div>{entry.province}</div>
-                        <div>{entry.display_category}</div>
-                        <div className="font-semibold text-slate-950">{Number.isInteger(entry.total_score) ? entry.total_score.toLocaleString() : formatFinalPoints(entry.total_score)}</div>
-                        <div>{entry.topped_count} tops / {entry.zone_count} zones</div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <span className="results-chip">{entry.display_category}</span>
+                          <span className="results-chip">{entry.topped_count} tops</span>
+                          <span className="results-chip">{entry.zone_count} zones</span>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
+
+                  <div className="mt-6 hidden overflow-x-auto md:block">
+                    <div className="min-w-[920px]">
+                      <div className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        <div>Rank</div>
+                        <div>Name</div>
+                        <div>Province</div>
+                        <div>Category</div>
+                        <div>Score</div>
+                        <div>Summary</div>
+                      </div>
+                      {qualifierRows.map((entry) => (
+                        <div key={entry.climber_id} className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
+                          <div className="text-xl font-semibold text-slate-950">{entry.category_rank}</div>
+                          <div>
+                            <div className="text-lg font-semibold text-slate-950">{entry.name}</div>
+                            <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
+                          </div>
+                          <div>{entry.province}</div>
+                          <div>{entry.display_category}</div>
+                          <div className="font-semibold text-slate-950">{Number.isInteger(entry.total_score) ? entry.total_score.toLocaleString() : formatFinalPoints(entry.total_score)}</div>
+                          <div>{entry.topped_count} tops / {entry.zone_count} zones</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
             </section>
           )

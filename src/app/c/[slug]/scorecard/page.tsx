@@ -220,15 +220,15 @@ function ScorecardContent() {
           <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
               <div className="results-kicker">Climber #{climber.climber_number}</div>
-              <h1 className="mt-2 text-5xl font-semibold text-slate-950">{climber.name}</h1>
+              <h1 className="mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{climber.name}</h1>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="results-chip">{climber.display_category}</span>
                 <span className="results-chip">{climber.province}</span>
                 <span className="results-chip">Private scorecard</span>
               </div>
               <div className="mt-6 flex flex-wrap gap-2">
-                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}`} className={`results-secondary-button ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>Qualifier</Link>
-                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}&stage=finals`} className={`results-secondary-button ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</Link>
+                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}`} className={`results-secondary-button w-full sm:w-auto ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>Qualifier</Link>
+                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}&stage=finals`} className={`results-secondary-button w-full sm:w-auto ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</Link>
               </div>
             </div>
 
