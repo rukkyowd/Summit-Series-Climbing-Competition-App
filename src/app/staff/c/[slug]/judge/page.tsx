@@ -235,15 +235,18 @@ export default function StaffJudgePage() {
       return;
     }
 
+    if (!selectedCell) {
+      return;
+    }
+
     const firstCell = { climberId: finalists[0]?.id ?? "", climbNumber: 1 };
     if (!firstCell.climberId) {
       return;
     }
 
-    const selectedStillValid = selectedCell
-      ? finalists.some((climber) => climber.id === selectedCell.climberId) &&
-        selectedCell.climbNumber <= (snapshot?.competition.finals_problem_count ?? 0)
-      : false;
+    const selectedStillValid =
+      finalists.some((climber) => climber.id === selectedCell.climberId) &&
+      selectedCell.climbNumber <= (snapshot?.competition.finals_problem_count ?? 0);
 
     if (!selectedStillValid) {
       setSelectedCell(firstCell);
