@@ -345,8 +345,9 @@ export const FORMAT_TEMPLATES: FormatTemplate[] = [
     value: "five_on_five_off",
     label: "Five on five off",
     short_label: "5 on / 5 off",
-    description: "Legacy fixed-rotation qualifier mode for local events that still want staff-run scoring and tighter athlete flow.",
-    supports_finals: false,
+    description:
+      "Competitive qualifier mode for fixed start lists, five minutes on and five minutes off, judge-run scoring, and official 2025 points-based top and zone results.",
+    supports_finals: true,
     scheduling_hint: "Best when athletes rotate through fixed groups, transit zones, and official time windows.",
   },
   {
@@ -420,7 +421,7 @@ export function formatSupportsFinals(format: EventFormat) {
 }
 
 export function formatUsesOfficialQualifierPoints(format: EventFormat) {
-  return format === "flash_format";
+  return format === "flash_format" || format === "five_on_five_off";
 }
 
 export function formatUsesSelfScoredQualifiers(format: EventFormat) {
@@ -744,17 +745,18 @@ export function getEventWorkflowGuide(
     return {
       headline: "Competitive qualifier with fixed rotations",
       summary:
-        "This mode fits youth competitive qualifiers with an official start list, a prescribed order, and a five-on, five-off rhythm.",
+        "This mode fits youth competitive qualifiers with an official start list, a prescribed order, a five-on and five-off rhythm, and judge-entered 2025 points scoring.",
       notes: [
         `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
         "Athletes should start on the assigned boulder and rotate in order; no ad hoc rescheduling.",
         "Rest periods match the rotation window, and climbers move through transit without watching unattempted boulders.",
+        "Scoring uses the current 25 / 10 points model for top and zone, with 0.1 deducted for each failed try before the scoring hold.",
         "Use schedule blocks as check-in, isolation, and round windows so the phone view mirrors the day-of schedule.",
       ],
       roles: [
         { role: "Admin", title: "Publish the running order", detail: "Set clear block labels for check-in, isolation, technical meeting, and qualifier blocks so athletes know where they belong." },
-        { role: "Judge", title: "Operate by start list", detail: "Open the scorecard page by climber and follow the official rotation instead of treating the round like an open scramble." },
-        { role: "Climber", title: "Check the schedule first", detail: "Use the website to confirm category, slot, and timing, then follow the official order on the wall." },
+        { role: "Judge", title: "Operate by start list", detail: "Open the scorecard page by climber, record zone and top attempts, and follow the official five-on, five-off rotation instead of treating the round like an open scramble." },
+        { role: "Climber", title: "Check the schedule first", detail: "Use the website to confirm category, slot, and timing, then follow the official order on the wall while judges enter the scoring." },
       ],
     };
   }
@@ -1285,7 +1287,7 @@ export function buildHeroAccent(competition: Pick<Competition, "format">) {
     case "flash_format":
       return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(23,86,70,0.42))";
     case "five_on_five_off":
-      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(80,32,20,0.42))";
+      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(89,58,24,0.42))";
     default:
       return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(95,34,48,0.45))";
   }
