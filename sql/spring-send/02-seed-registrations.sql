@@ -1,3 +1,15 @@
+do $$
+begin
+  if not exists (
+    select 1
+    from public.competition_schedule_blocks blocks
+    join public.competitions competitions on competitions.id = blocks.competition_id
+    where competitions.slug in ('spring-send-recreational', 'spring-send-youth-competitive')
+  ) then
+    raise exception 'Spring Send schedule blocks are missing. Run 00-reset-and-configure.sql or 01-load-schedule.sql first.';
+  end if;
+end $$;
+
 with competition_map as (
   select id, slug
   from public.competitions

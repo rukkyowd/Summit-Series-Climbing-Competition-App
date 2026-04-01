@@ -198,7 +198,10 @@ insert into public.qualifier_attempts (
   climber_id,
   climb_number,
   attempt_count,
+  zone,
   topped,
+  attempts_to_top,
+  attempts_to_zone,
   entered_by
 )
 select
@@ -206,7 +209,14 @@ select
   inserted_climbers.id,
   climbs.climb_number,
   1 + ((inserted_climbers.climber_number::int * climbs.climb_number) % 4),
+  true,
   ((inserted_climbers.climber_number::int + climbs.climb_number) % 3) <> 0,
+  case
+    when ((inserted_climbers.climber_number::int + climbs.climb_number) % 3) <> 0
+      then 1 + ((inserted_climbers.climber_number::int * 5 + climbs.climb_number) % 4)
+    else null
+  end,
+  1 + ((inserted_climbers.climber_number::int * 7 + climbs.climb_number) % 4),
   case when climbs.climb_number <= 8 then 'climber' else 'staff' end
 from inserted_climbers
 cross join generate_series(1, 20) as climbs(climb_number)
@@ -233,11 +243,26 @@ climber_scores as (
     c.age_group,
     q.climb_number,
     q.attempt_count,
+    q.zone,
     q.topped,
+    q.attempts_to_top,
+    q.attempts_to_zone,
     case
+      when (select format from target) = 'flash_format' or (select format from target) = 'five_on_five_off'
+        then greatest(
+          case
+            when q.topped then greatest(0::numeric, 25 - (greatest(coalesce(q.attempts_to_top, q.attempt_count, 1), 1) - 1) * 0.1)
+            else 0::numeric
+          end,
+          case
+            when coalesce(q.zone, q.topped, false)
+              then greatest(0::numeric, 10 - (greatest(coalesce(q.attempts_to_zone, q.attempts_to_top, q.attempt_count, 1), 1) - 1) * 0.1)
+            else 0::numeric
+          end
+        )
       when q.topped
-        then greatest(0, q.climb_number * 1000 - least(greatest(q.attempt_count - 1, 0), 3) * 200)
-      else 0
+        then greatest(0::numeric, q.climb_number * 1000 - least(greatest(q.attempt_count - 1, 0), 3) * 200)
+      else 0::numeric
     end as score
   from public.climbers c
   join target on target.id = c.competition_id
@@ -253,9 +278,13 @@ counting_scores as (
         order by score desc, climb_number desc, attempt_count asc
       ) as score_row
     from climber_scores
-    where score > 0
+    where score > 0::numeric
   ) ranked_scores
-  where score_row <= (select qualifier_counting_climbs from target)
+  where score_row <= case
+    when (select format from target) = 'flash_format' or (select format from target) = 'five_on_five_off'
+      then (select total_climbs from target)
+    else (select qualifier_counting_climbs from target)
+  end
 ),
 qualifier_totals as (
   select
@@ -265,9 +294,19 @@ qualifier_totals as (
     c.display_category,
     c.gender_division,
     c.age_group,
-    coalesce(sum(cs.score), 0) as total_score,
+    coalesce(sum(cs.score), 0::numeric) as total_score,
     coalesce(count(*) filter (where cs.topped), 0) as topped_count,
-    coalesce(sum(cs.attempt_count), 0) as counting_attempt_total
+    coalesce(count(*) filter (where cs.zone), 0) as zone_count,
+    coalesce(
+      sum(
+        case
+          when cs.topped then greatest(coalesce(cs.attempts_to_top, cs.attempt_count, 0), 0)
+          when cs.zone then greatest(coalesce(cs.attempts_to_zone, cs.attempt_count, 0), 0)
+          else greatest(coalesce(cs.attempt_count, 0), 0)
+        end
+      ),
+      0
+    ) as counting_attempt_total
   from public.climbers c
   join target on target.id = c.competition_id
   left join counting_scores cs on cs.climber_id = c.id
@@ -278,7 +317,7 @@ ranked as (
     qualifier_totals.*,
     row_number() over (
       partition by category_id
-      order by total_score desc, topped_count desc, counting_attempt_total asc, name asc
+      order by total_score desc, topped_count desc, zone_count desc, counting_attempt_total asc, name asc
     ) as category_rank
   from qualifier_totals
   where gender_division in ('Men', 'Women')
@@ -291,6 +330,7 @@ cutoff as (
     category_id,
     total_score,
     topped_count,
+    zone_count,
     counting_attempt_total
   from ranked
   where category_rank = (select finals_cutoff from target)
@@ -326,6 +366,7 @@ where ranked.category_rank <= target.finals_cutoff
      and ranked.category_rank > target.finals_cutoff
      and ranked.total_score = cutoff.total_score
      and ranked.topped_count = cutoff.topped_count
+     and ranked.zone_count = cutoff.zone_count
      and ranked.counting_attempt_total = cutoff.counting_attempt_total
    );
 

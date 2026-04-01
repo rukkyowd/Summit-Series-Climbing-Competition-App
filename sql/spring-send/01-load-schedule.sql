@@ -1,3 +1,10 @@
+delete from public.competition_schedule_blocks
+where competition_id in (
+  select id
+  from public.competitions
+  where slug in ('spring-send-recreational', 'spring-send-youth-competitive')
+);
+
 insert into public.competition_schedule_blocks (
   competition_id,
   label,

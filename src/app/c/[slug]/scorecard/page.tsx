@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import CompetitionSubnav from "@/components/competition-subnav";
 import { getAuthState, isStaffRole, signInWithRole, signOutUser, type Profile } from "@/lib/auth";
 import {
   getClimberByAccessToken,
@@ -303,7 +302,6 @@ function ScorecardContent() {
       <main className="results-page">
         <div className="content-frame space-y-6">
           <SiteHeader light competitionSlug={slug} />
-          <CompetitionSubnav competitionSlug={slug} />
 
           <section className="results-card">
             <div className="results-kicker">Scorecard access</div>
@@ -374,7 +372,6 @@ function ScorecardContent() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} />
-        <CompetitionSubnav competitionSlug={slug} />
 
         <section className="results-card">
           <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">

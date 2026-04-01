@@ -56,12 +56,29 @@ qualifier_attempt_rows as (
     competition_id,
     climber_id,
     climb_number,
+    case
+      when competition_id = (select id from public.competitions where slug = 'spring-send-recreational')
+        then success_score >= difficulty_score
+      else success_score >= difficulty_score - 2
+    end as zone,
     success_score >= difficulty_score as topped,
     case
       when success_score >= difficulty_score
         then 1 + ((athlete_number * 83 + climb_number * 89 + volatility_band * 97) % (2 + least(3, endurance_band)))
       else 1 + ((athlete_number * 101 + climb_number * 103 + endurance_band * 107) % (4 + (volatility_band % 4)))
     end as attempt_count,
+    case
+      when success_score >= difficulty_score
+        then 1 + ((athlete_number * 149 + climb_number * 151 + volatility_band * 157) % (2 + least(3, endurance_band)))
+      else null
+    end as raw_top_attempts,
+    case
+      when competition_id = (select id from public.competitions where slug = 'spring-send-recreational')
+        then case when success_score >= difficulty_score then 1 + ((athlete_number * 163 + climb_number * 167) % 3) else null end
+      when success_score >= difficulty_score - 2
+        then 1 + ((athlete_number * 173 + climb_number * 179 + endurance_band) % (3 + (volatility_band % 3)))
+      else null
+    end as raw_zone_attempts,
     case
       when competition_id = (select id from public.competitions where slug = 'spring-send-recreational')
         and (climb_number <= 10 or ((athlete_number * 109 + climb_number * 113) % 4) <> 0)
@@ -82,7 +99,10 @@ insert into public.qualifier_attempts (
   climber_id,
   climb_number,
   attempt_count,
+  zone,
   topped,
+  attempts_to_top,
+  attempts_to_zone,
   entered_by
 )
 select
@@ -90,6 +110,21 @@ select
   rows.climber_id,
   rows.climb_number,
   rows.attempt_count,
+  rows.zone or rows.topped,
   rows.topped,
+  case
+    when rows.topped
+      then greatest(1, rows.raw_top_attempts)
+    else null
+  end,
+  case
+    when rows.zone or rows.topped
+      then case
+        when rows.topped
+          then least(greatest(1, rows.raw_zone_attempts), greatest(1, rows.raw_top_attempts))
+        else greatest(1, rows.raw_zone_attempts)
+      end
+    else null
+  end,
   rows.entered_by
 from qualifier_attempt_rows rows;

@@ -347,18 +347,6 @@ body::after {
     @apply rounded-[1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-center;
   }
 
-  .results-subnav {
-    @apply flex flex-wrap gap-2;
-  }
-
-  .results-subnav__link {
-    @apply inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50;
-  }
-
-  .results-subnav__link-active {
-    @apply border-sky-300 bg-sky-50 text-sky-700;
-  }
-
   .results-admin-list-item {
     @apply flex w-full items-center justify-between gap-4 rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50;
   }

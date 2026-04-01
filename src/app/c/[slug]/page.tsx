@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
-import CompetitionSubnav from "@/components/competition-subnav";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
@@ -79,7 +78,6 @@ export default function CompetitionOverviewPage() {
         <SiteHeader light competitionSlug={slug} />
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
-        <CompetitionSubnav competitionSlug={slug} />
 
         {snapshot ? (
           <>

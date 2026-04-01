@@ -16,6 +16,8 @@ Run them in this order:
 
 Notes:
 
+- `00-reset-and-configure.sql` now creates the Spring Send competitions, categories, and default schedule blocks in one shot.
+- `01-load-schedule.sql` is safe to rerun if you want to refresh just the schedule block set.
 - The recreational scramble stays in qualifier mode.
 - The youth competition advances to finals separately.
 - Finals eligibility is driven by the competition's `finals_eligible_age_groups` setting.
