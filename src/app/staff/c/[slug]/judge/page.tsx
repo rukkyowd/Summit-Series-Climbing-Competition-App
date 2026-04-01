@@ -219,6 +219,9 @@ export default function StaffJudgePage() {
     [finalists, snapshot?.competition.finals_problem_count]
   );
   const finalsTotalCellCount = finalists.length * (snapshot?.competition.finals_problem_count ?? 0);
+  const finalsProblemCount = snapshot?.competition.finals_problem_count ?? 0;
+  const finalsGridTemplateColumns = `minmax(9rem, 1.15fr) repeat(${Math.max(finalsProblemCount, 1)}, minmax(6.75rem, 1fr))`;
+  const finalsGridMinWidth = `${Math.max(640, 176 + finalsProblemCount * 124)}px`;
   const finalsBlockedMessage = !snapshot
     ? ""
     : !finalists.length
@@ -662,12 +665,12 @@ export default function StaffJudgePage() {
             {!finalsReady ? (
               <div className="results-meta-card mt-5 text-slate-600">{finalsBlockedMessage}</div>
             ) : (
-              <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+              <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
                 <div ref={finalsGridViewportRef} className="overflow-x-auto">
-                  <div className="min-w-[900px]">
+                  <div className="w-full" style={{ minWidth: finalsGridMinWidth }}>
                   <div
                     className="grid gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"
-                    style={{ gridTemplateColumns: `1.6fr repeat(${snapshot.competition.finals_problem_count}, minmax(7rem, 0.9fr))` }}
+                    style={{ gridTemplateColumns: finalsGridTemplateColumns }}
                   >
                     <div>Finalist</div>
                     {getClimbs(snapshot.competition.finals_problem_count).map((climb) => (
@@ -679,7 +682,7 @@ export default function StaffJudgePage() {
                       <div
                         key={climber.id}
                         className="grid gap-3 px-4"
-                        style={{ gridTemplateColumns: `1.6fr repeat(${snapshot.competition.finals_problem_count}, minmax(7rem, 0.9fr))` }}
+                        style={{ gridTemplateColumns: finalsGridTemplateColumns }}
                       >
                         <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-4">
                           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
