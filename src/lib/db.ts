@@ -881,11 +881,31 @@ export async function setCompetitionStatus(competitionId: string, status: Compet
 export async function setCompetitionPhase(competitionId: string, nextPhase: CompetitionPhase, note?: string) {
   ensureConfigured();
 
-  const { error } = await supabase.rpc("set_competition_phase", {
+  const payload: {
+    p_competition_id: string;
+    p_next_phase: CompetitionPhase;
+    p_note?: string;
+  } = {
     p_competition_id: competitionId,
     p_next_phase: nextPhase,
-    p_note: note ?? null,
-  });
+  };
+
+  if (note?.trim()) {
+    payload.p_note = note.trim();
+  }
+
+  let { error } = await supabase.rpc("set_competition_phase", payload);
+
+  if (
+    error &&
+    error.message.includes("Could not find the function public.set_competition_phase") &&
+    "p_note" in payload
+  ) {
+    ({ error } = await supabase.rpc("set_competition_phase", {
+      p_competition_id: competitionId,
+      p_next_phase: nextPhase,
+    }));
+  }
 
   if (error) {
     throw new Error(error.message);
