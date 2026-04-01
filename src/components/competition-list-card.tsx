@@ -23,15 +23,20 @@ export default function CompetitionListCard({
 
   return (
     <Link href={buildCompetitionPath(competition.slug)} className="results-list-row">
+      {liveNow ? (
+        <>
+          <span className="results-live-indicator" aria-hidden="true">
+            <span className="results-live-indicator__dot" />
+          </span>
+          <span className="sr-only">{lifecycleLabel}</span>
+        </>
+      ) : null}
       <div>
         <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{competition.name}</div>
         <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
           <span>{competition.discipline_label}</span>
           <span>{getFormatTemplate(competition.format).label}</span>
-          <span className={`results-chip ${liveNow ? "results-chip-live" : ""}`}>
-            {liveNow ? <span className="results-live-dot" aria-hidden="true" /> : null}
-            {lifecycleLabel}
-          </span>
+          {!liveNow ? <span className="results-chip">{lifecycleLabel}</span> : null}
           {summary.active_schedule_block ? <span>{summary.active_schedule_block.label}</span> : null}
         </div>
       </div>

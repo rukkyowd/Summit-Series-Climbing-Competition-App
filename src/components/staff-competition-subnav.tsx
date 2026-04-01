@@ -5,15 +5,16 @@ import { usePathname } from "next/navigation";
 import {
   buildCompetitionPath,
   buildDisplayPath,
+  buildStaffCompetitionPath,
 } from "@/lib/scoring";
 
-export default function CompetitionSubnav({ competitionSlug }: { competitionSlug: string }) {
+export default function StaffCompetitionSubnav({ competitionSlug }: { competitionSlug: string }) {
   const pathname = usePathname();
   const items = [
-    { href: buildCompetitionPath(competitionSlug), label: "Overview" },
-    { href: buildCompetitionPath(competitionSlug, "register"), label: "Register" },
-    { href: buildCompetitionPath(competitionSlug, "scorecard"), label: "Scorecard" },
-    { href: buildCompetitionPath(competitionSlug, "leaderboard"), label: "Rankings" },
+    { href: buildStaffCompetitionPath(competitionSlug), label: "Admin" },
+    { href: buildStaffCompetitionPath(competitionSlug, "judge"), label: "Judge" },
+    { href: buildStaffCompetitionPath(competitionSlug, "preflight"), label: "Preflight" },
+    { href: buildCompetitionPath(competitionSlug), label: "Public" },
     { href: buildDisplayPath(competitionSlug), label: "Display" },
   ];
 

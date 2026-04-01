@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import CompetitionSubnav from "@/components/competition-subnav";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { formatCompetitionPhaseLabel, formatFinalPoints } from "@/lib/scoring";
@@ -69,7 +68,6 @@ export default function CompetitionLeaderboardPage() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} />
-        <CompetitionSubnav competitionSlug={slug} />
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 

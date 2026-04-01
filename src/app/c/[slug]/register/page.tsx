@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import CompetitionSubnav from "@/components/competition-subnav";
 import { getCompetitionSnapshot, registerClimber, type CompetitionSnapshot } from "@/lib/db";
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
@@ -146,7 +145,6 @@ export default function CompetitionRegisterPage() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} />
-        <CompetitionSubnav competitionSlug={slug} />
 
         <section className="results-card">
           <div className="flex flex-wrap items-center justify-between gap-3">

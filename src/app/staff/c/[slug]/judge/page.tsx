@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
+import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import {
   getClimberWithAttempts,
   getCompetitionSnapshot,
@@ -394,9 +395,9 @@ export default function StaffJudgePage() {
       <div className="content-frame space-y-6">
         <SiteHeader
           light
-          competitionSlug={slug}
           status={<div className="results-chip">Judge panel</div>}
         />
+        <StaffCompetitionSubnav competitionSlug={slug} />
 
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}

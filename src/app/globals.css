@@ -355,10 +355,25 @@ body::after {
   }
 
   .results-list-row {
-    @apply rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)] sm:px-5 sm:py-5;
+    @apply relative rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)] sm:px-5 sm:py-5;
     display: flex;
     flex-direction: column;
     gap: 1rem;
+  }
+
+  .results-live-indicator {
+    @apply absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.12)] sm:right-5 sm:top-5;
+  }
+
+  .results-live-indicator__dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 9999px;
+    background: #dc2626;
+    box-shadow:
+      0 0 0 0 rgba(220, 38, 38, 0.35),
+      0 0 10px rgba(220, 38, 38, 0.3);
+    animation: live-dot-pulse 1.6s ease-out infinite;
   }
 
   .nav-scroll {

@@ -4,22 +4,33 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { buildCompetitionPath } from "@/lib/scoring";
+import { buildCompetitionPath, buildDisplayPath } from "@/lib/scoring";
 import { readScorecardAccess } from "@/lib/scorecard-access";
+
+interface NavItem {
+  href: string;
+  label: string;
+}
 
 export default function SiteHeader({
   status,
   competitionSlug,
   light = false,
+  navItems,
 }: {
   status?: ReactNode;
   competitionSlug?: string;
   light?: boolean;
+  navItems?: NavItem[];
 }) {
   const pathname = usePathname();
   const [scorecardHref, setScorecardHref] = useState(competitionSlug ? buildCompetitionPath(competitionSlug, "scorecard") : "/");
 
-  const navItems = useMemo(() => {
+  const resolvedNavItems = useMemo(() => {
+    if (navItems) {
+      return navItems;
+    }
+
     if (!competitionSlug) {
       return [{ href: "/", label: "Events" }];
     }
@@ -29,8 +40,9 @@ export default function SiteHeader({
       { href: buildCompetitionPath(competitionSlug, "register"), label: "Register" },
       { href: buildCompetitionPath(competitionSlug, "scorecard"), label: "Scorecard" },
       { href: buildCompetitionPath(competitionSlug, "leaderboard"), label: "Rankings" },
+      { href: buildDisplayPath(competitionSlug), label: "Display" },
     ];
-  }, [competitionSlug]);
+  }, [competitionSlug, navItems]);
 
   useEffect(() => {
     const access = readScorecardAccess();
@@ -61,8 +73,8 @@ export default function SiteHeader({
           </div>
         </Link>
 
-        <nav className={`nav-scroll ${competitionSlug ? "" : "sm:justify-start"}`}>
-          {navItems.map((item) => {
+        <nav className={`nav-scroll ${competitionSlug || navItems ? "" : "sm:justify-start"}`}>
+          {resolvedNavItems.map((item) => {
             const href = item.label === "Scorecard" ? scorecardHref : item.href;
             const isActive =
               href === "/"

@@ -4,7 +4,6 @@ import { Suspense, useEffect, useMemo, useReducer, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import CompetitionSubnav from "@/components/competition-subnav";
 import { getClimberByAccessToken, getClimberWithAttempts, getCompetitionSnapshot, updateQualifierAttemptByToken, type CompetitionSnapshot } from "@/lib/db";
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
@@ -179,7 +178,6 @@ function ScorecardContent() {
       <main className="results-page">
         <div className="content-frame space-y-6">
           <SiteHeader light competitionSlug={slug} />
-          <CompetitionSubnav competitionSlug={slug} />
           <section className="results-card">
             <div className="skeleton-block h-8 w-40" />
             <div className="skeleton-block mt-4 h-20 w-full" />
@@ -198,7 +196,6 @@ function ScorecardContent() {
       <main className="results-page">
         <div className="content-frame space-y-6">
           <SiteHeader light competitionSlug={slug} />
-          <CompetitionSubnav competitionSlug={slug} />
           <section className="results-card text-slate-600">
             {error || "This private scorecard link is not valid anymore."}
           </section>
@@ -211,7 +208,6 @@ function ScorecardContent() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} />
-        <CompetitionSubnav competitionSlug={slug} />
 
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}

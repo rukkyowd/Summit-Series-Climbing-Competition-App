@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import Link from "next/link";
 import Image from "next/image";
 import SiteHeader from "@/components/site-header";
+import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
@@ -391,6 +392,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
             </div>
           }
         />
+        {draft?.slug ? <StaffCompetitionSubnav competitionSlug={draft.slug} /> : null}
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}

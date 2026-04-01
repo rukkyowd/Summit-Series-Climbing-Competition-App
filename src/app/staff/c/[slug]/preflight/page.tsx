@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
+import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 
 function buildChecks(snapshot: CompetitionSnapshot) {
@@ -60,7 +61,8 @@ export default function StaffPreflightPage() {
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
-        <SiteHeader light competitionSlug={slug} status={<div className="results-chip">Preflight</div>} />
+        <SiteHeader light status={<div className="results-chip">Preflight</div>} />
+        <StaffCompetitionSubnav competitionSlug={slug} />
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 
