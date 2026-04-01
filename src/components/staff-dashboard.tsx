@@ -33,6 +33,7 @@ import {
   buildCompetitionPath,
   buildDisplayPath,
   buildStaffCompetitionPath,
+  getCompetitionPhaseForSchedulePhase,
   formatCompetitionPhaseLabel,
   formatDateTimeLabel,
   formatSchedulePhaseLabel,
@@ -149,6 +150,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const [createName, setCreateName] = useState("");
   const [createFormat, setCreateFormat] = useState<Competition["format"]>("scramble");
   const [createLocation, setCreateLocation] = useState("");
+  const [isPhasePending, setIsPhasePending] = useState(false);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -223,6 +225,14 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const nextPhase = draft ? getNextCompetitionPhase(draft.current_phase) : null;
   const previousPhase = draft ? getPreviousCompetitionPhase(draft.current_phase) : null;
   const nextPhaseLabel = nextPhase === "results" ? "End event" : "Next";
+  const canEditPhase = profile?.role === "admin";
+  const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
+  const impliedCompetitionPhase = liveScheduleBlock
+    ? getCompetitionPhaseForSchedulePhase(liveScheduleBlock.phase_type)
+    : null;
+  const schedulePhaseMismatch = Boolean(
+    draft && impliedCompetitionPhase && impliedCompetitionPhase !== draft.current_phase
+  );
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
@@ -243,6 +253,22 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     await load();
     if (competitionId) {
       await refreshSelectedSnapshot(competitionId);
+    }
+  };
+
+  const runPhaseChange = async (competitionId: string, nextPhaseValue: Competition["current_phase"], successMessage: string) => {
+    setError("");
+    setMessage("");
+    setIsPhasePending(true);
+
+    try {
+      await setCompetitionPhase(competitionId, nextPhaseValue);
+      await refreshAfterChange(competitionId);
+      setMessage(successMessage);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to change competition phase.");
+    } finally {
+      setIsPhasePending(false);
     }
   };
 
@@ -486,8 +512,18 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => previousPhase && void setCompetitionPhase(draft.id, previousPhase).then(() => refreshAfterChange(draft.id))}
-                        disabled={!previousPhase || isPending}
+                        onClick={() => {
+                          if (!previousPhase || !canEditPhase) {
+                            return;
+                          }
+
+                          void runPhaseChange(
+                            draft.id,
+                            previousPhase,
+                            `Competition moved to ${formatCompetitionPhaseLabel(previousPhase).toLowerCase()}.`
+                          );
+                        }}
+                        disabled={!previousPhase || isPending || isPhasePending || !canEditPhase}
                         className="results-secondary-button"
                       >
                         Previous
@@ -506,27 +542,91 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                               confirmLabel: "End event",
                               expectedValue: draft.name,
                               action: async () => {
-                                await setCompetitionPhase(draft.id, nextPhase);
-                                await refreshAfterChange(draft.id);
-                                setMessage("Competition moved to results.");
+                                await runPhaseChange(draft.id, nextPhase, "Competition moved to results.");
                               },
                             });
                             return;
                           }
 
-                          void setCompetitionPhase(draft.id, nextPhase).then(() => refreshAfterChange(draft.id));
+                          if (!canEditPhase) {
+                            return;
+                          }
+
+                          void runPhaseChange(
+                            draft.id,
+                            nextPhase,
+                            `Competition moved to ${formatCompetitionPhaseLabel(nextPhase).toLowerCase()}.`
+                          );
                         }}
-                        disabled={!nextPhase || isPending}
+                        disabled={!nextPhase || isPending || isPhasePending || !canEditPhase}
                         className="results-primary-button"
                       >
                         {nextPhaseLabel}
                       </button>
                     </div>
                   </div>
+                  <div className="mt-4 text-sm text-slate-600">
+                    Competition phase controls scoring and which public standings are shown. The live schedule block is separate
+                    {liveScheduleBlock ? ` and is currently "${liveScheduleBlock.label}".` : "."}
+                  </div>
+                  {liveScheduleBlock ? (
+                    <div className="mt-3 rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                      Live schedule block: <span className="font-semibold">{liveScheduleBlock.label}</span>
+                      {" · "}
+                      {formatSchedulePhaseLabel(liveScheduleBlock.phase_type)}
+                      {impliedCompetitionPhase ? (
+                        <>
+                          {" · "}
+                          implies <span className="font-semibold">{formatCompetitionPhaseLabel(impliedCompetitionPhase)}</span>
+                        </>
+                      ) : (
+                        <> · agenda only, no automatic scoring-phase change</>
+                      )}
+                    </div>
+                  ) : null}
+                  {schedulePhaseMismatch && draft && impliedCompetitionPhase ? (
+                    <div className="mt-3 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                      The live schedule block and competition phase are out of sync. Public scoring is still using{" "}
+                      <span className="font-semibold">{formatCompetitionPhaseLabel(draft.current_phase)}</span>, not{" "}
+                      <span className="font-semibold">{formatCompetitionPhaseLabel(impliedCompetitionPhase)}</span>.
+                      {canEditPhase ? (
+                        <button
+                          type="button"
+                          onClick={() => void runPhaseChange(
+                            draft.id,
+                            impliedCompetitionPhase,
+                            `Competition synced to ${formatCompetitionPhaseLabel(impliedCompetitionPhase).toLowerCase()}.`
+                          )}
+                          disabled={isPending || isPhasePending}
+                          className="results-secondary-button ml-3"
+                        >
+                          Match live block
+                        </button>
+                      ) : (
+                        <> Only admins can sync the competition phase.</>
+                      )}
+                    </div>
+                  ) : null}
+                  {!canEditPhase ? (
+                    <div className="mt-3 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                      Only admins can change competition phase. Judges can still score inside the active phase.
+                    </div>
+                  ) : null}
                   {snapshot?.undoAvailability?.available ? (
                     <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                       Undo available for the last {snapshot.undoAvailability.operation_type} until {formatDateTimeLabel(snapshot.undoAvailability.expires_at)}.
-                      <button type="button" onClick={() => void undoCompetitionOperation(draft.id).then(() => refreshAfterChange(draft.id))} className="results-secondary-button ml-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void undoCompetitionOperation(draft.id)
+                            .then(() => refreshAfterChange(draft.id))
+                            .catch((nextError) => {
+                              setError(nextError instanceof Error ? nextError.message : "Unable to undo the last competition operation.");
+                            })
+                        }
+                        disabled={!canEditPhase || isPhasePending}
+                        className="results-secondary-button ml-3"
+                      >
                         Undo
                       </button>
                     </div>
@@ -930,7 +1030,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
           description={confirming?.description ?? ""}
           confirmLabel={confirming?.confirmLabel ?? "Confirm"}
           expectedValue={confirming?.expectedValue}
-          busy={isPending}
+          busy={isPending || isPhasePending}
           onCancel={() => setConfirming(null)}
           onConfirm={async () => {
             if (!confirming) {

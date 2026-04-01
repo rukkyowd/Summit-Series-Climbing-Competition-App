@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canClimberSelfScoreQualifier,
   canRegisterDuringCompetition,
+  getCompetitionPhaseForSchedulePhase,
   getFormatCapabilities,
   normalizeCompetition,
   phaseToStageMode,
@@ -38,6 +39,13 @@ describe("competition phases", () => {
     expect(canRegisterDuringCompetition({ current_phase: "qualifier_closed" })).toBe(false);
     expect(canClimberSelfScoreQualifier({ current_phase: "qualifier_open", format: "scramble" })).toBe(true);
     expect(canClimberSelfScoreQualifier({ current_phase: "qualifier_closed", format: "scramble" })).toBe(false);
+  });
+
+  it("maps live schedule blocks to the scoring phase they imply", () => {
+    expect(getCompetitionPhaseForSchedulePhase("qualifier_round")).toBe("qualifier_open");
+    expect(getCompetitionPhaseForSchedulePhase("isolation")).toBe("observation");
+    expect(getCompetitionPhaseForSchedulePhase("finals_round")).toBe("finals_open");
+    expect(getCompetitionPhaseForSchedulePhase("custom")).toBeNull();
   });
 });
 

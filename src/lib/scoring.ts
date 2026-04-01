@@ -641,6 +641,24 @@ export function getPreviousCompetitionPhase(phase: CompetitionPhase): Competitio
   return index > 0 ? phases[index - 1] : null;
 }
 
+export function getCompetitionPhaseForSchedulePhase(phaseType: SchedulePhaseType): CompetitionPhase | null {
+  switch (phaseType) {
+    case "qualifier_round":
+      return "qualifier_open";
+    case "wall_reset":
+      return "wall_reset";
+    case "isolation":
+    case "observation":
+      return "observation";
+    case "finals_round":
+      return "finals_open";
+    case "results":
+      return "results";
+    default:
+      return null;
+  }
+}
+
 export function normalizeQualifierEligibleAgeGroups(value: unknown) {
   if (!Array.isArray(value)) {
     return [...DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS];
