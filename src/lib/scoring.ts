@@ -498,6 +498,13 @@ const FORMAT_CAPABILITIES: Record<EventFormat, FormatCapabilities> = {
   },
 };
 
+const RECOMMENDED_FINALS_CUTOFFS: Record<EventFormat, 6 | 8> = {
+  scramble: DEFAULT_FINALS_CUTOFF,
+  five_on_five_off: DEFAULT_FINALS_CUTOFF,
+  flash_format: 8,
+  ifsc_finals_format: 8,
+};
+
 export const SCHEDULE_PHASE_OPTIONS: SchedulePhaseOption[] = [
   { value: "check_in", label: "Check-in", description: "Good for arrival windows, late registration, waivers, and athlete check-in." },
   { value: "technical_meeting", label: "Technical meeting", description: "Use for rules briefings or round instructions before climbing starts." },
@@ -571,7 +578,7 @@ export function getRecommendedQualifierCountingClimbs(format: EventFormat) {
 }
 
 export function getRecommendedFinalsCutoff(format: EventFormat) {
-  return format === "flash_format" || format === "ifsc_finals_format" ? 8 : DEFAULT_FINALS_CUTOFF;
+  return RECOMMENDED_FINALS_CUTOFFS[format] ?? DEFAULT_FINALS_CUTOFF;
 }
 
 export function phaseToStageMode(phase: CompetitionPhase): StageMode {
@@ -893,6 +900,7 @@ export function isFinalsStage(competition: Pick<Competition, "current_phase" | "
 export function getEventWorkflowGuide(
   competition: Pick<Competition, "format" | "current_phase" | "qualifier_eligible_age_groups" | "finals_eligible_age_groups">
 ): EventWorkflowGuide {
+  const qualifierAgeGroups = competition.qualifier_eligible_age_groups.join(", ");
   if (phaseToStageMode(competition.current_phase) === "finals") {
     return {
       headline: "CEC / IFSC isolation final live",
@@ -911,14 +919,13 @@ export function getEventWorkflowGuide(
       ],
     };
   }
-
-  if (competition.format === "five_on_five_off") {
-    return {
+  const guidesByFormat: Record<EventFormat, EventWorkflowGuide> = {
+    five_on_five_off: {
       headline: "Competitive qualifier with fixed rotations",
       summary:
         "This mode fits youth competitive qualifiers with an official start list, a prescribed order, a five-on and five-off rhythm, and judge-entered 2025 points scoring.",
       notes: [
-        `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
+        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
         "Athletes should start on the assigned boulder and rotate in order; no ad hoc rescheduling.",
         "Rest periods match the rotation window, and climbers move through transit without watching unattempted boulders.",
         "Scoring uses the current 25 / 10 points model for top and zone, with 0.1 deducted for each failed try before the scoring hold.",
@@ -929,16 +936,13 @@ export function getEventWorkflowGuide(
         { role: "Judge", title: "Operate by start list", detail: "Open the scorecard page by climber, record zone and top attempts, and follow the official five-on, five-off rotation instead of treating the round like an open scramble." },
         { role: "Climber", title: "Check the schedule first", detail: "Use the website to confirm category, slot, and timing, then follow the official order on the wall while judges enter the scoring." },
       ],
-    };
-  }
-
-  if (competition.format === "flash_format") {
-    return {
+    },
+    flash_format: {
       headline: "CEC boulder flash qualifier",
       summary:
         "This mode follows the official CEC flash qualifier pattern: six problems, four minutes on and four minutes off, a 15-second transition, and judge-operated points scoring.",
       notes: [
-        `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
+        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
         "All qualifier boulders count in the standings. This is not a best-six scramble leaderboard.",
         "Qualification scoring uses the 2025 points model: 25 for a top, 10 for the zone, minus 0.1 per failed try before the scoring hold.",
         "Athletes can communicate outside their active climbing rotation, but no coaching belongs during the live rotation itself.",
@@ -949,25 +953,42 @@ export function getEventWorkflowGuide(
         { role: "Judge", title: "Score with points, not scramble tops", detail: "Record zone, top, and attempts directly on the scorecard page during the flash round." },
         { role: "Climber", title: "Treat the phone as info, not scoring", detail: "Use the site for timing, schedule, and rankings while judges enter the official scoring." },
       ],
-    };
-  }
-
-  return {
-    headline: "Open scramble qualifier",
-    summary:
-      "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
-    notes: [
-      `Qualifier entry is limited to these age groups: ${competition.qualifier_eligible_age_groups.join(", ")}.`,
-      "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
-      "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
-      "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
-    ],
-    roles: [
-      { role: "Admin", title: "Set up the day flow", detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule." },
-      { role: "Judge", title: "Override only when needed", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections." },
-      { role: "Climber", title: "Register and self-score", detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings." },
-    ],
+    },
+    ifsc_finals_format: {
+      headline: "Open scramble qualifier",
+      summary:
+        "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
+      notes: [
+        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
+        "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
+        "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
+        "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
+      ],
+      roles: [
+        { role: "Admin", title: "Set up the day flow", detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule." },
+        { role: "Judge", title: "Override only when needed", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections." },
+        { role: "Climber", title: "Register and self-score", detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings." },
+      ],
+    },
+    scramble: {
+      headline: "Open scramble qualifier",
+      summary:
+        "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
+      notes: [
+        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
+        "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
+        "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
+        "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
+      ],
+      roles: [
+        { role: "Admin", title: "Set up the day flow", detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule." },
+        { role: "Judge", title: "Override only when needed", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections." },
+        { role: "Climber", title: "Register and self-score", detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings." },
+      ],
+    },
   };
+
+  return guidesByFormat[competition.format] ?? guidesByFormat.scramble;
 }
 
 export function getClimbs(totalClimbs: number): ClimbDefinition[] {

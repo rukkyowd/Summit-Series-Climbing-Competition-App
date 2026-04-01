@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import {
@@ -45,6 +45,27 @@ export default function StaffJudgePage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [queuedCount, setQueuedCount] = useState(0);
+
+  const flushOfflineQueue = useCallback(async () => {
+    const queue = readOfflineQueue();
+    for (const item of queue) {
+      try {
+        if (item.type === "qualifier") {
+          await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped);
+        } else {
+          await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
+        }
+        removeOfflineItem(item.id);
+      } catch {
+        break;
+      }
+    }
+    setQueuedCount(readOfflineQueue().length);
+    if (snapshot) {
+      const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
+      setSnapshot(refreshed);
+    }
+  }, [snapshot]);
 
   useEffect(() => {
     setLoading(true);
@@ -96,7 +117,7 @@ export default function StaffJudgePage() {
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
-  }, []);
+  }, [flushOfflineQueue]);
 
   const qualifierClimbers = useMemo(() => {
     if (!snapshot) {
@@ -148,27 +169,6 @@ export default function StaffJudgePage() {
 
     const nextClimbers = snapshot.climbers.map((entry) => (entry.id === climberId ? refreshed : entry));
     setSnapshot(updater(nextClimbers));
-  };
-
-  const flushOfflineQueue = async () => {
-    const queue = readOfflineQueue();
-    for (const item of queue) {
-      try {
-        if (item.type === "qualifier") {
-          await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped);
-        } else {
-          await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
-        }
-        removeOfflineItem(item.id);
-      } catch {
-        break;
-      }
-    }
-    setQueuedCount(readOfflineQueue().length);
-    if (snapshot) {
-      const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
-      setSnapshot(refreshed);
-    }
   };
 
   const saveQualifier = async (climberId: string) => {
@@ -401,7 +401,7 @@ export default function StaffJudgePage() {
               <div className="results-meta-card mt-5">
                 <div className="results-kicker">Edit finals cell</div>
                 <div className="mt-2 text-2xl font-semibold text-slate-950">
-                  {selectedFinalist.name} · Boulder {selectedCell.climbNumber}
+                  {selectedFinalist.name} / Boulder {selectedCell.climbNumber}
                 </div>
                 {(() => {
                   const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;

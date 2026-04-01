@@ -46,7 +46,7 @@ export default function CompetitionRegisterPage() {
         setError(nextError instanceof Error ? nextError.message : "Unable to load registration options.");
       })
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [loadSnapshot]);
 
   useEffect(() => {
     if (error || fieldError) {
