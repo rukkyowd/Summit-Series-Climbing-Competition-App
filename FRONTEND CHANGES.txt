@@ -1,3 +1,0 @@
-FRONTEND CHANGES
-
-for example the Current leader and Board Pulse in the Operations board 
