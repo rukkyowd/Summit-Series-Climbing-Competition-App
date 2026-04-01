@@ -1,136 +1,155 @@
-insert into public.active_event_config (
-  id,
-  name,
-  format,
-  stage_mode,
-  total_climbs,
-  max_climbers,
-  qualifier_counting_climbs,
-  finals_cutoff,
-  finals_tie_advances,
-  finals_eligible_age_groups,
-  qualifier_locked_at,
-  finals_started_at,
-  finals_problem_count
-)
-values (
-  1,
-  '100 Athlete Test Event',
-  'scramble',
-  'qualifier',
-  20,
-  150,
-  6,
-  8,
-  true,
-  '["Open"]'::jsonb,
-  null,
-  null,
-  4
-)
-on conflict (id) do update
-set
-  name = excluded.name,
-  format = excluded.format,
-  stage_mode = excluded.stage_mode,
-  total_climbs = excluded.total_climbs,
-  max_climbers = excluded.max_climbers,
-  qualifier_counting_climbs = excluded.qualifier_counting_climbs,
-  finals_cutoff = excluded.finals_cutoff,
-  finals_tie_advances = excluded.finals_tie_advances,
-  finals_eligible_age_groups = excluded.finals_eligible_age_groups,
-  qualifier_locked_at = excluded.qualifier_locked_at,
-  finals_started_at = excluded.finals_started_at,
-  finals_problem_count = excluded.finals_problem_count;
-
 delete from public.final_attempts;
-delete from public.event_finalists;
+delete from public.competition_finalists;
 delete from public.qualifier_attempts;
 delete from public.climbers;
-delete from public.event_time_slots;
-delete from public.event_categories;
+delete from public.competition_schedule_blocks;
+delete from public.competition_categories;
+delete from public.competitions;
 
-with slot_seed as (
-  insert into public.event_time_slots (label, start_time, end_time, capacity, eligible_category_ids)
+with inserted_competitions as (
+  insert into public.competitions (
+    id,
+    slug,
+    name,
+    status,
+    format,
+    discipline_label,
+    stage_mode,
+    location_name,
+    start_date,
+    end_date,
+    registration_opens_at,
+    registration_closes_at,
+    description,
+    total_climbs,
+    max_climbers,
+    qualifier_counting_climbs,
+    finals_cutoff,
+    finals_tie_advances,
+    finals_eligible_age_groups
+  )
   values
-    ('Morning session', '09:00', '11:00', 40, '[]'::jsonb),
-    ('Midday session', '11:30', '13:30', 35, '[]'::jsonb),
-    ('Afternoon session', '14:00', '16:00', 35, '[]'::jsonb)
-  returning id, label
+    (
+      gen_random_uuid(),
+      'test-rec-scramble',
+      'Test Recreational Scramble',
+      'active',
+      'scramble',
+      'Boulder',
+      'qualifier',
+      'Halifax',
+      current_date,
+      current_date,
+      now(),
+      now() + interval '6 hours',
+      'Public self-scoring scramble.',
+      20,
+      60,
+      6,
+      6,
+      true,
+      '["Open"]'::jsonb
+    ),
+    (
+      gen_random_uuid(),
+      'test-youth-finals',
+      'Test Youth Competitive',
+      'active',
+      'five_on_five_off',
+      'Boulder',
+      'qualifier',
+      'Halifax',
+      current_date,
+      current_date,
+      now(),
+      now() + interval '10 hours',
+      'Competitive event with finals active.',
+      20,
+      120,
+      6,
+      8,
+      true,
+      '["Youth D","Youth B","Youth A","Junior"]'::jsonb
+    )
+  returning id, slug, name, max_climbers
+)
+insert into public.competition_categories (
+  id,
+  competition_id,
+  gender_division,
+  age_group,
+  display_name,
+  sort_order
+)
+select
+  division || '::' || age_group,
+  inserted_competitions.id,
+  division,
+  age_group,
+  division || ' / ' || age_group,
+  row_number() over (partition by inserted_competitions.id order by division, age_group) - 1
+from inserted_competitions
+cross join (values ('Men'), ('Women'), ('X')) as divisions(division)
+cross join (values ('Youth D'), ('Youth C'), ('Youth B'), ('Youth A'), ('Junior'), ('Rec'), ('Masters'), ('Open')) as ages(age_group);
+
+insert into public.competition_schedule_blocks (
+  competition_id,
+  label,
+  phase_type,
+  audience_label,
+  is_active,
+  start_time,
+  end_time,
+  capacity,
+  eligible_category_ids
+)
+select
+  id,
+  case slug when 'test-rec-scramble' then 'Scramble live' else 'Youth qualifiers live' end,
+  'qualifier_round',
+  name,
+  true,
+  '09:00',
+  '12:00',
+  max_climbers,
+  '[]'::jsonb
+from public.competitions;
+
+with competition_map as (
+  select id, slug from public.competitions
 ),
-division_seed as (
-  select *
-  from (values ('Men'), ('Women'), ('X')) as divisions(gender_division)
-),
-age_seed as (
-  select *
-  from (
-    values
-      ('Youth D'),
-      ('Youth C'),
-      ('Youth B'),
-      ('Youth A'),
-      ('Junior'),
-      ('Rec'),
-      ('Masters'),
-      ('Open')
-  ) as ages(age_group)
-),
-category_grid as (
+athletes as (
   select
-    row_number() over (order by d.gender_division, a.age_group) as category_index,
-    d.gender_division,
-    a.age_group,
-    d.gender_division || ' / ' || a.age_group as display_category
-  from division_seed d
-  cross join age_seed a
-),
-athlete_seed as (
-  select
-    athlete_number,
-    case ((athlete_number - 1) % 10)
-      when 0 then 'Alex'
-      when 1 then 'Jordan'
-      when 2 then 'Taylor'
-      when 3 then 'Morgan'
-      when 4 then 'Riley'
-      when 5 then 'Casey'
-      when 6 then 'Skyler'
-      when 7 then 'Avery'
-      when 8 then 'Quinn'
-      else 'Parker'
+    series.n as athlete_number,
+    case when series.n <= 40 then 'test-rec-scramble' else 'test-youth-finals' end as competition_slug,
+    case ((series.n * 7) % 15)
+      when 0 then 'Alex' when 1 then 'Jordan' when 2 then 'Taylor'
+      when 3 then 'Morgan' when 4 then 'Riley' when 5 then 'Casey'
+      when 6 then 'Skyler' when 7 then 'Avery' when 8 then 'Quinn'
+      when 9 then 'Parker' when 10 then 'Jamie' when 11 then 'Drew'
+      when 12 then 'Reese' when 13 then 'Cameron' else 'Blake'
     end || ' ' ||
-    case ((athlete_number - 1) % 10)
-      when 0 then 'Stone'
-      when 1 then 'Reid'
-      when 2 then 'Cruz'
-      when 3 then 'Chen'
-      when 4 then 'Roy'
-      when 5 then 'Sato'
-      when 6 then 'Lopez'
-      when 7 then 'Singh'
-      when 8 then 'Bennett'
+    case ((series.n * 11) % 10)
+      when 0 then 'Stone' when 1 then 'Reid' when 2 then 'Cruz'
+      when 3 then 'Chen' when 4 then 'Roy' when 5 then 'Sato'
+      when 6 then 'Lopez' when 7 then 'Singh' when 8 then 'Bennett'
       else 'Nguyen'
-    end || ' ' || athlete_number as athlete_name,
-    case ((athlete_number - 1) % 6)
-      when 0 then 'NB'
-      when 1 then 'NS'
-      when 2 then 'PE'
-      when 3 then 'QC'
-      when 4 then 'ON'
-      else 'NL'
+    end || ' ' || series.n as athlete_name,
+    case ((series.n * 13) % 13)
+      when 0 then 'AB' when 1 then 'BC' when 2 then 'MB'
+      when 3 then 'NB' when 4 then 'NL' when 5 then 'NS'
+      when 6 then 'NT' when 7 then 'NU' when 8 then 'ON'
+      when 9 then 'PE' when 10 then 'QC' when 11 then 'SK' else 'YT'
     end as province,
-    ((athlete_number - 1) % 24) + 1 as category_index,
-    case
-      when athlete_number <= 40 then 'Morning session'
-      when athlete_number <= 75 then 'Midday session'
-      else 'Afternoon session'
-    end as slot_label
-  from generate_series(1, 100) as athlete_number
+    case when series.n <= 40 then 'Rec' else
+      (array['Youth D','Youth C','Youth B','Youth A','Junior'])[((series.n % 5) + 1)]
+    end as age_group,
+    case when (series.n % 2) = 0 then 'Men' else 'Women' end as gender_division
+  from generate_series(1, 100) as series(n)
 ),
 inserted_climbers as (
   insert into public.climbers (
-    event_id,
+    competition_id,
     name,
     climber_number,
     province,
@@ -138,68 +157,24 @@ inserted_climbers as (
     gender_division,
     age_group,
     display_category,
-    time_slot_id,
     access_token
   )
   select
-    1,
-    athlete_seed.athlete_name,
-    lpad(athlete_seed.athlete_number::text, 3, '0'),
-    athlete_seed.province,
-    null,
-    category_grid.gender_division,
-    category_grid.age_group,
-    category_grid.display_category,
-    slot_seed.id,
-    'test-link-' || lpad(athlete_seed.athlete_number::text, 3, '0')
-  from athlete_seed
-  join category_grid on category_grid.category_index = athlete_seed.category_index
-  join slot_seed on slot_seed.label = athlete_seed.slot_label
-  returning id, climber_number
-),
-athlete_profiles as (
-  select
-    climbers.id,
-    climbers.climber_number::int as athlete_number,
-    6 + ((climbers.climber_number::int * 11) % 13) as strength_band,
-    1 + ((climbers.climber_number::int * 5) % 4) as endurance_band,
-    (climbers.climber_number::int * 3) % 6 as volatility_band
-  from inserted_climbers climbers
-),
-qualifier_attempt_seed as (
-  select
-    profiles.id as climber_id,
-    profiles.athlete_number,
-    profiles.strength_band,
-    profiles.endurance_band,
-    profiles.volatility_band,
-    climbs.climb_number,
-    least(20, 9 + ((profiles.athlete_number * 7) % 12)) as max_logged_climb,
-    profiles.strength_band + ((profiles.athlete_number + climbs.climb_number * 3) % 6) as success_score,
-    6 + floor((climbs.climb_number - 1) / 3.0)::int + ((climbs.climb_number + profiles.volatility_band) % 4) as difficulty_score
-  from athlete_profiles profiles
-  cross join generate_series(1, 20) as climbs(climb_number)
-),
-qualifier_attempt_rows as (
-  select
-    climber_id,
-    climb_number,
-    success_score >= difficulty_score as topped,
-    case
-      when success_score >= difficulty_score
-        then 1 + ((athlete_number * (climb_number + 2) + volatility_band) % (2 + least(2, endurance_band)))
-      else 1 + ((athlete_number + climb_number + endurance_band) % (3 + (volatility_band % 3)))
-    end as attempt_count,
-    case
-      when climb_number <= 8 or ((athlete_number + climb_number) % 2 = 0) then 'climber'
-      else 'staff'
-    end as entered_by
-  from qualifier_attempt_seed
-  where climb_number <= max_logged_climb
-    and not (climb_number > 15 and ((athlete_number + climb_number) % 4) = 0)
+    competition_map.id,
+    athletes.athlete_name,
+    lpad(athletes.athlete_number::text, 3, '0'),
+    athletes.province,
+    athletes.gender_division || '::' || athletes.age_group,
+    athletes.gender_division,
+    athletes.age_group,
+    athletes.gender_division || ' / ' || athletes.age_group,
+    'test-link-' || lpad(athletes.athlete_number::text, 3, '0')
+  from athletes
+  join competition_map on competition_map.slug = athletes.competition_slug
+  returning id, competition_id, climber_number
 )
 insert into public.qualifier_attempts (
-  event_id,
+  competition_id,
   climber_id,
   climb_number,
   attempt_count,
@@ -207,16 +182,101 @@ insert into public.qualifier_attempts (
   entered_by
 )
 select
-  1,
-  rows.climber_id,
-  rows.climb_number,
-  rows.attempt_count,
-  rows.topped,
-  rows.entered_by
-from qualifier_attempt_rows rows;
+  inserted_climbers.competition_id,
+  inserted_climbers.id,
+  climbs.climb_number,
+  1 + ((inserted_climbers.climber_number::int * climbs.climb_number) % 4),
+  ((inserted_climbers.climber_number::int + climbs.climb_number) % 3) <> 0,
+  case when climbs.climb_number <= 8 then 'climber' else 'staff' end
+from inserted_climbers
+cross join generate_series(1, 20) as climbs(climb_number)
+where climbs.climb_number <= 5 + ((inserted_climbers.climber_number::int * 3) % 16);
 
-insert into public.event_finalists (
-  event_id,
+delete from public.final_attempts
+where competition_id = (select id from public.competitions where slug = 'test-youth-finals');
+
+delete from public.competition_finalists
+where competition_id = (select id from public.competitions where slug = 'test-youth-finals');
+
+with target as (
+  select *
+  from public.competitions
+  where slug = 'test-youth-finals'
+),
+climber_scores as (
+  select
+    c.id as climber_id,
+    c.name,
+    c.category_id,
+    c.display_category,
+    c.gender_division,
+    c.age_group,
+    q.climb_number,
+    q.attempt_count,
+    q.topped,
+    case
+      when q.topped
+        then greatest(0, q.climb_number * 1000 - least(greatest(q.attempt_count - 1, 0), 3) * 200)
+      else 0
+    end as score
+  from public.climbers c
+  join target on target.id = c.competition_id
+  left join public.qualifier_attempts q on q.climber_id = c.id
+),
+counting_scores as (
+  select *
+  from (
+    select
+      climber_scores.*,
+      row_number() over (
+        partition by climber_id
+        order by score desc, climb_number desc, attempt_count asc
+      ) as score_row
+    from climber_scores
+    where score > 0
+  ) ranked_scores
+  where score_row <= (select qualifier_counting_climbs from target)
+),
+qualifier_totals as (
+  select
+    c.id as climber_id,
+    c.name,
+    c.category_id,
+    c.display_category,
+    c.gender_division,
+    c.age_group,
+    coalesce(sum(cs.score), 0) as total_score,
+    coalesce(count(*) filter (where cs.topped), 0) as topped_count,
+    coalesce(sum(cs.attempt_count), 0) as counting_attempt_total
+  from public.climbers c
+  join target on target.id = c.competition_id
+  left join counting_scores cs on cs.climber_id = c.id
+  group by c.id, c.name, c.category_id, c.display_category, c.gender_division, c.age_group
+),
+ranked as (
+  select
+    qualifier_totals.*,
+    row_number() over (
+      partition by category_id
+      order by total_score desc, topped_count desc, counting_attempt_total asc, name asc
+    ) as category_rank
+  from qualifier_totals
+  where gender_division in ('Men', 'Women')
+    and age_group in (
+      select jsonb_array_elements_text((select finals_eligible_age_groups from target))
+    )
+),
+cutoff as (
+  select
+    category_id,
+    total_score,
+    topped_count,
+    counting_attempt_total
+  from ranked
+  where category_rank = (select finals_cutoff from target)
+)
+insert into public.competition_finalists (
+  competition_id,
   climber_id,
   name,
   category_id,
@@ -226,34 +286,8 @@ insert into public.event_finalists (
   qualifier_rank,
   advanced_with_tie
 )
-with config as (
-  select *
-  from public.active_event_config
-  where id = 1
-),
-ranked as (
-  select *
-  from public.qualifier_leaderboard_view
-  cross join config
-  where gender_division in ('Men', 'Women')
-    and exists (
-      select 1
-      from jsonb_array_elements_text(config.finals_eligible_age_groups) as eligible(age_group)
-      where eligible.age_group = qualifier_leaderboard_view.age_group
-    )
-),
-cutoff as (
-  select
-    ranked.category_id,
-    ranked.total_score,
-    ranked.topped_count,
-    ranked.counting_attempt_total
-  from ranked
-  cross join config
-  where ranked.category_row_number = config.finals_cutoff
-)
 select
-  1,
+  target.id,
   ranked.climber_id,
   ranked.name,
   ranked.category_id,
@@ -261,78 +295,37 @@ select
   ranked.gender_division,
   ranked.age_group,
   ranked.category_rank,
-  ranked.category_row_number > config.finals_cutoff
+  ranked.category_rank > target.finals_cutoff
 from ranked
-cross join config
+cross join target
 left join cutoff using (category_id)
-where ranked.category_row_number <= config.finals_cutoff
+where ranked.category_rank <= target.finals_cutoff
    or (
-     config.finals_tie_advances
+     target.finals_tie_advances
      and cutoff.category_id is not null
-     and ranked.category_row_number > config.finals_cutoff
+     and ranked.category_rank > target.finals_cutoff
      and ranked.total_score = cutoff.total_score
      and ranked.topped_count = cutoff.topped_count
      and ranked.counting_attempt_total = cutoff.counting_attempt_total
    );
 
-update public.active_event_config
+update public.competitions
 set
   format = 'ifsc_finals_format',
   stage_mode = 'finals',
   qualifier_locked_at = now(),
   finals_started_at = now(),
   finals_problem_count = 4
-where id = 1;
+where slug = 'test-youth-finals';
 
-with finalist_pool as (
-  select
-    c.*,
-    ef.qualifier_rank,
-    greatest(1, 11 - ef.qualifier_rank) as qualifier_bonus,
-    1 + ((c.climber_number::int * 7) % 4) as finals_attack,
-    1 + ((c.climber_number::int * 13) % 4) as finals_precision
-  from public.climbers c
-  join public.event_finalists ef on ef.climber_id = c.id
-),
-final_attempt_seed as (
-  select
-    finalists.id as climber_id,
-    climbs.climb_number,
-    finalists.climber_number::int as athlete_number,
-    finalists.qualifier_bonus,
-    finalists.finals_attack,
-    finalists.finals_precision,
-    case climbs.climb_number
-      when 1 then 11
-      when 2 then 13
-      when 3 then 12
-      else 14
-    end as problem_difficulty
-  from finalist_pool finalists
-  cross join (values (1), (2), (3), (4)) as climbs(climb_number)
-),
-final_attempt_rows as (
-  select
-    climber_id,
-    climb_number,
-    (
-      qualifier_bonus
-      + finals_precision
-      + ((athlete_number + climb_number * 5) % 7)
-      >= problem_difficulty + 1
-    ) as top,
-    (
-      qualifier_bonus
-      + finals_attack
-      + ((athlete_number * (climb_number + 1)) % 6)
-      >= problem_difficulty - 2
-    ) as zone,
-    1 + ((athlete_number + climb_number + finals_precision) % 4) as raw_top_attempts,
-    1 + ((athlete_number * 2 + climb_number + finals_attack) % 5) as raw_zone_attempts
-  from final_attempt_seed
-)
+update public.competition_schedule_blocks
+set
+  label = 'Finals live',
+  phase_type = 'finals_round'
+where competition_id = (select id from public.competitions where slug = 'test-youth-finals');
+
 insert into public.final_attempts (
-  event_id,
+  competition_id,
   climber_id,
   climb_number,
   top,
@@ -342,20 +335,13 @@ insert into public.final_attempts (
   entered_by
 )
 select
-  1,
-  rows.climber_id,
-  rows.climb_number,
-  rows.top,
-  rows.top or rows.zone,
-  case
-    when rows.top
-      then rows.raw_top_attempts
-    else null
-  end,
-  case
-    when rows.top or rows.zone
-      then case when rows.top then least(rows.raw_zone_attempts, rows.raw_top_attempts) else rows.raw_zone_attempts end
-    else null
-  end,
+  finalists.competition_id,
+  finalists.climber_id,
+  climbs.climb_number,
+  ((finalists.qualifier_rank + climbs.climb_number) % 3) <> 0,
+  true,
+  1 + ((finalists.qualifier_rank + climbs.climb_number) % 4),
+  1 + ((finalists.qualifier_rank + climbs.climb_number) % 5),
   'staff'
-from final_attempt_rows rows;
+from public.competition_finalists finalists
+cross join generate_series(1, 4) as climbs(climb_number);

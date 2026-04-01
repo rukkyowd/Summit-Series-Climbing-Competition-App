@@ -270,6 +270,130 @@ body::after {
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 24px 60px rgba(0, 0, 0, 0.34);
   }
+
+  .results-page {
+    @apply min-h-screen px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9;
+    color: #0f172a;
+    background:
+      radial-gradient(circle at top left, rgba(151, 180, 216, 0.28), transparent 25%),
+      linear-gradient(180deg, #eef3f8 0%, #f7f9fc 56%, #edf3f8 100%);
+  }
+
+  .app-header-light {
+    @apply border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.08)];
+  }
+
+  .app-header-light::before {
+    opacity: 0.06;
+  }
+
+  .results-card {
+    @apply rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_18px_48px_rgba(15,23,42,0.08)];
+  }
+
+  .results-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.22em] text-slate-500;
+  }
+
+  .results-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600;
+  }
+
+  .results-primary-button {
+    @apply inline-flex min-h-12 items-center justify-center rounded-full bg-sky-600 px-6 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-sky-500;
+  }
+
+  .results-secondary-button {
+    @apply inline-flex min-h-12 items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50;
+  }
+
+  .results-secondary-button-active {
+    @apply border-sky-300 bg-sky-50 text-sky-700;
+  }
+
+  .results-input {
+    @apply min-h-12 w-full rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none;
+  }
+
+  .results-textarea {
+    @apply min-h-32 w-full rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none;
+  }
+
+  .results-feature {
+    @apply rounded-[2rem] px-8 py-10 text-white;
+    background:
+      linear-gradient(135deg, rgba(15, 23, 42, 0.22), rgba(15, 23, 42, 0.32)),
+      linear-gradient(135deg, #8ca7c3, #d4e0eb);
+  }
+
+  .results-hero {
+    @apply mb-6 min-h-[15rem] rounded-[1.8rem] bg-cover bg-center p-6;
+  }
+
+  .results-hero__overlay {
+    @apply flex h-full flex-col justify-end rounded-[1.4rem] bg-white p-5 backdrop-blur-sm;
+    background-color: rgba(255, 255, 255, 0.72);
+  }
+
+  .results-meta-card {
+    @apply rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4;
+  }
+
+  .results-list-row {
+    @apply grid grid-cols-[2fr_1fr_1fr_auto] items-center gap-4 rounded-[1.5rem] border border-slate-200 bg-white px-6 py-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)];
+  }
+
+  .results-date-badge {
+    @apply rounded-[1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-center;
+  }
+
+  .results-subnav {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .results-subnav__link {
+    @apply inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50;
+  }
+
+  .results-subnav__link-active {
+    @apply border-sky-300 bg-sky-50 text-sky-700;
+  }
+
+  .results-admin-list-item {
+    @apply flex w-full items-center justify-between gap-4 rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50;
+  }
+
+  .results-admin-list-item-active {
+    @apply border-sky-300 bg-sky-50;
+  }
+
+  .results-alert {
+    @apply rounded-[1.2rem] border px-4 py-3 text-sm;
+  }
+
+  .results-alert-success {
+    @apply border-green-200 bg-green-50 text-green-700;
+  }
+
+  .results-alert-error {
+    @apply border-red-200 bg-red-50 text-red-700;
+  }
+
+  .results-select-chip {
+    @apply cursor-pointer rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700;
+  }
+
+  .results-select-chip-active {
+    @apply border-sky-300 bg-sky-50 text-sky-700;
+  }
+
+  .results-toggle {
+    @apply flex items-center gap-2 text-sm text-slate-700;
+  }
+
+  .nav-pill-light {
+    @apply border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50;
+  }
 }
 
 .gradient-text {

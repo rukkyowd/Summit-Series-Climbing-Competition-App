@@ -9,15 +9,14 @@ export const QUALIFIER_MAX_PENALIZED_EXTRA_ATTEMPTS = 3;
 export const FINAL_TOP_POINTS = 25;
 export const FINAL_ZONE_POINTS = 10;
 export const FINAL_ATTEMPT_DEDUCTION = 0.1;
-export const ACTIVE_EVENT_ID = 1;
 
+export const COMPETITION_STATUSES = ["active", "archived"] as const;
 export const EVENT_FORMATS = [
   "scramble",
   "five_on_five_off",
   "flash_format",
   "ifsc_finals_format",
 ] as const;
-
 export const SCHEDULE_PHASE_TYPES = [
   "check_in",
   "technical_meeting",
@@ -29,7 +28,6 @@ export const SCHEDULE_PHASE_TYPES = [
   "results",
   "custom",
 ] as const;
-
 export const CATEGORY_DIVISIONS = ["Men", "Women", "X"] as const;
 export const CATEGORY_AGE_GROUPS = [
   "Youth D",
@@ -42,17 +40,17 @@ export const CATEGORY_AGE_GROUPS = [
   "Open",
 ] as const;
 
+export type CompetitionStatus = (typeof COMPETITION_STATUSES)[number];
 export type EventFormat = (typeof EVENT_FORMATS)[number];
+export type StageMode = "qualifier" | "finals";
 export type AttemptEnteredBy = "climber" | "staff";
 export type FinalEnteredBy = "staff";
-export type StageMode = "qualifier" | "finals";
-export type CategoryDivision = (typeof CATEGORY_DIVISIONS)[number];
-export type CategoryAgeGroup = (typeof CATEGORY_AGE_GROUPS)[number];
 export type SchedulePhaseType = (typeof SCHEDULE_PHASE_TYPES)[number];
+export type CategoryAgeGroup = (typeof CATEGORY_AGE_GROUPS)[number];
 
-export interface EventCategory {
+export interface CompetitionCategory {
   id: string;
-  event_id: number;
+  competition_id: string;
   gender_division: string;
   age_group: string;
   display_name: string;
@@ -60,9 +58,9 @@ export interface EventCategory {
   created_at?: string;
 }
 
-export interface EventTimeSlot {
+export interface CompetitionScheduleBlock {
   id: string;
-  event_id: number;
+  competition_id: string;
   label: string;
   phase_type: SchedulePhaseType;
   audience_label: string;
@@ -74,11 +72,21 @@ export interface EventTimeSlot {
   created_at?: string;
 }
 
-export interface EventConfig {
-  id: number;
+export interface Competition {
+  id: string;
+  slug: string;
   name: string;
+  status: CompetitionStatus;
   format: EventFormat;
+  discipline_label: string;
   stage_mode: StageMode;
+  location_name: string;
+  start_date: string | null;
+  end_date: string | null;
+  registration_opens_at: string | null;
+  registration_closes_at: string | null;
+  description: string;
+  hero_image_url: string;
   total_climbs: number;
   max_climbers: number;
   qualifier_counting_climbs: number;
@@ -89,13 +97,22 @@ export interface EventConfig {
   finals_started_at: string | null;
   finals_problem_count: number;
   updated_at?: string;
-  categories: EventCategory[];
-  time_slots: EventTimeSlot[];
+  categories: CompetitionCategory[];
+  schedule_blocks: CompetitionScheduleBlock[];
+}
+
+export interface CompetitionSummary {
+  competition: Competition;
+  climber_count: number;
+  finalist_count: number;
+  active_schedule_block: CompetitionScheduleBlock | null;
+  registration_open: boolean;
+  live_now: boolean;
 }
 
 export interface Climber {
   id: string;
-  event_id: number;
+  competition_id: string;
   name: string;
   climber_number: string;
   province: string;
@@ -111,7 +128,7 @@ export interface Climber {
 
 export interface QualifierAttempt {
   id?: string;
-  event_id: number;
+  competition_id: string;
   climber_id: string;
   climb_number: number;
   attempt_count: number;
@@ -122,7 +139,7 @@ export interface QualifierAttempt {
 
 export interface FinalAttempt {
   id?: string;
-  event_id: number;
+  competition_id: string;
   climber_id: string;
   climb_number: number;
   top: boolean;
@@ -145,6 +162,12 @@ export interface FormatTemplate {
   description: string;
   supports_finals: boolean;
   scheduling_hint: string;
+}
+
+export interface SchedulePhaseOption {
+  value: SchedulePhaseType;
+  label: string;
+  description: string;
 }
 
 export interface ClimbDefinition {
@@ -225,8 +248,8 @@ export interface FinalistSelection {
 }
 
 export interface RegistrationChoice {
-  category: EventCategory;
-  slots: Array<EventTimeSlot & { remaining_capacity: number }>;
+  category: CompetitionCategory;
+  slots: Array<CompetitionScheduleBlock & { remaining_capacity: number }>;
 }
 
 export interface FinalsSummary {
@@ -250,48 +273,51 @@ export interface EventWorkflowGuide {
   roles: WorkflowRoleGuide[];
 }
 
-export interface SchedulePhaseOption {
-  value: SchedulePhaseType;
-  label: string;
-  description: string;
-}
-
 export function createCategoryKey(genderDivision: string, ageGroup: string) {
   return `${genderDivision}::${ageGroup}`;
 }
 
-export function getDefaultEventCategories(): EventCategory[] {
+export function slugifyCompetitionName(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "competition";
+}
+
+export function buildCompetitionPath(slug: string, section?: "" | "register" | "scorecard" | "leaderboard") {
+  const cleanSlug = slug.trim();
+  if (!section) {
+    return `/c/${cleanSlug}`;
+  }
+
+  return `/c/${cleanSlug}/${section}`;
+}
+
+export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
+  return [genderDivision.trim(), ageGroup.trim()].filter(Boolean).join(" / ") || "Open";
+}
+
+export function createCompetitionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `competition-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function getDefaultCompetitionCategories(competitionId: string): CompetitionCategory[] {
   return CATEGORY_DIVISIONS.flatMap((division, divisionIndex) =>
     CATEGORY_AGE_GROUPS.map((ageGroup, ageIndex) => ({
       id: createCategoryKey(division, ageGroup),
-      event_id: ACTIVE_EVENT_ID,
+      competition_id: competitionId,
       gender_division: division,
       age_group: ageGroup,
       display_name: buildDisplayCategory(division, ageGroup),
       sort_order: divisionIndex * CATEGORY_AGE_GROUPS.length + ageIndex,
     }))
-  );
-}
-
-export function normalizeFinalsEligibleAgeGroups(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS];
-  }
-
-  const allowed = new Set(CATEGORY_AGE_GROUPS);
-  const normalized = value.filter((entry): entry is string => typeof entry === "string" && allowed.has(entry as CategoryAgeGroup));
-
-  return normalized.length ? normalized : [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS];
-}
-
-export function isFinalsEligibleCategory(
-  event: Pick<EventConfig, "finals_eligible_age_groups">,
-  genderDivision: string,
-  ageGroup: string
-) {
-  return (
-    (genderDivision === "Men" || genderDivision === "Women") &&
-    event.finals_eligible_age_groups.includes(ageGroup)
   );
 }
 
@@ -331,58 +357,32 @@ export const FORMAT_TEMPLATES: FormatTemplate[] = [
 ];
 
 export const SCHEDULE_PHASE_OPTIONS: SchedulePhaseOption[] = [
-  {
-    value: "check_in",
-    label: "Check-in",
-    description: "Good for arrival windows, late registration, waivers, and athlete check-in.",
-  },
-  {
-    value: "technical_meeting",
-    label: "Technical meeting",
-    description: "Use for rules briefings or round instructions before climbing starts.",
-  },
-  {
-    value: "isolation",
-    label: "Isolation",
-    description: "Use when athletes must be present in isolation before the round can begin.",
-  },
-  {
-    value: "qualifier_round",
-    label: "Qualifier round",
-    description: "The live qualifier climbing window.",
-  },
-  {
-    value: "wall_reset",
-    label: "Wall reset",
-    description: "Use for strip and reset blocks when the gym is between rounds.",
-  },
-  {
-    value: "observation",
-    label: "Observation",
-    description: "Use for finals observation or a scheduled preview block.",
-  },
-  {
-    value: "finals_round",
-    label: "Finals round",
-    description: "The live finals climbing window.",
-  },
-  {
-    value: "results",
-    label: "Results",
-    description: "Results posting, raffle, prizing, or awards.",
-  },
-  {
-    value: "custom",
-    label: "Custom",
-    description: "A flexible block for anything else in the day-of schedule.",
-  },
+  { value: "check_in", label: "Check-in", description: "Good for arrival windows, late registration, waivers, and athlete check-in." },
+  { value: "technical_meeting", label: "Technical meeting", description: "Use for rules briefings or round instructions before climbing starts." },
+  { value: "isolation", label: "Isolation", description: "Use when athletes must be present in isolation before the round can begin." },
+  { value: "qualifier_round", label: "Qualifier round", description: "The live qualifier climbing window." },
+  { value: "wall_reset", label: "Wall reset", description: "Use for strip and reset blocks when the gym is between rounds." },
+  { value: "observation", label: "Observation", description: "Use for finals observation or a scheduled preview block." },
+  { value: "finals_round", label: "Finals round", description: "The live finals climbing window." },
+  { value: "results", label: "Results", description: "Results posting, raffle, prizing, or awards." },
+  { value: "custom", label: "Custom", description: "A flexible block for anything else in the day-of schedule." },
 ];
 
-export const DEFAULT_EVENT_CONFIG: EventConfig = {
-  id: ACTIVE_EVENT_ID,
-  name: "Current Event",
+export const DEFAULT_COMPETITION: Competition = {
+  id: "placeholder-competition",
+  slug: "competition",
+  name: "Current Competition",
+  status: "active",
   format: "scramble",
+  discipline_label: "Boulder",
   stage_mode: "qualifier",
+  location_name: "",
+  start_date: null,
+  end_date: null,
+  registration_opens_at: null,
+  registration_closes_at: null,
+  description: "",
+  hero_image_url: "",
   total_climbs: DEFAULT_TOTAL_CLIMBS,
   max_climbers: DEFAULT_MAX_CLIMBERS,
   qualifier_counting_climbs: DEFAULT_QUALIFIER_COUNTING_CLIMBS,
@@ -393,10 +393,10 @@ export const DEFAULT_EVENT_CONFIG: EventConfig = {
   finals_started_at: null,
   finals_problem_count: DEFAULT_FINALS_PROBLEM_COUNT,
   categories: [],
-  time_slots: [],
+  schedule_blocks: [],
 };
 
-export function getFormatTemplate(format: EventFormat): FormatTemplate {
+export function getFormatTemplate(format: EventFormat) {
   return FORMAT_TEMPLATES.find((template) => template.value === format) ?? FORMAT_TEMPLATES[0];
 }
 
@@ -408,133 +408,163 @@ export function formatUsesSelfScoredQualifiers(format: EventFormat) {
   return format === "scramble";
 }
 
-export function isQualifierStage(event: Pick<EventConfig, "stage_mode">) {
-  return event.stage_mode === "qualifier";
+export function normalizeFinalsEligibleAgeGroups(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS];
+  }
+
+  const allowed = new Set(CATEGORY_AGE_GROUPS);
+  const normalized = value.filter(
+    (entry): entry is string => typeof entry === "string" && allowed.has(entry as CategoryAgeGroup)
+  );
+
+  return normalized.length ? normalized : [...DEFAULT_FINALS_ELIGIBLE_AGE_GROUPS];
 }
 
-export function isFinalsStage(event: Pick<EventConfig, "stage_mode">) {
-  return event.stage_mode === "finals";
+export function isFinalsEligibleCategory(
+  competition: Pick<Competition, "finals_eligible_age_groups">,
+  genderDivision: string,
+  ageGroup: string
+) {
+  return (
+    (genderDivision === "Men" || genderDivision === "Women") &&
+    competition.finals_eligible_age_groups.includes(ageGroup)
+  );
 }
 
-export function getEventWorkflowGuide(
-  event: Pick<EventConfig, "format" | "stage_mode">
-): EventWorkflowGuide {
-  if (event.stage_mode === "finals") {
-    return {
-      headline: "Finals round live",
-      summary:
-        "Registration is closed, finalists move as one group through four finals boulders, and judges control all scoring.",
-      notes: [
-        "Finals advancement follows the event's configured finals age groups across Men and Women divisions.",
-        "Finals scoring uses the 2025 IFSC points system, with qualifier rank used for count-back.",
-        "Climbers should follow the official presentation, observation, transit, and start order instead of self-scoring.",
-      ],
-      roles: [
-        {
-          role: "Admin",
-          title: "Run the finals session",
-          detail: "Keep the public finals board live, confirm finalists, and avoid reopening qualifier edits.",
-        },
-        {
-          role: "Judge",
-          title: "Enter top and zone results",
-          detail: "Use the scorecard page to record zone, top, and attempts for each finalist on each finals boulder.",
-        },
-        {
-          role: "Climber",
-          title: "Follow finals call-up",
-          detail: "Finalists do not self-score. They wait for their group movement and judge-recorded attempts.",
-        },
-      ],
-    };
+export function parseScheduleTimeToMinutes(value: string | null | undefined) {
+  if (!value) {
+    return Number.MAX_SAFE_INTEGER;
   }
 
-  if (event.format === "five_on_five_off") {
-    return {
-      headline: "Competitive qualifier with fixed rotations",
-      summary:
-        "This mode fits youth competitive qualifiers with an official start list, a prescribed order, and a five-on, five-off rhythm.",
-      notes: [
-        "Athletes should start on the assigned boulder and rotate in order; no ad hoc rescheduling.",
-        "Rest periods match the rotation window, and climbers move through transit without watching unattempted boulders.",
-        "Use time slots as check-in, isolation, and round windows so the phone view mirrors the day-of schedule.",
-      ],
-      roles: [
-        {
-          role: "Admin",
-          title: "Publish the running order",
-          detail: "Set clear slot labels for check-in, isolation, technical meeting, and qualifier blocks so athletes know where they belong.",
-        },
-        {
-          role: "Judge",
-          title: "Operate by start list",
-          detail: "Open the scorecard page by climber and follow the official rotation instead of treating the round like an open scramble.",
-        },
-        {
-          role: "Climber",
-          title: "Check the schedule first",
-          detail: "Use the website to confirm category, slot, and timing, then follow the official order on the wall.",
-        },
-      ],
-    };
+  const normalized = value.trim().toUpperCase();
+  const twelveHourMatch = normalized.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+  if (twelveHourMatch) {
+    const hourValue = Number(twelveHourMatch[1]);
+    const minuteValue = Number(twelveHourMatch[2]);
+    const meridiem = twelveHourMatch[3];
+    if (
+      Number.isNaN(hourValue) ||
+      Number.isNaN(minuteValue) ||
+      hourValue < 1 ||
+      hourValue > 12 ||
+      minuteValue < 0 ||
+      minuteValue > 59
+    ) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    let hour24 = hourValue % 12;
+    if (meridiem === "PM") {
+      hour24 += 12;
+    }
+
+    return hour24 * 60 + minuteValue;
   }
 
-  if (event.format === "flash_format") {
-    return {
-      headline: "Flash-format qualifier",
-      summary:
-        "This mode keeps qualifier scoring but is better for scheduled sessions where athletes move with set observation and start information.",
-      notes: [
-        "Use time slots to publish session timing, observation windows, and athlete groupings.",
-        "The website should guide athletes to the right session rather than make them guess which page matters next.",
-        "Staff can still review qualifier scoring while public users mainly need schedule clarity and live standings.",
-      ],
-      roles: [
-        {
-          role: "Admin",
-          title: "Label each session clearly",
-          detail: "Make slot names read like schedule blocks so families and athletes can quickly see what happens next.",
-        },
-        {
-          role: "Judge",
-          title: "Keep scoring aligned to the session",
-          detail: "Use the scorecard page during the assigned flash round and avoid mixing athletes between sessions.",
-        },
-        {
-          role: "Climber",
-          title: "Watch your session timing",
-          detail: "Check in for the published block, then follow staff instruction for observation and attempts.",
-        },
-      ],
-    };
+  const twentyFourHourMatch = normalized.match(/^(\d{1,2}):(\d{2})$/);
+  if (twentyFourHourMatch) {
+    const hourValue = Number(twentyFourHourMatch[1]);
+    const minuteValue = Number(twentyFourHourMatch[2]);
+    if (
+      Number.isNaN(hourValue) ||
+      Number.isNaN(minuteValue) ||
+      hourValue < 0 ||
+      hourValue > 23 ||
+      minuteValue < 0 ||
+      minuteValue > 59
+    ) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    return hourValue * 60 + minuteValue;
   }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
+export function compareScheduleBlocks(left: CompetitionScheduleBlock, right: CompetitionScheduleBlock) {
+  if (left.is_active !== right.is_active) {
+    return left.is_active ? -1 : 1;
+  }
+
+  const leftStart = parseScheduleTimeToMinutes(left.start_time);
+  const rightStart = parseScheduleTimeToMinutes(right.start_time);
+  if (leftStart !== rightStart) {
+    return leftStart - rightStart;
+  }
+
+  return left.label.localeCompare(right.label);
+}
+
+export function normalizeCompetition(
+  competition: Partial<Competition> | null | undefined,
+  categories: CompetitionCategory[] = [],
+  scheduleBlocks: CompetitionScheduleBlock[] = []
+): Competition {
+  const id = competition?.id ?? createCompetitionId();
+  const name = competition?.name?.trim() || DEFAULT_COMPETITION.name;
+  const nextFormat = (competition?.format ?? DEFAULT_COMPETITION.format) as EventFormat;
+  let activeBlockSeen = false;
 
   return {
-    headline: "Open scramble qualifier",
-    summary:
-      "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
-    notes: [
-      "Use time slots as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
-      "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
-      "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
-    ],
-    roles: [
-      {
-        role: "Admin",
-        title: "Set up the day flow",
-        detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule.",
-      },
-      {
-        role: "Judge",
-        title: "Override only when needed",
-        detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections.",
-      },
-      {
-        role: "Climber",
-        title: "Register and self-score",
-        detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings.",
-      },
-    ],
+    id,
+    slug: slugifyCompetitionName(competition?.slug?.trim() || name),
+    name,
+    status: (competition?.status ?? "active") as CompetitionStatus,
+    format: nextFormat,
+    discipline_label: competition?.discipline_label?.trim() || "Boulder",
+    stage_mode: competition?.stage_mode === "finals" ? "finals" : "qualifier",
+    location_name: competition?.location_name?.trim() || "",
+    start_date: competition?.start_date ?? null,
+    end_date: competition?.end_date ?? null,
+    registration_opens_at: competition?.registration_opens_at ?? null,
+    registration_closes_at: competition?.registration_closes_at ?? null,
+    description: competition?.description?.trim() || "",
+    hero_image_url: competition?.hero_image_url?.trim() || "",
+    total_climbs: clampNumber(competition?.total_climbs, 1, 200, DEFAULT_TOTAL_CLIMBS),
+    max_climbers: clampNumber(competition?.max_climbers, 1, 1000, DEFAULT_MAX_CLIMBERS),
+    qualifier_counting_climbs: clampNumber(
+      competition?.qualifier_counting_climbs,
+      1,
+      20,
+      DEFAULT_QUALIFIER_COUNTING_CLIMBS
+    ),
+    finals_cutoff: clampNumber(competition?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6,
+    finals_tie_advances: competition?.finals_tie_advances ?? true,
+    finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(competition?.finals_eligible_age_groups),
+    qualifier_locked_at: competition?.qualifier_locked_at ?? null,
+    finals_started_at: competition?.finals_started_at ?? null,
+    finals_problem_count: DEFAULT_FINALS_PROBLEM_COUNT,
+    updated_at: competition?.updated_at,
+    categories: (categories.length ? categories : getDefaultCompetitionCategories(id))
+      .map((category, index) => ({
+        ...category,
+        id: createCategoryKey(category.gender_division, category.age_group),
+        competition_id: id,
+        display_name: buildDisplayCategory(category.gender_division, category.age_group),
+        sort_order: category.sort_order ?? index,
+      }))
+      .sort(
+        (left, right) =>
+          left.sort_order - right.sort_order || left.display_name.localeCompare(right.display_name)
+      ),
+    schedule_blocks: scheduleBlocks
+      .map((block) => ({
+        ...block,
+        competition_id: id,
+        audience_label: block.audience_label?.trim() ?? "",
+        phase_type: (block.phase_type ?? "custom") as SchedulePhaseType,
+        is_active: (() => {
+          if (!block.is_active || activeBlockSeen) {
+            return false;
+          }
+          activeBlockSeen = true;
+          return true;
+        })(),
+        eligible_category_ids: [...(block.eligible_category_ids ?? [])],
+      }))
+      .sort(compareScheduleBlocks),
   };
 }
 
@@ -549,8 +579,8 @@ export function getSchedulePhaseDescription(phaseType: SchedulePhaseType) {
   );
 }
 
-export function getActiveScheduleBlock(event: Pick<EventConfig, "time_slots">) {
-  return event.time_slots.find((slot) => slot.is_active) ?? null;
+export function getActiveScheduleBlock(competition: Pick<Competition, "schedule_blocks">) {
+  return competition.schedule_blocks.find((block) => block.is_active) ?? null;
 }
 
 export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
@@ -570,180 +600,144 @@ export function schedulePhaseAllowsFinalsScoring(phaseType: SchedulePhaseType) {
   return phaseType === "finals_round" || phaseType === "custom";
 }
 
-export function schedulePhaseBlocksMovement(phaseType: SchedulePhaseType) {
-  return phaseType === "isolation" || phaseType === "wall_reset" || phaseType === "results";
-}
-
-export function canRegisterDuringEvent(event: Pick<EventConfig, "stage_mode" | "time_slots">) {
-  if (event.stage_mode !== "qualifier") {
+export function canRegisterDuringCompetition(competition: Pick<Competition, "stage_mode" | "schedule_blocks">) {
+  if (competition.stage_mode !== "qualifier") {
     return false;
   }
 
-  const activeBlock = getActiveScheduleBlock(event);
+  const activeBlock = getActiveScheduleBlock(competition);
   return activeBlock ? schedulePhaseAllowsRegistration(activeBlock.phase_type) : true;
 }
 
 export function canClimberSelfScoreQualifier(
-  event: Pick<EventConfig, "format" | "stage_mode" | "time_slots">
+  competition: Pick<Competition, "format" | "stage_mode" | "schedule_blocks">
 ) {
-  if (event.stage_mode !== "qualifier" || !formatUsesSelfScoredQualifiers(event.format)) {
+  if (competition.stage_mode !== "qualifier" || !formatUsesSelfScoredQualifiers(competition.format)) {
     return false;
   }
 
-  const activeBlock = getActiveScheduleBlock(event);
+  const activeBlock = getActiveScheduleBlock(competition);
   return activeBlock ? schedulePhaseAllowsQualifierScoring(activeBlock.phase_type) : true;
 }
 
-export function canStaffScoreQualifier(event: Pick<EventConfig, "stage_mode" | "time_slots">) {
-  if (event.stage_mode !== "qualifier") {
+export function canStaffScoreQualifier(competition: Pick<Competition, "stage_mode" | "schedule_blocks">) {
+  if (competition.stage_mode !== "qualifier") {
     return false;
   }
 
-  const activeBlock = getActiveScheduleBlock(event);
+  const activeBlock = getActiveScheduleBlock(competition);
   return activeBlock ? schedulePhaseAllowsQualifierScoring(activeBlock.phase_type) : true;
 }
 
-export function canStaffScoreFinals(event: Pick<EventConfig, "stage_mode" | "time_slots">) {
-  if (event.stage_mode !== "finals") {
+export function canStaffScoreFinals(competition: Pick<Competition, "stage_mode" | "schedule_blocks">) {
+  if (competition.stage_mode !== "finals") {
     return false;
   }
 
-  const activeBlock = getActiveScheduleBlock(event);
+  const activeBlock = getActiveScheduleBlock(competition);
   return activeBlock ? schedulePhaseAllowsFinalsScoring(activeBlock.phase_type) : true;
 }
 
-function parseScheduleTimeToMinutes(value: string | null | undefined) {
-  if (!value) {
-    return Number.MAX_SAFE_INTEGER;
+export function isCompetitionLiveNow(
+  competition: Pick<Competition, "stage_mode" | "schedule_blocks" | "status">
+) {
+  if (competition.status !== "active") {
+    return false;
   }
 
-  const normalized = value.trim().toUpperCase();
-  const match = normalized.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
-
-  if (!match) {
-    return Number.MAX_SAFE_INTEGER;
+  const activeBlock = getActiveScheduleBlock(competition);
+  if (!activeBlock) {
+    return competition.stage_mode === "qualifier";
   }
 
-  const hourValue = Number(match[1]);
-  const minuteValue = Number(match[2]);
-  const meridiem = match[3];
-
-  if (
-    Number.isNaN(hourValue) ||
-    Number.isNaN(minuteValue) ||
-    hourValue < 1 ||
-    hourValue > 12 ||
-    minuteValue < 0 ||
-    minuteValue > 59
-  ) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  let hour24 = hourValue % 12;
-  if (meridiem === "PM") {
-    hour24 += 12;
-  }
-
-  return hour24 * 60 + minuteValue;
+  return activeBlock.phase_type === "qualifier_round" || activeBlock.phase_type === "finals_round";
 }
 
-export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
-  return [genderDivision.trim(), ageGroup.trim()].filter(Boolean).join(" / ") || "Open";
+export function isQualifierStage(competition: Pick<Competition, "stage_mode">) {
+  return competition.stage_mode === "qualifier";
 }
 
-export function normalizeCategoryDisplay(category: Partial<EventCategory>) {
-  if (category.display_name?.trim()) {
-    return category.display_name.trim();
+export function isFinalsStage(competition: Pick<Competition, "stage_mode">) {
+  return competition.stage_mode === "finals";
+}
+
+export function getEventWorkflowGuide(
+  competition: Pick<Competition, "format" | "stage_mode" | "finals_eligible_age_groups">
+): EventWorkflowGuide {
+  if (competition.stage_mode === "finals") {
+    return {
+      headline: "Finals round live",
+      summary:
+        "Registration is closed, finalists move as one group through four finals boulders, and judges control all scoring.",
+      notes: [
+        "Finals advancement follows the competition's configured finals age groups across Men and Women divisions.",
+        "Finals scoring uses the 2025 IFSC points system, with qualifier rank used for count-back.",
+        "Climbers should follow the official presentation, observation, transit, and start order instead of self-scoring.",
+      ],
+      roles: [
+        { role: "Admin", title: "Run the finals session", detail: "Keep the public finals board live, confirm finalists, and avoid reopening qualifier edits." },
+        { role: "Judge", title: "Enter top and zone results", detail: "Use the scorecard page to record zone, top, and attempts for each finalist on each finals boulder." },
+        { role: "Climber", title: "Follow finals call-up", detail: "Finalists do not self-score. They wait for their group movement and judge-recorded attempts." },
+      ],
+    };
   }
 
-  return buildDisplayCategory(category.gender_division ?? "", category.age_group ?? "");
-}
+  if (competition.format === "five_on_five_off") {
+    return {
+      headline: "Competitive qualifier with fixed rotations",
+      summary:
+        "This mode fits youth competitive qualifiers with an official start list, a prescribed order, and a five-on, five-off rhythm.",
+      notes: [
+        "Athletes should start on the assigned boulder and rotate in order; no ad hoc rescheduling.",
+        "Rest periods match the rotation window, and climbers move through transit without watching unattempted boulders.",
+        "Use schedule blocks as check-in, isolation, and round windows so the phone view mirrors the day-of schedule.",
+      ],
+      roles: [
+        { role: "Admin", title: "Publish the running order", detail: "Set clear block labels for check-in, isolation, technical meeting, and qualifier blocks so athletes know where they belong." },
+        { role: "Judge", title: "Operate by start list", detail: "Open the scorecard page by climber and follow the official rotation instead of treating the round like an open scramble." },
+        { role: "Climber", title: "Check the schedule first", detail: "Use the website to confirm category, slot, and timing, then follow the official order on the wall." },
+      ],
+    };
+  }
 
-export function normalizeEventConfig(
-  event: Partial<EventConfig> | null | undefined,
-  categories: EventCategory[] = [],
-  timeSlots: EventTimeSlot[] = []
-): EventConfig {
-  const nextFormat = (event?.format ?? DEFAULT_EVENT_CONFIG.format) as EventFormat;
-  const normalizedCategories = (categories.length ? categories : getDefaultEventCategories())
-    .map((category, index) => ({
-      ...category,
-      id: createCategoryKey(category.gender_division, category.age_group),
-      event_id: ACTIVE_EVENT_ID,
-      sort_order: category.sort_order ?? index,
-      display_name: buildDisplayCategory(category.gender_division, category.age_group),
-    }))
-    .sort(
-      (left, right) =>
-        left.sort_order - right.sort_order || left.display_name.localeCompare(right.display_name)
-    );
-
-  const nextStageMode = (event?.stage_mode ?? DEFAULT_EVENT_CONFIG.stage_mode) as StageMode;
-  let activeSlotSeen = false;
+  if (competition.format === "flash_format") {
+    return {
+      headline: "Flash-format qualifier",
+      summary:
+        "This mode keeps qualifier scoring but is better for scheduled sessions where athletes move with set observation and start information.",
+      notes: [
+        "Use schedule blocks to publish session timing, observation windows, and athlete groupings.",
+        "The website should guide athletes to the right session rather than make them guess which page matters next.",
+        "Staff can still review qualifier scoring while public users mainly need schedule clarity and live standings.",
+      ],
+      roles: [
+        { role: "Admin", title: "Label each session clearly", detail: "Make block names read like schedule items so families and athletes can quickly see what happens next." },
+        { role: "Judge", title: "Keep scoring aligned to the session", detail: "Use the scorecard page during the assigned flash round and avoid mixing athletes between sessions." },
+        { role: "Climber", title: "Watch your session timing", detail: "Check in for the published block, then follow staff instruction for observation and attempts." },
+      ],
+    };
+  }
 
   return {
-    id: ACTIVE_EVENT_ID,
-    name: event?.name?.trim() || DEFAULT_EVENT_CONFIG.name,
-    format: nextFormat,
-    stage_mode: nextStageMode === "finals" ? "finals" : "qualifier",
-    total_climbs: clampNumber(event?.total_climbs, 1, 200, DEFAULT_TOTAL_CLIMBS),
-    max_climbers: clampNumber(event?.max_climbers, 1, 1000, DEFAULT_MAX_CLIMBERS),
-    qualifier_counting_climbs: clampNumber(
-      event?.qualifier_counting_climbs,
-      1,
-      20,
-      DEFAULT_QUALIFIER_COUNTING_CLIMBS
-    ),
-    finals_cutoff:
-      clampNumber(event?.finals_cutoff, 6, 8, DEFAULT_FINALS_CUTOFF) >= 8 ? 8 : 6,
-    finals_tie_advances: event?.finals_tie_advances ?? true,
-    finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(event?.finals_eligible_age_groups),
-    qualifier_locked_at: event?.qualifier_locked_at ?? null,
-    finals_started_at: event?.finals_started_at ?? null,
-    finals_problem_count: clampNumber(
-      event?.finals_problem_count,
-      DEFAULT_FINALS_PROBLEM_COUNT,
-      DEFAULT_FINALS_PROBLEM_COUNT,
-      DEFAULT_FINALS_PROBLEM_COUNT
-    ),
-    updated_at: event?.updated_at,
-    categories: normalizedCategories,
-    time_slots: timeSlots
-      .map((slot) => ({
-        ...slot,
-        event_id: ACTIVE_EVENT_ID,
-        phase_type: (slot.phase_type ?? "custom") as SchedulePhaseType,
-        audience_label: slot.audience_label?.trim() ?? "",
-        is_active: (() => {
-          if (!slot.is_active || activeSlotSeen) {
-            return false;
-          }
-
-          activeSlotSeen = true;
-          return true;
-        })(),
-        eligible_category_ids: [...(slot.eligible_category_ids ?? [])],
-      }))
-      .sort((left, right) => {
-        if (left.is_active !== right.is_active) {
-          return left.is_active ? -1 : 1;
-        }
-
-        const leftStart = parseScheduleTimeToMinutes(left.start_time);
-        const rightStart = parseScheduleTimeToMinutes(right.start_time);
-        if (leftStart !== rightStart) {
-          return leftStart - rightStart;
-        }
-
-        return left.label.localeCompare(right.label);
-      }),
+    headline: "Open scramble qualifier",
+    summary:
+      "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
+    notes: [
+      "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
+      "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
+      "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
+    ],
+    roles: [
+      { role: "Admin", title: "Set up the day flow", detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule." },
+      { role: "Judge", title: "Override only when needed", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections." },
+      { role: "Climber", title: "Register and self-score", detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings." },
+    ],
   };
 }
 
 export function getClimbs(totalClimbs: number): ClimbDefinition[] {
   return Array.from({ length: totalClimbs }, (_, index) => {
     const number = index + 1;
-
     return {
       number,
       label: `Boulder ${number.toString().padStart(2, "0")}`,
@@ -775,7 +769,6 @@ export function buildQualifierScoreList(
   countingClimbCount: number
 ): QualifierClimbScore[] {
   const attemptMap = new Map<number, QualifierAttempt>();
-
   attempts.forEach((attempt) => {
     attemptMap.set(attempt.climb_number, attempt);
   });
@@ -825,17 +818,15 @@ export function compareQualifierClimbScores(left: QualifierClimbScore, right: Qu
 
 export function buildQualifierLeaderboard(
   climbers: ClimberWithAttempts[],
-  event: EventConfig
+  competition: Competition
 ): QualifierLeaderboardEntry[] {
   const entries = climbers.map((climber) => {
     const allClimbs = buildQualifierScoreList(
       climber.qualifier_attempts,
-      event.total_climbs,
-      event.qualifier_counting_climbs
+      competition.total_climbs,
+      competition.qualifier_counting_climbs
     );
-    const countingClimbs = [...allClimbs]
-      .filter((climb) => climb.counting)
-      .sort(compareQualifierClimbScores);
+    const countingClimbs = [...allClimbs].filter((climb) => climb.counting).sort(compareQualifierClimbScores);
     const totalScore = countingClimbs.reduce((sum, climb) => sum + climb.score, 0);
     const toppedCount = countingClimbs.filter((climb) => climb.topped).length;
     const countingAttemptTotal = countingClimbs.reduce((sum, climb) => sum + climb.attempt_count, 0);
@@ -861,7 +852,6 @@ export function buildQualifierLeaderboard(
   });
 
   entries.sort(compareQualifierEntries);
-
   return assignRanks(entries, "overall_rank", "category_rank");
 }
 
@@ -869,11 +859,9 @@ export function compareQualifierEntries(left: QualifierLeaderboardEntry, right: 
   if (right.total_score !== left.total_score) {
     return right.total_score - left.total_score;
   }
-
   if (right.topped_count !== left.topped_count) {
     return right.topped_count - left.topped_count;
   }
-
   if (left.counting_attempt_total !== right.counting_attempt_total) {
     return left.counting_attempt_total - right.counting_attempt_total;
   }
@@ -910,12 +898,8 @@ export function calculateFinalAttemptPoints(attempt: Partial<FinalAttempt>) {
   return Math.max(0, roundTenths(Math.max(topPoints, zonePoints)));
 }
 
-export function buildFinalProblemResults(
-  attempts: FinalAttempt[],
-  finalsProblemCount: number
-): FinalProblemResult[] {
+export function buildFinalProblemResults(attempts: FinalAttempt[], finalsProblemCount: number): FinalProblemResult[] {
   const attemptMap = new Map<number, FinalAttempt>();
-
   attempts.forEach((attempt) => {
     attemptMap.set(attempt.climb_number, attempt);
   });
@@ -930,7 +914,9 @@ export function buildFinalProblemResults(
       zone: attempt?.zone ?? false,
       attempts_to_top: attempt?.top ? normalizeSuccessfulAttempts(attempt.attempts_to_top) : null,
       attempts_to_zone: attempt?.zone ? normalizeSuccessfulAttempts(attempt.attempts_to_zone) : null,
-      points: calculateFinalAttemptPoints(attempt ?? { climb_number: climbNumber, top: false, zone: false }),
+      points: calculateFinalAttemptPoints(
+        attempt ?? { climb_number: climbNumber, competition_id: "", climber_id: "", top: false, zone: false }
+      ),
     };
   });
 }
@@ -939,17 +925,14 @@ export function summarizeFinalProblemResults(problemResults: FinalProblemResult[
   return problemResults.reduce<FinalsSummary>(
     (summary, problem) => {
       summary.total_points = roundTenths(summary.total_points + problem.points);
-
       if (problem.top) {
         summary.tops += 1;
         summary.attempts_to_top += problem.attempts_to_top ?? 0;
       }
-
       if (problem.zone) {
         summary.zones += 1;
         summary.attempts_to_zone += problem.attempts_to_zone ?? 0;
       }
-
       return summary;
     },
     {
@@ -965,7 +948,7 @@ export function summarizeFinalProblemResults(problemResults: FinalProblemResult[
 export function buildFinalsLeaderboard(
   climbers: ClimberWithAttempts[],
   finalists: FinalistSelection[],
-  event: EventConfig
+  competition: Competition
 ): FinalsLeaderboardEntry[] {
   const climberMap = new Map(climbers.map((climber) => [climber.id, climber]));
 
@@ -975,7 +958,7 @@ export function buildFinalsLeaderboard(
       return [];
     }
 
-    const problemResults = buildFinalProblemResults(climber.final_attempts, event.finals_problem_count);
+    const problemResults = buildFinalProblemResults(climber.final_attempts, competition.finals_problem_count);
     const summary = summarizeFinalProblemResults(problemResults);
 
     return [
@@ -1010,22 +993,17 @@ export function compareFinalsEntries(left: FinalsLeaderboardEntry, right: Finals
   if (right.total_points !== left.total_points) {
     return right.total_points - left.total_points;
   }
-
   if (left.previous_round_rank !== right.previous_round_rank) {
     return left.previous_round_rank - right.previous_round_rank;
   }
-
   return left.name.localeCompare(right.name);
 }
 
-export function pickFinalists(
-  qualifierEntries: QualifierLeaderboardEntry[],
-  event: EventConfig
-): FinalistSelection[] {
+export function pickFinalists(qualifierEntries: QualifierLeaderboardEntry[], competition: Competition) {
   const byCategory = new Map<string, QualifierLeaderboardEntry[]>();
 
   qualifierEntries.forEach((entry) => {
-    if (!isFinalsEligibleCategory(event, entry.gender_division, entry.age_group)) {
+    if (!isFinalsEligibleCategory(competition, entry.gender_division, entry.age_group)) {
       return;
     }
 
@@ -1036,10 +1014,8 @@ export function pickFinalists(
   });
 
   const finalists: FinalistSelection[] = [];
-
   byCategory.forEach((entries) => {
-    const cutoffIndex = event.finals_cutoff - 1;
-    const cutoffEntry = entries[cutoffIndex];
+    const cutoffEntry = entries[competition.finals_cutoff - 1];
 
     if (!cutoffEntry) {
       entries.forEach((entry) => {
@@ -1058,9 +1034,9 @@ export function pickFinalists(
     }
 
     entries.forEach((entry) => {
-      const withinCutoff = entry.category_rank <= event.finals_cutoff;
+      const withinCutoff = entry.category_rank <= competition.finals_cutoff;
       const tiedAtCutoff =
-        event.finals_tie_advances &&
+        competition.finals_tie_advances &&
         entry.total_score === cutoffEntry.total_score &&
         entry.topped_count === cutoffEntry.topped_count &&
         entry.counting_attempt_total === cutoffEntry.counting_attempt_total;
@@ -1084,16 +1060,14 @@ export function pickFinalists(
     if (left.display_category !== right.display_category) {
       return left.display_category.localeCompare(right.display_category);
     }
-
     if (left.qualifier_rank !== right.qualifier_rank) {
       return left.qualifier_rank - right.qualifier_rank;
     }
-
     return left.name.localeCompare(right.name);
   });
 }
 
-export function buildRegistrationChoices(event: EventConfig, climbers: Climber[]): RegistrationChoice[] {
+export function buildRegistrationChoices(competition: Competition, climbers: Climber[]) {
   const slotCounts = new Map<string, number>();
   climbers.forEach((climber) => {
     if (climber.time_slot_id) {
@@ -1101,55 +1075,24 @@ export function buildRegistrationChoices(event: EventConfig, climbers: Climber[]
     }
   });
 
-  return event.categories.map((category) => {
-    const slots = event.time_slots
-      .filter((slot) => schedulePhaseAllowsRegistration(slot.phase_type))
-      .filter((slot) => {
-        if (!slot.eligible_category_ids.length) {
-          return true;
-        }
-
-        return slot.eligible_category_ids.includes(category.id);
-      })
-      .map((slot) => ({
-        ...slot,
-        remaining_capacity: Math.max(0, slot.capacity - (slotCounts.get(slot.id) ?? 0)),
+  return competition.categories.map((category) => {
+    const slots = competition.schedule_blocks
+      .filter((block) => schedulePhaseAllowsRegistration(block.phase_type))
+      .filter((block) => !block.eligible_category_ids.length || block.eligible_category_ids.includes(category.id))
+      .map((block) => ({
+        ...block,
+        remaining_capacity: Math.max(0, block.capacity - (slotCounts.get(block.id) ?? 0)),
       }));
 
-    return {
-      category,
-      slots,
-    };
+    return { category, slots };
   });
 }
 
-export function getCategoryName(
-  categoryId: string | null | undefined,
-  event: EventConfig,
-  fallback?: string
-) {
-  if (!categoryId) {
-    return fallback ?? "Uncategorized";
-  }
-
-  return event.categories.find((category) => category.id === categoryId)?.display_name ?? fallback ?? "Uncategorized";
-}
-
-export function getTimeSlotLabel(slotId: string | null | undefined, event: EventConfig) {
+export function getTimeSlotLabel(slotId: string | null | undefined, competition: Competition) {
   if (!slotId) {
     return "No schedule block";
   }
-
-  return event.time_slots.find((slot) => slot.id === slotId)?.label ?? "No schedule block";
-}
-
-export function formatAttemptsLabel(attemptCount: number, succeeded: boolean) {
-  if (!attemptCount) {
-    return succeeded ? "Top on first go" : "No attempts";
-  }
-
-  const label = attemptCount === 1 ? "1 attempt" : `${attemptCount} attempts`;
-  return succeeded ? label : `${label} logged`;
+  return competition.schedule_blocks.find((slot) => slot.id === slotId)?.label ?? "No schedule block";
 }
 
 export function formatStageLabel(stage: StageMode) {
@@ -1160,12 +1103,75 @@ export function formatTimeRange(startTime: string | null, endTime: string | null
   if (startTime && endTime) {
     return `${startTime} - ${endTime}`;
   }
-
   return startTime ?? endTime ?? "Time TBD";
 }
 
 export function formatFinalPoints(points: number) {
   return points.toFixed(1);
+}
+
+export function formatDateLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Date TBD";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+export function formatDateRange(startDate: string | null, endDate: string | null) {
+  if (startDate && endDate) {
+    return `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
+  }
+  return formatDateLabel(startDate ?? endDate);
+}
+
+export function formatDateTimeLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not scheduled";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function formatCompetitionDateBadge(competition: Pick<Competition, "start_date" | "end_date">) {
+  if (!competition.start_date) {
+    return { month: "TBD", day: "--" };
+  }
+
+  const start = new Date(competition.start_date);
+  const end = competition.end_date ? new Date(competition.end_date) : null;
+  const month = start.toLocaleDateString(undefined, { month: "short" }).toUpperCase();
+  const day = end && !Number.isNaN(end.getTime()) ? `${start.getDate()} - ${end.getDate()}` : `${start.getDate()}`;
+  return { month, day };
+}
+
+export function buildHeroAccent(competition: Pick<Competition, "format">) {
+  switch (competition.format) {
+    case "ifsc_finals_format":
+      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(10,43,66,0.45))";
+    case "five_on_five_off":
+      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(80,32,20,0.42))";
+    case "flash_format":
+      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(40,66,26,0.42))";
+    default:
+      return "linear-gradient(135deg, rgba(0,0,0,0.18), rgba(95,34,48,0.45))";
+  }
 }
 
 function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number) {
@@ -1199,8 +1205,7 @@ function assignRanks<T extends { category_id: string | null }>(
     }
 
     (entry as unknown as Record<string, number>)[overallKey as string] = overallRank;
-    (entry as unknown as Record<string, number>)[categoryKey as string] =
-      categoryPosition.get(categoryId) ?? seen;
+    (entry as unknown as Record<string, number>)[categoryKey as string] = categoryPosition.get(categoryId) ?? seen;
   });
 
   return entries;
@@ -1229,7 +1234,6 @@ function sameRank(left: unknown, right: unknown) {
   if ("total_score" in (left as Record<string, unknown>) && "total_score" in (right as Record<string, unknown>)) {
     const qualifierLeft = left as QualifierLeaderboardEntry;
     const qualifierRight = right as QualifierLeaderboardEntry;
-
     return (
       qualifierLeft.total_score === qualifierRight.total_score &&
       qualifierLeft.topped_count === qualifierRight.topped_count &&
@@ -1239,7 +1243,6 @@ function sameRank(left: unknown, right: unknown) {
 
   const finalsLeft = left as FinalsLeaderboardEntry;
   const finalsRight = right as FinalsLeaderboardEntry;
-
   return (
     finalsLeft.total_points === finalsRight.total_points &&
     finalsLeft.previous_round_rank === finalsRight.previous_round_rank
