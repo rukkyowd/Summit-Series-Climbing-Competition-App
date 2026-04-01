@@ -96,6 +96,22 @@ export interface CompetitionScheduleBlock {
   created_at?: string;
 }
 
+export interface CompetitionRound {
+  id: string;
+  competition_id: string;
+  round_number: number;
+  name: string;
+  round_type: "qualifier" | "semifinal" | "finals";
+  format: EventFormat;
+  status: "pending" | "active" | "scoring" | "closed" | "results";
+  problem_count: number;
+  counting_climbs: number | null;
+  finals_cutoff: 6 | 8 | null;
+  started_at: string | null;
+  closed_at: string | null;
+  created_at?: string;
+}
+
 export interface Competition {
   id: string;
   slug: string;
@@ -125,6 +141,7 @@ export interface Competition {
   updated_at?: string;
   categories: CompetitionCategory[];
   schedule_blocks: CompetitionScheduleBlock[];
+  rounds?: CompetitionRound[];
 }
 
 export interface CompetitionSummary {
@@ -345,6 +362,37 @@ export function buildStaffCompetitionPath(slug: string, section?: "" | "judge" |
 
 export function buildDisplayCategory(genderDivision: string, ageGroup: string) {
   return [genderDivision.trim(), ageGroup.trim()].filter(Boolean).join(" / ") || "Open";
+}
+
+export function getRoundStatusForCompetition(competition: Pick<Competition, "current_phase">, roundType: "qualifier" | "finals") {
+  if (roundType === "qualifier") {
+    switch (competition.current_phase) {
+      case "qualifier_open":
+        return "active" as const;
+      case "qualifier_closed":
+      case "wall_reset":
+      case "observation":
+      case "finals_open":
+      case "finals_closed":
+      case "results":
+        return "closed" as const;
+      default:
+        return "pending" as const;
+    }
+  }
+
+  switch (competition.current_phase) {
+    case "observation":
+      return "scoring" as const;
+    case "finals_open":
+      return "active" as const;
+    case "finals_closed":
+      return "closed" as const;
+    case "results":
+      return "results" as const;
+    default:
+      return "pending" as const;
+  }
 }
 
 export function createCompetitionId() {

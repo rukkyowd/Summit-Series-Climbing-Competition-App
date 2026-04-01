@@ -22,12 +22,14 @@ import {
   isCompetitionLiveNow,
   isFinalsStage,
   isQualifierStage,
+  getRoundStatusForCompetition,
   normalizeCompetition,
   slugifyCompetitionName,
   type Climber,
   type ClimberWithAttempts,
   type Competition,
   type CompetitionCategory,
+  type CompetitionRound,
   type CompetitionPhase,
   type CompetitionScheduleBlock,
   type CompetitionStatus,
@@ -73,6 +75,7 @@ export interface CompetitionSnapshot {
   finalists: FinalistSelection[];
   registrationChoices: RegistrationChoice[];
   undoAvailability?: CompetitionUndoAvailability;
+  rounds?: CompetitionRound[];
 }
 
 export interface CompetitionSummary {
@@ -260,14 +263,55 @@ async function fetchCompetitionScheduleBlocks(competitionIds: string[]) {
   }));
 }
 
-function hydrateCompetitions(rows: any[], categories: CompetitionCategory[], scheduleBlocks: CompetitionScheduleBlock[]) {
+async function fetchCompetitionRounds(competitionIds: string[]) {
+  if (!competitionIds.length) {
+    return [] as CompetitionRound[];
+  }
+
+  const { data, error } = await publicSupabase
+    .from("competition_rounds")
+    .select("*")
+    .in("competition_id", competitionIds)
+    .order("round_number", { ascending: true });
+
+  if (error) {
+    return [] as CompetitionRound[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    id: row.id,
+    competition_id: row.competition_id,
+    round_number: row.round_number ?? 1,
+    name: row.name ?? "Round",
+    round_type: row.round_type ?? "qualifier",
+    format: row.format ?? "scramble",
+    status: row.status ?? "pending",
+    problem_count: row.problem_count ?? 4,
+    counting_climbs: row.counting_climbs ?? null,
+    finals_cutoff: row.finals_cutoff ?? null,
+    started_at: row.started_at ?? null,
+    closed_at: row.closed_at ?? null,
+    created_at: row.created_at ?? undefined,
+  }));
+}
+
+function hydrateCompetitions(
+  rows: any[],
+  categories: CompetitionCategory[],
+  scheduleBlocks: CompetitionScheduleBlock[],
+  rounds: CompetitionRound[]
+) {
   return rows.map((row) => {
     const competitionId = row.id;
-    return normalizeCompetition(
+    const competition = normalizeCompetition(
       row,
       categories.filter((category) => category.competition_id === competitionId),
       scheduleBlocks.filter((block) => block.competition_id === competitionId)
     );
+    return {
+      ...competition,
+      rounds: rounds.filter((round) => round.competition_id === competitionId),
+    };
   });
 }
 
@@ -503,17 +547,64 @@ function validateSlotForCategory(slot: CompetitionScheduleBlock, categoryId: str
   return !slot.eligible_category_ids.length || slot.eligible_category_ids.includes(categoryId);
 }
 
+async function syncCompetitionRounds(competition: Competition) {
+  const rounds: Array<Omit<CompetitionRound, "created_at">> = [
+    {
+      id: `${competition.id}-qualifier`,
+      competition_id: competition.id,
+      round_number: 1,
+      name: "Qualifier",
+      round_type: "qualifier",
+      format: competition.format,
+      status: getRoundStatusForCompetition(competition, "qualifier"),
+      problem_count: competition.total_climbs,
+      counting_climbs: competition.qualifier_counting_climbs,
+      finals_cutoff: competition.finals_cutoff,
+      started_at: competition.current_phase === "qualifier_open" ? competition.registration_opens_at : null,
+      closed_at: competition.current_phase === "qualifier_open" ? null : competition.qualifier_locked_at,
+    },
+    {
+      id: `${competition.id}-finals`,
+      competition_id: competition.id,
+      round_number: 2,
+      name: "Finals",
+      round_type: "finals",
+      format: "ifsc_finals_format",
+      status: getRoundStatusForCompetition(competition, "finals"),
+      problem_count: competition.finals_problem_count,
+      counting_climbs: null,
+      finals_cutoff: competition.finals_cutoff,
+      started_at: competition.finals_started_at,
+      closed_at: competition.current_phase === "finals_closed" || competition.current_phase === "results" ? new Date().toISOString() : null,
+    },
+  ];
+
+  const { error } = await supabase.from("competition_rounds").upsert(
+    rounds.map((round) => ({
+      ...round,
+      finals_cutoff: round.finals_cutoff ?? null,
+      counting_climbs: round.counting_climbs ?? null,
+    })),
+    { onConflict: "id" }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function listCompetitions(includeArchived = false) {
   ensureConfigured();
 
   const rows = await fetchCompetitionRows(includeArchived);
   const competitionIds = rows.map((row) => row.id as string);
-  const [categories, scheduleBlocks] = await Promise.all([
+  const [categories, scheduleBlocks, rounds] = await Promise.all([
     fetchCompetitionCategories(competitionIds),
     fetchCompetitionScheduleBlocks(competitionIds),
+    fetchCompetitionRounds(competitionIds),
   ]);
 
-  return hydrateCompetitions(rows, categories, scheduleBlocks);
+  return hydrateCompetitions(rows, categories, scheduleBlocks, rounds);
 }
 
 export async function listCompetitionSummaries(includeArchived = false): Promise<CompetitionSummary[]> {
@@ -544,12 +635,13 @@ export async function getCompetitionBySlug(slug: string) {
     return null;
   }
 
-  const [categories, scheduleBlocks] = await Promise.all([
+  const [categories, scheduleBlocks, rounds] = await Promise.all([
     fetchCompetitionCategories([row.id]),
     fetchCompetitionScheduleBlocks([row.id]),
+    fetchCompetitionRounds([row.id]),
   ]);
 
-  return hydrateCompetitions([row], categories, scheduleBlocks)[0] ?? null;
+  return hydrateCompetitions([row], categories, scheduleBlocks, rounds)[0] ?? null;
 }
 
 export async function getCompetitionById(id: string) {
@@ -560,12 +652,13 @@ export async function getCompetitionById(id: string) {
     return null;
   }
 
-  const [categories, scheduleBlocks] = await Promise.all([
+  const [categories, scheduleBlocks, rounds] = await Promise.all([
     fetchCompetitionCategories([row.id]),
     fetchCompetitionScheduleBlocks([row.id]),
+    fetchCompetitionRounds([row.id]),
   ]);
 
-  return hydrateCompetitions([row], categories, scheduleBlocks)[0] ?? null;
+  return hydrateCompetitions([row], categories, scheduleBlocks, rounds)[0] ?? null;
 }
 
 async function resolveCompetition(identifier: string) {
@@ -585,7 +678,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     throw new Error("Competition not found.");
   }
 
-  const [climbers, qualifierAttempts, finalAttempts, finalists, officialQualifierLeaderboard, projectedFinalists, undoAvailability] = await Promise.all([
+  const [climbers, qualifierAttempts, finalAttempts, finalists, officialQualifierLeaderboard, projectedFinalists, undoAvailability, rounds] = await Promise.all([
     fetchClimberRows([competition.id]),
     fetchQualifierAttempts([competition.id]),
     fetchFinalAttempts([competition.id]),
@@ -597,6 +690,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
       expires_at: null,
       operation_type: null,
     })),
+    fetchCompetitionRounds([competition.id]),
   ]);
 
   const joined = joinCompetitionData(climbers, qualifierAttempts, finalAttempts);
@@ -634,6 +728,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     finalists: competitionFinalists,
     registrationChoices: buildRegistrationChoices(competition, joined.map((climber) => climber)),
     undoAvailability,
+    rounds,
   };
 }
 
@@ -721,6 +816,8 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     throw new Error(categoryError.message);
   }
 
+  await syncCompetitionRounds(competition);
+
   return competition;
 }
 
@@ -792,6 +889,8 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
     }
   }
 
+  await syncCompetitionRounds(payload);
+
   return getCompetitionById(competitionId);
 }
 
@@ -817,6 +916,11 @@ export async function setCompetitionPhase(competitionId: string, nextPhase: Comp
     throw new Error(error.message);
   }
 
+  const competition = await getCompetitionById(competitionId);
+  if (competition) {
+    await syncCompetitionRounds(competition);
+  }
+
   return getCompetitionSnapshot(competitionId);
 }
 
@@ -829,6 +933,11 @@ export async function undoCompetitionOperation(competitionId: string) {
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  const competition = await getCompetitionById(competitionId);
+  if (competition) {
+    await syncCompetitionRounds(competition);
   }
 
   return getCompetitionSnapshot(competitionId);
@@ -852,6 +961,11 @@ export async function advanceCompetitionToFinals(competitionId: string) {
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  const competition = await getCompetitionById(competitionId);
+  if (competition) {
+    await syncCompetitionRounds(competition);
   }
 
   return getCompetitionSnapshot(competitionId);
@@ -885,6 +999,11 @@ export async function resetCompetition(competitionId: string) {
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  const competition = await getCompetitionById(competitionId);
+  if (competition) {
+    await syncCompetitionRounds(competition);
   }
 
   return getCompetitionSnapshot(competitionId);

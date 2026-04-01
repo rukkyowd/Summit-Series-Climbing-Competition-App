@@ -11,6 +11,7 @@ import {
   type CompetitionSnapshot,
 } from "@/lib/db";
 import { getAuthState, isStaffRole } from "@/lib/auth";
+import { enqueueOfflineItem, readOfflineQueue, removeOfflineItem } from "@/lib/staff-offline-queue";
 import {
   buildFinalsLeaderboard,
   buildQualifierLeaderboard,
@@ -43,6 +44,7 @@ export default function StaffJudgePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [queuedCount, setQueuedCount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -84,6 +86,17 @@ export default function StaffJudgePage() {
       })
       .finally(() => setLoading(false));
   }, [initialClimberId, slug]);
+
+  useEffect(() => {
+    const syncQueuedCount = () => setQueuedCount(readOfflineQueue().length);
+    syncQueuedCount();
+    const onOnline = () => {
+      syncQueuedCount();
+      void flushOfflineQueue();
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
 
   const qualifierClimbers = useMemo(() => {
     if (!snapshot) {
@@ -137,6 +150,27 @@ export default function StaffJudgePage() {
     setSnapshot(updater(nextClimbers));
   };
 
+  const flushOfflineQueue = async () => {
+    const queue = readOfflineQueue();
+    for (const item of queue) {
+      try {
+        if (item.type === "qualifier") {
+          await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped);
+        } else {
+          await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
+        }
+        removeOfflineItem(item.id);
+      } catch {
+        break;
+      }
+    }
+    setQueuedCount(readOfflineQueue().length);
+    if (snapshot) {
+      const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
+      setSnapshot(refreshed);
+    }
+  };
+
   const saveQualifier = async (climberId: string) => {
     if (!snapshot || !canStaffScoreQualifier(snapshot.competition)) {
       return;
@@ -156,7 +190,18 @@ export default function StaffJudgePage() {
       }));
       setMessage(`Saved qualifier score for boulder ${selectedBoulder}.`);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to save qualifier score.");
+      enqueueOfflineItem({
+        id: `qualifier-${climberId}-${selectedBoulder}`,
+        type: "qualifier",
+        competitionId: snapshot.competition.id,
+        climberId,
+        climbNumber: selectedBoulder,
+        attemptCount: draft.attemptCount,
+        topped: draft.topped,
+        createdAt: new Date().toISOString(),
+      });
+      setQueuedCount(readOfflineQueue().length);
+      setError(nextError instanceof Error ? `${nextError.message} Score queued and will retry when connection returns.` : "Unable to save qualifier score. Score queued for retry.");
     } finally {
       setSaving(false);
     }
@@ -190,7 +235,20 @@ export default function StaffJudgePage() {
       }));
       setMessage(`Saved finals score for boulder ${selectedCell.climbNumber}.`);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to save finals score.");
+      enqueueOfflineItem({
+        id: `finals-${selectedCell.climberId}-${selectedCell.climbNumber}`,
+        type: "finals",
+        competitionId: snapshot.competition.id,
+        climberId: selectedCell.climberId,
+        climbNumber: selectedCell.climbNumber,
+        top: draft.top,
+        zone: draft.zone,
+        attemptsToTop: draft.top ? draft.attemptsToTop : null,
+        attemptsToZone: draft.zone ? draft.attemptsToZone : null,
+        createdAt: new Date().toISOString(),
+      });
+      setQueuedCount(readOfflineQueue().length);
+      setError(nextError instanceof Error ? `${nextError.message} Score queued and will retry when connection returns.` : "Unable to save finals score. Score queued for retry.");
     } finally {
       setSaving(false);
     }
@@ -240,6 +298,11 @@ export default function StaffJudgePage() {
               <button type="button" onClick={() => setStage("finals")} className={`results-secondary-button ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</button>
             </div>
           </div>
+          {queuedCount > 0 ? (
+            <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {queuedCount} score {queuedCount === 1 ? "is" : "are"} queued locally. They will retry automatically when the network returns.
+            </div>
+          ) : null}
         </section>
 
         {stage === "qualifier" ? (

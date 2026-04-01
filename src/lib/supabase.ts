@@ -1,3 +1,4 @@
+import { createBrowserClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -26,7 +27,14 @@ export function assertSupabaseConfigured() {
   }
 }
 
-function createBrowserClient(persistSession: boolean) {
+function createAuthenticatedBrowserClient() {
+  return createBrowserClient(
+    supabaseUrl ?? "https://placeholder-project.supabase.co",
+    supabaseBrowserKey ?? "placeholder-browser-key"
+  );
+}
+
+function createPublicBrowserClient(persistSession: boolean) {
   return createClient(
     supabaseUrl ?? "https://placeholder-project.supabase.co",
     supabaseBrowserKey ?? "placeholder-browser-key",
@@ -45,8 +53,8 @@ function createBrowserClient(persistSession: boolean) {
   );
 }
 
-export const supabase = createBrowserClient(true);
+export const supabase = createAuthenticatedBrowserClient();
 
 // Public screens should always read with the publishable key alone so stale staff
 // sessions in local storage cannot break anonymous leaderboard queries.
-export const publicSupabase = createBrowserClient(false);
+export const publicSupabase = createPublicBrowserClient(false);

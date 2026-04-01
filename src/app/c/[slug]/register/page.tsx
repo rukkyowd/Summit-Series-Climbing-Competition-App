@@ -1,57 +1,66 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import SiteHeader from "@/components/site-header";
+import CompetitionSubnav from "@/components/competition-subnav";
 import { getCompetitionSnapshot, registerClimber, type CompetitionSnapshot } from "@/lib/db";
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import {
   canRegisterDuringCompetition,
-  formatSchedulePhaseLabel,
-  formatTimeRange,
+  formatCompetitionPhaseLabel,
   getActiveScheduleBlock,
   getEventWorkflowGuide,
 } from "@/lib/scoring";
+
+const STEPS = ["Details", "Category", "Time slot", "Confirm"] as const;
 
 export default function CompetitionRegisterPage() {
   const params = useParams<{ slug: string }>();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const router = useRouter();
+  const errorRef = useRef<HTMLDivElement | null>(null);
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
   const [successLink, setSuccessLink] = useState("");
   const [name, setName] = useState("");
   const [climberNumber, setClimberNumber] = useState("");
   const [province, setProvince] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [timeSlotId, setTimeSlotId] = useState("");
+  const [step, setStep] = useState(0);
+
+  const loadSnapshot = useCallback(async () => {
+    const nextSnapshot = await getCompetitionSnapshot(slug);
+    setSnapshot(nextSnapshot);
+    setCategoryId((current) => current || nextSnapshot.registrationChoices[0]?.category.id || "");
+    return nextSnapshot;
+  }, [slug]);
 
   useEffect(() => {
-    getCompetitionSnapshot(slug)
-      .then((nextSnapshot) => {
-        setSnapshot(nextSnapshot);
-        setCategoryId(nextSnapshot.registrationChoices[0]?.category.id ?? "");
-      })
+    void loadSnapshot()
       .catch((nextError) => {
         setError(nextError instanceof Error ? nextError.message : "Unable to load registration options.");
       })
       .finally(() => setLoading(false));
   }, [slug]);
 
+  useEffect(() => {
+    if (error || fieldError) {
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [error, fieldError]);
+
   const selectedChoice = useMemo(
     () => snapshot?.registrationChoices.find((choice) => choice.category.id === categoryId) ?? null,
     [categoryId, snapshot]
   );
   const availableSlots = useMemo(() => selectedChoice?.slots ?? [], [selectedChoice]);
-  const workflowGuide = useMemo(
-    () => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null),
-    [snapshot]
-  );
-  const activeScheduleBlock = useMemo(
-    () => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null),
-    [snapshot]
-  );
+  const workflowGuide = useMemo(() => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null), [snapshot]);
+  const activeScheduleBlock = useMemo(() => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null), [snapshot]);
   const registrationOpen = snapshot ? canRegisterDuringCompetition(snapshot.competition) : false;
 
   useEffect(() => {
@@ -59,31 +68,53 @@ export default function CompetitionRegisterPage() {
       setTimeSlotId("");
       return;
     }
-
     if (!availableSlots.some((slot) => slot.id === timeSlotId && slot.remaining_capacity > 0)) {
-      const nextSlot = availableSlots.find((slot) => slot.remaining_capacity > 0);
-      setTimeSlotId(nextSlot?.id ?? "");
+      setTimeSlotId(availableSlots.find((slot) => slot.remaining_capacity > 0)?.id ?? "");
     }
   }, [availableSlots, timeSlotId]);
+
+  const validateCurrentStep = () => {
+    setFieldError(null);
+    if (step === 0) {
+      if (!name.trim()) {
+        setFieldError({ field: "name", message: "Enter the climber name." });
+        return false;
+      }
+      if (!climberNumber.trim()) {
+        setFieldError({ field: "climberNumber", message: "Enter the climber number." });
+        return false;
+      }
+      if (!province.trim()) {
+        setFieldError({ field: "province", message: "Enter the province." });
+        return false;
+      }
+    }
+    if (step === 1 && !categoryId) {
+      setFieldError({ field: "category", message: "Choose a category to continue." });
+      return false;
+    }
+    if (step === 2 && availableSlots.length && !timeSlotId) {
+      setFieldError({ field: "timeSlot", message: "Choose a time slot to continue." });
+      return false;
+    }
+    return true;
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
     setSuccessLink("");
+    setFieldError(null);
 
     if (!snapshot) {
       return;
     }
 
-    if (!name.trim() || !climberNumber.trim() || !province.trim() || !categoryId) {
-      setError("Name, climber number, province, and category are required.");
-      return;
-    }
-
-    setLoading(true);
+    setSubmitting(true);
     try {
+      const refreshedSnapshot = await loadSnapshot();
       const climber = await registerClimber({
-        competitionId: snapshot.competition.id,
+        competitionId: refreshedSnapshot.competition.id,
         name,
         climberNumber,
         province,
@@ -91,19 +122,13 @@ export default function CompetitionRegisterPage() {
         timeSlotId: timeSlotId || null,
       });
       const link = climber.scorecard_path;
-      saveScorecardAccessToken(climber.access_token, snapshot.competition.slug);
+      saveScorecardAccessToken(climber.access_token, refreshedSnapshot.competition.slug);
       setSuccessLink(link);
-      setName("");
-      setClimberNumber("");
-      setProvince("");
-      setTimeSlotId("");
-      window.setTimeout(() => {
-        router.push(link);
-      }, 900);
+      setTimeout(() => router.push(link), 900);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Registration failed.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -111,23 +136,32 @@ export default function CompetitionRegisterPage() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} />
+        <CompetitionSubnav competitionSlug={slug} />
 
         <section className="results-card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="results-kicker">Registration</div>
               <h1 className="mt-2 text-4xl font-semibold text-slate-950">
-                {snapshot?.competition.stage_mode === "finals" ? "Registration closed" : "Register for competition"}
+                {snapshot ? `Register for ${snapshot.competition.name}` : "Register for competition"}
               </h1>
             </div>
             <div className="results-chip">
-              {registrationOpen ? "Registration open" : "Registration paused"}
+              {snapshot ? formatCompetitionPhaseLabel(snapshot.competition.current_phase) : "Loading"}
             </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {STEPS.map((label, index) => (
+              <div key={label} className={index === step ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
+                {index + 1}. {label}
+              </div>
+            ))}
           </div>
 
           {workflowGuide ? (
             <div className="results-meta-card mt-6">
-              <div className="results-kicker">How this page works</div>
+              <div className="results-kicker">How this round works</div>
               <div className="mt-2 text-xl font-semibold text-slate-950">{workflowGuide.headline}</div>
               <p className="mt-3 text-slate-600">{workflowGuide.summary}</p>
             </div>
@@ -135,47 +169,117 @@ export default function CompetitionRegisterPage() {
 
           {activeScheduleBlock ? (
             <div className="results-meta-card mt-4">
-              <div className="results-kicker">Live schedule block</div>
+              <div className="results-kicker">Live schedule context</div>
               <div className="mt-2 text-xl font-semibold text-slate-950">{activeScheduleBlock.label}</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="results-chip">{formatSchedulePhaseLabel(activeScheduleBlock.phase_type)}</span>
-                {activeScheduleBlock.audience_label ? <span className="results-chip">{activeScheduleBlock.audience_label}</span> : null}
-              </div>
-              <div className="mt-3 text-slate-600">{formatTimeRange(activeScheduleBlock.start_time, activeScheduleBlock.end_time)}</div>
             </div>
           ) : null}
 
-          {error ? <div className="results-alert results-alert-error mt-4">{error}</div> : null}
-          {successLink ? <div className="results-alert results-alert-success mt-4">Registration complete. Opening your private scorecard...</div> : null}
+          {!registrationOpen && snapshot ? (
+            <div className="results-alert results-alert-error mt-4">
+              Registration is currently closed during the {formatCompetitionPhaseLabel(snapshot.competition.current_phase).toLowerCase()} phase.
+            </div>
+          ) : null}
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <input value={name} onChange={(event) => setName(event.target.value)} className="results-input" placeholder="Climber name" disabled={!registrationOpen || snapshot?.competition.stage_mode === "finals"} />
-              <input value={climberNumber} onChange={(event) => setClimberNumber(event.target.value)} className="results-input" placeholder="Climber number" disabled={!registrationOpen || snapshot?.competition.stage_mode === "finals"} />
+          {(error || fieldError || successLink) ? (
+            <div ref={errorRef} aria-live="polite" className="mt-4 space-y-3">
+              {error ? <div className="results-alert results-alert-error">{error}</div> : null}
+              {fieldError ? <div className="results-alert results-alert-error">{fieldError.message}</div> : null}
+              {successLink ? <div className="results-alert results-alert-success">Registration complete. Opening your private scorecard...</div> : null}
             </div>
-            <input value={province} onChange={(event) => setProvince(event.target.value)} className="results-input" placeholder="Province" disabled={!registrationOpen || snapshot?.competition.stage_mode === "finals"} />
-            <div className="grid gap-4 md:grid-cols-2">
-              <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="results-input" disabled={!registrationOpen || snapshot?.competition.stage_mode === "finals"}>
-                <option value="">Select category</option>
-                {snapshot?.registrationChoices.map((choice) => (
-                  <option key={choice.category.id} value={choice.category.id}>
-                    {choice.category.display_name}
-                  </option>
-                ))}
-              </select>
-              <select value={timeSlotId} onChange={(event) => setTimeSlotId(event.target.value)} className="results-input" disabled={!registrationOpen || snapshot?.competition.stage_mode === "finals" || !availableSlots.length}>
-                <option value="">{availableSlots.length ? "Select schedule block" : "No block required"}</option>
-                {availableSlots.map((slot) => (
-                  <option key={slot.id} value={slot.id} disabled={slot.remaining_capacity <= 0}>
-                    {slot.label} ({slot.remaining_capacity} left)
-                  </option>
-                ))}
-              </select>
+          ) : null}
+
+          {loading ? (
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="skeleton-block h-28 w-full" />
+              <div className="skeleton-block h-28 w-full" />
             </div>
-            <button type="submit" disabled={loading || !registrationOpen || snapshot?.competition.stage_mode === "finals"} className="results-primary-button">
-              {loading ? "Working..." : "Register and open scorecard"}
-            </button>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+              {step === 0 ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium text-slate-700">Climber name</span>
+                    <input value={name} onChange={(event) => setName(event.target.value)} className="results-input" placeholder="Jordan Chen" disabled={!registrationOpen || submitting} />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium text-slate-700">Climber number</span>
+                    <input value={climberNumber} onChange={(event) => setClimberNumber(event.target.value)} className="results-input" placeholder="047" disabled={!registrationOpen || submitting} />
+                  </label>
+                  <label className="space-y-2 md:col-span-2">
+                    <span className="text-sm font-medium text-slate-700">Province</span>
+                    <input value={province} onChange={(event) => setProvince(event.target.value)} className="results-input" placeholder="Nova Scotia" disabled={!registrationOpen || submitting} />
+                  </label>
+                </div>
+              ) : null}
+
+              {step === 1 ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {snapshot?.registrationChoices.map((choice) => (
+                    <button
+                      key={choice.category.id}
+                      type="button"
+                      onClick={() => setCategoryId(choice.category.id)}
+                      className={`results-admin-list-item ${categoryId === choice.category.id ? "results-admin-list-item-active" : ""}`}
+                      disabled={!registrationOpen || submitting}
+                    >
+                      <div>
+                        <div className="text-lg font-semibold text-slate-950">{choice.category.display_name}</div>
+                        <div className="mt-1 text-sm text-slate-600">{choice.slots.length ? `${choice.slots.length} available slots` : "No time slot required"}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {step === 2 ? (
+                availableSlots.length ? (
+                  <div className="grid gap-3">
+                    {availableSlots.map((slot) => (
+                      <button
+                        key={slot.id}
+                        type="button"
+                        onClick={() => setTimeSlotId(slot.id)}
+                        disabled={!registrationOpen || submitting || slot.remaining_capacity <= 0}
+                        className={`results-admin-list-item ${timeSlotId === slot.id ? "results-admin-list-item-active" : ""}`}
+                      >
+                        <div>
+                          <div className="text-lg font-semibold text-slate-950">{slot.label}</div>
+                          <div className="mt-1 text-sm text-slate-600">{slot.remaining_capacity} spots left</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="results-meta-card text-slate-600">This competition does not require a time slot selection.</div>
+                )
+              ) : null}
+
+              {step === 3 ? (
+                <div className="results-meta-card space-y-3">
+                  <div><span className="font-semibold text-slate-950">Name:</span> {name || "Not entered"}</div>
+                  <div><span className="font-semibold text-slate-950">Number:</span> {climberNumber || "Not entered"}</div>
+                  <div><span className="font-semibold text-slate-950">Province:</span> {province || "Not entered"}</div>
+                  <div><span className="font-semibold text-slate-950">Category:</span> {selectedChoice?.category.display_name || "Not selected"}</div>
+                  <div><span className="font-semibold text-slate-950">Time slot:</span> {availableSlots.find((slot) => slot.id === timeSlotId)?.label || (availableSlots.length ? "Not selected" : "No slot required")}</div>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap justify-between gap-3">
+                <button type="button" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0 || submitting} className="results-secondary-button">
+                  Back
+                </button>
+                {step < STEPS.length - 1 ? (
+                  <button type="button" onClick={() => validateCurrentStep() && setStep((current) => Math.min(STEPS.length - 1, current + 1))} disabled={!registrationOpen || submitting} className="results-primary-button">
+                    Continue
+                  </button>
+                ) : (
+                  <button type="submit" disabled={!registrationOpen || submitting} className="results-primary-button">
+                    {submitting ? "Working..." : "Register and open scorecard"}
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
         </section>
       </div>
     </main>

@@ -6,16 +6,29 @@ const supabaseBrowserKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-async function getStaffRole(request: NextRequest) {
-  if (!supabaseUrl || !supabaseBrowserKey) {
-    return null;
-  }
-
-  let response = NextResponse.next({
+function createMiddlewareResponse(request: NextRequest) {
+  return NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
+}
+
+function copyCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie);
+  });
+}
+
+async function getStaffRole(request: NextRequest) {
+  if (!supabaseUrl || !supabaseBrowserKey) {
+    return {
+      role: null,
+      response: createMiddlewareResponse(request),
+    };
+  }
+
+  let response = createMiddlewareResponse(request);
 
   const supabase = createServerClient(supabaseUrl, supabaseBrowserKey, {
     cookies: {
@@ -36,7 +49,10 @@ async function getStaffRole(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return null;
+    return {
+      role: null,
+      response,
+    };
   }
 
   const { data } = await supabase
@@ -46,10 +62,16 @@ async function getStaffRole(request: NextRequest) {
     .maybeSingle();
 
   if (data?.role === "admin" || data?.role === "judge") {
-    return data.role;
+    return {
+      role: data.role,
+      response,
+    };
   }
 
-  return null;
+  return {
+    role: null,
+    response,
+  };
 }
 
 export async function middleware(request: NextRequest) {
@@ -59,14 +81,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const role = await getStaffRole(request);
+  const { role, response } = await getStaffRole(request);
   if (role) {
-    return NextResponse.next();
+    return response;
   }
 
   const loginUrl = new URL("/staff/login", request.url);
   loginUrl.searchParams.set("redirect", `${pathname}${search}`);
-  return NextResponse.redirect(loginUrl);
+  const redirectResponse = NextResponse.redirect(loginUrl);
+  copyCookies(response, redirectResponse);
+  return redirectResponse;
 }
 
 export const config = {

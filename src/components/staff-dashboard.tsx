@@ -6,6 +6,7 @@ import Image from "next/image";
 import SiteHeader from "@/components/site-header";
 import ConfirmationModal from "@/components/confirmation-modal";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
+import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   advanceCompetitionToFinals,
   createCompetitionFromTemplate,
@@ -395,6 +396,25 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registerUrl || publicUrl)}`} alt="Registration QR code" width={160} height={160} unoptimized className="mt-4 rounded-[1.2rem] border border-slate-200 bg-white p-2" />
                 </div>
 
+                {snapshot?.rounds?.length ? (
+                  <div className="results-meta-card">
+                    <div className="results-kicker">Competition rounds</div>
+                    <div className="mt-4 space-y-3">
+                      {snapshot.rounds.map((round) => (
+                        <div key={round.id} className="results-admin-list-item">
+                          <div>
+                            <div className="text-lg font-semibold text-slate-950">{round.name}</div>
+                            <div className="mt-1 text-sm text-slate-600">
+                              {round.format} | {round.problem_count} problems
+                            </div>
+                          </div>
+                          <div className="results-chip">{round.status}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {finalsOrder.length ? (
                   <div className="results-meta-card">
                     <div className="results-kicker">Finals climbing order</div>
@@ -419,6 +439,19 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   <button type="button" onClick={persistDraft} disabled={isPending} className="results-primary-button">
                     {isPending ? "Saving..." : "Save competition"}
                   </button>
+                  {snapshot ? (
+                    <>
+                      <button type="button" onClick={() => downloadCsv(`${draft.slug}-qualifiers.csv`, buildQualifierCsv(snapshot))} className="results-secondary-button">
+                        Export qualifier CSV
+                      </button>
+                      <button type="button" onClick={() => downloadCsv(`${draft.slug}-finals.csv`, buildFinalsCsv(snapshot))} className="results-secondary-button" disabled={!snapshot.finalsLeaderboard.length}>
+                        Export finals CSV
+                      </button>
+                      <button type="button" onClick={() => window.open(buildDisplayPath(draft.slug), "_blank", "noopener,noreferrer")} className="results-secondary-button">
+                        Open print/display view
+                      </button>
+                    </>
+                  ) : null}
                   <button type="button" onClick={() => setConfirming({
                     title: "Advance to finals",
                     description: "This will create the finals field from the official standings and open finals scoring. You can undo it for 30 seconds.",
