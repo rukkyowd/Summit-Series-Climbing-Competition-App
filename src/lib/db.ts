@@ -74,6 +74,7 @@ export interface CompetitionSnapshot {
   qualifierLeaderboard: QualifierLeaderboardEntry[];
   finalsLeaderboard: FinalsLeaderboardEntry[];
   finalists: FinalistSelection[];
+  finalistsPersisted: boolean;
   registrationChoices: RegistrationChoice[];
   undoAvailability?: CompetitionUndoAvailability;
   rounds?: CompetitionRound[];
@@ -417,6 +418,7 @@ async function fetchFinalists(competitionIds: string[]) {
     .select("*")
     .in("competition_id", competitionIds)
     .order("display_category", { ascending: true })
+    .order("climbing_order", { ascending: true })
     .order("qualifier_rank", { ascending: true })
     .order("created_at", { ascending: true });
 
@@ -725,6 +727,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     qualifierLeaderboard,
     finalsLeaderboard,
     finalists: competitionFinalists,
+    finalistsPersisted: selectedFinalists.length > 0,
     registrationChoices: buildRegistrationChoices(competition, joined.map((climber) => climber)),
     undoAvailability,
     rounds,
@@ -972,6 +975,19 @@ export async function advanceCompetitionToFinals(competitionId: string) {
 
 export async function updateFinalistClimbingOrder(competitionId: string, orderedClimberIds: string[]) {
   ensureConfigured();
+
+  const { count, error: countError } = await supabase
+    .from("competition_finalists")
+    .select("climber_id", { count: "exact", head: true })
+    .eq("competition_id", competitionId);
+
+  if (countError) {
+    throw new Error(countError.message);
+  }
+
+  if (!count) {
+    throw new Error("Advance the competition to finals before changing the finals climbing order.");
+  }
 
   for (let index = 0; index < orderedClimberIds.length; index += 1) {
     const climberId = orderedClimberIds[index];

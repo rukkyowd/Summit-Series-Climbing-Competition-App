@@ -813,7 +813,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   </div>
                 ) : null}
 
-                {finalsOrder.length ? (
+                {finalsOrder.length && snapshot?.finalistsPersisted ? (
                   <div className="results-meta-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-4 space-y-3">
@@ -829,6 +829,13 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                ) : finalsOrder.length ? (
+                  <div className="results-meta-card">
+                    <div className="results-kicker">Finals climbing order</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      Projected finalists are visible, but the order only becomes editable after you advance the competition to finals.
                     </div>
                   </div>
                 ) : null}
