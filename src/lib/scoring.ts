@@ -1489,6 +1489,19 @@ export function formatDateLabel(value: string | null | undefined) {
 
 export function formatDateRange(startDate: string | null, endDate: string | null) {
   if (startDate && endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (
+      !Number.isNaN(start.getTime()) &&
+      !Number.isNaN(end.getTime()) &&
+      start.getFullYear() === end.getFullYear() &&
+      start.getMonth() === end.getMonth() &&
+      start.getDate() === end.getDate()
+    ) {
+      return formatDateLabel(startDate);
+    }
+
     return `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
   }
   return formatDateLabel(startDate ?? endDate);
