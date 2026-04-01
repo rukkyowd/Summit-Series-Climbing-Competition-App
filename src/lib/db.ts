@@ -1,4 +1,5 @@
 import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
+import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "./attempts";
 import {
   DEFAULT_COMPETITION,
   buildCompetitionPath,
@@ -1168,6 +1169,13 @@ export async function updateQualifierAttemptByStaff(
     throw new Error("Competition not found.");
   }
   assertStaffQualifierWindowOpen(competition);
+  const normalized = normalizeQualifierAttemptInput({
+    attemptCount,
+    topped,
+    zone: options?.zone,
+    attemptsToTop: options?.attemptsToTop,
+    attemptsToZone: options?.attemptsToZone,
+  });
 
   const { data, error } = await supabase
     .from("qualifier_attempts")
@@ -1176,11 +1184,11 @@ export async function updateQualifierAttemptByStaff(
         competition_id: competitionId,
         climber_id: climberId,
         climb_number: climbNumber,
-        attempt_count: attemptCount,
-        zone: options?.zone ?? topped,
-        topped,
-        attempts_to_top: topped ? options?.attemptsToTop ?? attemptCount : null,
-        attempts_to_zone: (options?.zone ?? topped) ? options?.attemptsToZone ?? attemptCount : null,
+        attempt_count: normalized.attemptCount,
+        zone: normalized.zone,
+        topped: normalized.topped,
+        attempts_to_top: normalized.attemptsToTop,
+        attempts_to_zone: normalized.attemptsToZone,
         entered_by: "staff",
       },
       { onConflict: "climber_id,climb_number" }
@@ -1237,6 +1245,12 @@ export async function updateFinalAttempt(
 
   const snapshot = await getCompetitionSnapshot(competitionId);
   assertFinalsWindowOpen(snapshot.competition);
+  const normalized = normalizeFinalAttemptInput({
+    top,
+    zone,
+    attemptsToTop,
+    attemptsToZone,
+  });
 
   if (!snapshot.finalists.some((entry) => entry.climber_id === climberId)) {
     throw new Error("Only finalists can receive finals scores.");
@@ -1249,10 +1263,10 @@ export async function updateFinalAttempt(
         competition_id: competitionId,
         climber_id: climberId,
         climb_number: climbNumber,
-        top,
-        zone,
-        attempts_to_top: top ? attemptsToTop : null,
-        attempts_to_zone: zone ? attemptsToZone : null,
+        top: normalized.top,
+        zone: normalized.zone,
+        attempts_to_top: normalized.attemptsToTop,
+        attempts_to_zone: normalized.attemptsToZone,
         entered_by: "staff",
       },
       { onConflict: "climber_id,climb_number" }

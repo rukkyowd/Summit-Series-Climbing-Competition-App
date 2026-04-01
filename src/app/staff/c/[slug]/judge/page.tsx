@@ -12,6 +12,7 @@ import {
   type CompetitionSnapshot,
 } from "@/lib/db";
 import { getAuthState, isStaffRole, type Profile } from "@/lib/auth";
+import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "@/lib/attempts";
 import { enqueueOfflineItem, readOfflineQueue, removeOfflineItem } from "@/lib/staff-offline-queue";
 import {
   buildFinalsLeaderboard,
@@ -266,11 +267,27 @@ export default function StaffJudgePage() {
 
     const key = `${climberId}:${selectedBoulder}`;
     const draft = qualifierDrafts[key] ?? { attemptCount: 0, topped: false };
+    const normalized = normalizeQualifierAttemptInput(draft);
+    setQualifierDrafts((current) => ({
+      ...current,
+      [key]: { attemptCount: normalized.attemptCount, topped: normalized.topped },
+    }));
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      await updateQualifierAttemptByStaff(snapshot.competition.id, climberId, selectedBoulder, draft.attemptCount, draft.topped);
+      await updateQualifierAttemptByStaff(
+        snapshot.competition.id,
+        climberId,
+        selectedBoulder,
+        normalized.attemptCount,
+        normalized.topped,
+        {
+          zone: normalized.zone,
+          attemptsToTop: normalized.attemptsToTop,
+          attemptsToZone: normalized.attemptsToZone,
+        }
+      );
       await updateClimberInSnapshot(climberId, (nextClimbers) => ({
         ...snapshot,
         climbers: nextClimbers,
@@ -285,8 +302,8 @@ export default function StaffJudgePage() {
           competitionId: snapshot.competition.id,
           climberId,
           climbNumber: selectedBoulder,
-          attemptCount: draft.attemptCount,
-          topped: draft.topped,
+          attemptCount: normalized.attemptCount,
+          topped: normalized.topped,
           createdAt: new Date().toISOString(),
         });
         setQueuedCount(readOfflineQueue().length);
@@ -310,6 +327,16 @@ export default function StaffJudgePage() {
 
     const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
     const draft = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
+    const normalized = normalizeFinalAttemptInput(draft);
+    setFinalsDrafts((state) => ({
+      ...state,
+      [key]: {
+        top: normalized.top,
+        zone: normalized.zone,
+        attemptsToTop: normalized.attemptsToTop ?? 0,
+        attemptsToZone: normalized.attemptsToZone ?? 0,
+      },
+    }));
     setSaving(true);
     setError("");
     setMessage("");
@@ -319,10 +346,10 @@ export default function StaffJudgePage() {
         snapshot.competition.id,
         selectedCell.climberId,
         selectedCell.climbNumber,
-        draft.top,
-        draft.zone,
-        draft.top ? draft.attemptsToTop : null,
-        draft.zone ? draft.attemptsToZone : null
+        normalized.top,
+        normalized.zone,
+        normalized.attemptsToTop,
+        normalized.attemptsToZone
       );
       await updateClimberInSnapshot(selectedCell.climberId, (nextClimbers) => ({
         ...snapshot,
@@ -338,10 +365,10 @@ export default function StaffJudgePage() {
           competitionId: snapshot.competition.id,
           climberId: selectedCell.climberId,
           climbNumber: selectedCell.climbNumber,
-          top: draft.top,
-          zone: draft.zone,
-          attemptsToTop: draft.top ? draft.attemptsToTop : null,
-          attemptsToZone: draft.zone ? draft.attemptsToZone : null,
+          top: normalized.top,
+          zone: normalized.zone,
+          attemptsToTop: normalized.attemptsToTop,
+          attemptsToZone: normalized.attemptsToZone,
           createdAt: new Date().toISOString(),
         });
         setQueuedCount(readOfflineQueue().length);
@@ -548,7 +575,12 @@ export default function StaffJudgePage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setQualifierDrafts((current) => ({ ...current, [key]: { ...draft, topped: true } }))}
+                            onClick={() =>
+                              setQualifierDrafts((current) => ({
+                                ...current,
+                                [key]: { ...draft, topped: true, attemptCount: Math.max(1, draft.attemptCount) },
+                              }))
+                            }
                             className={`results-secondary-button ${draft.topped ? "results-secondary-button-active" : ""}`}
                           >
                             Top
@@ -696,10 +728,10 @@ export default function StaffJudgePage() {
                   const current = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
                   return (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, zone: !current.zone, top: current.top && !current.zone ? false : current.top } }))} className={`results-secondary-button ${current.zone ? "results-secondary-button-active" : ""}`}>
+                      <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, zone: !current.zone, top: current.top && !current.zone ? false : current.top, attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button ${current.zone ? "results-secondary-button-active" : ""}`}>
                         {current.zone ? "Zone recorded" : "Record zone"}
                       </button>
-                      <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, top: !current.top, zone: !current.top ? true : current.zone } }))} className={`results-secondary-button ${current.top ? "results-secondary-button-active" : ""}`}>
+                      <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, top: !current.top, zone: !current.top ? true : current.zone, attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop, attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button ${current.top ? "results-secondary-button-active" : ""}`}>
                         {current.top ? "Top recorded" : "Record top"}
                       </button>
                       <input type="number" min={0} value={current.attemptsToZone} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to zone" />
