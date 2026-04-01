@@ -20,15 +20,17 @@ function FinalsResultCell({
   if (top) {
     return (
       <div className="finals-problem-box finals-problem-box-top">
-        <div className="finals-problem-box__top">{attemptsToTop ?? 1}</div>
-        <div className="finals-problem-box__bottom">{attemptsToZone ?? attemptsToTop ?? 1}</div>
+        <div className="finals-problem-box__top-attempt">{attemptsToTop ?? 1}</div>
+        <div className="finals-problem-box__zone-attempt">{attemptsToZone ?? attemptsToTop ?? 1}</div>
       </div>
     );
   }
 
   return (
-    <div className="finals-problem-box">
-      <div className="finals-problem-box__bottom finals-problem-box__bottom-zone">{attemptsToZone ?? 1}</div>
+    <div className="finals-problem-box finals-problem-box-zone-only">
+      <div className="finals-problem-box__zone-band">
+        <div className="finals-problem-box__zone-attempt">{attemptsToZone ?? 1}</div>
+      </div>
     </div>
   );
 }

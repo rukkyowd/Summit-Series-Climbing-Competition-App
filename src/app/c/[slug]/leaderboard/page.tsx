@@ -127,13 +127,13 @@ export default function CompetitionLeaderboardPage() {
               {finalsCategories.length > 1 ? (
                 <section className="results-card">
                   <div className="results-kicker">Finals categories</div>
-                  <div className="mt-4 flex flex-wrap gap-3">
+                  <div className="finals-category-picker mt-4">
                     {finalsCategories.map((category) => (
                       <button
                         key={category}
                         type="button"
                         onClick={() => setSelectedFinalsCategory(category)}
-                        className={category === selectedFinalsCategory ? "results-secondary-button-active" : "results-secondary-button"}
+                        className={category === selectedFinalsCategory ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                       >
                         {category}
                       </button>

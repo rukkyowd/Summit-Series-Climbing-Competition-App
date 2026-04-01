@@ -20,3 +20,10 @@ Notes:
 - The youth competition advances to finals separately.
 - Finals eligibility is driven by the competition's `finals_eligible_age_groups` setting.
 - These scripts assume the multi-competition schema from `supabase-schema.sql` is already applied.
+- Registration, qualifier attempts, and finals attempts are intentionally seeded with much higher variation now:
+  - larger name pool
+  - broader province/category mix
+  - assigned schedule blocks
+  - uneven climb logging
+  - more realistic top / no-top / zone-only spread
+  - less repetitive leaderboard clustering

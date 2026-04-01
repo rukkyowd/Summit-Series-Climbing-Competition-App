@@ -425,25 +425,26 @@ body::after {
 .finals-table-header {
   align-items: center;
   gap: 1rem;
-  padding: 1.1rem 1.5rem;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
-  background: #f4f0e6;
-  color: rgba(15, 23, 42, 0.56);
-  font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+  margin: 0.9rem;
+  padding: 1rem 1.15rem;
+  border-radius: 1.2rem;
+  background: #090909;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .finals-table-row {
   gap: 1rem;
-  padding: 1.15rem 1.5rem;
-  min-height: 5.45rem;
+  padding: 1.15rem 1.35rem;
+  min-height: 5.8rem;
   transition: background-color 160ms ease;
 }
 
 .finals-table-row:hover {
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .finals-rank {
@@ -454,8 +455,8 @@ body::after {
 }
 
 .finals-athlete-name {
-  font-size: 1.12rem;
-  font-weight: 500;
+  font-size: 1.18rem;
+  font-weight: 700;
   line-height: 1.15;
   color: rgba(15, 23, 42, 0.96);
 }
@@ -463,7 +464,9 @@ body::after {
 .finals-athlete-subline {
   margin-top: 0.3rem;
   font-size: 0.72rem;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: rgba(15, 23, 42, 0.48);
 }
 
@@ -476,56 +479,72 @@ body::after {
 }
 
 .finals-problem-box {
-  width: 3.1rem;
-  height: 3.4rem;
-  border-radius: 0.7rem;
-  border: 1px solid rgba(120, 113, 108, 0.22);
+  position: relative;
+  width: 2.95rem;
+  height: 3.55rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(15, 23, 42, 0.14);
   background: #fffefb;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
-.finals-problem-box__top,
-.finals-problem-box__bottom {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 0.35rem;
+.finals-problem-box__top-attempt,
+.finals-problem-box__zone-attempt {
+  position: absolute;
   font-size: 1rem;
   font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
 }
 
 .finals-problem-box-empty {
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   font-weight: 400;
   color: rgba(15, 23, 42, 0.42);
 }
 
-.finals-problem-box__top {
-  flex: 1;
-  background: #2fc15a;
-  color: #ffffff;
-}
-
-.finals-problem-box__bottom {
-  height: 1.15rem;
-  background: #2fc15a;
-  color: #ffffff;
-}
-
 .finals-problem-box-top {
+  background: #35bf56;
+  border-color: rgba(53, 191, 86, 0.35);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.45),
-    0 8px 18px rgba(47, 193, 90, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 6px 18px rgba(53, 191, 86, 0.18);
 }
 
-.finals-problem-box__bottom-zone {
-  height: 1.25rem;
+.finals-problem-box__top-attempt {
+  top: 0.42rem;
+  left: 0.48rem;
+}
+
+.finals-problem-box__zone-attempt {
+  right: 0.42rem;
+  bottom: 0.35rem;
+}
+
+.finals-problem-box-zone-only {
+  justify-content: flex-end;
+  background: #fffefb;
+}
+
+.finals-problem-box__zone-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.2rem;
+  background: #35bf56;
+  border-top: 1px solid rgba(53, 191, 86, 0.55);
+}
+
+.finals-problem-box-zone-only .finals-problem-box__zone-attempt {
+  bottom: 0.22rem;
 }
 
 .finals-metric {
@@ -540,6 +559,40 @@ body::after {
 
 .finals-metric-dim {
   color: rgba(15, 23, 42, 0.26);
+}
+
+.finals-category-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.finals-category-pill {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #ffffff;
+  color: #475569;
+  border-radius: 9999px;
+  padding: 0.85rem 1.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.finals-category-pill:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #1e293b;
+}
+
+.finals-category-pill-active {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(224, 242, 254, 0.95);
+  color: #0f172a;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
 .shake {
