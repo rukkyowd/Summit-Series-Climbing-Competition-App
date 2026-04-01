@@ -126,6 +126,37 @@ export default function CompetitionOverviewPage() {
           <>
             <CompetitionHero competition={snapshot.competition} />
 
+            {finalsActive ? (
+              finalsRows.length ? (
+                <>
+                  <section className="results-card">
+                    <div className="results-kicker">Finals results</div>
+                    <h2 className="mt-2 text-3xl font-semibold text-slate-950">Final standings</h2>
+                    <div className="mt-3 text-sm text-slate-600">
+                      Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
+                    </div>
+                    <div className="finals-category-picker mt-5">
+                      {finalsCategories.map((category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          onClick={() => setSelectedFinalsCategory(category)}
+                          className={category === selectedFinalsCategory ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  <FinalsResultsTable title={selectedFinalsCategory} rows={finalsRows} />
+                </>
+              ) : (
+                <section className="results-card text-slate-600">
+                  Finals are active, but no finals scores have been entered yet.
+                </section>
+              )
+            ) : null}
+
             <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
               <section className="results-card">
                 <div className="results-kicker">Live schedule</div>
@@ -250,36 +281,6 @@ export default function CompetitionOverviewPage() {
               </section>
             </section>
 
-            {finalsActive ? (
-              finalsRows.length ? (
-                <>
-                  <section className="results-card">
-                    <div className="results-kicker">Finals results</div>
-                    <h2 className="mt-2 text-3xl font-semibold text-slate-950">Final standings</h2>
-                    <div className="mt-3 text-sm text-slate-600">
-                      Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
-                    </div>
-                    <div className="finals-category-picker mt-5">
-                      {finalsCategories.map((category) => (
-                        <button
-                          key={category}
-                          type="button"
-                          onClick={() => setSelectedFinalsCategory(category)}
-                          className={category === selectedFinalsCategory ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
-                        >
-                          {category}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                  <FinalsResultsTable title={selectedFinalsCategory} rows={finalsRows} />
-                </>
-              ) : (
-                <section className="results-card text-slate-600">
-                  Finals are active, but no finals scores have been entered yet.
-                </section>
-              )
-            ) : null}
           </>
         ) : loading ? (
           <section className="results-card text-slate-600">Loading competition...</section>
