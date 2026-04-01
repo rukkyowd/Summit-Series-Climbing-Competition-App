@@ -10,9 +10,9 @@ import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   advanceCompetitionToFinals,
   createCompetitionFromTemplate,
+  deleteCompetition,
   getCompetitionSnapshot,
   listCompetitionSummaries,
-  resetCompetition,
   saveCompetitionConfig,
   setCompetitionPhase,
   setCompetitionStatus,
@@ -28,18 +28,26 @@ import {
   DEFAULT_QUALIFIER_COUNTING_CLIMBS,
   DEFAULT_TOTAL_CLIMBS,
   FORMAT_TEMPLATES,
+  SCHEDULE_PHASE_OPTIONS,
   buildCompetitionPath,
   buildDisplayPath,
   buildStaffCompetitionPath,
   formatCompetitionPhaseLabel,
   formatDateTimeLabel,
+  formatSchedulePhaseLabel,
+  formatUsesSelfScoredQualifiers,
   getNextCompetitionPhase,
   getPreviousCompetitionPhase,
   getRecommendedFinalsCutoff,
   getRecommendedQualifierClimbCount,
   getRecommendedQualifierCountingClimbs,
+  getRegistrationAssignmentLabel,
+  getSchedulePhaseDescription,
+  isQualifierEligibleCategory,
   slugifyCompetitionName,
   type Competition,
+  type CompetitionScheduleBlock,
+  type SchedulePhaseType,
 } from "@/lib/scoring";
 
 function cloneCompetition(competition: Competition): Competition {
@@ -59,6 +67,72 @@ function toggleAgeGroup(current: string[], ageGroup: string) {
   }
 
   return [...current, ageGroup];
+}
+
+function createScheduleBlockId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `schedule-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+type ScheduleBlockTemplate = {
+  label: string;
+  phase_type: SchedulePhaseType;
+  audience_label: string;
+  capacity?: number;
+  eligible_age_groups?: string[];
+};
+
+const QUALIFIER_TEMPLATE_GROUPS = [
+  ["Youth D", "Youth C"],
+  ["Youth B", "Youth A"],
+  ["Junior", "Open"],
+  ["Rec", "Masters"],
+] as const;
+
+function formatAgeGroupBandLabel(ageGroups: readonly string[]) {
+  return ageGroups.join(" / ");
+}
+
+function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTemplate[] {
+  const assignmentLabel = getRegistrationAssignmentLabel(competition);
+  const qualifierBandTemplates = QUALIFIER_TEMPLATE_GROUPS
+    .map((ageGroups) => ageGroups.filter((ageGroup) => competition.qualifier_eligible_age_groups.includes(ageGroup)))
+    .filter((ageGroups) => ageGroups.length > 0)
+    .map((ageGroups) => ({
+      label: formatUsesSelfScoredQualifiers(competition.format)
+        ? `${formatAgeGroupBandLabel(ageGroups)} ${assignmentLabel}`
+        : `${formatAgeGroupBandLabel(ageGroups)} ${assignmentLabel}`,
+      phase_type: "qualifier_round" as const,
+      audience_label: formatAgeGroupBandLabel(ageGroups),
+      capacity: competition.max_climbers,
+      eligible_age_groups: [...ageGroups],
+    }));
+
+  if (formatUsesSelfScoredQualifiers(competition.format)) {
+    return [
+      { label: "Check-in", phase_type: "check_in", audience_label: "All climbers", capacity: competition.max_climbers },
+      { label: `${assignmentLabel} 1`, phase_type: "qualifier_round", audience_label: "Scramble window", capacity: competition.max_climbers },
+      { label: `${assignmentLabel} 2`, phase_type: "qualifier_round", audience_label: "Scramble window", capacity: competition.max_climbers },
+      ...qualifierBandTemplates,
+      { label: "Wall reset", phase_type: "wall_reset", audience_label: "Routesetting", capacity: competition.max_climbers },
+      { label: "Results / Awards", phase_type: "results", audience_label: "All climbers", capacity: competition.max_climbers },
+    ];
+  }
+
+  return [
+    { label: "Check-in", phase_type: "check_in", audience_label: "All athletes", capacity: competition.max_climbers },
+    { label: "Technical meeting", phase_type: "technical_meeting", audience_label: "Athletes and coaches", capacity: competition.max_climbers },
+    ...qualifierBandTemplates,
+    { label: `${assignmentLabel} A`, phase_type: "qualifier_round", audience_label: "Qualifier wave", capacity: competition.max_climbers },
+    { label: `${assignmentLabel} B`, phase_type: "qualifier_round", audience_label: "Qualifier wave", capacity: competition.max_climbers },
+    { label: "Isolation", phase_type: "isolation", audience_label: "Finalists", capacity: competition.max_climbers },
+    { label: "Observation", phase_type: "observation", audience_label: "Finalists", capacity: competition.max_climbers },
+    { label: "Finals", phase_type: "finals_round", audience_label: "Finalists", capacity: competition.max_climbers },
+    { label: "Results / Awards", phase_type: "results", audience_label: "All athletes", capacity: competition.max_climbers },
+  ];
 }
 
 export default function StaffDashboard({ initialCompetitionSlug }: { initialCompetitionSlug?: string }) {
@@ -141,6 +215,12 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
   );
+  const scheduleTemplates = useMemo(() => (draft ? buildScheduleBlockTemplates(draft) : []), [draft]);
+  const qualifierCategories = useMemo(
+    () =>
+      draft?.categories.filter((category) => isQualifierEligibleCategory(draft, category.age_group)) ?? [],
+    [draft]
+  );
 
   const refreshSelectedSnapshot = async (competitionId: string) => {
     const nextSnapshot = await getCompetitionSnapshot(competitionId);
@@ -187,6 +267,94 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     await updateFinalistClimbingOrder(draft.id, next.map((entry) => entry.climber_id));
     await refreshSelectedSnapshot(draft.id);
     setMessage("Finals climbing order updated.");
+  };
+
+  const updateScheduleBlock = (blockId: string, updater: (block: CompetitionScheduleBlock) => CompetitionScheduleBlock) => {
+    if (!draft) {
+      return;
+    }
+
+    setDraft({
+      ...draft,
+      schedule_blocks: draft.schedule_blocks.map((block) => (block.id === blockId ? updater(block) : block)),
+    });
+  };
+
+  const addScheduleBlockFromTemplate = (template: ScheduleBlockTemplate) => {
+    if (!draft) {
+      return;
+    }
+
+    const eligibleCategoryIds =
+      template.phase_type === "qualifier_round" || template.phase_type === "custom"
+        ? template.eligible_age_groups?.length
+          ? qualifierCategories
+              .filter((category) => template.eligible_age_groups?.includes(category.age_group))
+              .map((category) => category.id)
+          : qualifierCategories.map((category) => category.id)
+        : [];
+
+    setDraft({
+      ...draft,
+      schedule_blocks: [
+        ...draft.schedule_blocks,
+        {
+          id: createScheduleBlockId(),
+          competition_id: draft.id,
+          label: template.label,
+          phase_type: template.phase_type,
+          audience_label: template.audience_label,
+          is_active: draft.schedule_blocks.length === 0,
+          start_time: "",
+          end_time: "",
+          capacity: template.capacity ?? draft.max_climbers,
+          eligible_category_ids: eligibleCategoryIds,
+        },
+      ],
+    });
+  };
+
+  const removeScheduleBlock = (blockId: string) => {
+    if (!draft) {
+      return;
+    }
+
+    const remainingBlocks = draft.schedule_blocks.filter((block) => block.id !== blockId);
+    setDraft({
+      ...draft,
+      schedule_blocks: remainingBlocks.map((block, index) =>
+        index === 0 && !remainingBlocks.some((entry) => entry.is_active)
+          ? { ...block, is_active: true }
+          : block
+      ),
+    });
+  };
+
+  const toggleScheduleBlockCategory = (blockId: string, categoryId: string) => {
+    if (!draft) {
+      return;
+    }
+
+    updateScheduleBlock(blockId, (block) => ({
+      ...block,
+      eligible_category_ids: block.eligible_category_ids.includes(categoryId)
+        ? block.eligible_category_ids.filter((entry) => entry !== categoryId)
+        : [...block.eligible_category_ids, categoryId],
+    }));
+  };
+
+  const setActiveScheduleBlock = (blockId: string) => {
+    if (!draft) {
+      return;
+    }
+
+    setDraft({
+      ...draft,
+      schedule_blocks: draft.schedule_blocks.map((block) => ({
+        ...block,
+        is_active: block.id === blockId,
+      })),
+    });
   };
 
   if (loading && !draft) {
@@ -434,6 +602,185 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                 </div>
 
                 <div className="results-meta-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="results-kicker">Schedule blocks</div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        Add ready-made blocks, then adjust the labels, times, and climbing windows for the day.
+                      </div>
+                    </div>
+                    <div className="results-chip">{draft.schedule_blocks.length} blocks</div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {scheduleTemplates.map((template) => (
+                      <button
+                        key={`${template.phase_type}-${template.label}`}
+                        type="button"
+                        onClick={() => addScheduleBlockFromTemplate(template)}
+                        className="results-secondary-button"
+                      >
+                        Add {template.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 space-y-4">
+                    {draft.schedule_blocks.length ? (
+                      draft.schedule_blocks.map((block) => {
+                        const supportsCategoryFilters =
+                          block.phase_type === "qualifier_round" || block.phase_type === "custom";
+
+                        return (
+                          <div key={block.id} className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="text-lg font-semibold text-slate-950">{block.label || "Untitled block"}</div>
+                                <div className="mt-1 text-sm text-slate-600">
+                                  {formatSchedulePhaseLabel(block.phase_type)} / {getSchedulePhaseDescription(block.phase_type)}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveScheduleBlock(block.id)}
+                                  className={block.is_active ? "results-primary-button" : "results-secondary-button"}
+                                >
+                                  {block.is_active ? "Live block" : "Set live"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeScheduleBlock(block.id)}
+                                  className="results-secondary-button"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Label</span>
+                                <input
+                                  value={block.label}
+                                  onChange={(event) => updateScheduleBlock(block.id, (current) => ({ ...current, label: event.target.value }))}
+                                  className="results-input"
+                                  placeholder="Qualifier A"
+                                />
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Block type</span>
+                                <select
+                                  value={block.phase_type}
+                                  onChange={(event) =>
+                                    updateScheduleBlock(block.id, (current) => ({
+                                      ...current,
+                                      phase_type: event.target.value as SchedulePhaseType,
+                                      eligible_category_ids:
+                                        event.target.value === "qualifier_round" || event.target.value === "custom"
+                                          ? current.eligible_category_ids.length
+                                            ? current.eligible_category_ids
+                                            : qualifierCategories.map((category) => category.id)
+                                          : [],
+                                    }))
+                                  }
+                                  className="results-input"
+                                >
+                                  {SCHEDULE_PHASE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Audience</span>
+                                <input
+                                  value={block.audience_label}
+                                  onChange={(event) => updateScheduleBlock(block.id, (current) => ({ ...current, audience_label: event.target.value }))}
+                                  className="results-input"
+                                  placeholder="Youth categories"
+                                />
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Start time</span>
+                                <input
+                                  value={block.start_time ?? ""}
+                                  onChange={(event) => updateScheduleBlock(block.id, (current) => ({ ...current, start_time: event.target.value }))}
+                                  className="results-input"
+                                  placeholder="9:00 AM"
+                                />
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">End time</span>
+                                <input
+                                  value={block.end_time ?? ""}
+                                  onChange={(event) => updateScheduleBlock(block.id, (current) => ({ ...current, end_time: event.target.value }))}
+                                  className="results-input"
+                                  placeholder="11:00 AM"
+                                />
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Capacity</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={block.capacity}
+                                  onChange={(event) =>
+                                    updateScheduleBlock(block.id, (current) => ({
+                                      ...current,
+                                      capacity: Math.max(1, Number(event.target.value) || draft.max_climbers),
+                                    }))
+                                  }
+                                  className="results-input"
+                                />
+                              </label>
+                            </div>
+
+                            {supportsCategoryFilters ? (
+                              <div className="mt-4">
+                                <div className="text-sm font-medium text-slate-700">Registration categories for this block</div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateScheduleBlock(block.id, (current) => ({
+                                        ...current,
+                                        eligible_category_ids: [],
+                                      }))
+                                    }
+                                    className={!block.eligible_category_ids.length ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                                  >
+                                    All qualifier categories
+                                  </button>
+                                  {qualifierCategories.map((category) => {
+                                    const active = block.eligible_category_ids.includes(category.id);
+                                    return (
+                                      <button
+                                        key={`${block.id}-${category.id}`}
+                                        type="button"
+                                        onClick={() => toggleScheduleBlockCategory(block.id, category.id)}
+                                        className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                                      >
+                                        {category.display_name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-[1.4rem] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-600">
+                        No schedule blocks yet. Start with a template above, then edit the labels and times.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="results-meta-card">
                   <div className="results-kicker">Share links</div>
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                     <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl}</div>
@@ -515,16 +862,19 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                     },
                   })} className="results-secondary-button">Advance to finals</button>
                   <button type="button" onClick={() => setConfirming({
-                    title: "Reset competition",
-                    description: "This clears registrations and scores, restores default categories, and leaves a 30 second undo window.",
-                    confirmLabel: "Reset",
+                    title: "Delete competition",
+                    description: "This permanently deletes the competition and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
+                    confirmLabel: "Delete",
                     expectedValue: draft.name,
                     action: async () => {
-                      await resetCompetition(draft.id);
-                      await refreshAfterChange(draft.id);
-                      setMessage("Competition reset.");
+                      await deleteCompetition(draft.id);
+                      setDraft(null);
+                      setSnapshot(null);
+                      setSelectedCompetitionId("");
+                      await refreshAfterChange();
+                      setMessage("Competition deleted.");
                     },
-                  })} className="results-secondary-button">Reset competition</button>
+                  })} className="results-secondary-button">Delete competition</button>
                 </div>
               </div>
             ) : (
