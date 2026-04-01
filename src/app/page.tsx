@@ -52,6 +52,7 @@ export default function HomePage() {
 
   const featured = filtered.find((summary) => summary.live_now) ?? filtered[0] ?? null;
   const featuredLifecycle = featured ? getCompetitionLifecycleLabel(featured.competition) : null;
+  const featuredLiveNow = featuredLifecycle === "Live / Ongoing";
 
   return (
     <main className="results-page">
@@ -95,7 +96,15 @@ export default function HomePage() {
           {featured ? (
             <div className="results-feature mt-6">
               <div className="results-kicker text-white/80">Featured event</div>
-              <div className="mt-4 max-w-md rounded-[1.6rem] bg-white/90 p-5 shadow-xl">
+              <div className="results-feature-card mt-4 max-w-md">
+                {featuredLiveNow ? (
+                  <>
+                    <span className="results-live-indicator results-live-indicator--featured" aria-hidden="true">
+                      <span className="results-live-indicator__dot" />
+                    </span>
+                    <span className="sr-only">{featuredLifecycle}</span>
+                  </>
+                ) : null}
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
                   {featured.competition.discipline_label}
                 </div>
