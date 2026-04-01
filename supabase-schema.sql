@@ -175,7 +175,7 @@ create table public.climbers (
   access_token text not null unique,
   access_token_created_at timestamptz not null default now(),
   registered_at timestamptz not null default now(),
-  foreign key (competition_id, category_id) references public.competition_categories(competition_id, id) on delete set null,
+  foreign key (competition_id, category_id) references public.competition_categories(competition_id, id),
   unique (competition_id, climber_number)
 );
 
@@ -202,7 +202,7 @@ create table public.competition_finalists (
   qualifier_rank integer not null,
   advanced_with_tie boolean not null default false,
   created_at timestamptz not null default now(),
-  foreign key (competition_id, category_id) references public.competition_categories(competition_id, id) on delete set null,
+  foreign key (competition_id, category_id) references public.competition_categories(competition_id, id),
   primary key (competition_id, climber_id)
 );
 

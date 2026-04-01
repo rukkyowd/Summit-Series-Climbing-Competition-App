@@ -135,13 +135,14 @@ before update on public.competitions
 for each row execute procedure public.set_updated_at();
 
 create table public.competition_categories (
-  id text primary key,
+  id text not null,
   competition_id uuid not null references public.competitions(id) on delete cascade,
   gender_division text not null,
   age_group text not null,
   display_name text not null,
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
+  primary key (competition_id, id),
   unique (competition_id, gender_division, age_group)
 );
 
@@ -174,6 +175,7 @@ create table public.climbers (
   access_token text not null unique,
   access_token_created_at timestamptz not null default now(),
   registered_at timestamptz not null default now(),
+  foreign key (competition_id, category_id) references public.competition_categories(competition_id, id),
   unique (competition_id, climber_number)
 );
 
@@ -200,8 +202,27 @@ create table public.competition_finalists (
   qualifier_rank integer not null,
   advanced_with_tie boolean not null default false,
   created_at timestamptz not null default now(),
+  foreign key (competition_id, category_id) references public.competition_categories(competition_id, id),
   primary key (competition_id, climber_id)
 );
+
+create index competition_categories_sort_idx
+on public.competition_categories (competition_id, sort_order, gender_division, age_group);
+
+create index competition_schedule_blocks_competition_idx
+on public.competition_schedule_blocks (competition_id, is_active, start_time);
+
+create index climbers_competition_idx
+on public.climbers (competition_id, registered_at, display_category);
+
+create index qualifier_attempts_competition_idx
+on public.qualifier_attempts (competition_id, climber_id, climb_number);
+
+create index competition_finalists_competition_idx
+on public.competition_finalists (competition_id, display_category, qualifier_rank);
+
+create index final_attempts_competition_idx
+on public.final_attempts (competition_id, climber_id, climb_number);
 
 create table public.final_attempts (
   id uuid primary key default gen_random_uuid(),
