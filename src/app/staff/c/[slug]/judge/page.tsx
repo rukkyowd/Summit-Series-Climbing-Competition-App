@@ -58,6 +58,7 @@ export default function StaffJudgePage() {
   const [message, setMessage] = useState("");
   const [queuedCount, setQueuedCount] = useState(0);
   const flushingQueueRef = useRef(false);
+  const finalsGridViewportRef = useRef<HTMLDivElement | null>(null);
 
   const flushOfflineQueue = useCallback(async () => {
     if (flushingQueueRef.current) {
@@ -245,6 +246,23 @@ export default function StaffJudgePage() {
       setSelectedCell(firstCell);
     }
   }, [finalists, finalsReady, selectedCell, snapshot?.competition.finals_problem_count, stage]);
+
+  useEffect(() => {
+    if (stage !== "finals" || !selectedCell) {
+      return;
+    }
+
+    const target = document.getElementById(`finals-cell-${selectedCell.climberId}-${selectedCell.climbNumber}`);
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [selectedCell, stage]);
 
   const updateClimberInSnapshot = async (climberId: string, updater: (nextClimbers: ClimberWithAttempts[]) => CompetitionSnapshot) => {
     if (!snapshot) {
@@ -645,7 +663,7 @@ export default function StaffJudgePage() {
               <div className="results-meta-card mt-5 text-slate-600">{finalsBlockedMessage}</div>
             ) : (
               <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
-                <div className="overflow-x-auto">
+                <div ref={finalsGridViewportRef} className="overflow-x-auto">
                   <div className="min-w-[900px]">
                   <div
                     className="grid gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"
@@ -683,12 +701,13 @@ export default function StaffJudgePage() {
                           const active = selectedCell?.climberId === climber.id && selectedCell?.climbNumber === climb.number;
                           return (
                             <button
+                              id={`finals-cell-${climber.id}-${climb.number}`}
                               key={climb.number}
                               type="button"
                               onClick={() => setSelectedCell({ climberId: climber.id, climbNumber: climb.number })}
                               className={`min-h-24 rounded-[1.2rem] border px-3 py-3 text-sm font-semibold transition ${
                                 active
-                                  ? "border-sky-300 bg-sky-50 text-sky-700"
+                                  ? "border-sky-300 bg-sky-50 text-sky-700 shadow-[0_12px_24px_rgba(14,116,144,0.12)]"
                                   : draft.top
                                     ? "border-green-200 bg-green-50 text-green-700"
                                     : draft.zone
@@ -700,6 +719,11 @@ export default function StaffJudgePage() {
                               <div className="mt-2 text-xs font-medium opacity-70">
                                 {draft.top ? `${formatFinalPoints(25 - Math.max(0, (draft.attemptsToTop || 1) - 1) * 0.1)} pts` : draft.zone ? `${formatFinalPoints(10 - Math.max(0, (draft.attemptsToZone || 1) - 1) * 0.1)} pts` : "Tap to edit"}
                               </div>
+                              {active ? (
+                                <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-600">
+                                  Editing now
+                                </div>
+                              ) : null}
                             </button>
                           );
                         })}
@@ -713,6 +737,9 @@ export default function StaffJudgePage() {
                     <div className="results-kicker">Finals editor</div>
                     {selectedFinalist && selectedCell ? (
                       <>
+                        <div className="mt-3 inline-flex rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
+                          Linked to highlighted cell
+                        </div>
                         <div className="mt-2 text-2xl font-semibold text-slate-950">
                           {selectedFinalist.name} / Boulder {selectedCell.climbNumber}
                         </div>
@@ -769,46 +796,66 @@ export default function StaffJudgePage() {
             )}
 
             {selectedFinalist && selectedCell && finalsReady ? (
-              <div className="results-meta-card mt-5 xl:hidden">
-                <div className="results-kicker">Edit finals cell</div>
-                <div className="mt-2 text-2xl font-semibold text-slate-950">
-                  {selectedFinalist.name} / Boulder {selectedCell.climbNumber}
-                </div>
-                <div className="mt-2 text-sm text-slate-600">
-                  Judges can score finals here one cell at a time. Zone can stand alone, and recording a top automatically keeps the zone on.
-                </div>
-                {!finalsScoringOpen ? (
-                  <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                    {finalsBlockedMessage}
+              <div className="fixed inset-0 z-[70] xl:hidden">
+                <button
+                  type="button"
+                  aria-label="Close finals editor"
+                  className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]"
+                  onClick={() => setSelectedCell(null)}
+                />
+                <div className="absolute inset-x-0 bottom-0 max-h-[85svh] overflow-y-auto rounded-t-[1.8rem] border border-slate-200 bg-white px-4 pb-6 pt-4 shadow-[0_-18px_48px_rgba(15,23,42,0.22)]">
+                  <div className="mx-auto h-1.5 w-14 rounded-full bg-slate-200" />
+                  <div className="mt-4 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="results-kicker">Edit finals cell</div>
+                      <div className="mt-2 text-2xl font-semibold text-slate-950">
+                        {selectedFinalist.name} / Boulder {selectedCell.climbNumber}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCell(null)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"
+                    >
+                      Close
+                    </button>
                   </div>
-                ) : null}
-                {(() => {
-                  const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
-                  const current = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
-                  return (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, zone: !current.zone, top: current.top && !current.zone ? false : current.top, attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button ${current.zone ? "results-secondary-button-active" : ""}`}>
-                        {current.zone ? "Zone recorded" : "Record zone"}
-                      </button>
-                      <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, top: !current.top, zone: !current.top ? true : current.zone, attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop, attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button ${current.top ? "results-secondary-button-active" : ""}`}>
-                        {current.top ? "Top recorded" : "Record top"}
-                      </button>
-                      <input type="number" min={0} value={current.attemptsToZone} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to zone" />
-                      <input type="number" min={0} value={current.attemptsToTop} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to top" />
-                      <div className="sm:col-span-2 flex items-center justify-between gap-3">
-                        <div className="text-sm text-slate-600">Live points: {formatFinalPoints((current.top ? 25 - Math.max(0, current.attemptsToTop - 1) * 0.1 : current.zone ? 10 - Math.max(0, current.attemptsToZone - 1) * 0.1 : 0))}</div>
+                  <div className="mt-3 text-sm text-slate-600">
+                    Judges can score finals here one cell at a time. Zone can stand alone, and recording a top automatically keeps the zone on.
+                  </div>
+                  {!finalsScoringOpen ? (
+                    <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                      {finalsBlockedMessage}
+                    </div>
+                  ) : null}
+                  {(() => {
+                    const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
+                    const current = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
+                    return (
+                      <div className="mt-5 grid gap-3">
+                        <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, zone: !current.zone, top: current.top && !current.zone ? false : current.top, attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.zone ? "results-secondary-button-active" : ""}`}>
+                          {current.zone ? "Zone recorded" : "Record zone"}
+                        </button>
+                        <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, top: !current.top, zone: !current.top ? true : current.zone, attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop, attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.top ? "results-secondary-button-active" : ""}`}>
+                          {current.top ? "Top recorded" : "Record top"}
+                        </button>
+                        <input type="number" min={0} value={current.attemptsToZone} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to zone" />
+                        <input type="number" min={0} value={current.attemptsToTop} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to top" />
+                        <div className="rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                          Live points: {formatFinalPoints((current.top ? 25 - Math.max(0, current.attemptsToTop - 1) * 0.1 : current.zone ? 10 - Math.max(0, current.attemptsToZone - 1) * 0.1 : 0))}
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           <button type="button" onClick={clearFinalsCell} className="results-secondary-button">
                             Clear
                           </button>
-                          <button type="button" onClick={() => void saveFinals()} disabled={saving || !finalsScoringOpen} className="results-primary-button">
+                          <button type="button" onClick={() => void saveFinals()} disabled={saving || !finalsScoringOpen} className="results-primary-button flex-1">
                             Save finals cell
                           </button>
                         </div>
                       </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
+                </div>
               </div>
             ) : null}
           </section>
