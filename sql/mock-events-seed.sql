@@ -1,16 +1,294 @@
 begin;
 
+-- Compatibility bootstrap for databases that have the multi-competition schema
+-- but have not applied the scorecard overhaul migration yet.
+do $$
+begin
+  if to_regclass('public.competitions') is null then
+    raise exception 'Missing public.competitions. Run the base schema first.';
+  end if;
+
+  execute 'alter table public.competitions add column if not exists current_phase text';
+
+  execute $sql$
+    update public.competitions
+    set current_phase = case
+      when stage_mode = 'finals' then 'finals_open'
+      else 'qualifier_open'
+    end
+    where current_phase is null
+  $sql$;
+
+  execute $sql$
+    alter table public.competitions
+    alter column current_phase set default 'qualifier_open'
+  $sql$;
+
+  execute $sql$
+    create table if not exists public.competition_rounds (
+      id uuid primary key default gen_random_uuid(),
+      competition_id uuid not null references public.competitions(id) on delete cascade,
+      round_number integer not null,
+      name text not null,
+      round_type text not null check (round_type in ('qualifier', 'semifinal', 'finals')),
+      format text not null check (format in ('scramble', 'five_on_five_off', 'flash_format', 'ifsc_finals_format')),
+      status text not null default 'pending' check (status in ('pending', 'active', 'scoring', 'closed', 'results')),
+      problem_count integer not null default 4 check (problem_count between 1 and 8),
+      counting_climbs integer,
+      finals_cutoff integer check (finals_cutoff in (6, 8)),
+      started_at timestamptz,
+      closed_at timestamptz,
+      created_at timestamptz not null default now(),
+      unique (competition_id, round_number)
+    )
+  $sql$;
+
+  if to_regclass('public.competition_finalists') is not null then
+    execute 'alter table public.competition_finalists add column if not exists climbing_order integer';
+    execute 'update public.competition_finalists set climbing_order = qualifier_rank where climbing_order is null';
+  end if;
+end $$;
+
+create or replace function public.compute_qualifier_standings(p_competition_id uuid)
+returns table (
+  climber_id uuid,
+  name text,
+  climber_number text,
+  province text,
+  category_id text,
+  display_category text,
+  gender_division text,
+  age_group text,
+  time_slot_id uuid,
+  total_score numeric,
+  topped_count integer,
+  zone_count integer,
+  counting_attempt_total integer,
+  highest_counting_climb integer,
+  overall_rank integer,
+  category_rank integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with competition_row as (
+    select *
+    from public.competitions
+    where id = p_competition_id
+  ),
+  base_rows as (
+    select
+      c.id as climber_id,
+      c.name,
+      c.climber_number,
+      c.province,
+      c.category_id,
+      c.display_category,
+      c.gender_division,
+      c.age_group,
+      c.time_slot_id,
+      gs.climb_number,
+      coalesce(qa.topped, false) as topped,
+      coalesce(qa.zone, qa.topped, false) as zone,
+      case
+        when coalesce(qa.topped, false) then greatest(coalesce(qa.attempts_to_top, qa.attempt_count, 1), 1)
+        else null
+      end as attempts_to_top,
+      case
+        when coalesce(qa.zone, qa.topped, false) then greatest(coalesce(qa.attempts_to_zone, qa.attempts_to_top, qa.attempt_count, 1), 1)
+        else null
+      end as attempts_to_zone,
+      case
+        when (select format from competition_row) in ('flash_format', 'five_on_five_off', 'ifsc_finals_format') then
+          case
+            when coalesce(qa.topped, false) then greatest(coalesce(qa.attempts_to_top, qa.attempt_count, 1), 1)
+            when coalesce(qa.zone, qa.topped, false) then greatest(coalesce(qa.attempts_to_zone, qa.attempts_to_top, qa.attempt_count, 1), 1)
+            else 0
+          end
+        else coalesce(qa.attempt_count, 0)
+      end as scoring_attempt_count,
+      case
+        when (select format from competition_row) in ('flash_format', 'five_on_five_off', 'ifsc_finals_format') then
+          round(greatest(
+            case
+              when coalesce(qa.topped, false) then greatest(0::numeric, 25 - (greatest(coalesce(qa.attempts_to_top, qa.attempt_count, 1), 1) - 1) * 0.1)
+              else 0::numeric
+            end,
+            case
+              when coalesce(qa.zone, qa.topped, false) then greatest(0::numeric, 10 - (greatest(coalesce(qa.attempts_to_zone, qa.attempts_to_top, qa.attempt_count, 1), 1) - 1) * 0.1)
+              else 0::numeric
+            end
+          )::numeric, 1)
+        when coalesce(qa.topped, false) then
+          greatest(0::numeric, (gs.climb_number * 1000) - least(greatest(coalesce(qa.attempt_count, 0) - 1, 0), 3) * 200)
+        else 0::numeric
+      end as score
+    from public.climbers c
+    cross join generate_series(
+      1,
+      greatest(coalesce((select total_climbs from competition_row), 1), 1)
+    ) as gs(climb_number)
+    left join public.qualifier_attempts qa
+      on qa.climber_id = c.id
+     and qa.climb_number = gs.climb_number
+    where c.competition_id = p_competition_id
+  ),
+  ranked_scores as (
+    select
+      base_rows.*,
+      row_number() over (
+        partition by climber_id
+        order by score desc, climb_number desc, scoring_attempt_count asc
+      ) as scoring_row,
+      case
+        when (select format from competition_row) in ('flash_format', 'five_on_five_off', 'ifsc_finals_format') then true
+        when score > 0::numeric then true
+        else false
+      end as eligible_for_counting
+    from base_rows
+  ),
+  counting_scores as (
+    select *
+    from ranked_scores
+    where eligible_for_counting
+      and scoring_row <= case
+        when (select format from competition_row) in ('flash_format', 'five_on_five_off', 'ifsc_finals_format')
+          then greatest(coalesce((select total_climbs from competition_row), 1), 1)
+        else greatest(coalesce((select qualifier_counting_climbs from competition_row), 1), 1)
+      end
+  ),
+  qualifier_totals as (
+    select
+      c.id as climber_id,
+      c.name,
+      c.climber_number,
+      c.province,
+      c.category_id,
+      c.display_category,
+      c.gender_division,
+      c.age_group,
+      c.time_slot_id,
+      coalesce(sum(cs.score), 0::numeric) as total_score,
+      coalesce(count(*) filter (where cs.topped), 0)::integer as topped_count,
+      coalesce(count(*) filter (where cs.zone), 0)::integer as zone_count,
+      coalesce(sum(
+        case
+          when cs.topped then coalesce(cs.attempts_to_top, cs.scoring_attempt_count, 0)
+          when cs.zone then coalesce(cs.attempts_to_zone, cs.scoring_attempt_count, 0)
+          else coalesce(cs.scoring_attempt_count, 0)
+        end
+      ), 0)::integer as counting_attempt_total,
+      coalesce((array_agg(cs.climb_number order by cs.score desc, cs.climb_number desc, cs.scoring_attempt_count asc))[1], 0)::integer as highest_counting_climb
+    from public.climbers c
+    left join counting_scores cs on cs.climber_id = c.id
+    where c.competition_id = p_competition_id
+    group by c.id, c.name, c.climber_number, c.province, c.category_id, c.display_category, c.gender_division, c.age_group, c.time_slot_id
+  ),
+  ranked as (
+    select
+      qualifier_totals.*,
+      rank() over (
+        order by total_score desc, topped_count desc, zone_count desc, counting_attempt_total asc, highest_counting_climb desc
+      )::integer as overall_rank,
+      rank() over (
+        partition by category_id
+        order by total_score desc, topped_count desc, zone_count desc, counting_attempt_total asc, highest_counting_climb desc
+      )::integer as category_rank
+    from qualifier_totals
+  )
+  select *
+  from ranked
+  order by total_score desc, topped_count desc, zone_count desc, counting_attempt_total asc, highest_counting_climb desc, name asc;
+$$;
+
+create or replace function public.compute_finalist_selection(p_competition_id uuid)
+returns table (
+  climber_id uuid,
+  name text,
+  category_id text,
+  display_category text,
+  gender_division text,
+  age_group text,
+  qualifier_rank integer,
+  advanced_with_tie boolean,
+  climbing_order integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with competition_row as (
+    select *
+    from public.competitions
+    where id = p_competition_id
+  ),
+  ranked as (
+    select *
+    from public.compute_qualifier_standings(p_competition_id)
+    where gender_division in ('Men', 'Women')
+      and age_group in (
+        select jsonb_array_elements_text((select finals_eligible_age_groups from competition_row))
+      )
+  ),
+  cutoff as (
+    select
+      category_id,
+      total_score,
+      topped_count,
+      zone_count,
+      counting_attempt_total,
+      highest_counting_climb
+    from ranked
+    where category_rank = (select finals_cutoff from competition_row)
+  ),
+  selected as (
+    select
+      ranked.climber_id,
+      ranked.name,
+      ranked.category_id,
+      ranked.display_category,
+      ranked.gender_division,
+      ranked.age_group,
+      ranked.category_rank as qualifier_rank,
+      ranked.category_rank > (select finals_cutoff from competition_row) as advanced_with_tie
+    from ranked
+    left join cutoff using (category_id)
+    where ranked.category_rank <= (select finals_cutoff from competition_row)
+       or (
+         (select finals_tie_advances from competition_row)
+         and cutoff.category_id is not null
+         and ranked.category_rank > (select finals_cutoff from competition_row)
+         and ranked.total_score = cutoff.total_score
+         and ranked.topped_count = cutoff.topped_count
+         and ranked.zone_count = cutoff.zone_count
+         and ranked.counting_attempt_total = cutoff.counting_attempt_total
+         and ranked.highest_counting_climb = cutoff.highest_counting_climb
+       )
+  )
+  select
+    selected.*,
+    row_number() over (
+      partition by selected.display_category
+      order by selected.qualifier_rank desc, selected.name asc
+    )::integer as climbing_order
+  from selected
+  order by selected.display_category, selected.qualifier_rank, selected.name;
+$$;
+
 -- Remove prior mock competitions only. Child rows cascade.
 delete from public.competitions
 where slug like 'mock-%';
 
 -- 1. Create a varied mock event slate:
---    - live scramble qualifier
---    - live youth qualifier with official start groups
---    - upcoming flash qualifier
---    - live national finals
+--    - active scramble qualifier
+--    - active youth qualifier with official start groups
+--    - future flash qualifier
+--    - active national finals
 --    - completed city finals/results
---    - upcoming scramble
+--    - future scramble
 insert into public.competitions (
   id,
   slug,
@@ -42,7 +320,7 @@ values
   (
     gen_random_uuid(),
     'mock-rec-scramble-live',
-    'Mock Recreational Scramble - Live',
+    'Capital Granite Scramble',
     'active',
     'scramble',
     'qualifier_open',
@@ -53,7 +331,7 @@ values
     current_date,
     now() - interval '5 days',
     now() + interval '8 hours',
-    'Large live recreational scramble with staggered climbing windows.',
+    'Community bouldering day with rolling scramble sessions, self-scoring, and an evening podium.',
     '',
     30,
     120,
@@ -69,7 +347,7 @@ values
   (
     gen_random_uuid(),
     'mock-youth-series-live',
-    'Mock Youth Series Qualifier - Live',
+    'Atlantic Youth Boulder Series',
     'active',
     'five_on_five_off',
     'qualifier_open',
@@ -80,7 +358,7 @@ values
     current_date,
     now() - interval '14 days',
     now() + interval '3 hours',
-    'Live youth qualifier with official start groups and judge-entered scoring.',
+    'Regional youth qualifier with fixed start waves, judge-entered scoring, and a same-day finals round.',
     '',
     12,
     96,
@@ -96,7 +374,7 @@ values
   (
     gen_random_uuid(),
     'mock-flash-upcoming',
-    'Mock CEC Flash Qualifier - Upcoming',
+    'Fundy Flash Classic',
     'active',
     'flash_format',
     'qualifier_closed',
@@ -107,7 +385,7 @@ values
     current_date + 14,
     now() + interval '2 days',
     now() + interval '13 days',
-    'Upcoming flash qualifier with registration open later this week.',
+    'Sanctioned-style flash qualifier built around short rotations and an afternoon awards block.',
     '',
     6,
     80,
@@ -123,7 +401,7 @@ values
   (
     gen_random_uuid(),
     'mock-national-finals-live',
-    'Mock National Championship - Finals Live',
+    'Canadian Boulder Championships',
     'active',
     'flash_format',
     'finals_open',
@@ -134,7 +412,7 @@ values
     current_date,
     now() - interval '30 days',
     now() - interval '8 hours',
-    'National championship with qualifiers complete and finals currently underway.',
+    'Championship field with qualifier rankings locked and the finals round already underway.',
     '',
     6,
     100,
@@ -150,7 +428,7 @@ values
   (
     gen_random_uuid(),
     'mock-city-boulder-results',
-    'Mock City Boulder Open - Results Posted',
+    'Port City Boulder Open',
     'active',
     'ifsc_finals_format',
     'results',
@@ -161,7 +439,7 @@ values
     current_date - 7,
     now() - interval '40 days',
     now() - interval '8 days',
-    'Completed city event with finals results already posted.',
+    'One-day city bouldering event with completed finals and published results.',
     '',
     10,
     90,
@@ -177,7 +455,7 @@ values
   (
     gen_random_uuid(),
     'mock-scramble-upcoming',
-    'Mock Summer Scramble - Upcoming',
+    'Red Sand Scramble',
     'active',
     'scramble',
     'qualifier_closed',
@@ -188,7 +466,7 @@ values
     current_date + 30,
     now() + interval '10 days',
     now() + interval '29 days',
-    'Future recreational scramble with multiple arrival windows.',
+    'Summer community scramble with flexible arrival windows, self-scoring, and a casual awards wrap-up.',
     '',
     35,
     140,
@@ -308,22 +586,22 @@ with schedule_seed(
 ) as (
   values
     ('mock-rec-scramble-live', 'Check-in', 'check_in', 'All climbers', false, '8:00 AM', '8:45 AM', 120, null::text[]),
-    ('mock-rec-scramble-live', 'Rec / Masters Time slot 1', 'qualifier_round', 'Morning scramble window', true, '9:00 AM', '11:00 AM', 60, array['Rec','Masters']::text[]),
-    ('mock-rec-scramble-live', 'Open Time slot 2', 'qualifier_round', 'Midday scramble window', false, '11:30 AM', '1:30 PM', 60, array['Open']::text[]),
+    ('mock-rec-scramble-live', 'Rec / Masters Session', 'qualifier_round', 'Morning scramble window', true, '9:00 AM', '11:00 AM', 60, array['Rec','Masters']::text[]),
+    ('mock-rec-scramble-live', 'Open Session', 'qualifier_round', 'Midday scramble window', false, '11:30 AM', '1:30 PM', 60, array['Open']::text[]),
     ('mock-rec-scramble-live', 'Results / Awards', 'results', 'All climbers', false, '3:00 PM', '3:30 PM', 120, null::text[]),
 
     ('mock-youth-series-live', 'Check-in', 'check_in', 'All athletes', false, '7:30 AM', '8:15 AM', 96, null::text[]),
     ('mock-youth-series-live', 'Technical meeting', 'technical_meeting', 'Athletes and coaches', false, '8:20 AM', '8:35 AM', 96, null::text[]),
-    ('mock-youth-series-live', 'Youth D / Youth C Start group', 'qualifier_round', 'Qualifier wave', false, '9:00 AM', '10:20 AM', 32, array['Youth D','Youth C']::text[]),
-    ('mock-youth-series-live', 'Youth B / Youth A Start group', 'qualifier_round', 'Qualifier wave', true, '10:35 AM', '11:55 AM', 32, array['Youth B','Youth A']::text[]),
-    ('mock-youth-series-live', 'Junior Start group', 'qualifier_round', 'Qualifier wave', false, '12:10 PM', '1:10 PM', 32, array['Junior']::text[]),
+    ('mock-youth-series-live', 'Youth D / Youth C Wave', 'qualifier_round', 'Qualifier wave', false, '9:00 AM', '10:20 AM', 32, array['Youth D','Youth C']::text[]),
+    ('mock-youth-series-live', 'Youth B / Youth A Wave', 'qualifier_round', 'Qualifier wave', true, '10:35 AM', '11:55 AM', 32, array['Youth B','Youth A']::text[]),
+    ('mock-youth-series-live', 'Junior Wave', 'qualifier_round', 'Qualifier wave', false, '12:10 PM', '1:10 PM', 32, array['Junior']::text[]),
     ('mock-youth-series-live', 'Observation', 'observation', 'Finalists', false, '3:45 PM', '4:00 PM', 24, null::text[]),
     ('mock-youth-series-live', 'Finals', 'finals_round', 'Finalists', false, '4:15 PM', '5:30 PM', 24, null::text[]),
 
     ('mock-flash-upcoming', 'Check-in', 'check_in', 'All athletes', false, '8:00 AM', '8:45 AM', 80, null::text[]),
     ('mock-flash-upcoming', 'Technical meeting', 'technical_meeting', 'Athletes and coaches', false, '8:50 AM', '9:05 AM', 80, null::text[]),
-    ('mock-flash-upcoming', 'Youth B / Youth A Start group', 'qualifier_round', 'Flash rotation', false, '9:15 AM', '10:15 AM', 40, array['Youth B','Youth A']::text[]),
-    ('mock-flash-upcoming', 'Junior / Open Start group', 'qualifier_round', 'Flash rotation', false, '10:30 AM', '11:30 AM', 40, array['Junior','Open']::text[]),
+    ('mock-flash-upcoming', 'Youth B / Youth A Rotation', 'qualifier_round', 'Flash rotation', false, '9:15 AM', '10:15 AM', 40, array['Youth B','Youth A']::text[]),
+    ('mock-flash-upcoming', 'Junior / Open Rotation', 'qualifier_round', 'Flash rotation', false, '10:30 AM', '11:30 AM', 40, array['Junior','Open']::text[]),
     ('mock-flash-upcoming', 'Results', 'results', 'All athletes', false, '4:00 PM', '4:30 PM', 80, null::text[]),
 
     ('mock-national-finals-live', 'Isolation', 'isolation', 'Finalists', false, '4:45 PM', '5:15 PM', 24, null::text[]),
@@ -336,8 +614,8 @@ with schedule_seed(
     ('mock-city-boulder-results', 'Results posted', 'results', 'All athletes', true, '6:45 PM', '7:15 PM', 90, null::text[]),
 
     ('mock-scramble-upcoming', 'Check-in', 'check_in', 'All climbers', false, '9:00 AM', '9:30 AM', 140, null::text[]),
-    ('mock-scramble-upcoming', 'Rec / Masters Time slot 1', 'qualifier_round', 'Early scramble window', false, '10:00 AM', '12:00 PM', 70, array['Rec','Masters']::text[]),
-    ('mock-scramble-upcoming', 'Open Time slot 2', 'qualifier_round', 'Late scramble window', false, '12:30 PM', '2:30 PM', 70, array['Open']::text[]),
+    ('mock-scramble-upcoming', 'Rec / Masters Session', 'qualifier_round', 'Early scramble window', false, '10:00 AM', '12:00 PM', 70, array['Rec','Masters']::text[]),
+    ('mock-scramble-upcoming', 'Open Session', 'qualifier_round', 'Late scramble window', false, '12:30 PM', '2:30 PM', 70, array['Open']::text[]),
     ('mock-scramble-upcoming', 'Awards', 'results', 'All climbers', false, '4:00 PM', '4:30 PM', 140, null::text[])
 ),
 resolved_blocks as (
@@ -537,7 +815,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Rec / Masters Time slot 1'
+            and csb.label = 'Rec / Masters Session'
           limit 1
         )
       when na.slug = 'mock-rec-scramble-live' and na.age_group = 'Open' then
@@ -545,7 +823,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Open Time slot 2'
+            and csb.label = 'Open Session'
           limit 1
         )
       when na.slug = 'mock-youth-series-live' and na.age_group in ('Youth D', 'Youth C') then
@@ -553,7 +831,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Youth D / Youth C Start group'
+            and csb.label = 'Youth D / Youth C Wave'
           limit 1
         )
       when na.slug = 'mock-youth-series-live' and na.age_group in ('Youth B', 'Youth A') then
@@ -561,7 +839,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Youth B / Youth A Start group'
+            and csb.label = 'Youth B / Youth A Wave'
           limit 1
         )
       when na.slug = 'mock-youth-series-live' and na.age_group = 'Junior' then
@@ -569,7 +847,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Junior Start group'
+            and csb.label = 'Junior Wave'
           limit 1
         )
       when na.slug = 'mock-flash-upcoming' and na.age_group in ('Youth B', 'Youth A') then
@@ -577,7 +855,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Youth B / Youth A Start group'
+            and csb.label = 'Youth B / Youth A Rotation'
           limit 1
         )
       when na.slug = 'mock-flash-upcoming' and na.age_group in ('Junior', 'Open') then
@@ -585,7 +863,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Junior / Open Start group'
+            and csb.label = 'Junior / Open Rotation'
           limit 1
         )
       when na.slug = 'mock-scramble-upcoming' and na.age_group in ('Rec', 'Masters') then
@@ -593,7 +871,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Rec / Masters Time slot 1'
+            and csb.label = 'Rec / Masters Session'
           limit 1
         )
       when na.slug = 'mock-scramble-upcoming' and na.age_group = 'Open' then
@@ -601,7 +879,7 @@ resolved_athletes as (
           select csb.id
           from public.competition_schedule_blocks csb
           where csb.competition_id = na.competition_id
-            and csb.label = 'Open Time slot 2'
+            and csb.label = 'Open Session'
           limit 1
         )
       else null
