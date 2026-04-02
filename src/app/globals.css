@@ -96,7 +96,7 @@ body::after {
   }
 
   .app-header {
-    @apply sticky top-3 z-40 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[rgba(17,19,24,0.78)] px-3 py-3 shadow-2xl backdrop-blur-xl sm:top-4 sm:rounded-[2rem] sm:px-5 sm:py-4;
+    @apply sticky top-3 z-40 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[rgba(17,19,24,0.78)] px-3 py-3 text-center shadow-2xl backdrop-blur-xl sm:top-4 sm:rounded-[2rem] sm:px-5 sm:py-4;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 20px 45px rgba(0, 0, 0, 0.28);
@@ -125,35 +125,35 @@ body::after {
   }
 
   .card {
-    @apply rounded-[2rem] border border-white/10 bg-[var(--panel)] p-5 shadow-2xl backdrop-blur-md sm:p-6;
+    @apply rounded-[2rem] border border-white/10 bg-[var(--panel)] p-5 text-center shadow-2xl backdrop-blur-md sm:p-6;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 24px 60px rgba(0, 0, 0, 0.32);
   }
 
   .card-muted {
-    @apply rounded-[1.6rem] border border-white/5 bg-white/[0.04] p-4 backdrop-blur-sm;
+    @apply rounded-[1.6rem] border border-white/5 bg-white/[0.04] p-4 text-center backdrop-blur-sm;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       inset 0 -1px 0 rgba(255, 255, 255, 0.015);
   }
 
   .stat-card {
-    @apply rounded-[1.5rem] border border-white/10 bg-black/20 p-4;
+    @apply rounded-[1.5rem] border border-white/10 bg-black/20 p-4 text-center;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 10px 30px rgba(0, 0, 0, 0.14);
   }
 
   .action-card {
-    @apply relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-[rgba(24,28,34,0.82)] p-5 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-[rgba(28,32,39,0.94)] sm:p-6;
+    @apply relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-[rgba(24,28,34,0.82)] p-5 text-center transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-[rgba(28,32,39,0.94)] sm:p-6;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 18px 40px rgba(0, 0, 0, 0.2);
   }
 
   .btn-primary {
-    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-accent px-6 py-3 font-body text-sm font-semibold uppercase tracking-[0.16em] text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex min-h-12 min-w-[10.5rem] items-center justify-center gap-2 rounded-full bg-accent px-6 py-3 text-center font-body text-sm font-semibold uppercase tracking-[0.16em] text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40;
     box-shadow: 0 14px 26px rgba(230, 57, 70, 0.22);
     isolation: isolate;
     overflow: hidden;
@@ -179,7 +179,7 @@ body::after {
   }
 
   .btn-ghost {
-    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-6 py-3 font-body text-sm font-semibold uppercase tracking-[0.16em] text-chalk transition-all duration-200 hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex min-h-12 min-w-[10.5rem] items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-6 py-3 text-center font-body text-sm font-semibold uppercase tracking-[0.16em] text-chalk transition-all duration-200 hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .input-field {
@@ -214,7 +214,7 @@ body::after {
   }
 
   .nav-pill {
-    @apply inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border border-white/10 px-3 py-2 text-[11px] font-mono uppercase tracking-[0.18em] text-slate-300 transition-all duration-200 hover:border-white/25 hover:bg-white/[0.05] sm:min-h-11 sm:px-4 sm:text-xs sm:tracking-[0.22em];
+    @apply inline-flex min-h-10 min-w-[8.5rem] items-center justify-center whitespace-nowrap rounded-full border border-white/10 px-3 py-2 text-center text-[11px] font-mono uppercase tracking-[0.18em] text-slate-300 transition-all duration-200 hover:border-white/25 hover:bg-white/[0.05] sm:min-h-11 sm:px-4 sm:text-xs sm:tracking-[0.22em];
   }
 
   .nav-pill-active {
@@ -288,11 +288,11 @@ body::after {
   }
 
   .results-card {
-    @apply rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.08)] sm:rounded-[2rem] sm:p-6;
+    @apply rounded-[1.5rem] border border-slate-200 bg-white p-4 text-center shadow-[0_18px_48px_rgba(15,23,42,0.08)] sm:rounded-[2rem] sm:p-6;
   }
 
   .results-kicker {
-    @apply text-xs font-semibold uppercase tracking-[0.22em] text-slate-500;
+    @apply text-center text-xs font-semibold uppercase tracking-[0.22em] text-slate-500;
   }
 
   .results-chip {
@@ -315,15 +315,15 @@ body::after {
   }
 
   .results-primary-button {
-    @apply inline-flex min-h-12 items-center justify-center rounded-full bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-sky-500 sm:px-6;
+    @apply inline-flex min-h-12 min-w-[10.5rem] items-center justify-center rounded-full bg-sky-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-sky-500 sm:px-6;
   }
 
   .results-secondary-button {
-    @apply inline-flex min-h-12 items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50 sm:px-6;
+    @apply inline-flex min-h-12 min-w-[10.5rem] items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50 sm:px-6;
   }
 
   .results-danger-button {
-    @apply inline-flex min-h-12 items-center justify-center rounded-full border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100 sm:px-6;
+    @apply inline-flex min-h-12 min-w-[10.5rem] items-center justify-center rounded-full border border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-semibold text-red-700 transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100 sm:px-6;
   }
 
   .results-secondary-button-active {
@@ -391,7 +391,7 @@ body::after {
   }
 
   .results-feature-card {
-    @apply relative rounded-[1.6rem] bg-white/90 p-5 shadow-xl;
+    @apply relative rounded-[1.6rem] bg-white/90 p-5 text-center shadow-xl;
   }
 
   .nav-scroll {
@@ -409,7 +409,7 @@ body::after {
   }
 
   .results-admin-list-item {
-    @apply flex w-full items-center justify-between gap-4 rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50;
+    @apply flex w-full flex-col items-center justify-center gap-3 rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 text-center transition hover:border-slate-300 hover:bg-slate-50 md:flex-row md:justify-between md:text-left;
   }
 
   .results-admin-list-item-active {

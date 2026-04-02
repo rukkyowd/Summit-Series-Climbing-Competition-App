@@ -61,13 +61,13 @@ export default function SiteHeader({
 
   return (
     <header className={`app-header ${light ? "app-header-light" : ""}`}>
-      <div className="flex flex-col gap-4 text-left sm:items-center sm:text-center">
-        <Link href="/" className="flex min-w-0 items-center gap-3 self-start sm:self-center">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <Link href="/" className="flex min-w-0 items-center justify-center gap-3 self-center">
           <div className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border text-xl font-display ${light ? "border-slate-200 bg-white text-slate-900" : "border-white/10 bg-white/[0.05] text-chalk"}`}>
             <span>SS</span>
             {!light ? <span className="aurora-ring" /> : null}
           </div>
-          <div className="min-w-0 text-left">
+          <div className="min-w-0 text-center">
             <div className={`meta-label ${light ? "text-slate-500" : "text-slate-200"}`}>Summit Series</div>
             <div className={`truncate font-body text-sm ${light ? "text-slate-600" : "text-slate-300"}`}>Competition Results</div>
           </div>
@@ -93,7 +93,7 @@ export default function SiteHeader({
           })}
         </nav>
 
-        {status ? <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-center">{status}</div> : null}
+        {status ? <div className="flex w-full flex-wrap items-center justify-center gap-2">{status}</div> : null}
       </div>
     </header>
   );

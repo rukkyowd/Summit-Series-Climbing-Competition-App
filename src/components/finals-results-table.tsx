@@ -48,7 +48,7 @@ export default function FinalsResultsTable({
 }) {
   return (
     <section className="results-card">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col items-center justify-center gap-3 text-center sm:flex-row sm:justify-between sm:text-left">
         <div>
           <div className="results-kicker">Finals rankings</div>
           <h2 className="mt-2 text-3xl font-semibold text-slate-950">{title}</h2>
@@ -59,7 +59,7 @@ export default function FinalsResultsTable({
       <div className="mt-5 space-y-3 md:hidden">
         {rows.map((entry) => (
           <div key={entry.climber_id} className="results-meta-card">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col items-center gap-3 text-center">
               <div>
                 <div className="results-kicker">Rank #{entry.category_rank}</div>
                 <div className="mt-2 text-xl font-semibold text-slate-950">{entry.name}</div>
@@ -67,7 +67,7 @@ export default function FinalsResultsTable({
                   {entry.province} | Qualifier #{entry.previous_round_rank}
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-center">
                 <div className="results-kicker">Points</div>
                 <div className={metricClassName(entry.total_points)}>{formatFinalPoints(entry.total_points)}</div>
               </div>
