@@ -9,6 +9,20 @@ function readSingleValue(value: string | string[] | undefined) {
   return value ?? "";
 }
 
+function sanitizeDraftText(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "undefined" || trimmed === "null") {
+    return "";
+  }
+
+  return trimmed;
+}
+
+function sanitizeDraftNullable(value: string) {
+  const trimmed = sanitizeDraftText(value);
+  return trimmed || null;
+}
+
 export default async function StaffDashboardPage({
   searchParams,
 }: {
@@ -17,19 +31,19 @@ export default async function StaffDashboardPage({
   const importedOfficialEventId = readSingleValue(searchParams?.importOfficialEvent).trim();
   const officialEvents = importedOfficialEventId ? await fetchOfficialBoulderingEvents().catch(() => []) : [];
   const importedOfficialEvent = officialEvents.find((event) => event.id === importedOfficialEventId);
-  const directName = readSingleValue(searchParams?.createName).trim();
-  const directLocation = readSingleValue(searchParams?.createLocation).trim();
-  const directStartDate = readSingleValue(searchParams?.createStartDate).trim();
-  const directEndDate = readSingleValue(searchParams?.createEndDate).trim();
-  const directDescription = readSingleValue(searchParams?.createDescription).trim();
-  const directRegistrationOpensAt = readSingleValue(searchParams?.createRegistrationOpensAt).trim();
-  const directRegistrationClosesAt = readSingleValue(searchParams?.createRegistrationClosesAt).trim();
-  const directOfficialEventUrl = readSingleValue(searchParams?.createOfficialEventUrl).trim();
-  const directOfficialRegistrationUrl = readSingleValue(searchParams?.createOfficialRegistrationUrl).trim();
-  const directOfficialScheduleUrl = readSingleValue(searchParams?.createOfficialScheduleUrl).trim();
-  const directHeroImageUrl = readSingleValue(searchParams?.createHeroImageUrl).trim();
-  const directDisciplineLabel = readSingleValue(searchParams?.createDisciplineLabel).trim();
-  const directFormat = readSingleValue(searchParams?.createFormat).trim();
+  const directName = sanitizeDraftText(readSingleValue(searchParams?.createName));
+  const directLocation = sanitizeDraftText(readSingleValue(searchParams?.createLocation));
+  const directStartDate = sanitizeDraftText(readSingleValue(searchParams?.createStartDate));
+  const directEndDate = sanitizeDraftText(readSingleValue(searchParams?.createEndDate));
+  const directDescription = sanitizeDraftText(readSingleValue(searchParams?.createDescription));
+  const directRegistrationOpensAt = sanitizeDraftNullable(readSingleValue(searchParams?.createRegistrationOpensAt));
+  const directRegistrationClosesAt = sanitizeDraftNullable(readSingleValue(searchParams?.createRegistrationClosesAt));
+  const directOfficialEventUrl = sanitizeDraftText(readSingleValue(searchParams?.createOfficialEventUrl));
+  const directOfficialRegistrationUrl = sanitizeDraftText(readSingleValue(searchParams?.createOfficialRegistrationUrl));
+  const directOfficialScheduleUrl = sanitizeDraftText(readSingleValue(searchParams?.createOfficialScheduleUrl));
+  const directHeroImageUrl = sanitizeDraftText(readSingleValue(searchParams?.createHeroImageUrl));
+  const directDisciplineLabel = sanitizeDraftText(readSingleValue(searchParams?.createDisciplineLabel));
+  const directFormat = sanitizeDraftText(readSingleValue(searchParams?.createFormat));
 
   return (
     <StaffDashboard

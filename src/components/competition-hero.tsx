@@ -12,6 +12,23 @@ import {
   type Competition,
 } from "@/lib/scoring";
 
+function sanitizeDisplayText(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || trimmed === "undefined" || trimmed === "null") {
+    return "";
+  }
+
+  return trimmed;
+}
+
+function isGenericRegistrationUrl(value: string) {
+  return (
+    value.includes("/compete/#register") ||
+    value.includes("/compete/") ||
+    value.includes("memberships")
+  );
+}
+
 export default function CompetitionHero({
   competition,
 }: {
@@ -20,13 +37,21 @@ export default function CompetitionHero({
   const summary = getFormatTemplate(competition.format);
   const liveNow = isCompetitionLiveNow(competition);
   const lifecycleLabel = getCompetitionLifecycleLabel(competition);
+  const description = sanitizeDisplayText(competition.description);
+  const officialEventUrl = sanitizeDisplayText(competition.official_event_url);
+  const officialRegistrationUrl = sanitizeDisplayText(competition.official_registration_url);
+  const officialScheduleUrl = sanitizeDisplayText(competition.official_schedule_url);
+  const usableRegistrationUrl =
+    officialRegistrationUrl && !isGenericRegistrationUrl(officialRegistrationUrl)
+      ? officialRegistrationUrl
+      : "";
   const registrationOpensLabel = competition.registration_opens_at
     ? formatDateTimeLabel(competition.registration_opens_at)
     : "";
   const registrationDeadlineLabel = competition.registration_closes_at
     ? formatDateTimeLabel(competition.registration_closes_at)
     : "";
-  const registrationFallbackUrl = competition.official_registration_url || competition.official_event_url;
+  const registrationFallbackUrl = usableRegistrationUrl || officialEventUrl;
 
   return (
     <section className="results-card overflow-hidden">
@@ -56,7 +81,7 @@ export default function CompetitionHero({
         <div>
           <div className="results-kicker">About</div>
           <p className="mt-3 text-base leading-7 text-slate-700 sm:leading-8">
-            {competition.description || "Competition details will appear here once staff adds the event description."}
+            {description || "Competition details will appear here once staff adds the event description."}
           </p>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -81,9 +106,9 @@ export default function CompetitionHero({
             >
               Share competition
             </button>
-            {competition.official_event_url ? (
+            {officialEventUrl ? (
               <a
-                href={competition.official_event_url}
+                href={officialEventUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="results-secondary-button w-full sm:w-auto"
@@ -91,9 +116,9 @@ export default function CompetitionHero({
                 Official event page
               </a>
             ) : null}
-            {competition.official_schedule_url ? (
+            {officialScheduleUrl ? (
               <a
-                href={competition.official_schedule_url}
+                href={officialScheduleUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="results-secondary-button w-full sm:w-auto"
@@ -126,7 +151,7 @@ export default function CompetitionHero({
                     rel="noreferrer"
                     className="text-sky-700 underline-offset-4 hover:underline"
                   >
-                    {competition.official_registration_url ? "Official registration" : "Official event page"}
+                    {usableRegistrationUrl ? "Official registration" : "Official event page"}
                   </a>
                 )
               ) : (
@@ -147,7 +172,7 @@ export default function CompetitionHero({
                     rel="noreferrer"
                     className="text-sky-700 underline-offset-4 hover:underline"
                   >
-                    {competition.official_registration_url ? "See official registration" : "See official event page"}
+                    {usableRegistrationUrl ? "See official registration" : "See official event page"}
                   </a>
                 )
               ) : (

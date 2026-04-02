@@ -114,6 +114,20 @@ type StaffDashboardCreateDraft = {
   format?: string;
 };
 
+function sanitizeDraftText(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || trimmed === "undefined" || trimmed === "null") {
+    return "";
+  }
+
+  return trimmed;
+}
+
+function sanitizeDraftNullable(value: string | null | undefined) {
+  const trimmed = sanitizeDraftText(value);
+  return trimmed || null;
+}
+
 function formatAgeGroupBandLabel(ageGroups: readonly string[]) {
   return ageGroups.join(" / ");
 }
@@ -236,19 +250,19 @@ export default function StaffDashboard({
   }, []);
 
   useEffect(() => {
-    const importedName = initialCreateDraft?.name?.trim() ?? "";
-    const importedLocation = initialCreateDraft?.location?.trim() ?? "";
-    const importedStartDate = initialCreateDraft?.startDate?.trim() ?? "";
-    const importedEndDate = initialCreateDraft?.endDate?.trim() ?? "";
-    const importedDescription = initialCreateDraft?.description?.trim() ?? "";
-    const importedRegistrationOpensAt = initialCreateDraft?.registrationOpensAt ?? null;
-    const importedRegistrationClosesAt = initialCreateDraft?.registrationClosesAt ?? null;
-    const importedOfficialEventUrl = initialCreateDraft?.officialEventUrl?.trim() ?? "";
-    const importedOfficialRegistrationUrl = initialCreateDraft?.officialRegistrationUrl?.trim() ?? "";
-    const importedOfficialScheduleUrl = initialCreateDraft?.officialScheduleUrl?.trim() ?? "";
-    const importedHeroImageUrl = initialCreateDraft?.heroImageUrl?.trim() ?? "";
-    const importedDisciplineLabel = initialCreateDraft?.disciplineLabel?.trim() ?? "";
-    const importedFormat = initialCreateDraft?.format?.trim() ?? "";
+    const importedName = sanitizeDraftText(initialCreateDraft?.name);
+    const importedLocation = sanitizeDraftText(initialCreateDraft?.location);
+    const importedStartDate = sanitizeDraftText(initialCreateDraft?.startDate);
+    const importedEndDate = sanitizeDraftText(initialCreateDraft?.endDate);
+    const importedDescription = sanitizeDraftText(initialCreateDraft?.description);
+    const importedRegistrationOpensAt = sanitizeDraftNullable(initialCreateDraft?.registrationOpensAt);
+    const importedRegistrationClosesAt = sanitizeDraftNullable(initialCreateDraft?.registrationClosesAt);
+    const importedOfficialEventUrl = sanitizeDraftText(initialCreateDraft?.officialEventUrl);
+    const importedOfficialRegistrationUrl = sanitizeDraftText(initialCreateDraft?.officialRegistrationUrl);
+    const importedOfficialScheduleUrl = sanitizeDraftText(initialCreateDraft?.officialScheduleUrl);
+    const importedHeroImageUrl = sanitizeDraftText(initialCreateDraft?.heroImageUrl);
+    const importedDisciplineLabel = sanitizeDraftText(initialCreateDraft?.disciplineLabel);
+    const importedFormat = sanitizeDraftText(initialCreateDraft?.format);
 
     if (
       !importedName &&
@@ -794,19 +808,19 @@ export default function StaffDashboard({
                     void (async () => {
                       try {
                         const created = await createCompetitionFromTemplate({
-                          name: createName,
+                          name: sanitizeDraftText(createName),
                           format: createFormat,
-                          location_name: createLocation,
-                          start_date: createStartDate || null,
-                          end_date: createEndDate || null,
-                          registration_opens_at: createRegistrationOpensAt,
-                          registration_closes_at: createRegistrationClosesAt,
-                          description: createDescription,
-                          hero_image_url: createHeroImageUrl || undefined,
-                          discipline_label: createDisciplineLabel || undefined,
-                          official_event_url: createOfficialEventUrl || undefined,
-                          official_registration_url: createOfficialRegistrationUrl || undefined,
-                          official_schedule_url: createOfficialScheduleUrl || undefined,
+                          location_name: sanitizeDraftText(createLocation),
+                          start_date: sanitizeDraftText(createStartDate) || null,
+                          end_date: sanitizeDraftText(createEndDate) || null,
+                          registration_opens_at: sanitizeDraftNullable(createRegistrationOpensAt),
+                          registration_closes_at: sanitizeDraftNullable(createRegistrationClosesAt),
+                          description: sanitizeDraftText(createDescription),
+                          hero_image_url: sanitizeDraftText(createHeroImageUrl) || undefined,
+                          discipline_label: sanitizeDraftText(createDisciplineLabel) || undefined,
+                          official_event_url: sanitizeDraftText(createOfficialEventUrl) || undefined,
+                          official_registration_url: sanitizeDraftText(createOfficialRegistrationUrl) || undefined,
+                          official_schedule_url: sanitizeDraftText(createOfficialScheduleUrl) || undefined,
                         });
                         setCreateName("");
                         setCreateLocation("");
