@@ -145,7 +145,11 @@ export default function CompetitionDisplayPage() {
                           <div className="results-chip">{entries.length} checked in</div>
                         </div>
                         <div className="mt-3 text-sm text-slate-600">
-                          {entries.length <= 1 ? "Wall looks fairly open." : "Wall traffic is building here."}
+                          {entries.length <= 1
+                            ? "Open wall. Little to no wait right now."
+                            : entries.length <= 3
+                              ? "Light traffic. A short queue is forming."
+                              : "Busy wall. Expect a bit of a wait."}
                         </div>
                         <div className="mt-4 space-y-3">
                           {entries.slice(0, 5).map((entry) => (

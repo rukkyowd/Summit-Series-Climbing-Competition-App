@@ -282,7 +282,13 @@ export default function CompetitionOverviewPage() {
                                     <div className="results-chip">{entries.length} checked in</div>
                                   </div>
                                   <div className="mt-3 space-y-2 text-sm text-slate-600">
-                                    <div>{entries.length <= 1 ? "Wall looks fairly open." : "Wall traffic is building here."}</div>
+                                    <div>
+                                      {entries.length <= 1
+                                        ? "Open wall. Little to no wait right now."
+                                        : entries.length <= 3
+                                          ? "Light traffic. A short queue is forming."
+                                          : "Busy wall. Expect a bit of a wait."}
+                                    </div>
                                     {entries.slice(0, 4).map((entry) => (
                                       <div key={entry.climber_id} className="flex items-center justify-between gap-3">
                                         <span className="truncate">

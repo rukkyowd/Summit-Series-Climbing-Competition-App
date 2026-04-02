@@ -1170,15 +1170,32 @@ materialized_queue as (
     least(
       total_climbs,
       case
-        when queue_seed in (1, 2, 3) then 1
-        when queue_seed in (4, 5) then 2
-        when queue_seed in (6, 7, 8) then 4
-        when queue_seed in (9, 10) then 7
-        when queue_seed in (11, 12) then 10
-        else 14
+        when slug = 'spring-send-recreational' then
+          case
+            when queue_seed in (1, 2, 3, 4) then 2
+            when queue_seed in (5, 6, 7) then 5
+            when queue_seed in (8, 9) then 8
+            when queue_seed = 10 then 12
+            when queue_seed = 11 then 16
+            else 20
+          end
+        else
+          case
+            when queue_seed in (1, 2, 3, 4, 5) then 3
+            when queue_seed in (6, 7, 8) then 6
+            when queue_seed in (9, 10) then 9
+            when queue_seed = 11 then 14
+            else 18
+          end
       end
     ) as climb_number,
-    now() - (((queue_seed - 1) * 14 + 10) || ' seconds')::interval as checked_in_at
+    now()
+      - (
+        case
+          when slug = 'spring-send-recreational' then ((queue_seed - 1) * 11 + 8)
+          else ((queue_seed - 1) * 13 + 12)
+        end || ' seconds'
+      )::interval as checked_in_at
   from queued_climbers
   where queue_seed <= 12
 )
