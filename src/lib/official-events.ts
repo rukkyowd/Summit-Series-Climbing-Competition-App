@@ -17,14 +17,6 @@ export interface OfficialEvent {
   hero_image_url: string;
 }
 
-type UsaClimbingEventDetails = {
-  location: string;
-  location_url: string;
-  registration_url: string;
-  schedule_url: string;
-  hero_image_url: string;
-};
-
 const WORLD_CLIMBING_SOURCE_URL =
   "https://www.worldclimbing.com/news/ifsc-announces-climbing-and-para-climbing-calendar-2026";
 const USA_CLIMBING_NACS_URL = "https://usaclimbing.org/compete/north-american-cup-series/";
@@ -37,10 +29,22 @@ function decodeHtmlEntities(value: string) {
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#8211;|&#x2013;|&ndash;/gi, "–")
-    .replace(/&#8212;|&#x2014;|&mdash;/gi, "—")
+    .replace(/&#8211;|&#x2013;|&ndash;/gi, "\u2013")
+    .replace(/&#8212;|&#x2014;|&mdash;/gi, "\u2014")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
+}
+
+function repairMojibake(value: string) {
+  if (!/Ã|Â|â/.test(value)) {
+    return value;
+  }
+
+  try {
+    return Buffer.from(value, "latin1").toString("utf8");
+  } catch {
+    return value;
+  }
 }
 
 function stripTags(value: string) {
@@ -48,7 +52,7 @@ function stripTags(value: string) {
 }
 
 function normalizeWhitespace(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+  return repairMojibake(value).replace(/\s+/g, " ").trim();
 }
 
 function extractVisibleText(html: string) {
@@ -113,8 +117,8 @@ function parseWorldClimbingDateRange(range: string, year: number) {
 }
 
 function parseNamedDateRange(range: string) {
-  const normalized = normalizeWhitespace(range.replace(/[—-]/g, "–"));
-  const match = normalized.match(/^([A-Za-z]+) (\d{1,2})–(\d{1,2}), (\d{4})$/);
+  const normalized = normalizeWhitespace(range.replace(/[\u2013\u2014-]/g, "\u2013"));
+  const match = normalized.match(/^([A-Za-z]+) (\d{1,2})\u2013(\d{1,2}), (\d{4})$/);
   if (!match) {
     return null;
   }
@@ -197,7 +201,9 @@ function parseWorldClimbingEvents(html: string): OfficialEvent[] {
       series: "World Climbing",
       location: `${location}, ${countryCode}`,
       disciplines: disciplines.trim(),
-      description: `${eventType} in ${location} featuring ${disciplines.trim().toLowerCase()}, as listed on the official World Climbing calendar.`,
+      description: `${eventType} in ${location} featuring ${disciplines
+        .trim()
+        .toLowerCase()}, as listed on the official World Climbing calendar.`,
       source_name: "World Climbing 2026 calendar",
       source_url: WORLD_CLIMBING_SOURCE_URL,
       official_event_url: officialEventUrl,
@@ -232,8 +238,10 @@ function extractAnchorHrefs(segment: string) {
 }
 
 function extractUsaClimbingHeroImage(segment: string) {
-  const heroMatch = segment.match(/https?:\/\/[^"' ]+\.(?:jpg|jpeg|png|webp)/i);
-  return heroMatch?.[0] ?? "";
+  const heroMatch =
+    segment.match(/data-src="([^"]+\.(?:jpg|jpeg|png|webp))"/i) ??
+    segment.match(/src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
+  return heroMatch?.[1] ?? "";
 }
 
 function findUsaClimbingLocationUrl(anchors: Map<string, string>) {
@@ -247,18 +255,21 @@ function findUsaClimbingLocationUrl(anchors: Map<string, string>) {
 }
 
 function parseUsaClimbingEvents(html: string): OfficialEvent[] {
-  const sectionPattern =
-    /<h3[^>]*>(North American Cup(?: Series)?[^<]+?)<\/h3>\s*<h3[^>]*>([^<]+?)<\/h3>[\s\S]*?<div class="uk-grid uk-grid-row-large uk-child-width-1-3@s uk-child-width-1-2 uk-flex-center"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/gi;
+  const sectionPattern = /<li>\s*<a class="uk-accordion-title uk-accordion-title--event"[\s\S]*?<\/li>/gi;
 
   const events: OfficialEvent[] = [];
   let match: RegExpExecArray | null;
 
   while ((match = sectionPattern.exec(html)) !== null) {
-    const [, titleHtml, dateAndLocationHtml] = match;
     const segment = match[0];
-    const title = normalizeWhitespace(stripTags(titleHtml));
-    const dateAndLocation = normalizeWhitespace(stripTags(dateAndLocationHtml).replace(/[—-]/g, "–"));
-    const dateMatch = dateAndLocation.match(/^([A-Za-z]+ \d{1,2}–\d{1,2}, \d{4}) in (.+)$/);
+    const title = normalizeWhitespace(stripTags(segment.match(/<h3>([^<]+)<\/h3>/i)?.[1] ?? ""));
+    const dateAndLocation = normalizeWhitespace(
+      stripTags(segment.match(/<h3 class="uk-text-light">([^<]+)<\/h3>/i)?.[1] ?? "").replace(
+        /[\u2013\u2014-]/g,
+        "\u2013"
+      )
+    );
+    const dateMatch = dateAndLocation.match(/^([A-Za-z]+ \d{1,2}\u2013\d{1,2}, \d{4}) in (.+)$/);
     const disciplineMatch = title.match(/\(([^)]+)\)/);
     const disciplines = disciplineMatch?.[1]?.trim() ?? "";
     if (!disciplines.toLowerCase().includes("boulder")) {
@@ -278,8 +289,11 @@ function parseUsaClimbingEvents(html: string): OfficialEvent[] {
     const anchors = extractAnchorHrefs(segment);
     const heroImageUrl = extractUsaClimbingHeroImage(segment);
     const locationUrl = findUsaClimbingLocationUrl(anchors);
+    const infoSheetUrl = anchors.get("Info Sheet") ?? "";
     const registrationUrl = anchors.get("Athlete Registration") ?? "";
     const scheduleUrl = anchors.get("Schedule") ?? "";
+    const resultsUrl = anchors.get("Registered Athletes/Results") ?? "";
+    const officialEventUrl = infoSheetUrl || locationUrl || resultsUrl || scheduleUrl || USA_CLIMBING_NACS_URL;
 
     events.push({
       id: `nacs-${slugify(location)}-${parsedRange.start_date}`,
@@ -291,9 +305,9 @@ function parseUsaClimbingEvents(html: string): OfficialEvent[] {
         "Part of the official North American Cup Series calendar. This event is published by USA Climbing and may include separate registration and schedule resources on the official event page.",
       source_name: "USA Climbing North American Cup Series",
       source_url: USA_CLIMBING_NACS_URL,
-      official_event_url: locationUrl || USA_CLIMBING_NACS_URL,
+      official_event_url: officialEventUrl,
       official_registration_url: registrationUrl,
-      official_schedule_url: scheduleUrl || locationUrl,
+      official_schedule_url: scheduleUrl || infoSheetUrl || officialEventUrl,
       registration_opens_at: null,
       registration_closes_at: null,
       hero_image_url: heroImageUrl,

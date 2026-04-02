@@ -26,6 +26,7 @@ export default function CompetitionHero({
   const registrationDeadlineLabel = competition.registration_closes_at
     ? formatDateTimeLabel(competition.registration_closes_at)
     : "";
+  const registrationFallbackUrl = competition.official_registration_url || competition.official_event_url;
 
   return (
     <section className="results-card overflow-hidden">
@@ -115,17 +116,17 @@ export default function CompetitionHero({
           <div className="results-meta-card">
             <div className="results-kicker">Registration opens</div>
             <div className="mt-2 text-lg font-semibold text-slate-950">
-              {registrationOpensLabel || competition.official_registration_url ? (
+              {registrationOpensLabel || registrationFallbackUrl ? (
                 registrationOpensLabel ? (
                   registrationOpensLabel
                 ) : (
                   <a
-                    href={competition.official_registration_url}
+                    href={registrationFallbackUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="text-sky-700 underline-offset-4 hover:underline"
                   >
-                    Official registration
+                    {competition.official_registration_url ? "Official registration" : "Official event page"}
                   </a>
                 )
               ) : (
@@ -136,17 +137,17 @@ export default function CompetitionHero({
           <div className="results-meta-card">
             <div className="results-kicker">Registration deadline</div>
             <div className="mt-2 text-lg font-semibold text-slate-950">
-              {registrationDeadlineLabel || competition.official_registration_url ? (
+              {registrationDeadlineLabel || registrationFallbackUrl ? (
                 registrationDeadlineLabel ? (
                   registrationDeadlineLabel
                 ) : (
                   <a
-                    href={competition.official_registration_url}
+                    href={registrationFallbackUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="text-sky-700 underline-offset-4 hover:underline"
                   >
-                    See official registration
+                    {competition.official_registration_url ? "See official registration" : "See official event page"}
                   </a>
                 )
               ) : (
