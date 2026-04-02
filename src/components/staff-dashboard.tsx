@@ -722,6 +722,8 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                       <button
                         type="button"
                         onClick={() => {
+                          const targetNextPhase = nextPhase;
+
                           if (!canGoNext) {
                             return;
                           }
@@ -737,7 +739,11 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                             return;
                           }
 
-                          if (isEndEventTransition && nextPhase === "results") {
+                          if (!targetNextPhase) {
+                            return;
+                          }
+
+                          if (isEndEventTransition && targetNextPhase === "results") {
                             setConfirming({
                               title: "End event",
                               description: "This moves the competition into the results phase so public pages show the final standings instead of live scoring.",
@@ -745,7 +751,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                               confirmTone: "danger",
                               expectedValue: draft.name,
                               action: async () => {
-                                await runPhaseNavigation(draft.id, nextPhase, 1, "Competition moved to results.");
+                                await runPhaseNavigation(draft.id, targetNextPhase, 1, "Competition moved to results.");
                               },
                             });
                             return;
@@ -757,9 +763,9 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
 
                           void runPhaseNavigation(
                             draft.id,
-                            nextPhase,
+                            targetNextPhase,
                             1,
-                            `Competition moved to ${formatCompetitionPhaseLabel(nextPhase).toLowerCase()}.`
+                            `Competition moved to ${formatCompetitionPhaseLabel(targetNextPhase).toLowerCase()}.`
                           );
                         }}
                         disabled={!canGoNext || isPending || isPhasePending || !canEditPhase}
