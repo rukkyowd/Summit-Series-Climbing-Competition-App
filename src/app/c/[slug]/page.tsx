@@ -304,13 +304,6 @@ export default function CompetitionOverviewPage() {
                         )}
                       </div>
                     ) : null}
-                    {scrambleFormat ? (
-                      <div className="mt-4">
-                        <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button">
-                          Open live leaderboard
-                        </Link>
-                      </div>
-                    ) : null}
                   </>
                 ) : (
                   <div className="mt-4 space-y-3">
@@ -368,12 +361,12 @@ export default function CompetitionOverviewPage() {
 
                 <div className="results-kicker">Competition snapshot</div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div className="results-meta-card">
+                  <div className="results-meta-card self-start">
                     <div className="results-kicker">Climbers</div>
                     <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.climbers.length}</div>
                   </div>
                   {finalsEnabled ? (
-                    <div className="results-meta-card">
+                    <div className="results-meta-card self-start">
                       <div className="results-kicker">{finalistsLabel}</div>
                       <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.finalists.length}</div>
                       {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
@@ -383,7 +376,7 @@ export default function CompetitionOverviewPage() {
                       ) : null}
                     </div>
                   ) : (
-                    <div className="results-meta-card">
+                    <div className="results-meta-card self-start">
                       <div className="results-kicker">Round structure</div>
                       <div className="mt-2 text-lg font-semibold text-slate-950">Qualifier only</div>
                       <div className="mt-2 text-sm text-slate-600">
@@ -391,13 +384,13 @@ export default function CompetitionOverviewPage() {
                       </div>
                     </div>
                   )}
-                  <div className="results-meta-card">
+                  <div className="results-meta-card self-start">
                     <div className="results-kicker">Competition dates</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
                       {formatDateRange(snapshot.competition.start_date, snapshot.competition.end_date)}
                     </div>
                   </div>
-                  <div className="results-meta-card">
+                  <div className="results-meta-card self-start">
                     <div className="results-kicker">Scorecard access</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
                       {scrambleFormat ? "Private scorecards per climber" : "Private links per climber"}
@@ -408,7 +401,7 @@ export default function CompetitionOverviewPage() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="results-meta-card">
+                  <div className="results-meta-card self-start">
                     <div className="results-kicker">{scrambleFormat ? "Live leaderboard" : "Standings"}</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
                       {scrambleFormat ? "Live session rankings" : "Public rankings"}

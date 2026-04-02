@@ -1,24 +1,52 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
-import { formatUsesSelfScoredQualifiers, getActiveQueueSessionBlock } from "@/lib/scoring";
+import { getAuthState, isStaffRole } from "@/lib/auth";
+import { buildCompetitionPath, formatUsesSelfScoredQualifiers, getActiveQueueSessionBlock } from "@/lib/scoring";
 
 export default function CompetitionDisplayPage() {
   const params = useParams<{ slug: string }>();
+  const router = useRouter();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
+  const [authorized, setAuthorized] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(true);
 
   useEffect(() => {
+    if (!slug) {
+      return;
+    }
+
+    void getAuthState()
+      .then((authState) => {
+        if (!isStaffRole(authState.profile?.role)) {
+          router.replace(buildCompetitionPath(slug, "leaderboard"));
+          return;
+        }
+
+        setAuthorized(true);
+      })
+      .catch(() => {
+        router.replace(buildCompetitionPath(slug, "leaderboard"));
+      })
+      .finally(() => setCheckingAccess(false));
+  }, [router, slug]);
+
+  useEffect(() => {
+    if (!authorized) {
+      return;
+    }
+
     const load = () => void getCompetitionSnapshot(slug).then((nextSnapshot) => setSnapshot(nextSnapshot));
     load();
     const interval = window.setInterval(load, 15000);
     return () => window.clearInterval(interval);
-  }, [slug]);
+  }, [authorized, slug]);
 
   const qualifierCategories = useMemo(() => snapshot?.competition.categories ?? [], [snapshot]);
   const qualifierRows = useMemo(() => {
@@ -60,6 +88,20 @@ export default function CompetitionDisplayPage() {
       setSelectedFinalsCategory(finalsCategories[0]);
     }
   }, [finalsCategories, selectedFinalsCategory]);
+
+  if (checkingAccess) {
+    return (
+      <main className="results-page min-h-screen">
+        <div className="content-frame space-y-6">
+          <section className="results-card text-slate-600">Checking display access...</section>
+        </div>
+      </main>
+    );
+  }
+
+  if (!authorized) {
+    return null;
+  }
 
   return (
     <main className="results-page min-h-screen">
