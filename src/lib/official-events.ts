@@ -9,12 +9,25 @@ export interface OfficialEvent {
   description: string;
   source_name: string;
   source_url: string;
+  official_event_url: string;
+  official_registration_url: string;
+  official_schedule_url: string;
+  registration_opens_at: string | null;
+  registration_closes_at: string | null;
+  hero_image_url: string;
 }
+
+type UsaClimbingEventDetails = {
+  location: string;
+  location_url: string;
+  registration_url: string;
+  schedule_url: string;
+  hero_image_url: string;
+};
 
 const WORLD_CLIMBING_SOURCE_URL =
   "https://www.worldclimbing.com/news/ifsc-announces-climbing-and-para-climbing-calendar-2026";
-const CEC_SOURCE_URL =
-  "https://climbingcanada.ca/climbing-escalade-canada-usa-climbing-announce-the-2026-north-american-cup-series-calendar/";
+const USA_CLIMBING_NACS_URL = "https://usaclimbing.org/compete/north-american-cup-series/";
 
 function decodeHtmlEntities(value: string) {
   return value
@@ -24,18 +37,28 @@ function decodeHtmlEntities(value: string) {
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
+    .replace(/&#8211;|&#x2013;|&ndash;/gi, "–")
+    .replace(/&#8212;|&#x2014;|&mdash;/gi, "—")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
 }
 
+function stripTags(value: string) {
+  return decodeHtmlEntities(value.replace(/<[^>]+>/g, " "));
+}
+
+function normalizeWhitespace(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 function extractVisibleText(html: string) {
-  return decodeHtmlEntities(
-    html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
+  return normalizeWhitespace(
+    decodeHtmlEntities(
+      html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+    )
   );
 }
 
@@ -90,7 +113,8 @@ function parseWorldClimbingDateRange(range: string, year: number) {
 }
 
 function parseNamedDateRange(range: string) {
-  const match = range.match(/^([A-Za-z]+) (\d{1,2})[–-](\d{1,2}), (\d{4})$/);
+  const normalized = normalizeWhitespace(range.replace(/[—-]/g, "–"));
+  const match = normalized.match(/^([A-Za-z]+) (\d{1,2})–(\d{1,2}), (\d{4})$/);
   if (!match) {
     return null;
   }
@@ -108,7 +132,19 @@ function parseNamedDateRange(range: string) {
   };
 }
 
-async function fetchSourceText(url: string) {
+function absolutizeUrl(baseUrl: string, href: string) {
+  if (!href) {
+    return "";
+  }
+
+  try {
+    return new URL(decodeHtmlEntities(href), baseUrl).toString();
+  } catch {
+    return decodeHtmlEntities(href);
+  }
+}
+
+async function fetchSourceHtml(url: string) {
   const response = await fetch(url, {
     headers: {
       "user-agent": "ScorecardOfficialEvents/1.0",
@@ -120,10 +156,15 @@ async function fetchSourceText(url: string) {
     throw new Error(`Unable to load official events from ${url}.`);
   }
 
-  return extractVisibleText(await response.text());
+  return response.text();
 }
 
-function parseWorldClimbingEvents(text: string): OfficialEvent[] {
+function buildWorldClimbingEventUrl(location: string, year: number) {
+  return `https://www.worldclimbing.com/events/world-climbing-series-${slugify(location)}-${year}`;
+}
+
+function parseWorldClimbingEvents(html: string): OfficialEvent[] {
+  const text = extractVisibleText(html);
   const marker = "The provisional calendar of Climbing and Para Climbing events in 2026 is as follows:";
   const startIndex = text.indexOf(marker);
   if (startIndex < 0) {
@@ -148,15 +189,23 @@ function parseWorldClimbingEvents(text: string): OfficialEvent[] {
       continue;
     }
 
+    const officialEventUrl = buildWorldClimbingEventUrl(location, 2026);
+
     events.push({
       id: `world-climbing-${slugify(location)}-${parsedRange.start_date}`,
       title: `${eventType} - ${location}`,
       series: "World Climbing",
-      location: `${location} (${countryCode})`,
+      location: `${location}, ${countryCode}`,
       disciplines: disciplines.trim(),
-      description: `${eventType} in ${location} featuring ${disciplines.trim().toLowerCase()}, as listed on the official World Climbing 2026 calendar.`,
+      description: `${eventType} in ${location} featuring ${disciplines.trim().toLowerCase()}, as listed on the official World Climbing calendar.`,
       source_name: "World Climbing 2026 calendar",
       source_url: WORLD_CLIMBING_SOURCE_URL,
+      official_event_url: officialEventUrl,
+      official_registration_url: "",
+      official_schedule_url: officialEventUrl,
+      registration_opens_at: null,
+      registration_closes_at: null,
+      hero_image_url: "",
       ...parsedRange,
     });
   }
@@ -164,41 +213,90 @@ function parseWorldClimbingEvents(text: string): OfficialEvent[] {
   return events;
 }
 
-function parseCecEvents(text: string): OfficialEvent[] {
-  const marker = "2026 NORTH AMERICAN CUP SERIES CALENDAR";
-  const startIndex = text.indexOf(marker);
-  if (startIndex < 0) {
-    return [];
+function extractAnchorHrefs(segment: string) {
+  const anchors = new Map<string, string>();
+  const anchorPattern = /<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<h4[^>]*>([\s\S]*?)<\/h4>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = anchorPattern.exec(segment)) !== null) {
+    const [, href, labelHtml] = match;
+    const label = normalizeWhitespace(stripTags(labelHtml));
+    if (!label) {
+      continue;
+    }
+
+    anchors.set(label, absolutizeUrl(USA_CLIMBING_NACS_URL, href));
   }
 
-  const section = text.slice(startIndex + marker.length);
-  const pattern =
-    /NACS\s+[–-]\s+([A-Za-z &]+)\s+([A-Za-z]+ \d{1,2}[–-]\d{1,2}, \d{4})\s+(.+?)(?=\s+(?:Hosted by|Part of)|\s+NACS\s+[–-]|\s+A Continental Stage|$)/g;
+  return anchors;
+}
+
+function extractUsaClimbingHeroImage(segment: string) {
+  const heroMatch = segment.match(/https?:\/\/[^"' ]+\.(?:jpg|jpeg|png|webp)/i);
+  return heroMatch?.[0] ?? "";
+}
+
+function findUsaClimbingLocationUrl(anchors: Map<string, string>) {
+  for (const [label, href] of Array.from(anchors.entries())) {
+    if (label.toLowerCase().startsWith("location:")) {
+      return href;
+    }
+  }
+
+  return "";
+}
+
+function parseUsaClimbingEvents(html: string): OfficialEvent[] {
+  const sectionPattern =
+    /<h3[^>]*>(North American Cup(?: Series)?[^<]+?)<\/h3>\s*<h3[^>]*>([^<]+?)<\/h3>[\s\S]*?<div class="uk-grid uk-grid-row-large uk-child-width-1-3@s uk-child-width-1-2 uk-flex-center"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/gi;
 
   const events: OfficialEvent[] = [];
   let match: RegExpExecArray | null;
 
-  while ((match = pattern.exec(section)) !== null) {
-    const [, disciplines, dateRange, location] = match;
+  while ((match = sectionPattern.exec(html)) !== null) {
+    const [, titleHtml, dateAndLocationHtml] = match;
+    const segment = match[0];
+    const title = normalizeWhitespace(stripTags(titleHtml));
+    const dateAndLocation = normalizeWhitespace(stripTags(dateAndLocationHtml).replace(/[—-]/g, "–"));
+    const dateMatch = dateAndLocation.match(/^([A-Za-z]+ \d{1,2}–\d{1,2}, \d{4}) in (.+)$/);
+    const disciplineMatch = title.match(/\(([^)]+)\)/);
+    const disciplines = disciplineMatch?.[1]?.trim() ?? "";
     if (!disciplines.toLowerCase().includes("boulder")) {
       continue;
     }
 
-    const parsedRange = parseNamedDateRange(dateRange);
+    if (!dateMatch) {
+      continue;
+    }
+
+    const parsedRange = parseNamedDateRange(dateMatch[1]);
     if (!parsedRange) {
       continue;
     }
 
+    const location = dateMatch[2].trim();
+    const anchors = extractAnchorHrefs(segment);
+    const heroImageUrl = extractUsaClimbingHeroImage(segment);
+    const locationUrl = findUsaClimbingLocationUrl(anchors);
+    const registrationUrl = anchors.get("Athlete Registration") ?? "";
+    const scheduleUrl = anchors.get("Schedule") ?? "";
+
     events.push({
-      id: `cec-nacs-${slugify(location)}-${parsedRange.start_date}`,
-      title: `NACS - ${disciplines.trim()}`,
+      id: `nacs-${slugify(location)}-${parsedRange.start_date}`,
+      title,
       series: "North American Cup Series",
-      location: location.trim(),
-      disciplines: disciplines.trim(),
+      location,
+      disciplines,
       description:
-        `Part of the official 2026 North American Cup Series calendar. The series is run by Climbing Escalade Canada and USA Climbing to provide high-level competition opportunities across North America.`,
-      source_name: "Climbing Escalade Canada / USA Climbing 2026 NACS calendar",
-      source_url: CEC_SOURCE_URL,
+        "Part of the official North American Cup Series calendar. This event is published by USA Climbing and may include separate registration and schedule resources on the official event page.",
+      source_name: "USA Climbing North American Cup Series",
+      source_url: USA_CLIMBING_NACS_URL,
+      official_event_url: locationUrl || USA_CLIMBING_NACS_URL,
+      official_registration_url: registrationUrl,
+      official_schedule_url: scheduleUrl || locationUrl,
+      registration_opens_at: null,
+      registration_closes_at: null,
+      hero_image_url: heroImageUrl,
       ...parsedRange,
     });
   }
@@ -206,13 +304,41 @@ function parseCecEvents(text: string): OfficialEvent[] {
   return events;
 }
 
+function mergeOfficialEvents(primary: OfficialEvent[], secondary: OfficialEvent[]) {
+  const merged = new Map<string, OfficialEvent>();
+
+  [...primary, ...secondary].forEach((event) => {
+    const key = `${event.start_date}:${slugify(event.location)}:${slugify(event.disciplines)}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, event);
+      return;
+    }
+
+    merged.set(key, {
+      ...existing,
+      description: existing.description || event.description,
+      source_name: existing.source_name || event.source_name,
+      source_url: existing.source_url || event.source_url,
+      official_event_url: existing.official_event_url || event.official_event_url,
+      official_registration_url: existing.official_registration_url || event.official_registration_url,
+      official_schedule_url: existing.official_schedule_url || event.official_schedule_url,
+      registration_opens_at: existing.registration_opens_at ?? event.registration_opens_at,
+      registration_closes_at: existing.registration_closes_at ?? event.registration_closes_at,
+      hero_image_url: existing.hero_image_url || event.hero_image_url,
+    });
+  });
+
+  return Array.from(merged.values());
+}
+
 export async function fetchOfficialBoulderingEvents() {
-  const [worldClimbingText, cecText] = await Promise.all([
-    fetchSourceText(WORLD_CLIMBING_SOURCE_URL),
-    fetchSourceText(CEC_SOURCE_URL),
+  const [worldClimbingHtml, usaClimbingHtml] = await Promise.all([
+    fetchSourceHtml(WORLD_CLIMBING_SOURCE_URL),
+    fetchSourceHtml(USA_CLIMBING_NACS_URL),
   ]);
 
-  return [...parseWorldClimbingEvents(worldClimbingText), ...parseCecEvents(cecText)].sort((left, right) =>
-    left.start_date.localeCompare(right.start_date)
+  return mergeOfficialEvents(parseWorldClimbingEvents(worldClimbingHtml), parseUsaClimbingEvents(usaClimbingHtml)).sort(
+    (left, right) => left.start_date.localeCompare(right.start_date)
   );
 }

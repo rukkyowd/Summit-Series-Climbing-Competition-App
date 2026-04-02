@@ -235,9 +235,23 @@ export default function CompetitionOverviewPage() {
                     </div>
                   </>
                 ) : (
-                  <p className="mt-4 text-base text-slate-600">
-                    Staff has not marked a live schedule block yet.
-                  </p>
+                  <div className="mt-4 space-y-3">
+                    <p className="text-base text-slate-600">
+                      {snapshot.competition.official_schedule_url
+                        ? "No in-app schedule blocks are live yet. The official event schedule is available below."
+                        : "Staff has not marked a live schedule block yet."}
+                    </p>
+                    {snapshot.competition.official_schedule_url ? (
+                      <a
+                        href={snapshot.competition.official_schedule_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="results-secondary-button inline-flex"
+                      >
+                        Open official schedule
+                      </a>
+                    ) : null}
+                  </div>
                 )}
 
                 <div className="mt-6 grid gap-3">

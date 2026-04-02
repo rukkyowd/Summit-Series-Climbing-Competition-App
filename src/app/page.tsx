@@ -19,19 +19,16 @@ type OfficialEvent = {
   description: string;
   source_name: string;
   source_url: string;
+  official_event_url: string;
+  official_registration_url: string;
+  official_schedule_url: string;
+  registration_opens_at: string | null;
+  registration_closes_at: string | null;
+  hero_image_url: string;
 };
 
 function buildOfficialImportHref(event: OfficialEvent) {
-  const params = new URLSearchParams({
-    createName: event.title,
-    createLocation: event.location,
-    createStartDate: event.start_date,
-    createEndDate: event.end_date,
-    createDescription: event.description,
-    createFormat: "flash_format",
-  });
-
-  return `/staff/dashboard?${params.toString()}`;
+  return `/staff/dashboard?importOfficialEvent=${encodeURIComponent(event.id)}`;
 }
 
 export default function HomePage() {

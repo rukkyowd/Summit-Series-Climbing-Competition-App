@@ -129,6 +129,9 @@ export interface Competition {
   registration_closes_at: string | null;
   description: string;
   hero_image_url: string;
+  official_event_url: string;
+  official_registration_url: string;
+  official_schedule_url: string;
   total_climbs: number;
   max_climbers: number;
   qualifier_counting_climbs: number;
@@ -536,6 +539,9 @@ export const DEFAULT_COMPETITION: Competition = {
   registration_closes_at: null,
   description: "",
   hero_image_url: "",
+  official_event_url: "",
+  official_registration_url: "",
+  official_schedule_url: "",
   total_climbs: DEFAULT_TOTAL_CLIMBS,
   max_climbers: DEFAULT_MAX_CLIMBERS,
   qualifier_counting_climbs: DEFAULT_QUALIFIER_COUNTING_CLIMBS,
@@ -838,11 +844,14 @@ export function normalizeCompetition(
     location_name: competition?.location_name?.trim() || "",
     start_date: competition?.start_date ?? null,
     end_date: competition?.end_date ?? null,
-    registration_opens_at: competition?.registration_opens_at ?? null,
-    registration_closes_at: competition?.registration_closes_at ?? null,
-    description: competition?.description?.trim() || "",
-    hero_image_url: competition?.hero_image_url?.trim() || "",
-    total_climbs: clampNumber(competition?.total_climbs, 1, 200, defaultClimbCount),
+      registration_opens_at: competition?.registration_opens_at ?? null,
+      registration_closes_at: competition?.registration_closes_at ?? null,
+      description: competition?.description?.trim() || "",
+      hero_image_url: competition?.hero_image_url?.trim() || "",
+      official_event_url: competition?.official_event_url?.trim() || "",
+      official_registration_url: competition?.official_registration_url?.trim() || "",
+      official_schedule_url: competition?.official_schedule_url?.trim() || "",
+      total_climbs: clampNumber(competition?.total_climbs, 1, 200, defaultClimbCount),
     max_climbers: clampNumber(competition?.max_climbers, 1, 1000, DEFAULT_MAX_CLIMBERS),
       qualifier_counting_climbs: clampNumber(
         competition?.qualifier_counting_climbs,

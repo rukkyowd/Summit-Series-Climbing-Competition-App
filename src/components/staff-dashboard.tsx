@@ -104,6 +104,13 @@ type StaffDashboardCreateDraft = {
   startDate?: string;
   endDate?: string;
   description?: string;
+  registrationOpensAt?: string | null;
+  registrationClosesAt?: string | null;
+  officialEventUrl?: string;
+  officialRegistrationUrl?: string;
+  officialScheduleUrl?: string;
+  heroImageUrl?: string;
+  disciplineLabel?: string;
   format?: string;
 };
 
@@ -172,6 +179,13 @@ export default function StaffDashboard({
   const [createStartDate, setCreateStartDate] = useState("");
   const [createEndDate, setCreateEndDate] = useState("");
   const [createDescription, setCreateDescription] = useState("");
+  const [createRegistrationOpensAt, setCreateRegistrationOpensAt] = useState<string | null>(null);
+  const [createRegistrationClosesAt, setCreateRegistrationClosesAt] = useState<string | null>(null);
+  const [createOfficialEventUrl, setCreateOfficialEventUrl] = useState("");
+  const [createOfficialRegistrationUrl, setCreateOfficialRegistrationUrl] = useState("");
+  const [createOfficialScheduleUrl, setCreateOfficialScheduleUrl] = useState("");
+  const [createHeroImageUrl, setCreateHeroImageUrl] = useState("");
+  const [createDisciplineLabel, setCreateDisciplineLabel] = useState("");
   const [isPhasePending, setIsPhasePending] = useState(false);
   const [phaseBlockMemory, setPhaseBlockMemory] = useState<Partial<Record<Competition["current_phase"], string>>>({});
   const [confirming, setConfirming] = useState<null | {
@@ -227,9 +241,30 @@ export default function StaffDashboard({
     const importedStartDate = initialCreateDraft?.startDate?.trim() ?? "";
     const importedEndDate = initialCreateDraft?.endDate?.trim() ?? "";
     const importedDescription = initialCreateDraft?.description?.trim() ?? "";
+    const importedRegistrationOpensAt = initialCreateDraft?.registrationOpensAt ?? null;
+    const importedRegistrationClosesAt = initialCreateDraft?.registrationClosesAt ?? null;
+    const importedOfficialEventUrl = initialCreateDraft?.officialEventUrl?.trim() ?? "";
+    const importedOfficialRegistrationUrl = initialCreateDraft?.officialRegistrationUrl?.trim() ?? "";
+    const importedOfficialScheduleUrl = initialCreateDraft?.officialScheduleUrl?.trim() ?? "";
+    const importedHeroImageUrl = initialCreateDraft?.heroImageUrl?.trim() ?? "";
+    const importedDisciplineLabel = initialCreateDraft?.disciplineLabel?.trim() ?? "";
     const importedFormat = initialCreateDraft?.format?.trim() ?? "";
 
-    if (!importedName && !importedLocation && !importedStartDate && !importedEndDate && !importedDescription && !importedFormat) {
+    if (
+      !importedName &&
+      !importedLocation &&
+      !importedStartDate &&
+      !importedEndDate &&
+      !importedDescription &&
+      !importedOfficialEventUrl &&
+      !importedOfficialRegistrationUrl &&
+      !importedOfficialScheduleUrl &&
+      !importedHeroImageUrl &&
+      !importedDisciplineLabel &&
+      !importedFormat &&
+      !importedRegistrationOpensAt &&
+      !importedRegistrationClosesAt
+    ) {
       return;
     }
 
@@ -238,6 +273,13 @@ export default function StaffDashboard({
     setCreateStartDate(importedStartDate);
     setCreateEndDate(importedEndDate);
     setCreateDescription(importedDescription);
+    setCreateRegistrationOpensAt(importedRegistrationOpensAt);
+    setCreateRegistrationClosesAt(importedRegistrationClosesAt);
+    setCreateOfficialEventUrl(importedOfficialEventUrl);
+    setCreateOfficialRegistrationUrl(importedOfficialRegistrationUrl);
+    setCreateOfficialScheduleUrl(importedOfficialScheduleUrl);
+    setCreateHeroImageUrl(importedHeroImageUrl);
+    setCreateDisciplineLabel(importedDisciplineLabel);
     if (FORMAT_TEMPLATES.some((template) => template.value === importedFormat)) {
       setCreateFormat(importedFormat as Competition["format"]);
     }
@@ -736,6 +778,14 @@ export default function StaffDashboard({
                 className="results-input min-h-[120px] resize-y"
                 placeholder="Competition description"
               />
+              {createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl ? (
+                <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                  Imported official links:
+                  {createOfficialEventUrl ? ` event page` : ""}
+                  {createOfficialRegistrationUrl ? `${createOfficialEventUrl ? "," : ""} registration` : ""}
+                  {createOfficialScheduleUrl ? `${createOfficialEventUrl || createOfficialRegistrationUrl ? "," : ""} schedule` : ""}
+                </div>
+              ) : null}
               <button
                 type="button"
                 disabled={isPending || !createName.trim()}
@@ -749,13 +799,27 @@ export default function StaffDashboard({
                           location_name: createLocation,
                           start_date: createStartDate || null,
                           end_date: createEndDate || null,
+                          registration_opens_at: createRegistrationOpensAt,
+                          registration_closes_at: createRegistrationClosesAt,
                           description: createDescription,
+                          hero_image_url: createHeroImageUrl || undefined,
+                          discipline_label: createDisciplineLabel || undefined,
+                          official_event_url: createOfficialEventUrl || undefined,
+                          official_registration_url: createOfficialRegistrationUrl || undefined,
+                          official_schedule_url: createOfficialScheduleUrl || undefined,
                         });
                         setCreateName("");
                         setCreateLocation("");
                         setCreateStartDate("");
                         setCreateEndDate("");
                         setCreateDescription("");
+                        setCreateRegistrationOpensAt(null);
+                        setCreateRegistrationClosesAt(null);
+                        setCreateOfficialEventUrl("");
+                        setCreateOfficialRegistrationUrl("");
+                        setCreateOfficialScheduleUrl("");
+                        setCreateHeroImageUrl("");
+                        setCreateDisciplineLabel("");
                         await refreshAfterChange(created.id);
                         setSelectedCompetitionId(created.id);
                         setMessage(`Created ${created.name}.`);

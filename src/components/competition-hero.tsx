@@ -20,6 +20,12 @@ export default function CompetitionHero({
   const summary = getFormatTemplate(competition.format);
   const liveNow = isCompetitionLiveNow(competition);
   const lifecycleLabel = getCompetitionLifecycleLabel(competition);
+  const registrationOpensLabel = competition.registration_opens_at
+    ? formatDateTimeLabel(competition.registration_opens_at)
+    : "";
+  const registrationDeadlineLabel = competition.registration_closes_at
+    ? formatDateTimeLabel(competition.registration_closes_at)
+    : "";
 
   return (
     <section className="results-card overflow-hidden">
@@ -74,6 +80,26 @@ export default function CompetitionHero({
             >
               Share competition
             </button>
+            {competition.official_event_url ? (
+              <a
+                href={competition.official_event_url}
+                target="_blank"
+                rel="noreferrer"
+                className="results-secondary-button w-full sm:w-auto"
+              >
+                Official event page
+              </a>
+            ) : null}
+            {competition.official_schedule_url ? (
+              <a
+                href={competition.official_schedule_url}
+                target="_blank"
+                rel="noreferrer"
+                className="results-secondary-button w-full sm:w-auto"
+              >
+                Official schedule
+              </a>
+            ) : null}
           </div>
         </div>
 
@@ -89,13 +115,43 @@ export default function CompetitionHero({
           <div className="results-meta-card">
             <div className="results-kicker">Registration opens</div>
             <div className="mt-2 text-lg font-semibold text-slate-950">
-              {formatDateTimeLabel(competition.registration_opens_at)}
+              {registrationOpensLabel || competition.official_registration_url ? (
+                registrationOpensLabel ? (
+                  registrationOpensLabel
+                ) : (
+                  <a
+                    href={competition.official_registration_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-700 underline-offset-4 hover:underline"
+                  >
+                    Official registration
+                  </a>
+                )
+              ) : (
+                "Not scheduled"
+              )}
             </div>
           </div>
           <div className="results-meta-card">
             <div className="results-kicker">Registration deadline</div>
             <div className="mt-2 text-lg font-semibold text-slate-950">
-              {formatDateTimeLabel(competition.registration_closes_at)}
+              {registrationDeadlineLabel || competition.official_registration_url ? (
+                registrationDeadlineLabel ? (
+                  registrationDeadlineLabel
+                ) : (
+                  <a
+                    href={competition.official_registration_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-700 underline-offset-4 hover:underline"
+                  >
+                    See official registration
+                  </a>
+                )
+              ) : (
+                "Not scheduled"
+              )}
             </div>
           </div>
         </div>
