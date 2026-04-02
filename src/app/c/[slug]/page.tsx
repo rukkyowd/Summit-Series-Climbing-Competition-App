@@ -360,7 +360,7 @@ export default function CompetitionOverviewPage() {
                 ) : null}
 
                 <div className="results-kicker">Competition snapshot</div>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="mt-4 grid auto-rows-fr gap-4 sm:grid-cols-2">
                   <div className="results-meta-card self-start">
                     <div className="results-kicker">Climbers</div>
                     <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.climbers.length}</div>
@@ -384,12 +384,6 @@ export default function CompetitionOverviewPage() {
                       </div>
                     </div>
                   )}
-                  <div className="results-meta-card self-start">
-                    <div className="results-kicker">Competition dates</div>
-                    <div className="mt-2 text-lg font-semibold text-slate-950">
-                      {formatDateRange(snapshot.competition.start_date, snapshot.competition.end_date)}
-                    </div>
-                  </div>
                   <div className="results-meta-card self-start">
                     <div className="results-kicker">Scorecard access</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
