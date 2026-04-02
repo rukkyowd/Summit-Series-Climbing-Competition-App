@@ -9,7 +9,6 @@ import ConfirmationModal from "@/components/confirmation-modal";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
-  advanceCompetitionToFinals,
   createCompetitionFromTemplate,
   deleteCompetition,
   getCompetitionSnapshot,
@@ -35,6 +34,7 @@ import {
   buildCompetitionPath,
   buildDisplayPath,
   buildStaffCompetitionPath,
+  compareCompetitionPhases,
   getCompetitionPhaseForSchedulePhase,
   getCompetitionPhaseSequenceFromScheduleBlocks,
   formatCompetitionPhaseLabel,
@@ -299,6 +299,30 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
       ? "Qualifier wave"
       : "Current block";
   const canEditFinalsOrder = navigationPhase === "observation";
+  const finalsAdvanceBlock = useMemo(() => {
+    const isFinalsAdvanceBlock = (block: CompetitionScheduleBlock) => {
+      const phase = getCompetitionPhaseForSchedulePhase(block.phase_type);
+      return phase === "observation" || phase === "finals_open";
+    };
+
+    const candidateBlocks = orderedScheduleBlocks.filter(isFinalsAdvanceBlock);
+    if (!candidateBlocks.length) {
+      return null;
+    }
+
+    if (!liveScheduleBlock) {
+      return candidateBlocks[0];
+    }
+
+    const liveIndex = orderedScheduleBlocks.findIndex((block) => block.id === liveScheduleBlock.id);
+    if (liveIndex < 0) {
+      return candidateBlocks[0];
+    }
+
+    return orderedScheduleBlocks.slice(liveIndex + 1).find(isFinalsAdvanceBlock) ?? candidateBlocks[0];
+  }, [liveScheduleBlock, orderedScheduleBlocks]);
+  const finalsAdvancePhase =
+    (finalsAdvanceBlock ? getCompetitionPhaseForSchedulePhase(finalsAdvanceBlock.phase_type) : null) ?? "finals_open";
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
@@ -444,6 +468,41 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     }
   };
 
+  const advanceToFinals = async () => {
+    if (!draft || !snapshot) {
+      return;
+    }
+
+    if (!snapshot.finalists.length) {
+      throw new Error("No finalists are available yet. Close qualifier scoring or check the configured finals age groups and cutoff.");
+    }
+
+    const orderedFinalists = [...snapshot.finalists].sort((left, right) => {
+      const leftOrder = left.climbing_order ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = right.climbing_order ?? Number.MAX_SAFE_INTEGER;
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+
+      if (left.qualifier_rank !== right.qualifier_rank) {
+        return left.qualifier_rank - right.qualifier_rank;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+
+    await saveFinalistField(draft.id, orderedFinalists);
+    await runPhaseNavigation(
+      draft.id,
+      finalsAdvancePhase,
+      1,
+      finalsAdvanceBlock
+        ? `Finals field created and live block moved to ${finalsAdvanceBlock.label}.`
+        : `Finals field created and competition moved to ${formatCompetitionPhaseLabel(finalsAdvancePhase).toLowerCase()}.`,
+      finalsAdvanceBlock?.id
+    );
+  };
+
   const persistDraft = () => {
     if (!draft) {
       return;
@@ -570,6 +629,18 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
       })),
     });
   };
+
+  const liveBlockRollsBackPhase = Boolean(
+    schedulePhaseMismatch &&
+      draft &&
+      impliedCompetitionPhase &&
+      compareCompetitionPhases(impliedCompetitionPhase, draft.current_phase) < 0
+  );
+  const currentPhaseScheduleBlock = draft ? findScheduleBlockForPhase(draft.current_phase, 1) : null;
+  const canAdvanceToFinals = draft
+    ? ["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
+      Boolean(snapshot?.finalists.length)
+    : false;
 
   if (loading && !draft) {
     return (
@@ -834,24 +905,54 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   ) : null}
                   {schedulePhaseMismatch && draft && impliedCompetitionPhase ? (
                     <div className="mt-3 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                      The live schedule block and competition phase are out of sync. Public scoring is still using{" "}
-                      <span className="font-semibold">{formatCompetitionPhaseLabel(draft.current_phase)}</span>, not{" "}
-                      <span className="font-semibold">{formatCompetitionPhaseLabel(impliedCompetitionPhase)}</span>.
-                      {canEditPhase ? (
-                        <button
-                          type="button"
-                          onClick={() => void runPhaseChange(
-                            draft.id,
-                            impliedCompetitionPhase,
-                            `Competition synced to ${formatCompetitionPhaseLabel(impliedCompetitionPhase).toLowerCase()}.`
+                      {liveBlockRollsBackPhase ? (
+                        <>
+                          The live schedule block is behind the competition phase. Public scoring is still using{" "}
+                          <span className="font-semibold">{formatCompetitionPhaseLabel(draft.current_phase)}</span>, and syncing backward to{" "}
+                          <span className="font-semibold">{formatCompetitionPhaseLabel(impliedCompetitionPhase)}</span> would reopen an earlier stage.
+                          {canEditPhase && currentPhaseScheduleBlock ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void runPhaseNavigation(
+                                  draft.id,
+                                  draft.current_phase,
+                                  1,
+                                  `Live block moved to ${currentPhaseScheduleBlock.label}.`,
+                                  currentPhaseScheduleBlock.id
+                                )
+                              }
+                              disabled={isPending || isPhasePending}
+                              className="results-secondary-button ml-3"
+                            >
+                              Move live block forward
+                            </button>
+                          ) : (
+                            <> Only admins can move the live schedule block forward.</>
                           )}
-                          disabled={isPending || isPhasePending}
-                          className="results-secondary-button ml-3"
-                        >
-                          Match live block
-                        </button>
+                        </>
                       ) : (
-                        <> Only admins can sync the competition phase.</>
+                        <>
+                          The live schedule block and competition phase are out of sync. Public scoring is still using{" "}
+                          <span className="font-semibold">{formatCompetitionPhaseLabel(draft.current_phase)}</span>, not{" "}
+                          <span className="font-semibold">{formatCompetitionPhaseLabel(impliedCompetitionPhase)}</span>.
+                          {canEditPhase ? (
+                            <button
+                              type="button"
+                              onClick={() => void runPhaseChange(
+                                draft.id,
+                                impliedCompetitionPhase,
+                                `Competition synced to ${formatCompetitionPhaseLabel(impliedCompetitionPhase).toLowerCase()}.`
+                              )}
+                              disabled={isPending || isPhasePending}
+                              className="results-secondary-button ml-3"
+                            >
+                              Match live block
+                            </button>
+                          ) : (
+                            <> Only admins can sync the competition phase.</>
+                          )}
+                        </>
                       )}
                     </div>
                   ) : null}
@@ -1248,15 +1349,15 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   ) : null}
                   <button type="button" onClick={() => setConfirming({
                     title: "Advance to finals",
-                    description: "This will create the finals field from the official standings and open finals scoring. You can undo it for 30 seconds.",
+                    description: finalsAdvanceBlock
+                      ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for 30 seconds.`
+                      : "This will create the finals field from the current standings and move the competition into finals. You can undo it for 30 seconds.",
                     confirmLabel: "Advance",
                     expectedValue: draft.name,
                     action: async () => {
-                      await advanceCompetitionToFinals(draft.id);
-                      await refreshAfterChange(draft.id);
-                      setMessage("Competition advanced to finals.");
+                      await advanceToFinals();
                     },
-                  })} className="results-secondary-button">Advance to finals</button>
+                  })} className="results-secondary-button" disabled={!canAdvanceToFinals || isPending || isPhasePending}>Advance to finals</button>
                   <button type="button" onClick={() => setConfirming({
                     title: "Delete competition",
                     description: "This permanently deletes the competition and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",

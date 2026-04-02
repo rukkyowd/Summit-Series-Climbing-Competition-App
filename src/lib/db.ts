@@ -26,6 +26,7 @@ import {
   isQualifierStage,
   normalizeCompetition,
   phaseToStageMode,
+  schedulePhaseAllowsRegistration,
   slugifyCompetitionName,
   type Climber,
   type ClimberWithAttempts,
@@ -95,6 +96,11 @@ export interface CompetitionUndoAvailability {
   expires_at: string | null;
   operation_type: "advance" | "reset" | null;
 }
+
+type RegisteredClimberResult = Climber & {
+  competition_slug: string;
+  scorecard_path: string;
+};
 
 function dedupeFinalists<T extends FinalistSelection>(finalists: T[]) {
   const seen = new Set<string>();
@@ -1212,6 +1218,38 @@ export async function searchClimbers(competitionId: string, query: string) {
   });
 }
 
+async function registerClimberFallback(
+  snapshot: CompetitionSnapshot,
+  category: CompetitionCategory,
+  slot: CompetitionScheduleBlock | null,
+  accessToken: string,
+  input: RegisterClimberInput
+): Promise<RegisteredClimberResult> {
+  const payload = {
+    competition_id: snapshot.competition.id,
+    name: cleanString(input.name),
+    climber_number: cleanString(input.climberNumber),
+    province: cleanString(input.province),
+    category_id: category.id,
+    gender_division: cleanString(category.gender_division),
+    age_group: cleanString(category.age_group),
+    display_category: category.display_name,
+    time_slot_id: slot?.id ?? null,
+    access_token: accessToken,
+  };
+
+  const { data, error } = await supabase.from("climbers").insert(payload).select("*").single();
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    ...(data as Climber),
+    competition_slug: snapshot.competition.slug,
+    scorecard_path: `${buildCompetitionPath(snapshot.competition.slug, "scorecard")}?token=${data.access_token}`,
+  };
+}
+
 export async function registerClimber(input: RegisterClimberInput) {
   ensureConfigured();
 
@@ -1248,6 +1286,10 @@ export async function registerClimber(input: RegisterClimberInput) {
       throw new Error("Please choose a valid schedule block.");
     }
 
+    if (!schedulePhaseAllowsRegistration(slot.phase_type)) {
+      throw new Error("That schedule block is not open for registration.");
+    }
+
     if (!validateSlotForCategory(slot, category.id)) {
       throw new Error("That schedule block is not available for the selected category.");
     }
@@ -1256,32 +1298,47 @@ export async function registerClimber(input: RegisterClimberInput) {
     if (slotCount >= slot.capacity) {
       throw new Error("That schedule block is already full.");
     }
-  } else if (snapshot.competition.schedule_blocks.filter((block) => block.capacity > 0).length > 0) {
+  } else if (
+    snapshot.competition.schedule_blocks.filter(
+      (block) => block.capacity > 0 && schedulePhaseAllowsRegistration(block.phase_type)
+    ).length > 0
+  ) {
     throw new Error("Please choose a schedule block.");
   }
 
-  const payload = {
-    competition_id: snapshot.competition.id,
-    name: cleanString(input.name),
-    climber_number: cleanString(input.climberNumber),
-    province: cleanString(input.province),
-    category_id: category.id,
-    gender_division: cleanString(category.gender_division),
-    age_group: cleanString(category.age_group),
-    display_category: category.display_name,
-    time_slot_id: slot?.id ?? null,
-    access_token: createAccessToken(),
+  const accessToken = createAccessToken();
+  const rpcPayload = {
+    p_competition_id: snapshot.competition.id,
+    p_name: cleanString(input.name),
+    p_climber_number: cleanString(input.climberNumber),
+    p_province: cleanString(input.province),
+    p_category_id: category.id,
+    p_time_slot_id: slot?.id ?? null,
+    p_access_token: accessToken,
   };
 
-  const { data, error } = await supabase.from("climbers").insert(payload).select("*").single();
+  const { data, error } = await supabase.rpc("register_climber_for_competition", rpcPayload);
+
+  if (
+    error &&
+    error.message.includes("Could not find the function public.register_climber_for_competition")
+  ) {
+    return registerClimberFallback(snapshot, category, slot, accessToken, input);
+  }
+
   if (error) {
     throw new Error(error.message);
   }
 
+  const climber = (Array.isArray(data) ? data[0] : data) as Climber | null;
+  if (!climber) {
+    throw new Error("Registration succeeded but no climber record was returned.");
+  }
+
   return {
-    ...(data as Climber),
+    ...climber,
     competition_slug: snapshot.competition.slug,
-    scorecard_path: `${buildCompetitionPath(snapshot.competition.slug, "scorecard")}?token=${data.access_token}`,
+    scorecard_path: `${buildCompetitionPath(snapshot.competition.slug, "scorecard")}?token=${climber.access_token}`,
   };
 }
 

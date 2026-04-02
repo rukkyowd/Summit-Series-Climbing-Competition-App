@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { formatFinalPoints, type FinalsLeaderboardEntry } from "@/lib/scoring";
 
 function FinalsResultCell({
@@ -46,6 +47,15 @@ export default function FinalsResultsTable({
   title: string;
   rows: FinalsLeaderboardEntry[];
 }) {
+  const problemCount = Math.max(1, ...rows.map((entry) => entry.problem_results.length), 4);
+  const mobileProblemGridStyle: CSSProperties = {
+    gridTemplateColumns: `repeat(${problemCount}, minmax(0, 1fr))`,
+  };
+  const desktopGridStyle: CSSProperties = {
+    gridTemplateColumns: `0.7fr 2.3fr 1fr repeat(${problemCount}, 0.8fr) 1fr 0.7fr 0.7fr 0.8fr 0.8fr`,
+  };
+  const desktopTableMinWidth = `${760 + problemCount * 76}px`;
+
   return (
     <section className="results-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -73,7 +83,7 @@ export default function FinalsResultsTable({
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-4 gap-2">
+            <div className="mt-4 grid gap-2" style={mobileProblemGridStyle}>
               {entry.problem_results.map((problem) => (
                 <div key={problem.climb_number} className="space-y-2">
                   <div className="text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -100,15 +110,14 @@ export default function FinalsResultsTable({
       </div>
 
       <div className="mt-5 hidden overflow-x-auto md:block">
-        <div className="finals-table-shell min-w-[980px]">
-          <div className="grid finals-grid finals-table-header">
+        <div className="finals-table-shell" style={{ minWidth: desktopTableMinWidth }}>
+          <div className="grid finals-table-header" style={desktopGridStyle}>
             <div>#</div>
             <div>Athlete</div>
             <div>Prov</div>
-            <div>1</div>
-            <div>2</div>
-            <div>3</div>
-            <div>4</div>
+            {Array.from({ length: problemCount }, (_, index) => (
+              <div key={`header-problem-${index + 1}`}>{index + 1}</div>
+            ))}
             <div>Points</div>
             <div>T</div>
             <div>Z</div>
@@ -118,7 +127,7 @@ export default function FinalsResultsTable({
 
           <div className="divide-y divide-black/10">
             {rows.map((entry) => (
-              <div key={entry.climber_id} className="grid finals-grid finals-table-row items-center">
+              <div key={entry.climber_id} className="grid finals-table-row items-center" style={desktopGridStyle}>
                 <div className="finals-rank">{entry.category_rank}</div>
                 <div>
                   <div className="finals-athlete-name">{entry.name}</div>

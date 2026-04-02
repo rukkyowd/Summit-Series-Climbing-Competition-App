@@ -641,6 +641,10 @@ export function getPreviousCompetitionPhase(phase: CompetitionPhase): Competitio
   return index > 0 ? phases[index - 1] : null;
 }
 
+export function compareCompetitionPhases(left: CompetitionPhase, right: CompetitionPhase) {
+  return COMPETITION_PHASES.indexOf(left) - COMPETITION_PHASES.indexOf(right);
+}
+
 export function getCompetitionPhaseForSchedulePhase(phaseType: SchedulePhaseType): CompetitionPhase | null {
   switch (phaseType) {
     case "qualifier_round":
@@ -901,7 +905,7 @@ export function getActiveScheduleBlock(competition: Pick<Competition, "schedule_
 }
 
 export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
-  return phaseType === "qualifier_round" || phaseType === "custom";
+  return phaseType === "check_in" || phaseType === "qualifier_round" || phaseType === "custom";
 }
 
 export function getRegistrationAssignmentLabel(competition: Pick<Competition, "format">) {
