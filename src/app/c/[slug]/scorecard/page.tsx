@@ -439,7 +439,7 @@ function ScorecardContent() {
                     </div>
                   ) : queueOpen ? (
                     <div className="results-alert results-alert-success mt-4">
-                      Tap the boulder you are walking to now. This is a soft crowd guide, not a strict turn-order system. Saving an attempt clears your check-in automatically, and stale check-ins fall away after a few minutes.
+                      Tap the boulder you are walking to now. This is a soft crowd guide, not a strict turn-order system. Saving an attempt clears your check-in automatically, and stale check-ins fall away after about 3 minutes.
                     </div>
                   ) : null}
 
