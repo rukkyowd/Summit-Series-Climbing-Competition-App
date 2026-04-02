@@ -15,6 +15,7 @@ import {
   formatDateRange,
   formatSchedulePhaseLabel,
   formatTimeRange,
+  competitionHasFinals,
   getActiveScheduleBlock,
   getEventWorkflowGuide,
   getTimeSlotLabel,
@@ -83,6 +84,7 @@ export default function CompetitionOverviewPage() {
     () => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null),
     [snapshot]
   );
+  const finalsEnabled = snapshot ? competitionHasFinals(snapshot.competition) : false;
   const finalistsLabel = snapshot
     ? snapshot.finalistsPersisted || isFinalsStage(snapshot.competition)
       ? "Finalists"
@@ -100,12 +102,14 @@ export default function CompetitionOverviewPage() {
   const finalsCategories = useMemo(() => Array.from(finalsGroups.keys()).sort(), [finalsGroups]);
   const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
   const finalsActive =
-    snapshot?.competition.current_phase === "finals_open" ||
-    snapshot?.competition.current_phase === "finals_closed" ||
-    snapshot?.competition.current_phase === "results";
+    finalsEnabled &&
+    (snapshot?.competition.current_phase === "finals_open" ||
+      snapshot?.competition.current_phase === "finals_closed" ||
+      snapshot?.competition.current_phase === "results");
   const showFinalsClimbingOrder =
-    snapshot?.competition.current_phase === "observation" ||
-    snapshot?.competition.current_phase === "finals_open";
+    finalsEnabled &&
+    (snapshot?.competition.current_phase === "observation" ||
+      snapshot?.competition.current_phase === "finals_open");
   const finalsOrderRows = useMemo(() => {
     if (!snapshot) {
       return [];
@@ -294,15 +298,25 @@ export default function CompetitionOverviewPage() {
                     <div className="results-kicker">Climbers</div>
                     <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.climbers.length}</div>
                   </div>
-                  <div className="results-meta-card">
-                    <div className="results-kicker">{finalistsLabel}</div>
-                    <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.finalists.length}</div>
-                    {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
+                  {finalsEnabled ? (
+                    <div className="results-meta-card">
+                      <div className="results-kicker">{finalistsLabel}</div>
+                      <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.finalists.length}</div>
+                      {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
+                        <div className="mt-2 text-sm text-slate-600">
+                          Live qualifier projections do not expand tie-advances until the round is closed.
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="results-meta-card">
+                      <div className="results-kicker">Round structure</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-950">Qualifier only</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        Live qualifier projections do not expand tie-advances until the round is closed.
+                        This event ends after qualifier rankings without a separate finals round.
                       </div>
-                    ) : null}
-                  </div>
+                    </div>
+                  )}
                   <div className="results-meta-card">
                     <div className="results-kicker">Competition dates</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">

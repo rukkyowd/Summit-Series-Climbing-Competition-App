@@ -135,6 +135,7 @@ export interface Competition {
   total_climbs: number;
   max_climbers: number;
   qualifier_counting_climbs: number;
+  has_finals: boolean;
   finals_cutoff: 6 | 8;
   finals_tie_advances: boolean;
   qualifier_eligible_age_groups: string[];
@@ -545,6 +546,7 @@ export const DEFAULT_COMPETITION: Competition = {
   total_climbs: DEFAULT_TOTAL_CLIMBS,
   max_climbers: DEFAULT_MAX_CLIMBERS,
   qualifier_counting_climbs: DEFAULT_QUALIFIER_COUNTING_CLIMBS,
+  has_finals: true,
   finals_cutoff: DEFAULT_FINALS_CUTOFF,
   finals_tie_advances: true,
   qualifier_eligible_age_groups: [...DEFAULT_QUALIFIER_ELIGIBLE_AGE_GROUPS],
@@ -566,6 +568,18 @@ export function getFormatCapabilities(format: EventFormat): FormatCapabilities {
 
 export function formatSupportsFinals(format: EventFormat) {
   return getFormatCapabilities(format).supportsFinals;
+}
+
+export function competitionAllowsOptionalFinals(format: EventFormat) {
+  return format === "scramble";
+}
+
+export function competitionHasFinals(competition: Pick<Competition, "format" | "has_finals">) {
+  if (competitionAllowsOptionalFinals(competition.format)) {
+    return competition.has_finals;
+  }
+
+  return true;
 }
 
 export function formatUsesOfficialQualifierPoints(format: EventFormat) {
@@ -828,6 +842,10 @@ export function normalizeCompetition(
   const defaultClimbCount = getRecommendedQualifierClimbCount(nextFormat);
   const defaultCountingClimbs = getRecommendedQualifierCountingClimbs(nextFormat);
   const defaultFinalsCutoff = getRecommendedFinalsCutoff(nextFormat);
+  const nextHasFinals =
+    competitionAllowsOptionalFinals(nextFormat)
+      ? competition?.has_finals ?? DEFAULT_COMPETITION.has_finals
+      : true;
   let activeBlockSeen = false;
 
   return {
@@ -859,6 +877,7 @@ export function normalizeCompetition(
         20,
         defaultCountingClimbs
       ),
+      has_finals: nextHasFinals,
       finals_cutoff: clampNumber(competition?.finals_cutoff, 6, 8, defaultFinalsCutoff) >= 8 ? 8 : 6,
       finals_tie_advances: competition?.finals_tie_advances ?? true,
       qualifier_eligible_age_groups: normalizeQualifierEligibleAgeGroups(competition?.qualifier_eligible_age_groups),
@@ -1021,7 +1040,7 @@ export function isFinalsStage(competition: Pick<Competition, "current_phase" | "
 }
 
 export function getEventWorkflowGuide(
-  competition: Pick<Competition, "format" | "current_phase" | "qualifier_eligible_age_groups" | "finals_eligible_age_groups">
+  competition: Pick<Competition, "format" | "current_phase" | "qualifier_eligible_age_groups" | "finals_eligible_age_groups" | "has_finals">
 ): EventWorkflowGuide {
   const qualifierAgeGroups = competition.qualifier_eligible_age_groups.join(", ");
   if (phaseToStageMode(competition.current_phase) === "finals") {
@@ -1085,7 +1104,9 @@ export function getEventWorkflowGuide(
         `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
         "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
         "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
-        "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
+        competitionHasFinals(competition)
+          ? "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode."
+          : "This qualifier-only scramble ends with the qualifier standings, so there is no separate finals round to configure.",
       ],
       roles: [
         { role: "Admin", title: "Set up the day flow", detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule." },

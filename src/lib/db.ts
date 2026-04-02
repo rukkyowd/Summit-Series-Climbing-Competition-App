@@ -12,6 +12,7 @@ import {
   canRegisterDuringCompetition,
   canStaffScoreFinals,
   canStaffScoreQualifier,
+  competitionHasFinals,
   createCategoryKey,
   createCompetitionId,
   getRecommendedFinalsCutoff,
@@ -47,6 +48,7 @@ import {
 export interface CreateCompetitionInput {
   name: string;
   format: Competition["format"];
+  has_finals?: boolean;
   location_name?: string;
   start_date?: string | null;
   end_date?: string | null;
@@ -752,6 +754,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     slug,
     name,
     format: input.format,
+    has_finals: input.has_finals,
     current_phase: "qualifier_open",
     discipline_label: input.discipline_label ?? "Boulder",
     location_name: input.location_name ?? "",
@@ -793,6 +796,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
       total_climbs: competition.total_climbs,
     max_climbers: competition.max_climbers,
     qualifier_counting_climbs: competition.qualifier_counting_climbs,
+    has_finals: competitionHasFinals(competition),
     finals_cutoff: competition.finals_cutoff,
     finals_tie_advances: competition.finals_tie_advances,
     qualifier_eligible_age_groups: competition.qualifier_eligible_age_groups,
@@ -862,6 +866,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
       total_climbs: payload.total_climbs,
     max_climbers: payload.max_climbers,
     qualifier_counting_climbs: payload.qualifier_counting_climbs,
+    has_finals: competitionHasFinals(payload),
     finals_cutoff: payload.finals_cutoff,
     finals_tie_advances: payload.finals_tie_advances,
     qualifier_eligible_age_groups: payload.qualifier_eligible_age_groups,

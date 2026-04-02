@@ -19,6 +19,7 @@ import {
   buildQualifierLeaderboard,
   canStaffScoreFinals,
   canStaffScoreQualifier,
+  competitionHasFinals,
   formatCompetitionPhaseLabel,
   formatFinalPoints,
   getClimbs,
@@ -194,6 +195,7 @@ export default function StaffJudgePage() {
   );
   const qualifierScoringOpen = snapshot ? canStaffScoreQualifier(snapshot.competition) : false;
   const finalsScoringOpen = snapshot ? canStaffScoreFinals(snapshot.competition) : false;
+  const finalsEnabled = snapshot ? competitionHasFinals(snapshot.competition) : false;
   const finalsReady = finalists.length > 0;
   const finalsProjected = Boolean(snapshot && !snapshot.finalistsPersisted && finalists.length > 0);
   const qualifierSavedCount = useMemo(
@@ -229,6 +231,12 @@ export default function StaffJudgePage() {
       : !finalsScoringOpen
         ? `Finals scoring is closed during the ${formatCompetitionPhaseLabel(snapshot.competition.current_phase).toLowerCase()} phase.`
         : "";
+
+  useEffect(() => {
+    if (!finalsEnabled && stage === "finals") {
+      setStage("qualifier");
+    }
+  }, [finalsEnabled, stage]);
 
   useEffect(() => {
     if (stage !== "finals" || !finalsReady) {
@@ -493,6 +501,7 @@ export default function StaffJudgePage() {
                   {qualifierScoringOpen ? "Open for staff scoring now." : "Locked until qualifier live."}
                 </div>
               </button>
+              {finalsEnabled ? (
               <button
                 type="button"
                 onClick={() => setStage("finals")}
@@ -504,6 +513,7 @@ export default function StaffJudgePage() {
                   {finalsScoringOpen ? "Open for finals scoring now." : finalsReady ? "Field loaded, waiting for finals live." : "Waiting for a finals field."}
                 </div>
               </button>
+              ) : null}
             </div>
           </div>
           {queuedCount > 0 ? (

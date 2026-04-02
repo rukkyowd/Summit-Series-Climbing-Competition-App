@@ -35,6 +35,8 @@ import {
   buildDisplayPath,
   buildStaffCompetitionPath,
   compareCompetitionPhases,
+  competitionAllowsOptionalFinals,
+  competitionHasFinals,
   getCompetitionPhaseForSchedulePhase,
   getCompetitionPhaseSequenceFromScheduleBlocks,
   formatCompetitionPhaseLabel,
@@ -49,6 +51,7 @@ import {
   getRegistrationAssignmentLabel,
   getSchedulePhaseDescription,
   isQualifierEligibleCategory,
+  isQualifierStage,
   parseScheduleTimeToMinutes,
   slugifyCompetitionName,
   type Competition,
@@ -134,6 +137,7 @@ function formatAgeGroupBandLabel(ageGroups: readonly string[]) {
 
 function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTemplate[] {
   const assignmentLabel = getRegistrationAssignmentLabel(competition);
+  const hasFinals = competitionHasFinals(competition);
   const qualifierBandTemplates = QUALIFIER_TEMPLATE_GROUPS
     .map((ageGroups) => ageGroups.filter((ageGroup) => competition.qualifier_eligible_age_groups.includes(ageGroup)))
     .filter((ageGroups) => ageGroups.length > 0)
@@ -154,6 +158,13 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
       { label: `${assignmentLabel} 2`, phase_type: "qualifier_round", audience_label: "Scramble window", capacity: competition.max_climbers },
       ...qualifierBandTemplates,
       { label: "Wall reset", phase_type: "wall_reset", audience_label: "Routesetting", capacity: competition.max_climbers },
+      ...(hasFinals
+        ? [
+            { label: "Isolation", phase_type: "isolation" as const, audience_label: "Finalists", capacity: competition.max_climbers },
+            { label: "Observation", phase_type: "observation" as const, audience_label: "Finalists", capacity: competition.max_climbers },
+            { label: "Finals", phase_type: "finals_round" as const, audience_label: "Finalists", capacity: competition.max_climbers },
+          ]
+        : []),
       { label: "Results / Awards", phase_type: "results", audience_label: "All climbers", capacity: competition.max_climbers },
     ];
   }
@@ -189,6 +200,7 @@ export default function StaffDashboard({
   const [message, setMessage] = useState("");
   const [createName, setCreateName] = useState("");
   const [createFormat, setCreateFormat] = useState<Competition["format"]>("scramble");
+  const [createHasFinals, setCreateHasFinals] = useState(true);
   const [createLocation, setCreateLocation] = useState("");
   const [createStartDate, setCreateStartDate] = useState("");
   const [createEndDate, setCreateEndDate] = useState("");
@@ -571,6 +583,10 @@ export default function StaffDashboard({
       return;
     }
 
+    if (!competitionHasFinals(draft)) {
+      throw new Error("Finals are disabled for this competition.");
+    }
+
     if (!snapshot.finalists.length) {
       throw new Error("No finalists are available yet. Close qualifier scoring or check the configured finals age groups and cutoff.");
     }
@@ -734,9 +750,13 @@ export default function StaffDashboard({
       impliedCompetitionPhase &&
       compareCompetitionPhases(impliedCompetitionPhase, draft.current_phase) < 0
   );
+  const draftHasFinals = draft ? competitionHasFinals(draft) : false;
+  const draftSupportsOptionalFinals = draft ? competitionAllowsOptionalFinals(draft.format) : false;
+  const canDisableFinals = draft ? isQualifierStage(draft) || draft.current_phase === "results" : false;
   const currentPhaseScheduleBlock = draft ? findScheduleBlockForPhase(draft.current_phase, 1) : null;
   const canAdvanceToFinals = draft
-    ? ["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
+    ? draftHasFinals &&
+      ["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
       Boolean(snapshot?.finalists.length)
     : false;
 
@@ -790,7 +810,17 @@ export default function StaffDashboard({
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="results-field-group">
                   <span className="results-field-label">Format</span>
-                  <select value={createFormat} onChange={(event) => setCreateFormat(event.target.value as Competition["format"])} className="results-input">
+                  <select
+                    value={createFormat}
+                    onChange={(event) => {
+                      const nextFormat = event.target.value as Competition["format"];
+                      setCreateFormat(nextFormat);
+                      if (!competitionAllowsOptionalFinals(nextFormat)) {
+                        setCreateHasFinals(true);
+                      }
+                    }}
+                    className="results-input"
+                  >
                     {FORMAT_TEMPLATES.map((template) => (
                       <option key={template.value} value={template.value}>{template.label}</option>
                     ))}
@@ -811,6 +841,27 @@ export default function StaffDashboard({
                   <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
                 </label>
               </div>
+              {competitionAllowsOptionalFinals(createFormat) ? (
+                <label className="results-field-group">
+                  <span className="results-field-label">Finals round</span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCreateHasFinals(false)}
+                      className={!createHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                    >
+                      Qualifier only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateHasFinals(true)}
+                      className={createHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                    >
+                      Qualifier + finals
+                    </button>
+                  </div>
+                </label>
+              ) : null}
               <label className="results-field-group">
                 <span className="results-field-label">Description</span>
                 <textarea
@@ -838,6 +889,7 @@ export default function StaffDashboard({
                         const created = await createCompetitionFromTemplate({
                           name: sanitizeDraftText(createName),
                           format: createFormat,
+                          has_finals: competitionAllowsOptionalFinals(createFormat) ? createHasFinals : true,
                           location_name: sanitizeDraftText(createLocation),
                           start_date: sanitizeDraftText(createStartDate) || null,
                           end_date: sanitizeDraftText(createEndDate) || null,
@@ -851,6 +903,7 @@ export default function StaffDashboard({
                           official_schedule_url: sanitizeDraftText(createOfficialScheduleUrl) || undefined,
                         });
                         setCreateName("");
+                        setCreateHasFinals(true);
                         setCreateLocation("");
                         setCreateStartDate("");
                         setCreateEndDate("");
@@ -1180,6 +1233,7 @@ export default function StaffDashboard({
                         setDraft({
                           ...draft,
                           format: nextFormat,
+                          has_finals: competitionAllowsOptionalFinals(nextFormat) ? draft.has_finals : true,
                           total_climbs: getRecommendedQualifierClimbCount(nextFormat),
                           qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(nextFormat),
                           finals_cutoff: getRecommendedFinalsCutoff(nextFormat),
@@ -1197,6 +1251,41 @@ export default function StaffDashboard({
                     <input value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Location" />
                   </label>
                 </div>
+                {draftSupportsOptionalFinals ? (
+                  <label className="results-field-group">
+                    <span className="results-field-label">Finals round</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            has_finals: false,
+                            schedule_blocks: draft.schedule_blocks.filter(
+                              (block) => !["isolation", "observation", "finals_round"].includes(block.phase_type)
+                            ),
+                          })
+                        }
+                        disabled={!canDisableFinals}
+                        className={!draftHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                      >
+                        Qualifier only
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDraft({ ...draft, has_finals: true })}
+                        className={draftHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                      >
+                        Qualifier + finals
+                      </button>
+                    </div>
+                    {!canDisableFinals ? (
+                      <div className="text-sm text-slate-600">
+                        Finals can only be turned off while the competition is still in a qualifier-stage workflow or after results are posted.
+                      </div>
+                    ) : null}
+                  </label>
+                ) : null}
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-slate-700">Qualifier boulders</span>
@@ -1210,19 +1299,30 @@ export default function StaffDashboard({
                     <span className="text-sm font-medium text-slate-700">Counting climbs</span>
                     <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} className="results-input" />
                   </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-700">Finals cutoff</span>
-                    <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF })} className="results-input">
-                      <option value={6}>Top 6</option>
-                      <option value={8}>Top 8</option>
-                    </select>
-                  </label>
+                  {draftHasFinals ? (
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Finals cutoff</span>
+                      <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF })} className="results-input">
+                        <option value={6}>Top 6</option>
+                        <option value={8}>Top 8</option>
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-700">Finals problems</span>
-                    <input type="number" min={1} max={8} value={draft.finals_problem_count} onChange={(event) => setDraft({ ...draft, finals_problem_count: Math.max(1, Math.min(8, Number(event.target.value) || 4)) })} className="results-input" />
-                  </label>
+                  {draftHasFinals ? (
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-slate-700">Finals problems</span>
+                      <input type="number" min={1} max={8} value={draft.finals_problem_count} onChange={(event) => setDraft({ ...draft, finals_problem_count: Math.max(1, Math.min(8, Number(event.target.value) || 4)) })} className="results-input" />
+                    </label>
+                  ) : (
+                    <div className="results-workspace-card">
+                      <div className="results-kicker">Finals disabled</div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        This scramble will end after qualifier results, so finals cutoff, order, and finals scoring stay out of the workflow.
+                      </div>
+                    </div>
+                  )}
                   <div className="results-workspace-card">
                     <div className="results-kicker">Archived state</div>
                     <div className="mt-2 text-sm text-slate-600">Archive hides the competition from public discovery without deleting event-day data.</div>
@@ -1253,25 +1353,27 @@ export default function StaffDashboard({
                     </div>
                   </div>
 
-                  <div className="results-workspace-card">
-                    <div className="results-kicker">Finals age groups</div>
-                    <div className="mt-2 text-sm text-slate-600">Only these age groups can advance into finals selections.</div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {CATEGORY_AGE_GROUPS.map((ageGroup) => {
-                        const active = draft.finals_eligible_age_groups.includes(ageGroup);
-                        return (
-                          <button
-                            key={ageGroup}
-                            type="button"
-                            onClick={() => setDraft({ ...draft, finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, ageGroup) })}
-                            className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
-                          >
-                            {ageGroup}
-                          </button>
-                        );
-                      })}
+                  {draftHasFinals ? (
+                    <div className="results-workspace-card">
+                      <div className="results-kicker">Finals age groups</div>
+                      <div className="mt-2 text-sm text-slate-600">Only these age groups can advance into finals selections.</div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {CATEGORY_AGE_GROUPS.map((ageGroup) => {
+                          const active = draft.finals_eligible_age_groups.includes(ageGroup);
+                          return (
+                            <button
+                              key={ageGroup}
+                              type="button"
+                              onClick={() => setDraft({ ...draft, finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, ageGroup) })}
+                              className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
+                            >
+                              {ageGroup}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
 
                 <div className="results-workspace-card">
@@ -1486,7 +1588,7 @@ export default function StaffDashboard({
                   </div>
                 ) : null}
 
-                {finalsOrder.length && (snapshot?.finalistsPersisted || canEditFinalsOrder) ? (
+                {draftHasFinals && finalsOrder.length && (snapshot?.finalistsPersisted || canEditFinalsOrder) ? (
                   <div className="results-workspace-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-2 text-sm text-slate-600">
@@ -1511,7 +1613,7 @@ export default function StaffDashboard({
                       ))}
                     </div>
                   </div>
-                ) : finalsOrder.length ? (
+                ) : draftHasFinals && finalsOrder.length ? (
                   <div className="results-workspace-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-2 text-sm text-slate-600">
@@ -1537,7 +1639,8 @@ export default function StaffDashboard({
                       </button>
                     </>
                   ) : null}
-                  <button type="button" onClick={() => setConfirming({
+                  {draftHasFinals ? (
+                    <button type="button" onClick={() => setConfirming({
                     title: "Advance to finals",
                     description: finalsAdvanceBlock
                       ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for 30 seconds.`
@@ -1548,6 +1651,7 @@ export default function StaffDashboard({
                       await advanceToFinals();
                     },
                   })} className="results-secondary-button" disabled={!canAdvanceToFinals || isPending || isPhasePending}>Advance to finals</button>
+                  ) : null}
                   <button type="button" onClick={() => setConfirming({
                     title: "Delete competition",
                     description: "This permanently deletes the competition and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",

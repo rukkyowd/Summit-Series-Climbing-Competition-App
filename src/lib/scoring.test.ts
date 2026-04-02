@@ -78,4 +78,25 @@ describe("competition normalization", () => {
     expect(competition.current_phase).toBe("finals_open");
     expect(competition.finals_problem_count).toBe(6);
   });
+
+  it("allows scramble to disable finals while keeping finals enabled for fixed-finals formats", () => {
+    const scramble = normalizeCompetition({
+      id: "comp-2",
+      name: "Scramble Session",
+      slug: "scramble-session",
+      format: "scramble",
+      has_finals: false,
+    });
+
+    const flash = normalizeCompetition({
+      id: "comp-3",
+      name: "Flash Session",
+      slug: "flash-session",
+      format: "flash_format",
+      has_finals: false,
+    });
+
+    expect(scramble.has_finals).toBe(false);
+    expect(flash.has_finals).toBe(true);
+  });
 });
