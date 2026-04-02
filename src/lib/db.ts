@@ -4,6 +4,7 @@ import {
   DEFAULT_COMPETITION,
   buildCompetitionPath,
   buildStaffCompetitionPath,
+  canUseLiveBoulderQueue,
   buildDisplayCategory,
   buildFinalsLeaderboard,
   buildRegistrationChoices,
@@ -15,6 +16,7 @@ import {
   competitionHasFinals,
   createCategoryKey,
   createCompetitionId,
+  getActiveQueueSessionBlock,
   getRecommendedFinalsCutoff,
   getRecommendedQualifierClimbCount,
   getRecommendedQualifierCountingClimbs,
@@ -29,6 +31,7 @@ import {
   phaseToStageMode,
   schedulePhaseAllowsRegistration,
   slugifyCompetitionName,
+  type BoulderQueueEntry,
   type Climber,
   type ClimberWithAttempts,
   type Competition,
@@ -78,6 +81,7 @@ export interface SaveCompetitionConfigInput extends Omit<Competition, "categorie
 export interface CompetitionSnapshot {
   competition: Competition;
   climbers: ClimberWithAttempts[];
+  boulderQueue: BoulderQueueEntry[];
   qualifierLeaderboard: QualifierLeaderboardEntry[];
   finalsLeaderboard: FinalsLeaderboardEntry[];
   finalists: FinalistSelection[];
@@ -106,6 +110,15 @@ type RegisteredClimberResult = Climber & {
   competition_slug: string;
   scorecard_path: string;
 };
+
+interface BoulderQueueRow {
+  id: string;
+  competition_id: string;
+  climber_id: string;
+  schedule_block_id: string;
+  climb_number: number;
+  checked_in_at: string;
+}
 
 function dedupeFinalists<T extends FinalistSelection>(finalists: T[]) {
   const seen = new Set<string>();
@@ -466,6 +479,32 @@ async function fetchFinalists(competitionIds: string[]) {
   }));
 }
 
+async function fetchBoulderQueueRows(competitionId: string, scheduleBlockId: string | null) {
+  if (!scheduleBlockId) {
+    return [] as BoulderQueueRow[];
+  }
+
+  const { data, error } = await publicSupabase
+    .from("competition_boulder_queue")
+    .select("*")
+    .eq("competition_id", competitionId)
+    .eq("schedule_block_id", scheduleBlockId)
+    .order("checked_in_at", { ascending: true });
+
+  if (error) {
+    return [] as BoulderQueueRow[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    id: row.id,
+    competition_id: row.competition_id,
+    climber_id: row.climber_id,
+    schedule_block_id: row.schedule_block_id,
+    climb_number: row.climb_number ?? 1,
+    checked_in_at: row.checked_in_at ?? row.created_at ?? new Date().toISOString(),
+  }));
+}
+
 async function fetchOfficialQualifierLeaderboard(competitionId: string) {
   const { data, error } = await publicSupabase.rpc("compute_qualifier_standings", {
     p_competition_id: competitionId,
@@ -673,11 +712,14 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     throw new Error("Competition not found.");
   }
 
-  const [climbers, qualifierAttempts, finalAttempts, finalists, officialQualifierLeaderboard, projectedFinalists, undoAvailability, rounds] = await Promise.all([
+  const activeQueueSession = getActiveQueueSessionBlock(competition);
+
+  const [climbers, qualifierAttempts, finalAttempts, finalists, queueRows, officialQualifierLeaderboard, projectedFinalists, undoAvailability, rounds] = await Promise.all([
     fetchClimberRows([competition.id]),
     fetchQualifierAttempts([competition.id]),
     fetchFinalAttempts([competition.id]),
     fetchFinalists([competition.id]),
+    fetchBoulderQueueRows(competition.id, activeQueueSession?.id ?? null),
     fetchOfficialQualifierLeaderboard(competition.id),
     fetchProjectedFinalists(competition.id),
     fetchUndoAvailability(competition.id).catch(() => ({
@@ -689,6 +731,29 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
   ]);
 
   const joined = joinCompetitionData(climbers, qualifierAttempts, finalAttempts);
+  const climberMap = new Map(joined.map((climber) => [climber.id, climber]));
+  const boulderQueue = queueRows
+    .map<BoulderQueueEntry | null>((row) => {
+      const climber = climberMap.get(row.climber_id);
+      if (!climber) {
+        return null;
+      }
+
+      return {
+        id: row.id,
+        competition_id: row.competition_id,
+        climber_id: row.climber_id,
+        schedule_block_id: row.schedule_block_id,
+        climb_number: row.climb_number,
+        checked_in_at: row.checked_in_at,
+        climber_name: climber.name,
+        climber_number: climber.climber_number,
+        display_category: climber.display_category,
+        province: climber.province,
+        time_slot_id: climber.time_slot_id,
+      } satisfies BoulderQueueEntry;
+    })
+    .filter((entry): entry is BoulderQueueEntry => entry !== null);
   const localQualifierLeaderboard = buildQualifierLeaderboard(joined, competition);
   const officialQualifierMap = new Map(officialQualifierLeaderboard.map((entry) => [entry.climber_id, entry]));
   const qualifierLeaderboard = localQualifierLeaderboard.map((entry) => {
@@ -724,6 +789,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
   return {
     competition,
     climbers: joined,
+    boulderQueue,
     qualifierLeaderboard,
     finalsLeaderboard,
     finalists: competitionFinalists,
@@ -1439,6 +1505,48 @@ export async function updateQualifierAttemptByToken(
     return data;
   }
   throw new Error(error.message || "Unable to save qualifier attempt.");
+}
+
+export async function joinLiveBoulderQueue(
+  accessToken: string,
+  competitionId: string,
+  climbNumber: number
+) {
+  ensureConfigured();
+
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+
+  if (!canUseLiveBoulderQueue(competition)) {
+    throw new Error("The live boulder queue opens only during an active scramble session.");
+  }
+
+  const { data, error } = await publicSupabase.rpc("join_live_boulder_queue", {
+    p_access_token: cleanString(accessToken),
+    p_competition_id: competitionId,
+    p_climb_number: climbNumber,
+  });
+
+  if (error) {
+    throw new Error(error.message || "Unable to join the live boulder queue.");
+  }
+
+  return data;
+}
+
+export async function leaveLiveBoulderQueue(accessToken: string, competitionId: string) {
+  ensureConfigured();
+
+  const { error } = await publicSupabase.rpc("leave_live_boulder_queue", {
+    p_access_token: cleanString(accessToken),
+    p_competition_id: competitionId,
+  });
+
+  if (error) {
+    throw new Error(error.message || "Unable to leave the live boulder queue.");
+  }
 }
 
 export async function updateFinalAttempt(

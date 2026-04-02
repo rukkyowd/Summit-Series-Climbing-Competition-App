@@ -1,18 +1,31 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useReducer, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import { getClimberByAccessToken, getClimberWithAttempts, getCompetitionSnapshot, updateQualifierAttemptByToken, type CompetitionSnapshot } from "@/lib/db";
+import {
+  getClimberByAccessToken,
+  getClimberWithAttempts,
+  getCompetitionSnapshot,
+  joinLiveBoulderQueue,
+  leaveLiveBoulderQueue,
+  updateQualifierAttemptByToken,
+  type CompetitionSnapshot,
+} from "@/lib/db";
 import { saveScorecardAccessToken } from "@/lib/scorecard-access";
+import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
   buildQualifierLeaderboard,
   canClimberSelfScoreQualifier,
+  canUseLiveBoulderQueue,
   formatCompetitionPhaseLabel,
   formatFinalPoints,
+  formatTimeRange,
   getClimbs,
+  getActiveQueueSessionBlock,
+  getTimeSlotLabel,
   type ClimberWithAttempts,
 } from "@/lib/scoring";
 
@@ -64,9 +77,31 @@ function ScorecardContent() {
   const [climber, setClimber] = useState<ClimberWithAttempts | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [queueSaving, setQueueSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [drafts, dispatch] = useReducer(draftReducer, {});
+
+  const refreshScorecard = useCallback(async (resetDrafts = false) => {
+    if (!token) {
+      return;
+    }
+
+    const [nextSnapshot, nextClimberLookup] = await Promise.all([
+      getCompetitionSnapshot(slug),
+      getClimberByAccessToken(token),
+    ]);
+
+    setSnapshot(nextSnapshot);
+    setClimber(nextClimberLookup?.climber ?? null);
+    if (resetDrafts) {
+      dispatch({
+        type: "initialize",
+        climber: nextClimberLookup?.climber ?? null,
+        totalClimbs: nextSnapshot.competition.total_climbs,
+      });
+    }
+  }, [slug, token]);
 
   useEffect(() => {
     if (token) {
@@ -84,22 +119,39 @@ function ScorecardContent() {
     }
 
     setLoading(true);
-    void Promise.all([getCompetitionSnapshot(slug), getClimberByAccessToken(token)])
-      .then(([nextSnapshot, nextClimberLookup]) => {
-        setSnapshot(nextSnapshot);
-        setClimber(nextClimberLookup?.climber ?? null);
-        dispatch({
-          type: "initialize",
-          climber: nextClimberLookup?.climber ?? null,
-          totalClimbs: nextSnapshot.competition.total_climbs,
-        });
+    void refreshScorecard(true)
+      .then(() => {
         setError("");
       })
       .catch((nextError) => {
         setError(nextError instanceof Error ? nextError.message : "Unable to load the scorecard.");
       })
       .finally(() => setLoading(false));
-  }, [slug, token]);
+  }, [refreshScorecard, token]);
+
+  useEffect(() => {
+    if (!supabaseConfigured || !snapshot) {
+      return;
+    }
+
+    const competitionId = snapshot.competition.id;
+    const channel = publicSupabase
+      .channel(`scorecard-${competitionId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "competitions", filter: `id=eq.${competitionId}` }, () => {
+        void refreshScorecard().catch(() => undefined);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "competition_schedule_blocks", filter: `competition_id=eq.${competitionId}` }, () => {
+        void refreshScorecard().catch(() => undefined);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "competition_boulder_queue", filter: `competition_id=eq.${competitionId}` }, () => {
+        void refreshScorecard().catch(() => undefined);
+      })
+      .subscribe();
+
+    return () => {
+      publicSupabase.removeChannel(channel);
+    };
+  }, [refreshScorecard, snapshot]);
 
   const qualifierEntry = useMemo(
     () => snapshot?.qualifierLeaderboard.find((entry) => entry.climber_id === climber?.id) ?? null,
@@ -110,6 +162,17 @@ function ScorecardContent() {
     [climber?.id, snapshot]
   );
   const qualifierOpen = snapshot ? canClimberSelfScoreQualifier(snapshot.competition) : false;
+  const activeQueueSession = useMemo(
+    () => (snapshot ? getActiveQueueSessionBlock(snapshot.competition) : null),
+    [snapshot]
+  );
+  const queueOpen = snapshot ? canUseLiveBoulderQueue(snapshot.competition) : false;
+  const currentQueueEntry = useMemo(
+    () => snapshot?.boulderQueue.find((entry) => entry.climber_id === climber?.id) ?? null,
+    [climber?.id, snapshot]
+  );
+  const queueSessionMismatch =
+    Boolean(queueOpen && climber?.time_slot_id && activeQueueSession?.id && climber.time_slot_id !== activeQueueSession.id);
   const qualifierClimbScores = useMemo(() => {
     if (!snapshot) {
       return [];
@@ -131,6 +194,15 @@ function ScorecardContent() {
       }))
     );
   }, [qualifierEntry?.all_climbs, snapshot]);
+  const queueByClimb = useMemo(() => {
+    const grouped = new Map<number, CompetitionSnapshot["boulderQueue"]>();
+    snapshot?.boulderQueue.forEach((entry) => {
+      const next = grouped.get(entry.climb_number) ?? [];
+      next.push(entry);
+      grouped.set(entry.climb_number, next);
+    });
+    return grouped;
+  }, [snapshot]);
 
   const saveQualifier = async (climbNumber: number) => {
     if (!snapshot || !climber) {
@@ -160,6 +232,46 @@ function ScorecardContent() {
       setError(nextError instanceof Error ? nextError.message : "Unable to save qualifier score.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const checkIntoQueue = async (climbNumber: number) => {
+    if (!snapshot) {
+      return;
+    }
+
+    setQueueSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await joinLiveBoulderQueue(token, snapshot.competition.id, climbNumber);
+      await refreshScorecard();
+      setMessage(`Joined the live queue for boulder ${climbNumber}.`);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to join the live boulder queue.");
+    } finally {
+      setQueueSaving(false);
+    }
+  };
+
+  const leaveQueue = async () => {
+    if (!snapshot) {
+      return;
+    }
+
+    setQueueSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await leaveLiveBoulderQueue(token, snapshot.competition.id);
+      await refreshScorecard();
+      setMessage("You left the live boulder queue.");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to leave the live boulder queue.");
+    } finally {
+      setQueueSaving(false);
     }
   };
 
@@ -260,6 +372,78 @@ function ScorecardContent() {
               <div className="results-chip">{qualifierOpen ? "Scoring open" : "Scoring closed"}</div>
             </div>
 
+            {snapshot.competition.format === "scramble" ? (
+              <div className="mt-5 space-y-4">
+                <div className="results-meta-card">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="results-kicker">Live boulder queue</div>
+                      <div className="mt-2 text-xl font-semibold text-slate-950">
+                        {activeQueueSession ? activeQueueSession.label : "Queue waiting for a live session"}
+                      </div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        {activeQueueSession
+                          ? `${formatTimeRange(activeQueueSession.start_time, activeQueueSession.end_time)} · One live check-in at a time per climber. Switching boulders puts you at the back of that line.`
+                          : "Staff needs to mark your scramble session live before climbers can check into a boulder queue."}
+                      </div>
+                    </div>
+                    {currentQueueEntry ? (
+                      <div className="results-chip results-chip-live">
+                        Queued on Boulder {currentQueueEntry.climb_number}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {queueSessionMismatch ? (
+                    <div className="results-alert results-alert-error mt-4">
+                      The live queue is currently running for {activeQueueSession?.label}. Your assigned session is{" "}
+                      {getTimeSlotLabel(climber.time_slot_id, snapshot.competition)}.
+                    </div>
+                  ) : queueOpen ? (
+                    <div className="results-alert results-alert-success mt-4">
+                      Join the boulder you are walking to now. Leaving or switching keeps this as a simple live check-in board instead of a booking system.
+                    </div>
+                  ) : null}
+
+                  {snapshot.boulderQueue.length ? (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {Array.from(queueByClimb.entries())
+                        .sort(([left], [right]) => left - right)
+                        .map(([climbNumber, entries]) => (
+                          <div key={climbNumber} className="rounded-[1.2rem] border border-slate-200 bg-white/80 px-4 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-semibold text-slate-950">Boulder {climbNumber}</span>
+                              <span className="results-chip">{entries.length} in line</span>
+                            </div>
+                            <div className="mt-3 space-y-2 text-sm text-slate-600">
+                              {entries.slice(0, 3).map((entry, index) => (
+                                <div key={entry.climber_id} className="flex items-center justify-between gap-3">
+                                  <span className="truncate">
+                                    {index + 1}. {entry.climber_name}
+                                  </span>
+                                  <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                    #{entry.climber_number}
+                                  </span>
+                                </div>
+                              ))}
+                              {entries.length > 3 ? (
+                                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                  +{entries.length - 3} more waiting
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : activeQueueSession ? (
+                    <div className="mt-4 text-sm text-slate-600">
+                      No climbers are checked into a boulder yet for this live session.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             {!qualifierOpen ? (
               <div className="results-meta-card mt-5 text-slate-600">
                 Private self-scoring is currently closed. Your saved score for each boulder remains visible here in read-only mode.
@@ -270,6 +454,9 @@ function ScorecardContent() {
               {qualifierOpen
                 ? getClimbs(snapshot.competition.total_climbs).map((climb) => {
                     const draft = drafts[climb.number] ?? { attemptCount: 0, topped: false };
+                    const queueEntries = queueByClimb.get(climb.number) ?? [];
+                    const yourQueuePosition = queueEntries.findIndex((entry) => entry.climber_id === climber.id);
+                    const queuedHere = currentQueueEntry?.climb_number === climb.number;
                     return (
                       <div key={climb.number} className="results-meta-card">
                         <div className="flex items-center justify-between gap-3">
@@ -281,6 +468,49 @@ function ScorecardContent() {
                             Save
                           </button>
                         </div>
+                        {snapshot.competition.format === "scramble" ? (
+                          <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-sm font-semibold text-slate-950">Live queue</div>
+                              <div className="results-chip">{queueEntries.length} waiting</div>
+                            </div>
+                            <div className="mt-2 text-sm text-slate-600">
+                              {queuedHere
+                                ? `You are currently #${yourQueuePosition + 1} in line for this boulder.`
+                                : queueEntries.length
+                                  ? `Next up: ${queueEntries[0]?.climber_name}.`
+                                  : "No one is checked in for this boulder yet."}
+                            </div>
+                            {queueEntries.length ? (
+                              <div className="mt-3 space-y-2 text-sm text-slate-600">
+                                {queueEntries.slice(0, 4).map((entry, index) => (
+                                  <div key={entry.climber_id} className="flex items-center justify-between gap-3">
+                                    <span className={entry.climber_id === climber.id ? "font-semibold text-slate-950" : ""}>
+                                      {index + 1}. {entry.climber_name}
+                                    </span>
+                                    <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                      #{entry.climber_number}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {queueOpen && !queueSessionMismatch ? (
+                              <div className="mt-4">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    queuedHere ? void leaveQueue() : void checkIntoQueue(climb.number)
+                                  }
+                                  disabled={queueSaving}
+                                  className={`w-full ${queuedHere ? "results-secondary-button results-secondary-button-active" : "results-secondary-button"}`}
+                                >
+                                  {queuedHere ? "Leave queue" : currentQueueEntry ? "Switch queue here" : "Join queue"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
                           <label className="space-y-2">
                             <span className="text-sm font-medium text-slate-700">Attempts</span>

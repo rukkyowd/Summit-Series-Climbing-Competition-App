@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import { formatUsesSelfScoredQualifiers, getActiveQueueSessionBlock } from "@/lib/scoring";
 
 export default function CompetitionDisplayPage() {
   const params = useParams<{ slug: string }>();
@@ -37,8 +38,22 @@ export default function CompetitionDisplayPage() {
     });
     return groups;
   }, [snapshot]);
+  const queueByClimb = useMemo(() => {
+    const grouped = new Map<number, CompetitionSnapshot["boulderQueue"]>();
+    snapshot?.boulderQueue.forEach((entry) => {
+      const next = grouped.get(entry.climb_number) ?? [];
+      next.push(entry);
+      grouped.set(entry.climb_number, next);
+    });
+    return grouped;
+  }, [snapshot]);
 
   const finalsCategories = useMemo(() => Array.from(finalsGroups.keys()).sort(), [finalsGroups]);
+  const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(snapshot.competition.format) : false;
+  const activeQueueSession = useMemo(
+    () => (snapshot ? getActiveQueueSessionBlock(snapshot.competition) : null),
+    [snapshot]
+  );
 
   useEffect(() => {
     if (!selectedFinalsCategory && finalsCategories.length) {
@@ -69,6 +84,46 @@ export default function CompetitionDisplayPage() {
             <FinalsResultsTable title={selectedFinalsCategory} rows={finalsGroups.get(selectedFinalsCategory) ?? []} />
           </>
         ) : (
+          <>
+          {scrambleFormat && activeQueueSession ? (
+            <section className="results-card">
+              <div className="results-kicker">Live queue board</div>
+              <h2 className="mt-2 text-3xl font-semibold text-slate-950">{activeQueueSession.label}</h2>
+              <p className="mt-3 text-lg text-slate-600">
+                Shared scramble session check-ins. Each climber can hold one live place in line.
+              </p>
+              {queueByClimb.size ? (
+                <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {Array.from(queueByClimb.entries())
+                    .sort(([left], [right]) => left - right)
+                    .map(([climbNumber, entries]) => (
+                      <div key={climbNumber} className="results-meta-card">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xl font-semibold text-slate-950">Boulder {climbNumber}</div>
+                          <div className="results-chip">{entries.length} waiting</div>
+                        </div>
+                        <div className="mt-4 space-y-3">
+                          {entries.slice(0, 5).map((entry, index) => (
+                            <div key={entry.climber_id} className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                              <span className="truncate">
+                                {index + 1}. {entry.climber_name}
+                              </span>
+                              <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                #{entry.climber_number}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="results-meta-card mt-6 text-slate-600">
+                  No climbers are checked into a boulder yet for this live session.
+                </div>
+              )}
+            </section>
+          ) : null}
           <section className="results-card">
             <div className="finals-category-picker">
               <button type="button" onClick={() => setSelectedCategory("all")} className={selectedCategory === "all" ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
@@ -97,6 +152,7 @@ export default function CompetitionDisplayPage() {
               ))}
             </div>
           </section>
+          </>
         )}
       </div>
     </main>

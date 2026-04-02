@@ -201,6 +201,20 @@ export interface FinalAttempt {
   updated_at?: string;
 }
 
+export interface BoulderQueueEntry {
+  id?: string;
+  competition_id: string;
+  climber_id: string;
+  schedule_block_id: string;
+  climb_number: number;
+  checked_in_at: string;
+  climber_name: string;
+  climber_number: string;
+  display_category: string;
+  province: string;
+  time_slot_id: string | null;
+}
+
 export interface ClimberWithAttempts extends Climber {
   qualifier_attempts: QualifierAttempt[];
   final_attempts: FinalAttempt[];
@@ -933,7 +947,7 @@ export function getActiveScheduleBlock(competition: Pick<Competition, "schedule_
 }
 
 export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
-  return phaseType === "check_in" || phaseType === "qualifier_round" || phaseType === "custom";
+  return phaseType === "qualifier_round" || phaseType === "custom";
 }
 
 export function getRegistrationAssignmentLabel(competition: Pick<Competition, "format">) {
@@ -970,6 +984,27 @@ export function canClimberSelfScoreQualifier(
   competition: Pick<Competition, "format" | "current_phase">
 ) {
   return competition.current_phase === "qualifier_open" && formatUsesSelfScoredQualifiers(competition.format);
+}
+
+export function getActiveQueueSessionBlock(
+  competition: Pick<Competition, "format" | "current_phase" | "schedule_blocks">
+) {
+  if (!canClimberSelfScoreQualifier(competition)) {
+    return null;
+  }
+
+  const activeBlock = getActiveScheduleBlock(competition);
+  if (!activeBlock) {
+    return null;
+  }
+
+  return schedulePhaseAllowsQualifierScoring(activeBlock.phase_type) ? activeBlock : null;
+}
+
+export function canUseLiveBoulderQueue(
+  competition: Pick<Competition, "format" | "current_phase" | "schedule_blocks">
+) {
+  return getActiveQueueSessionBlock(competition) !== null;
 }
 
 export function canStaffScoreQualifier(competition: Pick<Competition, "current_phase">) {
@@ -1173,7 +1208,7 @@ export function getEventWorkflowGuide(
         competitionHasFinals(competition)
           ? "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode."
           : "This qualifier-only scramble ends with the qualifier standings, so there is no separate finals round to configure.",
-        "If you ever add a queue, keep it as a lightweight live check-in per boulder rather than a pre-booked schedule.",
+        "The live queue works as a lightweight per-boulder check-in board rather than a pre-booked schedule.",
       ],
       roles: [
         { role: "Admin", title: "Run shared session windows", detail: "Name the sessions in plain language like Morning Session or Open Session so athletes know exactly which heat they belong to." },

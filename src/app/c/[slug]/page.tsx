@@ -17,6 +17,7 @@ import {
   formatSchedulePhaseLabel,
   formatTimeRange,
   competitionHasFinals,
+  getActiveQueueSessionBlock,
   getActiveScheduleBlock,
   getEventWorkflowGuide,
   getTimeSlotLabel,
@@ -68,6 +69,7 @@ export default function CompetitionOverviewPage() {
       .channel(`competition-${competitionId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "competitions", filter: `id=eq.${competitionId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "competition_schedule_blocks", filter: `competition_id=eq.${competitionId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "competition_boulder_queue", filter: `competition_id=eq.${competitionId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "climbers", filter: `competition_id=eq.${competitionId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "competition_finalists", filter: `competition_id=eq.${competitionId}` }, refresh)
       .subscribe();
@@ -82,8 +84,19 @@ export default function CompetitionOverviewPage() {
     [snapshot]
   );
   const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(snapshot.competition.format) : false;
-  const activeScrambleSession =
-    scrambleFormat && activeBlock?.phase_type === "qualifier_round" ? activeBlock : null;
+  const activeScrambleSession = useMemo(
+    () => (snapshot ? getActiveQueueSessionBlock(snapshot.competition) : null),
+    [snapshot]
+  );
+  const queueByClimb = useMemo(() => {
+    const grouped = new Map<number, CompetitionSnapshot["boulderQueue"]>();
+    snapshot?.boulderQueue.forEach((entry) => {
+      const next = grouped.get(entry.climb_number) ?? [];
+      next.push(entry);
+      grouped.set(entry.climb_number, next);
+    });
+    return grouped;
+  }, [snapshot]);
   const workflowGuide = useMemo(
     () => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null),
     [snapshot]
@@ -244,6 +257,50 @@ export default function CompetitionOverviewPage() {
                     {activeScrambleSession ? (
                       <div className="results-alert results-alert-success mt-4">
                         This is the live shared session window. Multiple climbers can score across the wall during this block.
+                      </div>
+                    ) : null}
+                    {activeScrambleSession ? (
+                      <div className="mt-4 rounded-[1.35rem] border border-slate-200 bg-white/80 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="results-kicker">Per-boulder queue</div>
+                            <div className="mt-2 text-lg font-semibold text-slate-950">Live check-ins on the wall</div>
+                          </div>
+                          <div className="results-chip">
+                            {snapshot.boulderQueue.length} active {snapshot.boulderQueue.length === 1 ? "check-in" : "check-ins"}
+                          </div>
+                        </div>
+
+                        {queueByClimb.size ? (
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            {Array.from(queueByClimb.entries())
+                              .sort(([left], [right]) => left - right)
+                              .map(([climbNumber, entries]) => (
+                                <div key={climbNumber} className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="font-semibold text-slate-950">Boulder {climbNumber}</div>
+                                    <div className="results-chip">{entries.length} waiting</div>
+                                  </div>
+                                  <div className="mt-3 space-y-2 text-sm text-slate-600">
+                                    {entries.slice(0, 4).map((entry, index) => (
+                                      <div key={entry.climber_id} className="flex items-center justify-between gap-3">
+                                        <span className="truncate">
+                                          {index + 1}. {entry.climber_name}
+                                        </span>
+                                        <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                          #{entry.climber_number}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <div className="mt-4 text-sm text-slate-600">
+                            No climbers are checked into a boulder yet for this session.
+                          </div>
+                        )}
                       </div>
                     ) : null}
                     {scrambleFormat ? (

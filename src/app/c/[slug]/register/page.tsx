@@ -10,6 +10,7 @@ import {
   CLIMBER_NUMBER_PATTERN,
   formatCompetitionPhaseLabel,
   formatDateTimeLabel,
+  formatTimeRange,
   getActiveScheduleBlock,
   getEventWorkflowGuide,
   getRegistrationAssignmentHelpText,
@@ -62,6 +63,10 @@ export default function CompetitionRegisterPage() {
     [categoryId, snapshot]
   );
   const availableSlots = useMemo(() => selectedChoice?.slots ?? [], [selectedChoice]);
+  const selectedSlot = useMemo(
+    () => availableSlots.find((slot) => slot.id === timeSlotId) ?? null,
+    [availableSlots, timeSlotId]
+  );
   const workflowGuide = useMemo(() => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null), [snapshot]);
   const activeScheduleBlock = useMemo(() => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null), [snapshot]);
   const registrationOpen = snapshot ? canRegisterDuringCompetition(snapshot.competition) : false;
@@ -290,6 +295,11 @@ export default function CompetitionRegisterPage() {
                       >
                         <div>
                           <div className="text-lg font-semibold text-slate-950">{slot.label}</div>
+                          {slot.start_time || slot.end_time ? (
+                            <div className="mt-1 text-sm text-slate-600">
+                              {formatTimeRange(slot.start_time, slot.end_time)}
+                            </div>
+                          ) : null}
                           <div className="mt-1 text-sm text-slate-600">{slot.remaining_capacity} spots left</div>
                         </div>
                       </button>
@@ -310,7 +320,18 @@ export default function CompetitionRegisterPage() {
                   <div><span className="font-semibold text-slate-950">Number:</span> {climberNumber || "Not entered"}</div>
                   <div><span className="font-semibold text-slate-950">Province:</span> {province || "Not entered"}</div>
                   <div><span className="font-semibold text-slate-950">Category:</span> {selectedChoice?.category.display_name || "Not selected"}</div>
-                  <div><span className="font-semibold text-slate-950">{assignmentLabel}:</span> {availableSlots.find((slot) => slot.id === timeSlotId)?.label || (availableSlots.length ? "Not selected" : "No assignment required")}</div>
+                  <div>
+                    <span className="font-semibold text-slate-950">{assignmentLabel}:</span>{" "}
+                    {selectedSlot
+                      ? `${selectedSlot.label}${
+                          selectedSlot.start_time || selectedSlot.end_time
+                            ? ` (${formatTimeRange(selectedSlot.start_time, selectedSlot.end_time)})`
+                            : ""
+                        }`
+                      : availableSlots.length
+                        ? "Not selected"
+                        : "No assignment required"}
+                  </div>
                 </div>
               ) : null}
 

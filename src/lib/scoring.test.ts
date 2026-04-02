@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRegistrationChoices,
   canClimberSelfScoreQualifier,
   canRegisterDuringCompetition,
+  canUseLiveBoulderQueue,
+  DEFAULT_COMPETITION,
+  getActiveQueueSessionBlock,
   getCompetitionPhaseSequenceFromScheduleBlocks,
   getCompetitionPhaseForSchedulePhase,
   getFormatCapabilities,
@@ -89,6 +93,48 @@ describe("competition phases", () => {
       ])
     ).toEqual(["qualifier_open", "wall_reset", "observation", "finals_open", "results"]);
   });
+
+  it("only opens the live boulder queue during a live self-scored qualifier block", () => {
+    const scrambleCompetition = normalizeCompetition({
+      id: "comp-queue",
+      name: "Queue Test",
+      slug: "queue-test",
+      format: "scramble",
+      current_phase: "qualifier_open",
+    });
+
+    scrambleCompetition.schedule_blocks = [
+      {
+        id: "block-1",
+        competition_id: scrambleCompetition.id,
+        label: "Morning Session",
+        phase_type: "qualifier_round",
+        audience_label: "Open Session",
+        is_active: true,
+        start_time: "9:00 AM",
+        end_time: "12:00 PM",
+        capacity: 50,
+        eligible_category_ids: [],
+      },
+    ];
+
+    expect(canUseLiveBoulderQueue(scrambleCompetition)).toBe(true);
+    expect(getActiveQueueSessionBlock(scrambleCompetition)?.label).toBe("Morning Session");
+
+    expect(
+      canUseLiveBoulderQueue({
+        ...scrambleCompetition,
+        current_phase: "qualifier_closed",
+      })
+    ).toBe(false);
+
+    expect(
+      canUseLiveBoulderQueue({
+        ...scrambleCompetition,
+        format: "flash_format",
+      })
+    ).toBe(false);
+  });
 });
 
 describe("competition normalization", () => {
@@ -126,5 +172,58 @@ describe("competition normalization", () => {
 
     expect(scramble.has_finals).toBe(false);
     expect(flash.has_finals).toBe(true);
+  });
+
+  it("only offers climbing windows as registration assignments", () => {
+    const competition = normalizeCompetition(
+      {
+        ...DEFAULT_COMPETITION,
+        id: "comp-4",
+        slug: "spring-send",
+        name: "Spring Send",
+        format: "scramble",
+      },
+      [
+        {
+          id: "Open::Rec",
+          competition_id: "comp-4",
+          gender_division: "Open",
+          age_group: "Rec",
+          display_name: "Open / Rec",
+          sort_order: 0,
+        },
+      ],
+      [
+        {
+          id: "check-in",
+          competition_id: "comp-4",
+          label: "Check-in",
+          phase_type: "check_in",
+          audience_label: "All climbers",
+          is_active: false,
+          start_time: "8:00 AM",
+          end_time: "9:00 AM",
+          capacity: 80,
+          eligible_category_ids: [],
+        },
+        {
+          id: "scramble-window",
+          competition_id: "comp-4",
+          label: "Recreational Scramble",
+          phase_type: "qualifier_round",
+          audience_label: "Scramble window",
+          is_active: false,
+          start_time: "9:00 AM",
+          end_time: "12:00 PM",
+          capacity: 80,
+          eligible_category_ids: [],
+        },
+      ]
+    );
+
+    const choices = buildRegistrationChoices(competition, []);
+
+    expect(choices).toHaveLength(1);
+    expect(choices[0]?.slots.map((slot) => slot.label)).toEqual(["Recreational Scramble"]);
   });
 });
