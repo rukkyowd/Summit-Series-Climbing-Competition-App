@@ -62,14 +62,14 @@ export default function SiteHeader({
   return (
     <header className={`app-header ${light ? "app-header-light" : ""}`}>
       <div className="flex flex-col gap-4 text-left lg:flex-row lg:items-center lg:justify-between">
-        <Link href="/" className="flex min-w-0 items-center gap-3 self-start">
-          <div className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border text-xl font-display ${light ? "border-slate-200 bg-white text-slate-900" : "border-white/10 bg-white/[0.05] text-chalk"}`}>
-            <span>SS</span>
+        <Link href="/" className="results-brand-lockup">
+          <div className={`results-brand-mark ${light ? "" : "border-white/20"}`}>
+            <span className="results-brand-ridge" aria-hidden="true" />
             {!light ? <span className="aurora-ring" /> : null}
           </div>
-          <div className="min-w-0 text-left">
-            <div className={`meta-label ${light ? "text-slate-500" : "text-slate-200"}`}>Summit Series</div>
-            <div className={`truncate font-body text-sm ${light ? "text-slate-600" : "text-slate-300"}`}>Competition Results</div>
+          <div className="results-brand-wordmark">
+            <div className={`results-brand-title ${light ? "text-slate-500" : "text-slate-200"}`}>Summit Series</div>
+            <div className={`results-brand-subtitle ${light ? "text-slate-900" : "text-chalk"}`}>Competition Results</div>
           </div>
         </Link>
 

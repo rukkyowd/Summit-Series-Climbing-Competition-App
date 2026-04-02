@@ -779,25 +779,47 @@ export default function StaffDashboard({
               Create a competition, pull in official source details, then manage phases, judging, schedules, and finals from one control room.
             </div>
             <div className="mt-4 grid gap-3">
-              <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New competition name" />
+              <label className="results-field-group">
+                <span className="results-field-label">Competition name</span>
+                <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New competition name" />
+              </label>
+              <label className="results-field-group">
+                <span className="results-field-label">Slug preview</span>
+                <input value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="competition-slug" />
+              </label>
               <div className="grid gap-3 sm:grid-cols-2">
-                <select value={createFormat} onChange={(event) => setCreateFormat(event.target.value as Competition["format"])} className="results-input">
-                  {FORMAT_TEMPLATES.map((template) => (
-                    <option key={template.value} value={template.value}>{template.label}</option>
-                  ))}
-                </select>
-                <input value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="Location" />
+                <label className="results-field-group">
+                  <span className="results-field-label">Format</span>
+                  <select value={createFormat} onChange={(event) => setCreateFormat(event.target.value as Competition["format"])} className="results-input">
+                    {FORMAT_TEMPLATES.map((template) => (
+                      <option key={template.value} value={template.value}>{template.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="results-field-group">
+                  <span className="results-field-label">Location</span>
+                  <input value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="Location" />
+                </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <input type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
-                <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
+                <label className="results-field-group">
+                  <span className="results-field-label">Start date</span>
+                  <input type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
+                </label>
+                <label className="results-field-group">
+                  <span className="results-field-label">End date</span>
+                  <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
+                </label>
               </div>
-              <textarea
-                value={createDescription}
-                onChange={(event) => setCreateDescription(event.target.value)}
-                className="results-input min-h-[120px] resize-y"
-                placeholder="Competition description"
-              />
+              <label className="results-field-group">
+                <span className="results-field-label">Description</span>
+                <textarea
+                  value={createDescription}
+                  onChange={(event) => setCreateDescription(event.target.value)}
+                  className="results-input min-h-[120px] resize-y"
+                  placeholder="Competition description"
+                />
+              </label>
               {createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl ? (
                 <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
                   Imported official links:
@@ -1137,29 +1159,41 @@ export default function StaffDashboard({
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Competition name" />
-                  <input value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Slug" />
+                  <label className="results-field-group">
+                    <span className="results-field-label">Competition name</span>
+                    <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Competition name" />
+                  </label>
+                  <label className="results-field-group">
+                    <span className="results-field-label">Slug</span>
+                    <input value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Slug" />
+                  </label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <select
-                    value={draft.format}
-                    onChange={(event) => {
-                      const nextFormat = event.target.value as Competition["format"];
-                      setDraft({
-                        ...draft,
-                        format: nextFormat,
-                        total_climbs: getRecommendedQualifierClimbCount(nextFormat),
-                        qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(nextFormat),
-                        finals_cutoff: getRecommendedFinalsCutoff(nextFormat),
-                      });
-                    }}
-                    className="results-input"
-                  >
-                    {FORMAT_TEMPLATES.map((template) => (
-                      <option key={template.value} value={template.value}>{template.label}</option>
-                    ))}
-                  </select>
-                  <input value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Location" />
+                  <label className="results-field-group">
+                    <span className="results-field-label">Format</span>
+                    <select
+                      value={draft.format}
+                      onChange={(event) => {
+                        const nextFormat = event.target.value as Competition["format"];
+                        setDraft({
+                          ...draft,
+                          format: nextFormat,
+                          total_climbs: getRecommendedQualifierClimbCount(nextFormat),
+                          qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(nextFormat),
+                          finals_cutoff: getRecommendedFinalsCutoff(nextFormat),
+                        });
+                      }}
+                      className="results-input"
+                    >
+                      {FORMAT_TEMPLATES.map((template) => (
+                        <option key={template.value} value={template.value}>{template.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="results-field-group">
+                    <span className="results-field-label">Location</span>
+                    <input value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Location" />
+                  </label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <label className="space-y-2">

@@ -710,14 +710,14 @@ export default function StaffJudgePage() {
                               key={climb.number}
                               type="button"
                               onClick={() => setSelectedCell({ climberId: climber.id, climbNumber: climb.number })}
-                              className={`min-h-24 rounded-[1.2rem] border px-3 py-3 text-sm font-semibold transition ${
+                              className={`results-cell-button ${
                                 active
-                                  ? "border-sky-300 bg-sky-50 text-sky-700 shadow-[0_12px_24px_rgba(14,116,144,0.12)]"
+                                  ? "results-cell-button-active"
                                   : draft.top
-                                    ? "border-green-200 bg-green-50 text-green-700"
+                                    ? "results-cell-button-top"
                                     : draft.zone
-                                      ? "border-amber-200 bg-amber-50 text-amber-700"
-                                      : "border-slate-200 bg-white text-slate-600"
+                                      ? "results-cell-button-zone"
+                                      : "results-cell-button-pending"
                               }`}
                             >
                               <div>{label}</div>
