@@ -65,7 +65,9 @@ export default function CompetitionHero({
       >
         <div className="results-hero__overlay">
           <div className="results-kicker">Competition</div>
-          <h1 className="mt-3 text-3xl font-semibold text-slate-950 sm:text-5xl">{competition.name}</h1>
+          <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
+            {competition.name}
+          </h1>
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="results-chip">{competition.discipline_label}</span>
             <span className="results-chip">{summary.label}</span>
@@ -74,17 +76,20 @@ export default function CompetitionHero({
               {lifecycleLabel}
             </span>
           </div>
+          <div className="mt-5 text-sm font-medium text-slate-700">
+            Venue, dates, registration details, and official links in one place.
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <div>
           <div className="results-kicker">About</div>
-          <p className="mt-3 text-base leading-7 text-slate-700 sm:leading-8">
+          <p className="results-soft-text mt-3 max-w-3xl text-[1.02rem] leading-7 sm:text-lg sm:leading-8">
             {description || "Competition details will appear here once staff adds the event description."}
           </p>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <div className="results-button-row mt-6">
             <Link href={buildCompetitionPath(competition.slug, "register")} className="results-primary-button w-full sm:w-auto">
               Register for competition
             </Link>
@@ -126,6 +131,11 @@ export default function CompetitionHero({
                 Official schedule
               </a>
             ) : null}
+          </div>
+
+          <div className="results-subtle-divider mt-7" />
+          <div className="mt-5 text-sm leading-7 text-slate-600">
+            Public pages stay athlete-friendly while official source links remain one tap away for venue details, registration notes, and governing-body updates.
           </div>
         </div>
 

@@ -61,8 +61,8 @@ export default function SiteHeader({
 
   return (
     <header className={`app-header ${light ? "app-header-light" : ""}`}>
-      <div className="flex flex-col gap-4 text-left sm:items-center sm:text-center">
-        <Link href="/" className="flex min-w-0 items-center gap-3 self-start sm:self-center">
+      <div className="flex flex-col gap-4 text-left lg:flex-row lg:items-center lg:justify-between">
+        <Link href="/" className="flex min-w-0 items-center gap-3 self-start">
           <div className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border text-xl font-display ${light ? "border-slate-200 bg-white text-slate-900" : "border-white/10 bg-white/[0.05] text-chalk"}`}>
             <span>SS</span>
             {!light ? <span className="aurora-ring" /> : null}
@@ -73,27 +73,29 @@ export default function SiteHeader({
           </div>
         </Link>
 
-        <nav className={`nav-scroll ${competitionSlug || navItems ? "" : "sm:justify-start"}`}>
-          {resolvedNavItems.map((item) => {
-            const href = item.label === "Scorecard" ? scorecardHref : item.href;
-            const isActive =
-              href === "/"
-                ? pathname === "/"
-                : pathname === href || pathname?.startsWith(`${item.href}/`);
+        <div className="flex min-w-0 flex-1 flex-col gap-3 lg:items-end">
+          <nav className={`nav-scroll ${competitionSlug || navItems ? "lg:justify-end" : "sm:justify-start lg:justify-end"}`}>
+            {resolvedNavItems.map((item) => {
+              const href = item.label === "Scorecard" ? scorecardHref : item.href;
+              const isActive =
+                href === "/"
+                  ? pathname === "/"
+                  : pathname === href || pathname?.startsWith(`${item.href}/`);
 
-            return (
-              <Link
-                key={item.href}
-                href={href}
-                className={`nav-pill ${isActive ? "nav-pill-active" : ""} ${light ? "nav-pill-light" : ""}`}
-              >
-                {item.label === "Scorecard" && scorecardHref.includes("?token=") ? "My Scorecard" : item.label}
-              </Link>
-            );
-          })}
-        </nav>
+              return (
+                <Link
+                  key={item.href}
+                  href={href}
+                  className={`nav-pill ${isActive ? "nav-pill-active" : ""} ${light ? "nav-pill-light" : ""}`}
+                >
+                  {item.label === "Scorecard" && scorecardHref.includes("?token=") ? "My Scorecard" : item.label}
+                </Link>
+              );
+            })}
+          </nav>
 
-        {status ? <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-center">{status}</div> : null}
+          {status ? <div className="flex w-full flex-wrap items-center justify-start gap-2 lg:justify-end">{status}</div> : null}
+        </div>
       </div>
     </header>
   );

@@ -142,41 +142,73 @@ export default function HomePage() {
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 
         <section className="results-card">
-          <div className="flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
             <div>
               <div className="results-kicker">Events</div>
-              <h1 className="mt-3 text-3xl font-semibold text-slate-950 sm:text-5xl">Find your competition</h1>
-              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 sm:leading-8">
+              <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
+                Find your competition fast.
+              </h1>
+              <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
                 Public routes now stay competition-first. Choose the event you are climbing in to open registration, scorecards, rankings, and the live display.
               </p>
             </div>
-            {featured ? (
-              <Link href={buildCompetitionPath(featured.competition.slug)} className="results-primary-button w-full sm:w-auto">
-                Open featured competition
-              </Link>
-            ) : null}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="results-meta-card">
+                <div className="results-kicker">Live snapshot</div>
+                <div className="mt-3 text-3xl font-semibold text-slate-950">{summaries.length}</div>
+                <div className="mt-2 text-sm leading-6 text-slate-600">
+                  Active competitions currently available across registration, scorecards, rankings, and display.
+                </div>
+              </div>
+              {featured ? (
+                <Link href={buildCompetitionPath(featured.competition.slug)} className="results-primary-button w-full">
+                  Open featured competition
+                </Link>
+              ) : null}
+            </div>
           </div>
 
           {featured ? (
             <div className="results-feature mt-6">
-              <div className="results-kicker text-white/80">Featured event</div>
-              <div className="results-feature-card mt-4 max-w-md">
-                {featuredLiveNow ? (
-                  <>
-                    <span className="results-live-indicator results-live-indicator--featured" aria-hidden="true">
-                      <span className="results-live-indicator__dot" />
+              <div className="grid gap-5 lg:grid-cols-[1fr_22rem] lg:items-end">
+                <div className="max-w-2xl">
+                  <div className="results-kicker text-white/80">Featured event</div>
+                  <h2 className="results-editorial-title mt-3 text-4xl font-semibold text-white sm:text-5xl">
+                    {featured.competition.name}
+                  </h2>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="results-chip border-white/30 bg-white/15 text-white shadow-none">
+                      {featured.competition.discipline_label}
                     </span>
-                    <span className="sr-only">{featuredLifecycle}</span>
-                  </>
-                ) : null}
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  {featured.competition.discipline_label}
+                    <span className="results-chip border-white/30 bg-white/15 text-white shadow-none">
+                      {formatDateRange(featured.competition.start_date, featured.competition.end_date)}
+                    </span>
+                    <span className="results-chip border-white/30 bg-white/15 text-white shadow-none">
+                      {featured.competition.location_name || "Location TBD"}
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-2 text-3xl font-semibold text-slate-950">{featured.competition.name}</div>
-                <div className="mt-4 space-y-2 text-sm text-slate-600">
-                  <div>{featuredLifecycle}</div>
-                  <div>{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
-                  <div>{featured.competition.location_name || "Location TBD"}</div>
+                <div className="results-feature-card">
+                  {featuredLiveNow ? (
+                    <>
+                      <span className="results-live-indicator results-live-indicator--featured" aria-hidden="true">
+                        <span className="results-live-indicator__dot" />
+                      </span>
+                      <span className="sr-only">{featuredLifecycle}</span>
+                    </>
+                  ) : null}
+                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Featured status
+                  </div>
+                  <div className="mt-3 text-2xl font-semibold text-slate-950">{featuredLifecycle}</div>
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                    <div>{featured.competition.location_name || "Location TBD"}</div>
+                    <div>{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
+                    <div>Open the event to register, score, follow standings, or cast to display.</div>
+                  </div>
+                  <Link href={buildCompetitionPath(featured.competition.slug)} className="results-secondary-button mt-5 w-full">
+                    Enter event
+                  </Link>
                 </div>
               </div>
             </div>
@@ -206,15 +238,26 @@ export default function HomePage() {
         </section>
 
         <section className="results-card">
-          <div className="flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
             <div>
               <div className="results-kicker">Official calendar</div>
-              <h2 className="mt-3 text-3xl font-semibold text-slate-950 sm:text-4xl">Real bouldering events</h2>
-              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 sm:leading-8">
+              <h2 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-5xl">
+                Official bouldering calendar.
+              </h2>
+              <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
                 Read-only events pulled from official World Climbing and Climbing Escalade Canada calendars. These are source-linked references, not in-app scoring competitions.
               </p>
             </div>
-            <div className="results-chip">{officialEvents.length} official events</div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="results-meta-card">
+                <div className="results-kicker">Sources</div>
+                <div className="mt-3 text-lg font-semibold text-slate-950">World Climbing + CEC</div>
+                <div className="mt-2 text-sm leading-6 text-slate-600">
+                  Imported as reference data so staff can spin up local competition drafts without retyping basics.
+                </div>
+              </div>
+              <div className="results-chip w-fit">{officialEvents.length} official events</div>
+            </div>
           </div>
 
           {officialEventsError ? <div className="results-alert results-alert-error mt-6">{officialEventsError}</div> : null}

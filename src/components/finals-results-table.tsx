@@ -61,7 +61,7 @@ export default function FinalsResultsTable({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="results-kicker">Finals rankings</div>
-          <h2 className="mt-2 text-3xl font-semibold text-slate-950">{title}</h2>
+          <h2 className="results-editorial-title mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">{title}</h2>
         </div>
         <div className="results-chip">2025 IFSC points</div>
       </div>
