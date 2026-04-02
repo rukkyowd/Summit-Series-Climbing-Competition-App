@@ -297,7 +297,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     draft?.current_phase === "qualifier_open" && liveScheduleBlock?.phase_type === "qualifier_round"
       ? "Qualifier wave"
       : "Current block";
-  const canEditFinalsOrder = draft?.current_phase === "observation";
+  const canEditFinalsOrder = navigationPhase === "observation";
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
@@ -462,7 +462,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   };
 
   const moveFinalist = async (index: number, direction: -1 | 1) => {
-    if (!draft || draft.current_phase !== "observation") {
+    if (!draft || navigationPhase !== "observation") {
       return;
     }
 
