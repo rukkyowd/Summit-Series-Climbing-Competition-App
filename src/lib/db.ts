@@ -173,7 +173,7 @@ function assertRegistrationWindowOpen(competition: Competition) {
   assertQualifierOpen(competition, "Registration is closed because this competition has already advanced to finals.");
 
   if (!canRegisterDuringCompetition(competition)) {
-    throw new Error("Registration is not open during the current competition phase.");
+    throw new Error("Registration is not open for this competition.");
   }
 }
 

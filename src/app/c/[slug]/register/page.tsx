@@ -9,6 +9,7 @@ import {
   canRegisterDuringCompetition,
   CLIMBER_NUMBER_PATTERN,
   formatCompetitionPhaseLabel,
+  formatDateTimeLabel,
   getActiveScheduleBlock,
   getEventWorkflowGuide,
   getRegistrationAssignmentHelpText,
@@ -64,6 +65,33 @@ export default function CompetitionRegisterPage() {
   const workflowGuide = useMemo(() => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null), [snapshot]);
   const activeScheduleBlock = useMemo(() => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null), [snapshot]);
   const registrationOpen = snapshot ? canRegisterDuringCompetition(snapshot.competition) : false;
+  const registrationMessage = useMemo(() => {
+    if (!snapshot || registrationOpen) {
+      return "";
+    }
+
+    const now = new Date();
+    const opensAt = snapshot.competition.registration_opens_at
+      ? new Date(snapshot.competition.registration_opens_at)
+      : null;
+    const closesAt = snapshot.competition.registration_closes_at
+      ? new Date(snapshot.competition.registration_closes_at)
+      : null;
+
+    if (opensAt && !Number.isNaN(opensAt.getTime()) && now < opensAt) {
+      return `Registration opens on ${formatDateTimeLabel(snapshot.competition.registration_opens_at)}.`;
+    }
+
+    if (closesAt && !Number.isNaN(closesAt.getTime()) && now > closesAt) {
+      return `Registration closed on ${formatDateTimeLabel(snapshot.competition.registration_closes_at)}.`;
+    }
+
+    if (["finals_open", "finals_closed", "results"].includes(snapshot.competition.current_phase)) {
+      return "Registration is closed because this competition has already advanced beyond qualifier registration.";
+    }
+
+    return `Registration is currently closed during the ${formatCompetitionPhaseLabel(snapshot.competition.current_phase).toLowerCase()} phase.`;
+  }, [registrationOpen, snapshot]);
   const assignmentLabel = snapshot ? getRegistrationAssignmentLabel(snapshot.competition) : "Assignment";
   const assignmentHelp = snapshot ? getRegistrationAssignmentHelpText(snapshot.competition) : "";
   const steps = useMemo(() => ["Details", "Category", assignmentLabel, "Confirm"] as const, [assignmentLabel]);
@@ -184,7 +212,7 @@ export default function CompetitionRegisterPage() {
 
           {!registrationOpen && snapshot ? (
             <div className="results-alert results-alert-error mt-4">
-              Registration is currently closed during the {formatCompetitionPhaseLabel(snapshot.competition.current_phase).toLowerCase()} phase.
+              {registrationMessage}
             </div>
           ) : null}
 

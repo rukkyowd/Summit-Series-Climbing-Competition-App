@@ -980,7 +980,45 @@ export function canStaffScoreFinals(competition: Pick<Competition, "current_phas
   return competition.current_phase === "finals_open";
 }
 
-export function canRegisterForCompetition(competition: Pick<Competition, "current_phase">) {
+function parseDateTimeBoundary(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function canRegisterForCompetition(
+  competition: Pick<Competition, "current_phase"> &
+    Partial<Pick<Competition, "status" | "registration_opens_at" | "registration_closes_at">>
+) {
+  const status = competition.status ?? "active";
+  if (status !== "active") {
+    return false;
+  }
+
+  if (!["qualifier_open", "qualifier_closed"].includes(competition.current_phase)) {
+    return false;
+  }
+
+  const opensAt = parseDateTimeBoundary(competition.registration_opens_at);
+  const closesAt = parseDateTimeBoundary(competition.registration_closes_at);
+  const hasExplicitWindow = Boolean(opensAt || closesAt);
+  const now = new Date();
+
+  if (opensAt && now < opensAt) {
+    return false;
+  }
+
+  if (closesAt && now > closesAt) {
+    return false;
+  }
+
+  if (hasExplicitWindow) {
+    return true;
+  }
+
   return competition.current_phase === "qualifier_open";
 }
 

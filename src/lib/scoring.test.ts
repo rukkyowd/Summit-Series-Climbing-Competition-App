@@ -42,6 +42,34 @@ describe("competition phases", () => {
     expect(canClimberSelfScoreQualifier({ current_phase: "qualifier_closed", format: "scramble" })).toBe(false);
   });
 
+  it("allows future registration windows during qualifier_closed when explicit dates are still open", () => {
+    const opensAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const closesAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    expect(
+      canRegisterDuringCompetition({
+        current_phase: "qualifier_closed",
+        status: "active",
+        registration_opens_at: opensAt,
+        registration_closes_at: closesAt,
+      })
+    ).toBe(true);
+  });
+
+  it("closes registration outside the configured registration window", () => {
+    const opensAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const closesAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+    expect(
+      canRegisterDuringCompetition({
+        current_phase: "qualifier_open",
+        status: "active",
+        registration_opens_at: opensAt,
+        registration_closes_at: closesAt,
+      })
+    ).toBe(false);
+  });
+
   it("maps live schedule blocks to the scoring phase they imply", () => {
     expect(getCompetitionPhaseForSchedulePhase("qualifier_round")).toBe("qualifier_open");
     expect(getCompetitionPhaseForSchedulePhase("isolation")).toBe("observation");
