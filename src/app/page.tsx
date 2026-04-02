@@ -8,23 +8,53 @@ import { getAuthState, isStaffRole, type Profile } from "@/lib/auth";
 import { listCompetitionSummaries, type CompetitionSummary } from "@/lib/db";
 import { buildCompetitionPath, formatDateRange, getCompetitionLifecycleLabel } from "@/lib/scoring";
 
+type OfficialEvent = {
+  id: string;
+  title: string;
+  series: string;
+  location: string;
+  disciplines: string;
+  start_date: string;
+  end_date: string;
+  source_name: string;
+  source_url: string;
+};
+
 export default function HomePage() {
   const [summaries, setSummaries] = useState<CompetitionSummary[]>([]);
+  const [officialEvents, setOfficialEvents] = useState<OfficialEvent[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [officialEventsError, setOfficialEventsError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextSummaries, authState] = await Promise.all([
+      const [nextSummaries, authState, officialEventsResponse] = await Promise.all([
         listCompetitionSummaries(false),
         getAuthState().catch(() => ({ session: null, profile: null })),
+        fetch("/api/official-events")
+          .then(async (response) => {
+            const payload = (await response.json()) as { events?: OfficialEvent[]; error?: string };
+            if (!response.ok) {
+              throw new Error(payload.error ?? "Unable to load official events.");
+            }
+            return { events: payload.events ?? [], error: "" };
+          })
+          .catch((officialError) => {
+            return {
+              events: [] as OfficialEvent[],
+              error: officialError instanceof Error ? officialError.message : "Unable to load official events.",
+            };
+          }),
       ]);
       setSummaries(nextSummaries);
+      setOfficialEvents(officialEventsResponse.events);
       setProfile(authState.profile);
       setError("");
+      setOfficialEventsError(officialEventsResponse.error);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to load competitions.");
     } finally {
@@ -137,6 +167,63 @@ export default function HomePage() {
             ))}
             {!filtered.length && !loading ? (
               <div className="results-card text-center text-slate-600">No active competitions match that search yet.</div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="results-card">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div>
+              <div className="results-kicker">Official calendar</div>
+              <h2 className="mt-3 text-3xl font-semibold text-slate-950 sm:text-4xl">Real bouldering events</h2>
+              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 sm:leading-8">
+                Read-only events pulled from official World Climbing and Climbing Escalade Canada calendars. These are source-linked references, not in-app scoring competitions.
+              </p>
+            </div>
+            <div className="results-chip">{officialEvents.length} official events</div>
+          </div>
+
+          {officialEventsError ? <div className="results-alert results-alert-error mt-6">{officialEventsError}</div> : null}
+
+          <div className="mt-8 space-y-4">
+            {officialEvents.map((event) => (
+              <a
+                key={event.id}
+                href={event.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="results-list-row"
+              >
+                <div>
+                  <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{event.title}</div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
+                    <span>{event.series}</span>
+                    <span>{event.disciplines}</span>
+                    <span className="results-chip">{event.source_name}</span>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 md:contents">
+                  <div>
+                    <div className="results-kicker md:hidden">Location</div>
+                    <div className="text-sm text-slate-600">{event.location}</div>
+                  </div>
+                  <div>
+                    <div className="results-kicker md:hidden">Source</div>
+                    <div className="text-sm text-slate-600">Official event page</div>
+                  </div>
+                  <div className="md:justify-self-end">
+                    <div className="results-kicker md:hidden">Date</div>
+                    <div className="pt-2 text-sm text-slate-600 md:pt-0">
+                      {formatDateRange(event.start_date, event.end_date)}
+                    </div>
+                  </div>
+                </div>
+              </a>
+            ))}
+            {!officialEvents.length && !loading && !officialEventsError ? (
+              <div className="results-card text-center text-slate-600">
+                No official bouldering events were available from the configured source feeds.
+              </div>
             ) : null}
           </div>
         </section>
