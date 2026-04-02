@@ -103,6 +103,67 @@ export default function CompetitionOverviewPage() {
     snapshot?.competition.current_phase === "finals_open" ||
     snapshot?.competition.current_phase === "finals_closed" ||
     snapshot?.competition.current_phase === "results";
+  const showFinalsClimbingOrder =
+    snapshot?.competition.current_phase === "observation" ||
+    snapshot?.competition.current_phase === "finals_open";
+  const finalsOrderRows = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    const climberMap = new Map(snapshot.climbers.map((climber) => [climber.id, climber]));
+
+    return [...snapshot.finalists]
+      .sort((left, right) => {
+        const leftOrder = left.climbing_order ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = right.climbing_order ?? Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+
+        if (left.qualifier_rank !== right.qualifier_rank) {
+          return left.qualifier_rank - right.qualifier_rank;
+        }
+
+        return left.name.localeCompare(right.name);
+      })
+      .map((finalist, index) => {
+        const climber = climberMap.get(finalist.climber_id);
+        const completedProblems =
+          climber?.final_attempts.filter((attempt) => {
+            return (
+              attempt.top ||
+              attempt.zone ||
+              attempt.attempts_to_top != null ||
+              attempt.attempts_to_zone != null
+            );
+          }).length ?? 0;
+
+        return {
+          climber,
+          finalist,
+          completedProblems,
+          displayOrder: finalist.climbing_order ?? index + 1,
+        };
+      });
+  }, [snapshot]);
+  const currentFinalistIndex = useMemo(() => {
+    if (!showFinalsClimbingOrder || !snapshot || !finalsOrderRows.length) {
+      return -1;
+    }
+
+    if (snapshot.competition.current_phase === "observation") {
+      return 0;
+    }
+
+    return finalsOrderRows.findIndex(
+      (entry) => entry.completedProblems < snapshot.competition.finals_problem_count
+    );
+  }, [finalsOrderRows, showFinalsClimbingOrder, snapshot]);
+  const currentFinalist =
+    currentFinalistIndex >= 0 ? finalsOrderRows[currentFinalistIndex] ?? null : null;
+  const nextFinalist =
+    currentFinalistIndex >= 0 ? finalsOrderRows[currentFinalistIndex + 1] ?? null : null;
 
   useEffect(() => {
     if (!selectedFinalsCategory && finalsCategories.length) {
@@ -254,29 +315,106 @@ export default function CompetitionOverviewPage() {
                 </div>
 
                 <div className="mt-6">
-                  <div className="results-kicker">Registered climbers</div>
-                  <div className="mt-3 space-y-3">
-                    {snapshot.climbers.slice(0, 6).map((climber) => (
-                      <div key={climber.id} className="results-meta-card">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
-                            <div className="mt-1 text-sm text-slate-600">
-                              #{climber.climber_number} | {climber.display_category} | {climber.province}
+                  <div className="results-kicker">
+                    {showFinalsClimbingOrder ? "Finals climbing order" : "Registered climbers"}
+                  </div>
+                  {showFinalsClimbingOrder ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="rounded-[24px] border border-sky-200 bg-sky-50/70 px-5 py-4 text-sm text-slate-700">
+                        {currentFinalist ? (
+                          <>
+                            <span className="font-semibold text-slate-950">
+                              {snapshot.competition.current_phase === "observation"
+                                ? "First out"
+                                : "Currently climbing"}
+                              :{" "}
+                              {currentFinalist.finalist.name}
+                            </span>
+                            {" · "}
+                            {currentFinalist.finalist.display_category}
+                            {nextFinalist ? (
+                              <>
+                                {" · On deck: "}
+                                <span className="font-semibold text-slate-950">{nextFinalist.finalist.name}</span>
+                              </>
+                            ) : null}
+                          </>
+                        ) : (
+                          "All finalists have recorded scores."
+                        )}
+                      </div>
+
+                      {finalsOrderRows.map((entry, index) => {
+                        const isCurrent = index === currentFinalistIndex;
+                        const isNext = index === currentFinalistIndex + 1 && currentFinalistIndex >= 0;
+
+                        return (
+                          <div
+                            key={entry.finalist.climber_id}
+                            className={
+                              isCurrent
+                                ? "results-meta-card border-sky-300 bg-sky-50/70"
+                                : isNext
+                                  ? "results-meta-card border-amber-200 bg-amber-50/70"
+                                  : "results-meta-card"
+                            }
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="results-chip">#{entry.displayOrder}</span>
+                                  {isCurrent ? (
+                                    <span className="results-chip">
+                                      {snapshot.competition.current_phase === "observation" ? "First out" : "Current"}
+                                    </span>
+                                  ) : null}
+                                  {isNext ? <span className="results-chip">On deck</span> : null}
+                                </div>
+                                <div className="mt-3 text-lg font-semibold text-slate-950">{entry.finalist.name}</div>
+                                <div className="mt-1 text-sm text-slate-600">
+                                  {entry.climber
+                                    ? `#${entry.climber.climber_number} | ${entry.finalist.display_category} | ${entry.climber.province}`
+                                    : entry.finalist.display_category}
+                                </div>
+                              </div>
+                              <div className="text-sm text-slate-600">
+                                {snapshot.competition.current_phase === "finals_open"
+                                  ? `${entry.completedProblems}/${snapshot.competition.finals_problem_count} boulders scored`
+                                  : `Qualifier rank #${entry.finalist.qualifier_rank}`}
+                              </div>
                             </div>
                           </div>
-                          <div className="text-sm text-slate-600">
-                            {getTimeSlotLabel(climber.time_slot_id, snapshot.competition)}
+                        );
+                      })}
+
+                      <Link href={`${buildCompetitionPath(slug, "leaderboard")}`} className="results-secondary-button">
+                        View standings
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {snapshot.climbers.slice(0, 6).map((climber) => (
+                        <div key={climber.id} className="results-meta-card">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
+                              <div className="mt-1 text-sm text-slate-600">
+                                #{climber.climber_number} | {climber.display_category} | {climber.province}
+                              </div>
+                            </div>
+                            <div className="text-sm text-slate-600">
+                              {getTimeSlotLabel(climber.time_slot_id, snapshot.competition)}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                    {snapshot.climbers.length > 6 ? (
-                      <Link href={`${buildCompetitionPath(slug, "leaderboard")}`} className="results-secondary-button">
-                        View all rankings
-                      </Link>
-                    ) : null}
-                  </div>
+                      ))}
+                      {snapshot.climbers.length > 6 ? (
+                        <Link href={`${buildCompetitionPath(slug, "leaderboard")}`} className="results-secondary-button">
+                          View all rankings
+                        </Link>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </section>
             </section>
