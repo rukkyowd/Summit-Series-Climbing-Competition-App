@@ -7,6 +7,7 @@ export interface ConfirmationModalProps {
   title: string;
   description: string;
   confirmLabel: string;
+  confirmTone?: "default" | "danger";
   expectedValue?: string;
   busy?: boolean;
   onCancel: () => void;
@@ -18,6 +19,7 @@ export default function ConfirmationModal({
   title,
   description,
   confirmLabel,
+  confirmTone = "default",
   expectedValue,
   busy = false,
   onCancel,
@@ -68,7 +70,7 @@ export default function ConfirmationModal({
             type="button"
             onClick={() => void onConfirm()}
             disabled={busy || !canConfirm}
-            className="results-primary-button"
+            className={confirmTone === "danger" ? "results-danger-button" : "results-primary-button"}
           >
             {busy ? "Working..." : confirmLabel}
           </button>

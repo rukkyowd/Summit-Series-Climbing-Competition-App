@@ -159,6 +159,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     title: string;
     description: string;
     confirmLabel: string;
+    confirmTone?: "default" | "danger";
     expectedValue?: string;
     action: () => Promise<void>;
   }>(null);
@@ -232,40 +233,6 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const impliedCompetitionPhase = liveScheduleBlock
     ? getCompetitionPhaseForSchedulePhase(liveScheduleBlock.phase_type)
     : null;
-  const scheduleDrivenPhases = useMemo(
-    () => (draft ? getCompetitionPhaseSequenceFromScheduleBlocks(draft.schedule_blocks) : []),
-    [draft]
-  );
-  const navigationPhase = impliedCompetitionPhase ?? draft?.current_phase ?? null;
-  const schedulePhaseIndex = navigationPhase ? scheduleDrivenPhases.indexOf(navigationPhase) : -1;
-  const nextPhase =
-    schedulePhaseIndex >= 0 && schedulePhaseIndex < scheduleDrivenPhases.length - 1
-      ? scheduleDrivenPhases[schedulePhaseIndex + 1]
-      : draft
-        ? getNextCompetitionPhase(draft.current_phase)
-        : null;
-  const previousPhase =
-    schedulePhaseIndex > 0
-      ? scheduleDrivenPhases[schedulePhaseIndex - 1]
-      : draft
-        ? getPreviousCompetitionPhase(draft.current_phase)
-        : null;
-  const nextPhaseLabel = nextPhase === "results" ? "End event" : "Next";
-  const schedulePhaseMismatch = Boolean(
-    draft && impliedCompetitionPhase && impliedCompetitionPhase !== draft.current_phase
-  );
-  const currentPhaseBlockLabel =
-    draft && liveScheduleBlock && impliedCompetitionPhase === draft.current_phase
-      ? liveScheduleBlock.label
-      : null;
-  const currentPhaseBlockTitle =
-    draft?.current_phase === "qualifier_open" && liveScheduleBlock?.phase_type === "qualifier_round"
-      ? "Qualifier wave"
-      : "Current block";
-  const finalsOrder = useMemo(
-    () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
-    [snapshot]
-  );
   const orderedScheduleBlocks = useMemo(() => {
     if (!draft) {
       return [] as CompetitionScheduleBlock[];
@@ -284,6 +251,60 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
       })
       .map((entry) => entry.block);
   }, [draft]);
+  const scheduleDrivenPhases = useMemo(
+    () => (draft ? getCompetitionPhaseSequenceFromScheduleBlocks(draft.schedule_blocks) : []),
+    [draft]
+  );
+  const navigationPhase = impliedCompetitionPhase ?? draft?.current_phase ?? null;
+  const liveScheduleBlockIndex = liveScheduleBlock
+    ? orderedScheduleBlocks.findIndex((block) => block.id === liveScheduleBlock.id)
+    : -1;
+  const previousBlockInPhase =
+    navigationPhase && liveScheduleBlockIndex > 0
+      ? [...orderedScheduleBlocks.slice(0, liveScheduleBlockIndex)]
+          .reverse()
+          .find((block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === navigationPhase) ?? null
+      : null;
+  const nextBlockInPhase =
+    navigationPhase && liveScheduleBlockIndex >= 0
+      ? orderedScheduleBlocks
+          .slice(liveScheduleBlockIndex + 1)
+          .find((block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === navigationPhase) ?? null
+      : null;
+  const schedulePhaseIndex = navigationPhase ? scheduleDrivenPhases.indexOf(navigationPhase) : -1;
+  const nextPhase =
+    schedulePhaseIndex >= 0 && schedulePhaseIndex < scheduleDrivenPhases.length - 1
+      ? scheduleDrivenPhases[schedulePhaseIndex + 1]
+      : draft
+        ? getNextCompetitionPhase(draft.current_phase)
+        : null;
+  const previousPhase =
+    schedulePhaseIndex > 0
+      ? scheduleDrivenPhases[schedulePhaseIndex - 1]
+      : draft
+        ? getPreviousCompetitionPhase(draft.current_phase)
+        : null;
+  const isEndEventTransition =
+    nextPhase === "results" &&
+    (navigationPhase === "observation" || navigationPhase === "finals_open" || navigationPhase === "finals_closed");
+  const nextPhaseLabel = isEndEventTransition ? "End event" : "Next";
+  const canGoPrevious = Boolean(previousBlockInPhase || previousPhase);
+  const canGoNext = Boolean(nextBlockInPhase || nextPhase);
+  const schedulePhaseMismatch = Boolean(
+    draft && impliedCompetitionPhase && impliedCompetitionPhase !== draft.current_phase
+  );
+  const currentPhaseBlockLabel =
+    draft && liveScheduleBlock && impliedCompetitionPhase === draft.current_phase
+      ? liveScheduleBlock.label
+      : null;
+  const currentPhaseBlockTitle =
+    draft?.current_phase === "qualifier_open" && liveScheduleBlock?.phase_type === "qualifier_round"
+      ? "Qualifier wave"
+      : "Current block";
+  const finalsOrder = useMemo(
+    () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
+    [snapshot]
+  );
   const scheduleTemplates = useMemo(() => (draft ? buildScheduleBlockTemplates(draft) : []), [draft]);
   const qualifierCategories = useMemo(
     () =>
@@ -384,7 +405,8 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     competitionId: string,
     nextPhaseValue: Competition["current_phase"],
     direction: -1 | 1,
-    successMessage: string
+    successMessage: string,
+    targetBlockId?: string
   ) => {
     setError("");
     setMessage("");
@@ -399,9 +421,14 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
         }));
       }
 
-      await setCompetitionPhase(competitionId, nextPhaseValue);
+      const currentPhaseValue = draft?.current_phase ?? null;
+      if (currentPhaseValue !== nextPhaseValue) {
+        await setCompetitionPhase(competitionId, nextPhaseValue);
+      }
 
-      const targetBlock = findScheduleBlockForPhase(nextPhaseValue, direction);
+      const targetBlock =
+        (targetBlockId ? orderedScheduleBlocks.find((block) => block.id === targetBlockId) ?? null : null) ??
+        findScheduleBlockForPhase(nextPhaseValue, direction);
       if (targetBlock) {
         await setCompetitionLiveScheduleBlock(competitionId, targetBlock.id);
         setPhaseBlockMemory((current) => ({
@@ -665,18 +692,29 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                       <button
                         type="button"
                         onClick={() => {
-                          if (!previousPhase || !canEditPhase) {
+                          if (!canGoPrevious || !canEditPhase) {
+                            return;
+                          }
+
+                          if (previousBlockInPhase && navigationPhase) {
+                            void runPhaseNavigation(
+                              draft.id,
+                              navigationPhase,
+                              -1,
+                              `Live block moved to ${previousBlockInPhase.label}.`,
+                              previousBlockInPhase.id
+                            );
                             return;
                           }
 
                           void runPhaseNavigation(
                             draft.id,
-                            previousPhase,
+                            previousPhase!,
                             -1,
-                            `Competition moved to ${formatCompetitionPhaseLabel(previousPhase).toLowerCase()}.`
+                            `Competition moved to ${formatCompetitionPhaseLabel(previousPhase!).toLowerCase()}.`
                           );
                         }}
-                        disabled={!previousPhase || isPending || isPhasePending || !canEditPhase}
+                        disabled={!canGoPrevious || isPending || isPhasePending || !canEditPhase}
                         className="results-secondary-button"
                       >
                         Previous
@@ -684,15 +722,27 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                       <button
                         type="button"
                         onClick={() => {
-                          if (!nextPhase) {
+                          if (!canGoNext) {
                             return;
                           }
 
-                          if (nextPhase === "results") {
+                          if (nextBlockInPhase && navigationPhase) {
+                            void runPhaseNavigation(
+                              draft.id,
+                              navigationPhase,
+                              1,
+                              `Live block moved to ${nextBlockInPhase.label}.`,
+                              nextBlockInPhase.id
+                            );
+                            return;
+                          }
+
+                          if (isEndEventTransition && nextPhase === "results") {
                             setConfirming({
                               title: "End event",
                               description: "This moves the competition into the results phase so public pages show the final standings instead of live scoring.",
                               confirmLabel: "End event",
+                              confirmTone: "danger",
                               expectedValue: draft.name,
                               action: async () => {
                                 await runPhaseNavigation(draft.id, nextPhase, 1, "Competition moved to results.");
@@ -712,8 +762,8 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                             `Competition moved to ${formatCompetitionPhaseLabel(nextPhase).toLowerCase()}.`
                           );
                         }}
-                        disabled={!nextPhase || isPending || isPhasePending || !canEditPhase}
-                        className="results-primary-button"
+                        disabled={!canGoNext || isPending || isPhasePending || !canEditPhase}
+                        className={isEndEventTransition ? "results-danger-button" : "results-primary-button"}
                       >
                         {nextPhaseLabel}
                       </button>
@@ -847,7 +897,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   <div className="results-meta-card">
                     <div className="results-kicker">Archived state</div>
                     <div className="mt-2 text-sm text-slate-600">Archive hides the competition from public discovery without deleting event-day data.</div>
-                    <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className="results-secondary-button mt-4">
+                    <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className={draft.status === "active" ? "results-danger-button mt-4" : "results-secondary-button mt-4"}>
                       {draft.status === "active" ? "Archive competition" : "Reopen competition"}
                     </button>
                   </div>
@@ -945,7 +995,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                                 <button
                                   type="button"
                                   onClick={() => removeScheduleBlock(block.id)}
-                                  className="results-secondary-button"
+                                  className="results-danger-button"
                                 >
                                   Remove
                                 </button>
@@ -1166,6 +1216,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                     title: "Delete competition",
                     description: "This permanently deletes the competition and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
                     confirmLabel: "Delete",
+                    confirmTone: "danger",
                     expectedValue: draft.name,
                     action: async () => {
                       await deleteCompetition(draft.id);
@@ -1175,7 +1226,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                       await refreshAfterChange();
                       setMessage("Competition deleted.");
                     },
-                  })} className="results-secondary-button">Delete competition</button>
+                  })} className="results-danger-button">Delete competition</button>
                 </div>
               </div>
             ) : (
@@ -1189,6 +1240,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
           title={confirming?.title ?? ""}
           description={confirming?.description ?? ""}
           confirmLabel={confirming?.confirmLabel ?? "Confirm"}
+          confirmTone={confirming?.confirmTone ?? "default"}
           expectedValue={confirming?.expectedValue}
           busy={isPending || isPhasePending}
           onCancel={() => setConfirming(null)}
