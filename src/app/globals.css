@@ -96,7 +96,7 @@ body::after {
   }
 
   .app-header {
-    @apply sticky top-3 z-40 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[rgba(17,19,24,0.78)] px-3 py-3 text-center shadow-2xl backdrop-blur-xl sm:top-4 sm:rounded-[2rem] sm:px-5 sm:py-4;
+    @apply sticky top-3 z-40 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[rgba(17,19,24,0.78)] px-3 py-3 shadow-2xl backdrop-blur-xl sm:top-4 sm:rounded-[2rem] sm:px-5 sm:py-4;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 20px 45px rgba(0, 0, 0, 0.28);
@@ -125,28 +125,28 @@ body::after {
   }
 
   .card {
-    @apply rounded-[2rem] border border-white/10 bg-[var(--panel)] p-5 text-center shadow-2xl backdrop-blur-md sm:p-6;
+    @apply rounded-[2rem] border border-white/10 bg-[var(--panel)] p-5 shadow-2xl backdrop-blur-md sm:p-6;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 24px 60px rgba(0, 0, 0, 0.32);
   }
 
   .card-muted {
-    @apply rounded-[1.6rem] border border-white/5 bg-white/[0.04] p-4 text-center backdrop-blur-sm;
+    @apply rounded-[1.6rem] border border-white/5 bg-white/[0.04] p-4 backdrop-blur-sm;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       inset 0 -1px 0 rgba(255, 255, 255, 0.015);
   }
 
   .stat-card {
-    @apply rounded-[1.5rem] border border-white/10 bg-black/20 p-4 text-center;
+    @apply rounded-[1.5rem] border border-white/10 bg-black/20 p-4;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 10px 30px rgba(0, 0, 0, 0.14);
   }
 
   .action-card {
-    @apply relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-[rgba(24,28,34,0.82)] p-5 text-center transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-[rgba(28,32,39,0.94)] sm:p-6;
+    @apply relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-[rgba(24,28,34,0.82)] p-5 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-[rgba(28,32,39,0.94)] sm:p-6;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 18px 40px rgba(0, 0, 0, 0.2);
@@ -288,11 +288,11 @@ body::after {
   }
 
   .results-card {
-    @apply rounded-[1.5rem] border border-slate-200 bg-white p-4 text-center shadow-[0_18px_48px_rgba(15,23,42,0.08)] sm:rounded-[2rem] sm:p-6;
+    @apply rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.08)] sm:rounded-[2rem] sm:p-6;
   }
 
   .results-kicker {
-    @apply text-center text-xs font-semibold uppercase tracking-[0.22em] text-slate-500;
+    @apply text-xs font-semibold uppercase tracking-[0.22em] text-slate-500;
   }
 
   .results-chip {
@@ -391,7 +391,7 @@ body::after {
   }
 
   .results-feature-card {
-    @apply relative rounded-[1.6rem] bg-white/90 p-5 text-center shadow-xl;
+    @apply relative rounded-[1.6rem] bg-white/90 p-5 shadow-xl;
   }
 
   .nav-scroll {

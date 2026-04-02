@@ -23,16 +23,16 @@ export default function CompetitionListCard({
 
   return (
     <Link href={buildCompetitionPath(competition.slug)} className="results-list-row">
-      <div className="text-center md:text-left">
+      <div>
         <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{competition.name}</div>
-        <div className="mt-2 flex flex-wrap justify-center gap-2 text-sm text-slate-600 md:justify-start">
+        <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
           <span>{competition.discipline_label}</span>
           <span>{getFormatTemplate(competition.format).label}</span>
           {!liveNow ? <span className="results-chip">{lifecycleLabel}</span> : null}
           {summary.active_schedule_block ? <span>{summary.active_schedule_block.label}</span> : null}
         </div>
       </div>
-      <div className="grid gap-3 text-center sm:grid-cols-2 md:contents md:text-left">
+      <div className="grid gap-3 sm:grid-cols-2 md:contents">
         <div>
           <div className="results-kicker md:hidden">Location</div>
           <div className="text-sm text-slate-600">{competition.location_name || "Location TBD"}</div>
@@ -45,7 +45,7 @@ export default function CompetitionListCard({
         </div>
         <div className="md:justify-self-end">
           <div className="results-kicker md:hidden">Date</div>
-          <div className="mt-1 flex items-start justify-center gap-3 md:mt-0 md:justify-end">
+          <div className="mt-1 flex items-start gap-3 md:mt-0 md:justify-end">
             <div className="results-date-badge shrink-0">
               {liveNow ? (
                 <>

@@ -259,17 +259,10 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const liveScheduleBlockIndex = liveScheduleBlock
     ? orderedScheduleBlocks.findIndex((block) => block.id === liveScheduleBlock.id)
     : -1;
-  const previousBlockInPhase =
-    navigationPhase && liveScheduleBlockIndex > 0
-      ? [...orderedScheduleBlocks.slice(0, liveScheduleBlockIndex)]
-          .reverse()
-          .find((block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === navigationPhase) ?? null
-      : null;
-  const nextBlockInPhase =
-    navigationPhase && liveScheduleBlockIndex >= 0
-      ? orderedScheduleBlocks
-          .slice(liveScheduleBlockIndex + 1)
-          .find((block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === navigationPhase) ?? null
+  const previousScheduleBlock = liveScheduleBlockIndex > 0 ? orderedScheduleBlocks[liveScheduleBlockIndex - 1] : null;
+  const nextScheduleBlock =
+    liveScheduleBlockIndex >= 0 && liveScheduleBlockIndex < orderedScheduleBlocks.length - 1
+      ? orderedScheduleBlocks[liveScheduleBlockIndex + 1]
       : null;
   const schedulePhaseIndex = navigationPhase ? scheduleDrivenPhases.indexOf(navigationPhase) : -1;
   const nextPhase =
@@ -284,12 +277,15 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
       : draft
         ? getPreviousCompetitionPhase(draft.current_phase)
         : null;
+  const nextNavigationPhase =
+    (nextScheduleBlock ? getCompetitionPhaseForSchedulePhase(nextScheduleBlock.phase_type) : null) ??
+    nextPhase;
   const isEndEventTransition =
-    nextPhase === "results" &&
+    nextNavigationPhase === "results" &&
     (navigationPhase === "observation" || navigationPhase === "finals_open" || navigationPhase === "finals_closed");
   const nextPhaseLabel = isEndEventTransition ? "End event" : "Next";
-  const canGoPrevious = Boolean(previousBlockInPhase || previousPhase);
-  const canGoNext = Boolean(nextBlockInPhase || nextPhase);
+  const canGoPrevious = Boolean(previousScheduleBlock || previousPhase);
+  const canGoNext = Boolean(nextScheduleBlock || nextPhase);
   const schedulePhaseMismatch = Boolean(
     draft && impliedCompetitionPhase && impliedCompetitionPhase !== draft.current_phase
   );
@@ -301,6 +297,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     draft?.current_phase === "qualifier_open" && liveScheduleBlock?.phase_type === "qualifier_round"
       ? "Qualifier wave"
       : "Current block";
+  const canEditFinalsOrder = draft?.current_phase === "observation";
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
@@ -465,7 +462,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   };
 
   const moveFinalist = async (index: number, direction: -1 | 1) => {
-    if (!draft) {
+    if (!draft || draft.current_phase !== "observation") {
       return;
     }
 
@@ -696,13 +693,15 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                             return;
                           }
 
-                          if (previousBlockInPhase && navigationPhase) {
+                          if (previousScheduleBlock) {
+                            const targetPhase =
+                              getCompetitionPhaseForSchedulePhase(previousScheduleBlock.phase_type) ?? draft.current_phase;
                             void runPhaseNavigation(
                               draft.id,
-                              navigationPhase,
+                              targetPhase,
                               -1,
-                              `Live block moved to ${previousBlockInPhase.label}.`,
-                              previousBlockInPhase.id
+                              `Live block moved to ${previousScheduleBlock.label}.`,
+                              previousScheduleBlock.id
                             );
                             return;
                           }
@@ -728,13 +727,41 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                             return;
                           }
 
-                          if (nextBlockInPhase && navigationPhase) {
+                          if (nextScheduleBlock) {
+                            const targetBlockPhase =
+                              getCompetitionPhaseForSchedulePhase(nextScheduleBlock.phase_type) ?? draft.current_phase;
+
+                            if (
+                              targetBlockPhase === "results" &&
+                              (navigationPhase === "observation" ||
+                                navigationPhase === "finals_open" ||
+                                navigationPhase === "finals_closed")
+                            ) {
+                              setConfirming({
+                                title: "End event",
+                                description: "This moves the competition into the results phase so public pages show the final standings instead of live scoring.",
+                                confirmLabel: "End event",
+                                confirmTone: "danger",
+                                expectedValue: draft.name,
+                                action: async () => {
+                                  await runPhaseNavigation(
+                                    draft.id,
+                                    targetBlockPhase,
+                                    1,
+                                    "Competition moved to results.",
+                                    nextScheduleBlock.id
+                                  );
+                                },
+                              });
+                              return;
+                            }
+
                             void runPhaseNavigation(
                               draft.id,
-                              navigationPhase,
+                              targetBlockPhase,
                               1,
-                              `Live block moved to ${nextBlockInPhase.label}.`,
-                              nextBlockInPhase.id
+                              `Live block moved to ${nextScheduleBlock.label}.`,
+                              nextScheduleBlock.id
                             );
                             return;
                           }
@@ -1166,6 +1193,11 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                 {finalsOrder.length && snapshot?.finalistsPersisted ? (
                   <div className="results-meta-card">
                     <div className="results-kicker">Finals climbing order</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      {canEditFinalsOrder
+                        ? "Observation is live, so you can set the finals climbing order now."
+                        : "Finals climbing order locks outside observation."}
+                    </div>
                     <div className="mt-4 space-y-3">
                       {finalsOrder.map((finalist, index) => (
                         <div key={finalist.climber_id} className="results-admin-list-item">
@@ -1174,8 +1206,8 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                             <div className="mt-1 text-sm text-slate-600">{finalist.display_category} | Qualifier #{finalist.qualifier_rank}</div>
                           </div>
                           <div className="flex gap-2">
-                            <button type="button" onClick={() => void moveFinalist(index, -1)} disabled={index === 0} className="results-secondary-button">Up</button>
-                            <button type="button" onClick={() => void moveFinalist(index, 1)} disabled={index === finalsOrder.length - 1} className="results-secondary-button">Down</button>
+                            <button type="button" onClick={() => void moveFinalist(index, -1)} disabled={!canEditFinalsOrder || index === 0} className="results-secondary-button">Up</button>
+                            <button type="button" onClick={() => void moveFinalist(index, 1)} disabled={!canEditFinalsOrder || index === finalsOrder.length - 1} className="results-secondary-button">Down</button>
                           </div>
                         </div>
                       ))}
@@ -1185,7 +1217,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   <div className="results-meta-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-2 text-sm text-slate-600">
-                      Projected finalists are visible, but the order only becomes editable after you advance the competition to finals.
+                      Projected finalists are visible, but the order only becomes editable during observation.
                     </div>
                   </div>
                 ) : null}

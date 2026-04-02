@@ -34,7 +34,7 @@ export default function CompetitionHero({
         <div className="results-hero__overlay">
           <div className="results-kicker">Competition</div>
           <h1 className="mt-3 text-3xl font-semibold text-slate-950 sm:text-5xl">{competition.name}</h1>
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <span className="results-chip">{competition.discipline_label}</span>
             <span className="results-chip">{summary.label}</span>
             <span className={`results-chip ${liveNow ? "results-chip-live" : ""}`}>
@@ -46,13 +46,13 @@ export default function CompetitionHero({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
+        <div>
           <div className="results-kicker">About</div>
           <p className="mt-3 text-base leading-7 text-slate-700 sm:leading-8">
             {competition.description || "Competition details will appear here once staff adds the event description."}
           </p>
 
-          <div className="mt-6 grid w-full gap-3 sm:w-auto sm:grid-cols-2">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link href={buildCompetitionPath(competition.slug, "register")} className="results-primary-button w-full sm:w-auto">
               Register for competition
             </Link>

@@ -62,7 +62,7 @@ export default function ConfirmationModal({
           </label>
         ) : null}
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button type="button" onClick={onCancel} disabled={busy} className="results-secondary-button">
             Cancel
           </button>
