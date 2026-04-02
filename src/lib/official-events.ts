@@ -6,6 +6,7 @@ export interface OfficialEvent {
   disciplines: string;
   start_date: string;
   end_date: string;
+  description: string;
   source_name: string;
   source_url: string;
 }
@@ -153,6 +154,7 @@ function parseWorldClimbingEvents(text: string): OfficialEvent[] {
       series: "World Climbing",
       location: `${location} (${countryCode})`,
       disciplines: disciplines.trim(),
+      description: `${eventType} in ${location} featuring ${disciplines.trim().toLowerCase()}, as listed on the official World Climbing 2026 calendar.`,
       source_name: "World Climbing 2026 calendar",
       source_url: WORLD_CLIMBING_SOURCE_URL,
       ...parsedRange,
@@ -193,6 +195,8 @@ function parseCecEvents(text: string): OfficialEvent[] {
       series: "North American Cup Series",
       location: location.trim(),
       disciplines: disciplines.trim(),
+      description:
+        `Part of the official 2026 North American Cup Series calendar. The series is run by Climbing Escalade Canada and USA Climbing to provide high-level competition opportunities across North America.`,
       source_name: "Climbing Escalade Canada / USA Climbing 2026 NACS calendar",
       source_url: CEC_SOURCE_URL,
       ...parsedRange,

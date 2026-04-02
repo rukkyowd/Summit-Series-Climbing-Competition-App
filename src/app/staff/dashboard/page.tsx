@@ -20,6 +20,7 @@ export default function StaffDashboardPage({
         location: readSingleValue(searchParams?.createLocation).trim(),
         startDate: readSingleValue(searchParams?.createStartDate).trim(),
         endDate: readSingleValue(searchParams?.createEndDate).trim(),
+        description: readSingleValue(searchParams?.createDescription).trim(),
         format: readSingleValue(searchParams?.createFormat).trim(),
       }}
     />

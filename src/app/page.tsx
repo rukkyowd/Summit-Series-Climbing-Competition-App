@@ -16,6 +16,7 @@ type OfficialEvent = {
   disciplines: string;
   start_date: string;
   end_date: string;
+  description: string;
   source_name: string;
   source_url: string;
 };
@@ -26,6 +27,7 @@ function buildOfficialImportHref(event: OfficialEvent) {
     createLocation: event.location,
     createStartDate: event.start_date,
     createEndDate: event.end_date,
+    createDescription: event.description,
     createFormat: "flash_format",
   });
 

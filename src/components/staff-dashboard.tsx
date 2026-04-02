@@ -103,6 +103,7 @@ type StaffDashboardCreateDraft = {
   location?: string;
   startDate?: string;
   endDate?: string;
+  description?: string;
   format?: string;
 };
 
@@ -170,6 +171,7 @@ export default function StaffDashboard({
   const [createLocation, setCreateLocation] = useState("");
   const [createStartDate, setCreateStartDate] = useState("");
   const [createEndDate, setCreateEndDate] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
   const [isPhasePending, setIsPhasePending] = useState(false);
   const [phaseBlockMemory, setPhaseBlockMemory] = useState<Partial<Record<Competition["current_phase"], string>>>({});
   const [confirming, setConfirming] = useState<null | {
@@ -224,9 +226,10 @@ export default function StaffDashboard({
     const importedLocation = initialCreateDraft?.location?.trim() ?? "";
     const importedStartDate = initialCreateDraft?.startDate?.trim() ?? "";
     const importedEndDate = initialCreateDraft?.endDate?.trim() ?? "";
+    const importedDescription = initialCreateDraft?.description?.trim() ?? "";
     const importedFormat = initialCreateDraft?.format?.trim() ?? "";
 
-    if (!importedName && !importedLocation && !importedStartDate && !importedEndDate && !importedFormat) {
+    if (!importedName && !importedLocation && !importedStartDate && !importedEndDate && !importedDescription && !importedFormat) {
       return;
     }
 
@@ -234,6 +237,7 @@ export default function StaffDashboard({
     setCreateLocation(importedLocation);
     setCreateStartDate(importedStartDate);
     setCreateEndDate(importedEndDate);
+    setCreateDescription(importedDescription);
     if (FORMAT_TEMPLATES.some((template) => template.value === importedFormat)) {
       setCreateFormat(importedFormat as Competition["format"]);
     }
@@ -726,6 +730,12 @@ export default function StaffDashboard({
                 <input type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
                 <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
               </div>
+              <textarea
+                value={createDescription}
+                onChange={(event) => setCreateDescription(event.target.value)}
+                className="results-input min-h-[120px] resize-y"
+                placeholder="Competition description"
+              />
               <button
                 type="button"
                 disabled={isPending || !createName.trim()}
@@ -739,11 +749,13 @@ export default function StaffDashboard({
                           location_name: createLocation,
                           start_date: createStartDate || null,
                           end_date: createEndDate || null,
+                          description: createDescription,
                         });
                         setCreateName("");
                         setCreateLocation("");
                         setCreateStartDate("");
                         setCreateEndDate("");
+                        setCreateDescription("");
                         await refreshAfterChange(created.id);
                         setSelectedCompetitionId(created.id);
                         setMessage(`Created ${created.name}.`);
