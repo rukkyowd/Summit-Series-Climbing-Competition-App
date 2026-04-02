@@ -454,19 +454,26 @@ export default function StaffJudgePage() {
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 
         <section className="results-card">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="results-workspace-hero">
             <div>
               <div className="results-kicker">Staff scoring</div>
-              <h1 className="mt-2 text-4xl font-semibold text-slate-950">{snapshot.competition.name}</h1>
-              <div className="mt-3 text-sm text-slate-600">Current phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}</div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="results-chip">{profile?.display_name || profile?.role || "staff"}</div>
-              <div className={qualifierScoringOpen ? "results-chip results-chip-live" : "results-chip"}>
-                {qualifierScoringOpen ? "Qualifier scoring open" : "Qualifier scoring closed"}
+              <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+                {snapshot.competition.name}
+              </h1>
+              <div className="results-hero-subline">
+                Current phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}. Move between qualifier and finals modes without leaving the scoring workspace.
               </div>
-              <div className={finalsScoringOpen ? "results-chip results-chip-live" : "results-chip"}>
-                {finalsScoringOpen ? "Finals scoring open" : "Finals scoring closed"}
+            </div>
+            <div className="results-workspace-callout">
+              <div className="results-kicker">Desk status</div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="results-chip">{profile?.display_name || profile?.role || "staff"}</div>
+                <div className={qualifierScoringOpen ? "results-chip results-chip-live" : "results-chip"}>
+                  {qualifierScoringOpen ? "Qualifier scoring open" : "Qualifier scoring closed"}
+                </div>
+                <div className={finalsScoringOpen ? "results-chip results-chip-live" : "results-chip"}>
+                  {finalsScoringOpen ? "Finals scoring open" : "Finals scoring closed"}
+                </div>
               </div>
             </div>
           </div>
@@ -478,11 +485,7 @@ export default function StaffJudgePage() {
               <button
                 type="button"
                 onClick={() => setStage("qualifier")}
-                className={`rounded-[1.4rem] border px-5 py-4 text-left transition ${
-                  stage === "qualifier"
-                    ? "border-sky-300 bg-sky-50"
-                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                }`}
+                className={`results-stage-toggle ${stage === "qualifier" ? "results-stage-toggle-active" : ""}`}
               >
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Qualifier</div>
                 <div className="mt-2 text-lg font-semibold text-slate-950">Boulder-by-boulder entry</div>
@@ -493,11 +496,7 @@ export default function StaffJudgePage() {
               <button
                 type="button"
                 onClick={() => setStage("finals")}
-                className={`rounded-[1.4rem] border px-5 py-4 text-left transition ${
-                  stage === "finals"
-                    ? "border-sky-300 bg-sky-50"
-                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                }`}
+                className={`results-stage-toggle ${stage === "finals" ? "results-stage-toggle-active" : ""}`}
               >
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Finals</div>
                 <div className="mt-2 text-lg font-semibold text-slate-950">Grid scoring for finalists</div>
@@ -517,7 +516,7 @@ export default function StaffJudgePage() {
         {stage === "qualifier" ? (
           <section className="results-card">
             <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
-              <div className="space-y-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+              <div className="results-control-stack">
                 <div>
                   <div className="results-kicker">Qualifier controls</div>
                   <div className="mt-2 text-2xl font-semibold text-slate-950">
@@ -559,7 +558,7 @@ export default function StaffJudgePage() {
                     const draft = qualifierDrafts[key] ?? { attemptCount: 0, topped: false };
                     const existingAttempt = climber.qualifier_attempts.find((attempt) => attempt.climb_number === selectedBoulder);
                     return (
-                      <div key={climber.id} className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-[0_14px_30px_rgba(15,23,42,0.04)]">
+                      <div key={climber.id} className="results-workspace-card">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
@@ -633,14 +632,14 @@ export default function StaffJudgePage() {
         ) : (
           <section className="results-card">
             <div className="grid gap-4 lg:grid-cols-3">
-              <div className="results-meta-card">
+              <div className="results-workspace-card">
                 <div className="results-kicker">Finals field</div>
                 <div className="mt-2 text-3xl font-semibold text-slate-950">{finalists.length}</div>
                 <div className="mt-2 text-sm text-slate-600">
                   {finalsProjected ? "Projected from official qualifier standings." : "Finals field is locked and ready."}
                 </div>
               </div>
-              <div className="results-meta-card">
+              <div className="results-workspace-card">
                 <div className="results-kicker">Scored cells</div>
                 <div className="mt-2 text-3xl font-semibold text-slate-950">
                   {finalsScoredCellCount}/{finalsTotalCellCount}
@@ -649,7 +648,7 @@ export default function StaffJudgePage() {
                   Each finalist x boulder cell can be edited from the grid below.
                 </div>
               </div>
-              <div className="results-meta-card">
+              <div className="results-workspace-card">
                 <div className="results-kicker">Selected cell</div>
                 <div className="mt-2 text-lg font-semibold text-slate-950">
                   {selectedFinalist && selectedCell ? `${selectedFinalist.name} / B${selectedCell.climbNumber}` : "Choose a finals cell"}
@@ -670,9 +669,9 @@ export default function StaffJudgePage() {
             ) : (
               <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
                 <div ref={finalsGridViewportRef} className="overflow-x-auto">
-                  <div className="w-full" style={{ minWidth: finalsGridMinWidth }}>
+                  <div className="results-grid-shell w-full" style={{ minWidth: finalsGridMinWidth }}>
                   <div
-                    className="grid gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"
+                    className="results-grid-header grid gap-3"
                     style={{ gridTemplateColumns: finalsGridTemplateColumns }}
                   >
                     <div>Finalist</div>
@@ -687,7 +686,7 @@ export default function StaffJudgePage() {
                         className="grid gap-3 px-4"
                         style={{ gridTemplateColumns: finalsGridTemplateColumns }}
                       >
-                        <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <div className="results-workspace-card px-4 py-4">
                           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                             #{snapshot.finalists.find((entry) => entry.climber_id === climber.id)?.climbing_order ?? "-"}
                           </div>
@@ -739,7 +738,7 @@ export default function StaffJudgePage() {
                 </div>
                 </div>
                 <div className="hidden xl:block xl:sticky xl:top-24">
-                  <div className="results-meta-card border-sky-100 bg-sky-50/40 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                  <div className="results-workspace-card border-sky-100 bg-sky-50/40 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
                     <div className="results-kicker">Finals editor</div>
                     {selectedFinalist && selectedCell ? (
                       <>

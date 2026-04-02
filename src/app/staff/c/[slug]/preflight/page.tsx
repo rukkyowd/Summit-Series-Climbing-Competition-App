@@ -68,10 +68,15 @@ export default function StaffPreflightPage() {
 
         <section className="results-card">
           <div className="results-kicker">Event-day preflight</div>
-          <h1 className="mt-2 text-4xl font-semibold text-slate-950">{snapshot?.competition.name ?? "Checking competition..."}</h1>
+          <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+            {snapshot?.competition.name ?? "Checking competition..."}
+          </h1>
+          <div className="results-hero-subline">
+            Run a quick operational pass before opening doors, switching phases, or putting judges onto live scoring.
+          </div>
           <div className="mt-6 space-y-3">
             {checks.map((check) => (
-              <div key={check.label} className={`results-meta-card ${check.ok ? "" : "border-amber-200 bg-amber-50"}`}>
+              <div key={check.label} className={`results-workspace-card ${check.ok ? "" : "border-amber-200 bg-amber-50"}`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-lg font-semibold text-slate-950">{check.label}</div>

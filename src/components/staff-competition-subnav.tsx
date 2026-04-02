@@ -19,21 +19,23 @@ export default function StaffCompetitionSubnav({ competitionSlug }: { competitio
   ];
 
   return (
-    <nav className="nav-scroll">
-      {items.map((item) => {
-        const isActive =
-          pathname === item.href || pathname?.startsWith(`${item.href}/`);
+    <nav className="results-workspace-card py-3">
+      <div className="nav-scroll">
+        {items.map((item) => {
+          const isActive =
+            pathname === item.href || pathname?.startsWith(`${item.href}/`);
 
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`nav-pill nav-pill-light ${isActive ? "nav-pill-active" : ""}`}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`nav-pill nav-pill-light ${isActive ? "nav-pill-active" : ""}`}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }

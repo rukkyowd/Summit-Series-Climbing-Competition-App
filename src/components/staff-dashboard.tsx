@@ -772,6 +772,12 @@ export default function StaffDashboard({
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="results-card">
             <div className="results-kicker">Create competition</div>
+            <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+              Build the event desk.
+            </h1>
+            <div className="results-hero-subline">
+              Create a competition, pull in official source details, then manage phases, judging, schedules, and finals from one control room.
+            </div>
             <div className="mt-4 grid gap-3">
               <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New competition name" />
               <div className="grid gap-3 sm:grid-cols-2">
@@ -849,7 +855,16 @@ export default function StaffDashboard({
               </button>
             </div>
 
-            <div className="mt-8 space-y-3">
+            <div className="results-subtle-divider mt-8" />
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <div>
+                <div className="results-kicker">Existing events</div>
+                <div className="mt-2 text-sm text-slate-600">Choose a competition to open its live control surface.</div>
+              </div>
+              <div className="results-chip">{allSummaries.length} loaded</div>
+            </div>
+
+            <div className="mt-4 space-y-3">
               {allSummaries.map((summary) => (
                 <button
                   key={summary.competition.id}
@@ -872,21 +887,24 @@ export default function StaffDashboard({
           <section className="results-card">
             {draft ? (
               <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="results-workspace-hero">
                   <div>
                     <div className="results-kicker">Competition setup</div>
-                    <h2 className="mt-2 text-3xl font-semibold text-slate-950">{draft.name}</h2>
-                    <div className="mt-2 text-sm text-slate-600">{publicUrl || publicPath}</div>
+                    <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
+                    <div className="results-hero-subline">{publicUrl || publicPath}</div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link href={publicPath} className="results-secondary-button">Public page</Link>
-                    <Link href={judgeUrl} className="results-secondary-button">Judge panel</Link>
-                    <Link href={displayPath} className="results-secondary-button">Display</Link>
-                    <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button">Preflight</Link>
+                  <div className="results-workspace-callout">
+                    <div className="results-kicker">Quick links</div>
+                    <div className="results-button-row mt-3">
+                      <Link href={publicPath} className="results-secondary-button">Public page</Link>
+                      <Link href={judgeUrl} className="results-secondary-button">Judge panel</Link>
+                      <Link href={displayPath} className="results-secondary-button">Display</Link>
+                      <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button">Preflight</Link>
+                    </div>
                   </div>
                 </div>
 
-                <div className="results-meta-card">
+                <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Current phase</div>
@@ -1169,7 +1187,7 @@ export default function StaffDashboard({
                     <span className="text-sm font-medium text-slate-700">Finals problems</span>
                     <input type="number" min={1} max={8} value={draft.finals_problem_count} onChange={(event) => setDraft({ ...draft, finals_problem_count: Math.max(1, Math.min(8, Number(event.target.value) || 4)) })} className="results-input" />
                   </label>
-                  <div className="results-meta-card">
+                  <div className="results-workspace-card">
                     <div className="results-kicker">Archived state</div>
                     <div className="mt-2 text-sm text-slate-600">Archive hides the competition from public discovery without deleting event-day data.</div>
                     <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className={draft.status === "active" ? "results-danger-button mt-4" : "results-secondary-button mt-4"}>
@@ -1179,7 +1197,7 @@ export default function StaffDashboard({
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="results-meta-card">
+                  <div className="results-workspace-card">
                     <div className="results-kicker">Qualifier age groups</div>
                     <div className="mt-2 text-sm text-slate-600">Registration and qualifier leaderboard tabs only show these age groups.</div>
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -1199,7 +1217,7 @@ export default function StaffDashboard({
                     </div>
                   </div>
 
-                  <div className="results-meta-card">
+                  <div className="results-workspace-card">
                     <div className="results-kicker">Finals age groups</div>
                     <div className="mt-2 text-sm text-slate-600">Only these age groups can advance into finals selections.</div>
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -1220,7 +1238,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
-                <div className="results-meta-card">
+                <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Schedule blocks</div>
@@ -1399,7 +1417,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
-                <div className="results-meta-card">
+                <div className="results-workspace-card">
                   <div className="results-kicker">Share links</div>
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                     <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl || publicPath}</div>
@@ -1414,7 +1432,7 @@ export default function StaffDashboard({
                 </div>
 
                 {snapshot?.rounds?.length ? (
-                  <div className="results-meta-card">
+                  <div className="results-workspace-card">
                     <div className="results-kicker">Competition rounds</div>
                     <div className="mt-4 space-y-3">
                       {snapshot.rounds.map((round) => (
@@ -1433,7 +1451,7 @@ export default function StaffDashboard({
                 ) : null}
 
                 {finalsOrder.length && (snapshot?.finalistsPersisted || canEditFinalsOrder) ? (
-                  <div className="results-meta-card">
+                  <div className="results-workspace-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-2 text-sm text-slate-600">
                       {canEditFinalsOrder
@@ -1458,7 +1476,7 @@ export default function StaffDashboard({
                     </div>
                   </div>
                 ) : finalsOrder.length ? (
-                  <div className="results-meta-card">
+                  <div className="results-workspace-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-2 text-sm text-slate-600">
                       Projected finalists are visible, but the order only becomes editable during observation.
