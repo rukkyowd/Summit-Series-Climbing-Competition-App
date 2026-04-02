@@ -131,6 +131,35 @@ function sanitizeDraftNullable(value: string | null | undefined) {
   return trimmed || null;
 }
 
+function formatDateTimeLocalInput(value: string | null | undefined) {
+  const trimmed = sanitizeDraftText(value);
+  if (!trimmed) {
+    return "";
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function parseDateTimeLocalInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
 function formatAgeGroupBandLabel(ageGroups: readonly string[]) {
   return ageGroups.join(" / ");
 }
@@ -846,6 +875,26 @@ export default function StaffDashboard({
                   <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
                 </label>
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="results-field-group">
+                  <span className="results-field-label">Registration opens</span>
+                  <input
+                    type="datetime-local"
+                    value={formatDateTimeLocalInput(createRegistrationOpensAt)}
+                    onChange={(event) => setCreateRegistrationOpensAt(parseDateTimeLocalInput(event.target.value))}
+                    className="results-input"
+                  />
+                </label>
+                <label className="results-field-group">
+                  <span className="results-field-label">Registration deadline</span>
+                  <input
+                    type="datetime-local"
+                    value={formatDateTimeLocalInput(createRegistrationClosesAt)}
+                    onChange={(event) => setCreateRegistrationClosesAt(parseDateTimeLocalInput(event.target.value))}
+                    className="results-input"
+                  />
+                </label>
+              </div>
               {competitionAllowsOptionalFinals(createFormat) ? (
                 <label className="results-field-group">
                   <span className="results-field-label">Finals round</span>
@@ -1254,6 +1303,36 @@ export default function StaffDashboard({
                   <label className="results-field-group">
                     <span className="results-field-label">Location</span>
                     <input value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Location" />
+                  </label>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="results-field-group">
+                    <span className="results-field-label">Registration opens</span>
+                    <input
+                      type="datetime-local"
+                      value={formatDateTimeLocalInput(draft.registration_opens_at)}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          registration_opens_at: parseDateTimeLocalInput(event.target.value),
+                        })
+                      }
+                      className="results-input"
+                    />
+                  </label>
+                  <label className="results-field-group">
+                    <span className="results-field-label">Registration deadline</span>
+                    <input
+                      type="datetime-local"
+                      value={formatDateTimeLocalInput(draft.registration_closes_at)}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          registration_closes_at: parseDateTimeLocalInput(event.target.value),
+                        })
+                      }
+                      className="results-input"
+                    />
                   </label>
                 </div>
                 {draftSupportsOptionalFinals ? (

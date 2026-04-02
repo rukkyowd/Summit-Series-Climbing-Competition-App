@@ -132,11 +132,6 @@ export default function CompetitionHero({
               </a>
             ) : null}
           </div>
-
-          <div className="results-subtle-divider mt-7" />
-          <div className="mt-5 text-sm leading-7 text-slate-600">
-            Public pages stay athlete-friendly while official source links remain one tap away for venue details, registration notes, and governing-body updates.
-          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
