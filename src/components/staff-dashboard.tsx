@@ -154,6 +154,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const [createFormat, setCreateFormat] = useState<Competition["format"]>("scramble");
   const [createLocation, setCreateLocation] = useState("");
   const [isPhasePending, setIsPhasePending] = useState(false);
+  const [phaseBlockMemory, setPhaseBlockMemory] = useState<Partial<Record<Competition["current_phase"], string>>>({});
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -209,6 +210,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     if (!selectedSummary) {
       setDraft(null);
       setSnapshot(null);
+      setPhaseBlockMemory({});
       return;
     }
 
@@ -252,6 +254,14 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const schedulePhaseMismatch = Boolean(
     draft && impliedCompetitionPhase && impliedCompetitionPhase !== draft.current_phase
   );
+  const currentPhaseBlockLabel =
+    draft && liveScheduleBlock && impliedCompetitionPhase === draft.current_phase
+      ? liveScheduleBlock.label
+      : null;
+  const currentPhaseBlockTitle =
+    draft?.current_phase === "qualifier_open" && liveScheduleBlock?.phase_type === "qualifier_round"
+      ? "Qualifier wave"
+      : "Current block";
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
@@ -280,6 +290,25 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
       draft?.categories.filter((category) => isQualifierEligibleCategory(draft, category.age_group)) ?? [],
     [draft]
   );
+
+  useEffect(() => {
+    if (!draft?.id) {
+      return;
+    }
+
+    if (!liveScheduleBlock || !impliedCompetitionPhase) {
+      return;
+    }
+
+    setPhaseBlockMemory((current) =>
+      current[impliedCompetitionPhase] === liveScheduleBlock.id
+        ? current
+        : {
+            ...current,
+            [impliedCompetitionPhase]: liveScheduleBlock.id,
+          }
+    );
+  }, [draft?.id, impliedCompetitionPhase, liveScheduleBlock]);
 
   const refreshSelectedSnapshot = async (competitionId: string) => {
     const nextSnapshot = await getCompetitionSnapshot(competitionId);
@@ -310,6 +339,14 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   };
 
   const findScheduleBlockForPhase = (targetPhase: Competition["current_phase"], direction: -1 | 1) => {
+    const rememberedBlockId = phaseBlockMemory[targetPhase];
+    if (rememberedBlockId) {
+      const rememberedBlock = orderedScheduleBlocks.find((block) => block.id === rememberedBlockId);
+      if (rememberedBlock && getCompetitionPhaseForSchedulePhase(rememberedBlock.phase_type) === targetPhase) {
+        return rememberedBlock;
+      }
+    }
+
     const matches = orderedScheduleBlocks.filter(
       (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === targetPhase
     );
@@ -354,11 +391,23 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     setIsPhasePending(true);
 
     try {
+      const currentPhaseForMemory = impliedCompetitionPhase ?? draft?.current_phase ?? null;
+      if (currentPhaseForMemory && liveScheduleBlock) {
+        setPhaseBlockMemory((current) => ({
+          ...current,
+          [currentPhaseForMemory]: liveScheduleBlock.id,
+        }));
+      }
+
       await setCompetitionPhase(competitionId, nextPhaseValue);
 
       const targetBlock = findScheduleBlockForPhase(nextPhaseValue, direction);
       if (targetBlock) {
         await setCompetitionLiveScheduleBlock(competitionId, targetBlock.id);
+        setPhaseBlockMemory((current) => ({
+          ...current,
+          [nextPhaseValue]: targetBlock.id,
+        }));
       }
 
       await refreshAfterChange(competitionId);
@@ -606,6 +655,11 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                     <div>
                       <div className="results-kicker">Current phase</div>
                       <div className="mt-2 text-2xl font-semibold text-slate-950">{formatCompetitionPhaseLabel(draft.current_phase)}</div>
+                      {currentPhaseBlockLabel ? (
+                        <div className="mt-2 text-sm font-medium text-sky-700">
+                          {currentPhaseBlockTitle}: {currentPhaseBlockLabel}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
