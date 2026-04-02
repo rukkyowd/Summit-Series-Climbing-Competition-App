@@ -154,6 +154,7 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
   if (formatUsesSelfScoredQualifiers(competition.format)) {
     return [
       { label: "Check-in", phase_type: "check_in", audience_label: "All climbers", capacity: competition.max_climbers },
+      { label: "Technical meeting", phase_type: "technical_meeting", audience_label: "Athletes and coaches", capacity: competition.max_climbers },
       { label: `${assignmentLabel} 1`, phase_type: "qualifier_round", audience_label: "Scramble window", capacity: competition.max_climbers },
       { label: `${assignmentLabel} 2`, phase_type: "qualifier_round", audience_label: "Scramble window", capacity: competition.max_climbers },
       ...qualifierBandTemplates,
@@ -175,9 +176,13 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
     ...qualifierBandTemplates,
     { label: `${assignmentLabel} A`, phase_type: "qualifier_round", audience_label: "Qualifier wave", capacity: competition.max_climbers },
     { label: `${assignmentLabel} B`, phase_type: "qualifier_round", audience_label: "Qualifier wave", capacity: competition.max_climbers },
-    { label: "Isolation", phase_type: "isolation", audience_label: "Finalists", capacity: competition.max_climbers },
-    { label: "Observation", phase_type: "observation", audience_label: "Finalists", capacity: competition.max_climbers },
-    { label: "Finals", phase_type: "finals_round", audience_label: "Finalists", capacity: competition.max_climbers },
+    ...(hasFinals
+      ? [
+          { label: "Isolation", phase_type: "isolation" as const, audience_label: "Finalists", capacity: competition.max_climbers },
+          { label: "Observation", phase_type: "observation" as const, audience_label: "Finalists", capacity: competition.max_climbers },
+          { label: "Finals", phase_type: "finals_round" as const, audience_label: "Finalists", capacity: competition.max_climbers },
+        ]
+      : []),
     { label: "Results / Awards", phase_type: "results", audience_label: "All athletes", capacity: competition.max_climbers },
   ];
 }
