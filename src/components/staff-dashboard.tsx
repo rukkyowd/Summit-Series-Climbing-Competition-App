@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
@@ -99,6 +98,14 @@ const QUALIFIER_TEMPLATE_GROUPS = [
   ["Rec", "Masters"],
 ] as const;
 
+type StaffDashboardCreateDraft = {
+  name?: string;
+  location?: string;
+  startDate?: string;
+  endDate?: string;
+  format?: string;
+};
+
 function formatAgeGroupBandLabel(ageGroups: readonly string[]) {
   return ageGroups.join(" / ");
 }
@@ -142,9 +149,13 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
   ];
 }
 
-export default function StaffDashboard({ initialCompetitionSlug }: { initialCompetitionSlug?: string }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+export default function StaffDashboard({
+  initialCompetitionSlug,
+  initialCreateDraft,
+}: {
+  initialCompetitionSlug?: string;
+  initialCreateDraft?: StaffDashboardCreateDraft;
+}) {
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
   const [draft, setDraft] = useState<Competition | null>(null);
@@ -170,7 +181,6 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     action: () => Promise<void>;
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
-  const importedDraftApplied = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -210,40 +220,26 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   }, []);
 
   useEffect(() => {
-    if (importedDraftApplied.current) {
-      return;
-    }
-
-    const importedName = searchParams.get("createName")?.trim() ?? "";
-    const importedLocation = searchParams.get("createLocation")?.trim() ?? "";
-    const importedStartDate = searchParams.get("createStartDate")?.trim() ?? "";
-    const importedEndDate = searchParams.get("createEndDate")?.trim() ?? "";
-    const importedFormat = searchParams.get("createFormat")?.trim() as Competition["format"] | null;
+    const importedName = initialCreateDraft?.name?.trim() ?? "";
+    const importedLocation = initialCreateDraft?.location?.trim() ?? "";
+    const importedStartDate = initialCreateDraft?.startDate?.trim() ?? "";
+    const importedEndDate = initialCreateDraft?.endDate?.trim() ?? "";
+    const importedFormat = initialCreateDraft?.format?.trim() ?? "";
 
     if (!importedName && !importedLocation && !importedStartDate && !importedEndDate && !importedFormat) {
       return;
     }
 
-    importedDraftApplied.current = true;
-    if (importedName) {
-      setCreateName(importedName);
-    }
-    if (importedLocation) {
-      setCreateLocation(importedLocation);
-    }
-    if (importedStartDate) {
-      setCreateStartDate(importedStartDate);
-    }
-    if (importedEndDate) {
-      setCreateEndDate(importedEndDate);
-    }
-    if (importedFormat && FORMAT_TEMPLATES.some((template) => template.value === importedFormat)) {
-      setCreateFormat(importedFormat);
+    setCreateName(importedName);
+    setCreateLocation(importedLocation);
+    setCreateStartDate(importedStartDate);
+    setCreateEndDate(importedEndDate);
+    if (FORMAT_TEMPLATES.some((template) => template.value === importedFormat)) {
+      setCreateFormat(importedFormat as Competition["format"]);
     }
 
     setMessage("Official event imported into the create form. Review it and create the competition when ready.");
-    router.replace("/staff/dashboard", { scroll: false });
-  }, [router, searchParams]);
+  }, [initialCreateDraft]);
 
   const selectedSummary = useMemo(
     () => allSummaries.find((entry) => entry.competition.id === selectedCompetitionId) ?? null,
