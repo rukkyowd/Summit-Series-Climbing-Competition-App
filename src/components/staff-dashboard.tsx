@@ -913,15 +913,17 @@ export default function StaffDashboard({
                   <div>
                     <div className="results-kicker">Competition setup</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
-                    <div className="results-hero-subline">{publicUrl || publicPath}</div>
+                    <div className="results-hero-subline">
+                      {publicUrl || publicPath}
+                    </div>
                   </div>
                   <div className="results-workspace-callout">
                     <div className="results-kicker">Quick links</div>
-                    <div className="results-button-row mt-3">
-                      <Link href={publicPath} className="results-secondary-button">Public page</Link>
-                      <Link href={judgeUrl} className="results-secondary-button">Judge panel</Link>
-                      <Link href={displayPath} className="results-secondary-button">Display</Link>
-                      <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button">Preflight</Link>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                      <Link href={publicPath} className="results-secondary-button w-full">Public page</Link>
+                      <Link href={judgeUrl} className="results-secondary-button w-full">Judge panel</Link>
+                      <Link href={displayPath} className="results-secondary-button w-full">Display</Link>
+                      <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button w-full">Preflight</Link>
                     </div>
                   </div>
                 </div>

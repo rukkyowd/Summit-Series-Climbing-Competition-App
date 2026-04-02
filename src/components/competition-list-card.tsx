@@ -23,9 +23,17 @@ export default function CompetitionListCard({
 
   return (
     <Link href={buildCompetitionPath(competition.slug)} className="results-list-row">
-      <div>
+      {liveNow ? (
+        <>
+          <span className="results-live-indicator results-live-indicator--card-left" aria-hidden="true">
+            <span className="results-live-indicator__dot" />
+          </span>
+          <span className="sr-only">{lifecycleLabel}</span>
+        </>
+      ) : null}
+      <div className={liveNow ? "pl-11 md:pl-0" : ""}>
         <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{competition.name}</div>
-        <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600">
           <span>{competition.discipline_label}</span>
           <span>{getFormatTemplate(competition.format).label}</span>
           {!liveNow ? <span className="results-chip">{lifecycleLabel}</span> : null}
@@ -47,14 +55,6 @@ export default function CompetitionListCard({
           <div className="results-kicker md:hidden">Date</div>
           <div className="mt-1 flex items-start gap-3 md:mt-0 md:justify-end">
             <div className="results-date-badge shrink-0">
-              {liveNow ? (
-                <>
-                  <span className="results-live-indicator results-live-indicator--date" aria-hidden="true">
-                    <span className="results-live-indicator__dot" />
-                  </span>
-                  <span className="sr-only">{lifecycleLabel}</span>
-                </>
-              ) : null}
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{badge.month}</div>
               <div className="mt-1 text-2xl font-semibold text-slate-950">{badge.day}</div>
             </div>
