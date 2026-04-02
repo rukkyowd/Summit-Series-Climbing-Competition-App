@@ -22,21 +22,25 @@ export default function CompetitionListCard({
   const liveNow = lifecycleLabel === "Live / Ongoing";
 
   return (
-    <Link href={buildCompetitionPath(competition.slug)} className="results-list-row">
-      {liveNow ? (
-        <>
-          <span className="results-live-indicator results-live-indicator--card-left" aria-hidden="true">
-            <span className="results-live-indicator__dot" />
-          </span>
-          <span className="sr-only">{lifecycleLabel}</span>
-        </>
-      ) : null}
-      <div className={liveNow ? "pl-11 md:pl-0" : ""}>
+    <Link
+      href={buildCompetitionPath(competition.slug)}
+      className={`results-list-row ${liveNow ? "results-list-row-live" : ""}`}
+    >
+      <div>
         <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{competition.name}</div>
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600">
           <span>{competition.discipline_label}</span>
           <span>{getFormatTemplate(competition.format).label}</span>
-          {!liveNow ? <span className="results-chip">{lifecycleLabel}</span> : null}
+          <span className={liveNow ? "results-chip results-chip-live" : "results-chip"}>
+            {liveNow ? (
+              <>
+                <span className="results-live-dot" aria-hidden="true" />
+                Live now
+              </>
+            ) : (
+              lifecycleLabel
+            )}
+          </span>
           {summary.active_schedule_block ? <span>{summary.active_schedule_block.label}</span> : null}
         </div>
       </div>
@@ -62,7 +66,6 @@ export default function CompetitionListCard({
           </div>
         </div>
       </div>
-      <div className="sr-only">{formatDateRange(competition.start_date, competition.end_date)}</div>
     </Link>
   );
 }
