@@ -42,8 +42,8 @@ export default function StaffJudgePage() {
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
-  const initialStage = searchParams.get("stage") === "finals" ? "finals" : "qualifier";
-  const initialClimberId = searchParams.get("climberId") ?? "";
+  const initialStage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
+  const initialClimberId = searchParams?.get("climberId") ?? "";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stage, setStage] = useState<"qualifier" | "finals">(initialStage);

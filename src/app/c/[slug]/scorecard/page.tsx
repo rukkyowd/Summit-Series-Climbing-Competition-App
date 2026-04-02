@@ -57,9 +57,9 @@ function ScorecardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
-  const token = searchParams.get("token") ?? "";
-  const legacyClimberId = searchParams.get("id") ?? "";
-  const stage = searchParams.get("stage") === "finals" ? "finals" : "qualifier";
+  const token = searchParams?.get("token") ?? "";
+  const legacyClimberId = searchParams?.get("id") ?? "";
+  const stage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [climber, setClimber] = useState<ClimberWithAttempts | null>(null);
   const [loading, setLoading] = useState(true);
