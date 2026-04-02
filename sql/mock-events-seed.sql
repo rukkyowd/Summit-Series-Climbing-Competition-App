@@ -280,9 +280,12 @@ $$;
 
 -- Remove prior mock competitions only. Child rows cascade.
 delete from public.competitions
-where slug like 'mock-%';
+where slug like 'mock-%'
+   or slug in ('spring-send-recreational', 'spring-send-youth');
 
 -- 1. Create a varied mock event slate:
+--    - Spring Send recreational scramble
+--    - Spring Send youth competitive day
 --    - active scramble qualifier
 --    - active youth qualifier with official start groups
 --    - future flash qualifier
@@ -318,6 +321,62 @@ insert into public.competitions (
   finals_problem_count
 )
 values
+  (
+    gen_random_uuid(),
+    'spring-send-recreational',
+    'Spring Send Recreational Scramble',
+    'active',
+    'scramble',
+    'qualifier_open',
+    'Boulder',
+    'qualifier',
+    'Halifax',
+    current_date,
+    current_date,
+    now() - interval '14 days',
+    now() + interval '5 hours',
+    'Spring Send recreational day built as a clean qualifier-only scramble: morning check-in, route briefing, two self-scored session windows, score verification, and a casual community awards wrap-up.',
+    '',
+    24,
+    96,
+    6,
+    false,
+    6,
+    true,
+    '["Rec","Open","Masters"]'::jsonb,
+    '["Open"]'::jsonb,
+    null,
+    null,
+    4
+  ),
+  (
+    gen_random_uuid(),
+    'spring-send-youth',
+    'Spring Send Youth Competitive',
+    'active',
+    'five_on_five_off',
+    'qualifier_open',
+    'Boulder',
+    'qualifier',
+    'Halifax',
+    current_date + 7,
+    current_date + 7,
+    now() - interval '7 days',
+    now() + interval '6 days',
+    'Spring Send youth championship day with athlete check-in, judges briefing, technical meeting, staggered qualifier waves, finals isolation, observation, and a podium close.',
+    '',
+    16,
+    120,
+    8,
+    true,
+    8,
+    true,
+    '["Youth D","Youth C","Youth B","Youth A","Junior"]'::jsonb,
+    '["Youth B","Youth A","Junior"]'::jsonb,
+    null,
+    null,
+    4
+  ),
   (
     gen_random_uuid(),
     'mock-rec-scramble-live',
@@ -490,6 +549,27 @@ values
 -- 2. Categories, tailored per competition instead of inserting every possible age group.
 with category_matrix(slug, gender_division, age_group) as (
   values
+    ('spring-send-recreational', 'Men', 'Rec'),
+    ('spring-send-recreational', 'Women', 'Rec'),
+    ('spring-send-recreational', 'X', 'Rec'),
+    ('spring-send-recreational', 'Men', 'Open'),
+    ('spring-send-recreational', 'Women', 'Open'),
+    ('spring-send-recreational', 'X', 'Open'),
+    ('spring-send-recreational', 'Men', 'Masters'),
+    ('spring-send-recreational', 'Women', 'Masters'),
+    ('spring-send-recreational', 'X', 'Masters'),
+
+    ('spring-send-youth', 'Men', 'Youth D'),
+    ('spring-send-youth', 'Women', 'Youth D'),
+    ('spring-send-youth', 'Men', 'Youth C'),
+    ('spring-send-youth', 'Women', 'Youth C'),
+    ('spring-send-youth', 'Men', 'Youth B'),
+    ('spring-send-youth', 'Women', 'Youth B'),
+    ('spring-send-youth', 'Men', 'Youth A'),
+    ('spring-send-youth', 'Women', 'Youth A'),
+    ('spring-send-youth', 'Men', 'Junior'),
+    ('spring-send-youth', 'Women', 'Junior'),
+
     ('mock-rec-scramble-live', 'Men', 'Rec'),
     ('mock-rec-scramble-live', 'Women', 'Rec'),
     ('mock-rec-scramble-live', 'X', 'Rec'),
@@ -592,6 +672,24 @@ with schedule_seed(
   eligible_age_groups
 ) as (
   values
+    ('spring-send-recreational', 'Check-in', 'check_in', 'All climbers', false, '8:00 AM', '8:45 AM', 96, null::text[]),
+    ('spring-send-recreational', 'Welcome briefing', 'technical_meeting', 'Athletes and volunteers', false, '8:45 AM', '9:00 AM', 96, null::text[]),
+    ('spring-send-recreational', 'Rec / Masters Session', 'qualifier_round', 'Morning scramble window', true, '9:00 AM', '11:15 AM', 48, array['Rec','Masters']::text[]),
+    ('spring-send-recreational', 'Open Session', 'qualifier_round', 'Late scramble window', false, '11:35 AM', '1:50 PM', 48, array['Open']::text[]),
+    ('spring-send-recreational', 'Score verification', 'custom', 'Officials', false, '1:50 PM', '2:15 PM', 20, null::text[]),
+    ('spring-send-recreational', 'Community awards', 'results', 'All climbers', false, '2:30 PM', '3:00 PM', 96, null::text[]),
+
+    ('spring-send-youth', 'Check-in', 'check_in', 'All athletes', false, '7:45 AM', '8:30 AM', 120, null::text[]),
+    ('spring-send-youth', 'Judges briefing', 'custom', 'Officials', false, '8:30 AM', '8:45 AM', 30, null::text[]),
+    ('spring-send-youth', 'Technical meeting', 'technical_meeting', 'Athletes and coaches', false, '8:45 AM', '9:00 AM', 120, null::text[]),
+    ('spring-send-youth', 'Youth D / Youth C Wave', 'qualifier_round', 'Morning qualifier wave', false, '9:00 AM', '10:05 AM', 40, array['Youth D','Youth C']::text[]),
+    ('spring-send-youth', 'Youth B / Youth A Wave', 'qualifier_round', 'Late morning qualifier wave', true, '10:15 AM', '11:25 AM', 40, array['Youth B','Youth A']::text[]),
+    ('spring-send-youth', 'Junior Wave', 'qualifier_round', 'Junior qualifier wave', false, '11:35 AM', '12:25 PM', 40, array['Junior']::text[]),
+    ('spring-send-youth', 'Isolation opens', 'isolation', 'Finalists', false, '1:30 PM', '1:50 PM', 24, null::text[]),
+    ('spring-send-youth', 'Observation', 'observation', 'Finalists', false, '2:00 PM', '2:10 PM', 24, null::text[]),
+    ('spring-send-youth', 'Finals', 'finals_round', 'Finalists', false, '2:15 PM', '4:45 PM', 24, null::text[]),
+    ('spring-send-youth', 'Awards', 'results', 'All athletes', false, '5:00 PM', '5:30 PM', 120, null::text[]),
+
     ('mock-rec-scramble-live', 'Check-in', 'check_in', 'All climbers', false, '8:00 AM', '9:00 AM', 120, null::text[]),
     ('mock-rec-scramble-live', 'Judges briefing', 'custom', 'Officials', false, '9:00 AM', '9:15 AM', 24, null::text[]),
     ('mock-rec-scramble-live', 'Technical meeting', 'technical_meeting', 'Athletes and coaches', false, '9:15 AM', '9:30 AM', 120, null::text[]),
@@ -623,12 +721,16 @@ with schedule_seed(
     ('mock-flash-upcoming', 'Finals', 'finals_round', 'Finalists', false, '9:30 AM', '11:30 AM', 20, null::text[]),
     ('mock-flash-upcoming', 'Medal ceremony', 'results', 'All athletes', false, '5:00 PM', '5:30 PM', 80, null::text[]),
 
+    ('mock-national-finals-live', 'Check-in', 'check_in', 'Finalists and guests', false, '3:45 PM', '4:15 PM', 120, null::text[]),
+    ('mock-national-finals-live', 'Technical meeting', 'technical_meeting', 'Finalists', false, '4:15 PM', '4:25 PM', 24, null::text[]),
     ('mock-national-finals-live', 'Isolation', 'isolation', 'Finalists', false, '4:30 PM', '5:00 PM', 24, null::text[]),
     ('mock-national-finals-live', 'Observation', 'observation', 'Finalists', false, '5:05 PM', '5:20 PM', 24, null::text[]),
     ('mock-national-finals-live', 'Finalists presentation', 'custom', 'Finalists and spectators', false, '5:20 PM', '5:30 PM', 120, null::text[]),
     ('mock-national-finals-live', 'Finals', 'finals_round', 'Finalists', true, '5:30 PM', '7:00 PM', 24, null::text[]),
     ('mock-national-finals-live', 'Medal ceremony', 'results', 'All athletes', false, '7:20 PM', '7:45 PM', 120, null::text[]),
 
+    ('mock-city-boulder-results', 'Check-in', 'check_in', 'All athletes', false, '3:30 PM', '4:00 PM', 90, null::text[]),
+    ('mock-city-boulder-results', 'Technical meeting', 'technical_meeting', 'Finalists', false, '4:05 PM', '4:20 PM', 20, null::text[]),
     ('mock-city-boulder-results', 'Finalists call', 'custom', 'Finalists', false, '4:35 PM', '4:50 PM', 20, null::text[]),
     ('mock-city-boulder-results', 'Observation', 'observation', 'Finalists', false, '4:50 PM', '5:05 PM', 20, null::text[]),
     ('mock-city-boulder-results', 'Finals', 'finals_round', 'Finalists', false, '5:15 PM', '6:30 PM', 20, null::text[]),
@@ -724,7 +826,10 @@ select
   case when c.current_phase in ('qualifier_open', 'finals_open', 'results') then now() - interval '6 hours' end,
   case when c.current_phase in ('finals_open', 'results') then coalesce(c.qualifier_locked_at, now() - interval '4 hours') end
 from public.competitions c
-where c.slug like 'mock-%'
+where (
+    c.slug like 'mock-%'
+    or c.slug in ('spring-send-recreational', 'spring-send-youth')
+  )
 union all
 select
   c.id,
@@ -743,7 +848,10 @@ select
   c.finals_started_at,
   case when c.current_phase = 'results' then now() - interval '7 days 1 hour' end
 from public.competitions c
-where c.slug like 'mock-%'
+where (
+    c.slug like 'mock-%'
+    or c.slug in ('spring-send-recreational', 'spring-send-youth')
+  )
   and coalesce(c.has_finals, true);
 
 -- 5. Large athlete pool across events.
@@ -756,6 +864,14 @@ with category_targets as (
     cat.age_group,
     cat.display_name,
     case
+      when comp.slug = 'spring-send-recreational' and cat.age_group = 'Rec' then 14
+      when comp.slug = 'spring-send-recreational' and cat.age_group = 'Open' then 12
+      when comp.slug = 'spring-send-recreational' and cat.age_group = 'Masters' then 8
+
+      when comp.slug = 'spring-send-youth' and cat.age_group in ('Youth D', 'Youth C') then 10
+      when comp.slug = 'spring-send-youth' and cat.age_group in ('Youth B', 'Youth A') then 12
+      when comp.slug = 'spring-send-youth' and cat.age_group = 'Junior' then 8
+
       when comp.slug = 'mock-rec-scramble-live' and cat.age_group = 'Rec' then 12
       when comp.slug = 'mock-rec-scramble-live' and cat.age_group = 'Open' then 10
       when comp.slug = 'mock-rec-scramble-live' and cat.age_group = 'Masters' then 8
@@ -781,6 +897,7 @@ with category_targets as (
   join public.competition_categories cat
     on cat.competition_id = comp.id
   where comp.slug like 'mock-%'
+     or comp.slug in ('spring-send-recreational', 'spring-send-youth')
 ),
 athlete_rows as (
   select
@@ -834,6 +951,46 @@ resolved_athletes as (
     na.age_group,
     na.display_name as display_category,
     case
+      when na.slug = 'spring-send-recreational' and na.age_group in ('Rec', 'Masters') then
+        (
+          select csb.id
+          from public.competition_schedule_blocks csb
+          where csb.competition_id = na.competition_id
+            and csb.label = 'Rec / Masters Session'
+          limit 1
+        )
+      when na.slug = 'spring-send-recreational' and na.age_group = 'Open' then
+        (
+          select csb.id
+          from public.competition_schedule_blocks csb
+          where csb.competition_id = na.competition_id
+            and csb.label = 'Open Session'
+          limit 1
+        )
+      when na.slug = 'spring-send-youth' and na.age_group in ('Youth D', 'Youth C') then
+        (
+          select csb.id
+          from public.competition_schedule_blocks csb
+          where csb.competition_id = na.competition_id
+            and csb.label = 'Youth D / Youth C Wave'
+          limit 1
+        )
+      when na.slug = 'spring-send-youth' and na.age_group in ('Youth B', 'Youth A') then
+        (
+          select csb.id
+          from public.competition_schedule_blocks csb
+          where csb.competition_id = na.competition_id
+            and csb.label = 'Youth B / Youth A Wave'
+          limit 1
+        )
+      when na.slug = 'spring-send-youth' and na.age_group = 'Junior' then
+        (
+          select csb.id
+          from public.competition_schedule_blocks csb
+          where csb.competition_id = na.competition_id
+            and csb.label = 'Junior Wave'
+          limit 1
+        )
       when na.slug = 'mock-rec-scramble-live' and na.age_group in ('Rec', 'Masters') then
         (
           select csb.id
@@ -943,11 +1100,79 @@ select
   registered_at
 from resolved_athletes;
 
--- 6. Seed qualifier attempts for live/finals/results competitions.
+-- 6. Seed live boulder queue traffic for active scramble sessions.
+with live_scramble_blocks as (
+  select
+    c.id as competition_id,
+    c.slug,
+    c.total_climbs,
+    csb.id as schedule_block_id
+  from public.competitions c
+  join public.competition_schedule_blocks csb
+    on csb.competition_id = c.id
+   and csb.is_active = true
+   and csb.phase_type = 'qualifier_round'
+  where c.slug in ('spring-send-recreational', 'mock-rec-scramble-live')
+    and c.format = 'scramble'
+    and c.current_phase = 'qualifier_open'
+),
+queued_climbers as (
+  select
+    lsb.competition_id,
+    lsb.slug,
+    lsb.total_climbs,
+    lsb.schedule_block_id,
+    c.id as climber_id,
+    row_number() over (
+      partition by lsb.competition_id
+      order by c.climber_number, c.name
+    ) as queue_seed
+  from live_scramble_blocks lsb
+  join public.climbers c
+    on c.competition_id = lsb.competition_id
+   and c.time_slot_id = lsb.schedule_block_id
+),
+materialized_queue as (
+  select
+    competition_id,
+    climber_id,
+    schedule_block_id,
+    least(
+      total_climbs,
+      case
+        when queue_seed in (1, 2, 3) then 1
+        when queue_seed in (4, 5) then 2
+        when queue_seed in (6, 7, 8) then 4
+        when queue_seed in (9, 10) then 7
+        when queue_seed in (11, 12) then 10
+        else 14
+      end
+    ) as climb_number,
+    now() - (((queue_seed - 1) * 14 + 10) || ' seconds')::interval as checked_in_at
+  from queued_climbers
+  where queue_seed <= 12
+)
+insert into public.competition_boulder_queue (
+  competition_id,
+  climber_id,
+  schedule_block_id,
+  climb_number,
+  checked_in_at
+)
+select
+  competition_id,
+  climber_id,
+  schedule_block_id,
+  climb_number,
+  checked_in_at
+from materialized_queue;
+
+-- 7. Seed qualifier attempts for live/finals/results competitions.
 with scored_events as (
   select id, slug, format, total_climbs
   from public.competitions
   where slug in (
+    'spring-send-recreational',
     'mock-rec-scramble-live',
     'mock-youth-series-live',
     'mock-national-finals-live',
@@ -1039,7 +1264,7 @@ select
   entered_by
 from materialized_attempts;
 
--- 7. Persist finalists for finals-live and results events using the official scoring function.
+-- 8. Persist finalists for finals-live and results events using the official scoring function.
 with finals_competitions as (
   select id
   from public.competitions
@@ -1071,7 +1296,7 @@ select distinct on (fc.id, fs.climber_id)
 from finals_competitions fc
 cross join lateral public.compute_finalist_selection(fc.id) fs;
 
--- 8. Seed finals attempts:
+-- 9. Seed finals attempts:
 --    - live finals event has partial scores
 --    - results event has complete scores
 with finals_events as (

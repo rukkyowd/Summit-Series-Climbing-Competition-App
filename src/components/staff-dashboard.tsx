@@ -94,12 +94,7 @@ type ScheduleBlockTemplate = {
   eligible_age_groups?: string[];
 };
 
-const QUALIFIER_TEMPLATE_GROUPS = [
-  ["Youth D", "Youth C"],
-  ["Youth B", "Youth A"],
-  ["Junior", "Open"],
-  ["Rec", "Masters"],
-] as const;
+const QUALIFIER_TEMPLATE_AGE_GROUPS = ["Youth D", "Youth C", "Youth B", "Youth A", "Junior", "Open", "Rec", "Masters"] as const;
 
 type StaffDashboardCreateDraft = {
   name?: string;
@@ -164,20 +159,42 @@ function formatAgeGroupBandLabel(ageGroups: readonly string[]) {
   return ageGroups.join(" / ");
 }
 
+function sortAgeGroups(ageGroups: readonly string[]) {
+  const ageGroupOrder = CATEGORY_AGE_GROUPS as readonly string[];
+  return [...ageGroups].sort((left, right) => ageGroupOrder.indexOf(left) - ageGroupOrder.indexOf(right));
+}
+
+function getWaveLabel(ageGroups: readonly string[], competition: Competition) {
+  return `${formatAgeGroupBandLabel(sortAgeGroups(ageGroups))} ${getRegistrationAssignmentLabel(competition)}`;
+}
+
+function getWaveAudienceLabel(ageGroups: readonly string[]) {
+  return formatAgeGroupBandLabel(sortAgeGroups(ageGroups));
+}
+
+function getWaveAgeGroupsFromCategoryIds(
+  categoryIds: readonly string[],
+  qualifierCategories: Competition["categories"]
+) {
+  return sortAgeGroups(
+    qualifierCategories
+      .filter((category) => categoryIds.includes(category.id))
+      .map((category) => category.age_group)
+      .filter((ageGroup, index, current) => current.indexOf(ageGroup) === index)
+  );
+}
+
 function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTemplate[] {
   const assignmentLabel = getRegistrationAssignmentLabel(competition);
   const hasFinals = competitionHasFinals(competition);
-  const qualifierBandTemplates = QUALIFIER_TEMPLATE_GROUPS
-    .map((ageGroups) => ageGroups.filter((ageGroup) => competition.qualifier_eligible_age_groups.includes(ageGroup)))
-    .filter((ageGroups) => ageGroups.length > 0)
-    .map((ageGroups) => ({
-      label: formatUsesSelfScoredQualifiers(competition.format)
-        ? `${formatAgeGroupBandLabel(ageGroups)} ${assignmentLabel}`
-        : `${formatAgeGroupBandLabel(ageGroups)} ${assignmentLabel}`,
+  const qualifierBandTemplates = QUALIFIER_TEMPLATE_AGE_GROUPS
+    .filter((ageGroup) => competition.qualifier_eligible_age_groups.includes(ageGroup))
+    .map((ageGroup) => ({
+      label: `${ageGroup} ${assignmentLabel}`,
       phase_type: "qualifier_round" as const,
-      audience_label: formatAgeGroupBandLabel(ageGroups),
+      audience_label: ageGroup,
       capacity: competition.max_climbers,
-      eligible_age_groups: [...ageGroups],
+      eligible_age_groups: [ageGroup],
     }));
 
   if (formatUsesSelfScoredQualifiers(competition.format)) {
@@ -248,6 +265,8 @@ export default function StaffDashboard({
   const [createDisciplineLabel, setCreateDisciplineLabel] = useState("");
   const [isPhasePending, setIsPhasePending] = useState(false);
   const [phaseBlockMemory, setPhaseBlockMemory] = useState<Partial<Record<Competition["current_phase"], string>>>({});
+  const [draggedScheduleBlockId, setDraggedScheduleBlockId] = useState<string | null>(null);
+  const [mergeTargetBlockId, setMergeTargetBlockId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -762,6 +781,52 @@ export default function StaffDashboard({
         ? block.eligible_category_ids.filter((entry) => entry !== categoryId)
         : [...block.eligible_category_ids, categoryId],
     }));
+  };
+
+  const canMergeWaveBlock = useCallback((block: CompetitionScheduleBlock) => {
+    return block.phase_type === "qualifier_round" && block.eligible_category_ids.length > 0;
+  }, []);
+
+  const mergeScheduleBlocks = (sourceBlockId: string, targetBlockId: string) => {
+    if (!draft || sourceBlockId === targetBlockId) {
+      return;
+    }
+
+    const sourceBlock = draft.schedule_blocks.find((block) => block.id === sourceBlockId);
+    const targetBlock = draft.schedule_blocks.find((block) => block.id === targetBlockId);
+
+    if (!sourceBlock || !targetBlock || !canMergeWaveBlock(sourceBlock) || !canMergeWaveBlock(targetBlock)) {
+      return;
+    }
+
+    const mergedEligibleCategoryIds = Array.from(
+      new Set([...targetBlock.eligible_category_ids, ...sourceBlock.eligible_category_ids])
+    );
+    const mergedAgeGroups = getWaveAgeGroupsFromCategoryIds(mergedEligibleCategoryIds, qualifierCategories);
+
+    if (!mergedAgeGroups.length) {
+      return;
+    }
+
+    setDraft({
+      ...draft,
+      schedule_blocks: draft.schedule_blocks
+        .filter((block) => block.id !== sourceBlockId)
+        .map((block) =>
+          block.id === targetBlockId
+            ? {
+                ...block,
+                label: getWaveLabel(mergedAgeGroups, draft),
+                audience_label: getWaveAudienceLabel(mergedAgeGroups),
+                eligible_category_ids: mergedEligibleCategoryIds,
+                is_active: block.is_active || sourceBlock.is_active,
+                capacity: Math.max(block.capacity, sourceBlock.capacity),
+              }
+            : block
+        ),
+    });
+    setDraggedScheduleBlockId(null);
+    setMergeTargetBlockId(null);
   };
 
   const setActiveScheduleBlock = (blockId: string) => {
@@ -1485,19 +1550,64 @@ export default function StaffDashboard({
                   </div>
 
                   <div className="mt-5 space-y-4">
+                    <div className="text-sm text-slate-600">
+                      Add qualifier waves separately, then drag one wave card onto another to merge them into a shared start group.
+                    </div>
                     {draft.schedule_blocks.length ? (
                       draft.schedule_blocks.map((block) => {
                         const supportsCategoryFilters =
                           block.phase_type === "qualifier_round" || block.phase_type === "custom";
+                        const canMergeThisBlock = canMergeWaveBlock(block);
+                        const isMergeTarget = mergeTargetBlockId === block.id && draggedScheduleBlockId !== block.id;
 
                         return (
-                          <div key={block.id} className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
+                          <div
+                            key={block.id}
+                            draggable={canMergeThisBlock}
+                            onDragStart={() => {
+                              if (!canMergeThisBlock) {
+                                return;
+                              }
+                              setDraggedScheduleBlockId(block.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedScheduleBlockId(null);
+                              setMergeTargetBlockId(null);
+                            }}
+                            onDragOver={(event) => {
+                              if (!draggedScheduleBlockId || !canMergeThisBlock || draggedScheduleBlockId === block.id) {
+                                return;
+                              }
+                              event.preventDefault();
+                              setMergeTargetBlockId(block.id);
+                            }}
+                            onDragLeave={() => {
+                              if (mergeTargetBlockId === block.id) {
+                                setMergeTargetBlockId(null);
+                              }
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              if (!draggedScheduleBlockId || draggedScheduleBlockId === block.id) {
+                                return;
+                              }
+                              mergeScheduleBlocks(draggedScheduleBlockId, block.id);
+                            }}
+                            className={`rounded-[1.4rem] border bg-white px-4 py-4 transition ${
+                              isMergeTarget ? "border-sky-400 ring-2 ring-sky-100" : "border-slate-200"
+                            } ${canMergeThisBlock ? "cursor-grab active:cursor-grabbing" : ""}`}
+                          >
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div>
                                 <div className="text-lg font-semibold text-slate-950">{block.label || "Untitled block"}</div>
                                 <div className="mt-1 text-sm text-slate-600">
                                   {formatSchedulePhaseLabel(block.phase_type)} / {getSchedulePhaseDescription(block.phase_type)}
                                 </div>
+                                {canMergeThisBlock ? (
+                                  <div className="mt-2 text-xs font-medium uppercase tracking-[0.24em] text-sky-700">
+                                    Drag onto another wave to merge
+                                  </div>
+                                ) : null}
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <button
