@@ -111,6 +111,8 @@ type RegisteredClimberResult = Climber & {
   scorecard_path: string;
 };
 
+const LIVE_BOULDER_QUEUE_STALE_MINUTES = 3;
+
 interface BoulderQueueRow {
   id: string;
   competition_id: string;
@@ -484,11 +486,14 @@ async function fetchBoulderQueueRows(competitionId: string, scheduleBlockId: str
     return [] as BoulderQueueRow[];
   }
 
+  const freshAfter = new Date(Date.now() - LIVE_BOULDER_QUEUE_STALE_MINUTES * 60 * 1000).toISOString();
+
   const { data, error } = await publicSupabase
     .from("competition_boulder_queue")
     .select("*")
     .eq("competition_id", competitionId)
     .eq("schedule_block_id", scheduleBlockId)
+    .gt("checked_in_at", freshAfter)
     .order("checked_in_at", { ascending: true });
 
   if (error) {

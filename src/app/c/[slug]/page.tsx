@@ -255,7 +255,7 @@ export default function CompetitionOverviewPage() {
                       {formatTimeRange(activeBlock.start_time, activeBlock.end_time)}
                     </div>
                     {activeScrambleSession ? (
-                      <div className="results-alert results-alert-success mt-4">
+                        <div className="results-alert results-alert-success mt-4">
                         This is the live shared session window. Multiple climbers can score across the wall during this block.
                       </div>
                     ) : null}
@@ -263,11 +263,11 @@ export default function CompetitionOverviewPage() {
                       <div className="mt-4 rounded-[1.35rem] border border-slate-200 bg-white/80 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <div className="results-kicker">Per-boulder queue</div>
-                            <div className="mt-2 text-lg font-semibold text-slate-950">Live check-ins on the wall</div>
+                            <div className="results-kicker">Per-boulder guide</div>
+                            <div className="mt-2 text-lg font-semibold text-slate-950">Live wall traffic</div>
                           </div>
                           <div className="results-chip">
-                            {snapshot.boulderQueue.length} active {snapshot.boulderQueue.length === 1 ? "check-in" : "check-ins"}
+                            {snapshot.boulderQueue.length} live {snapshot.boulderQueue.length === 1 ? "check-in" : "check-ins"}
                           </div>
                         </div>
 
@@ -279,13 +279,14 @@ export default function CompetitionOverviewPage() {
                                 <div key={climbNumber} className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="font-semibold text-slate-950">Boulder {climbNumber}</div>
-                                    <div className="results-chip">{entries.length} waiting</div>
+                                    <div className="results-chip">{entries.length} checked in</div>
                                   </div>
                                   <div className="mt-3 space-y-2 text-sm text-slate-600">
-                                    {entries.slice(0, 4).map((entry, index) => (
+                                    <div>{entries.length <= 1 ? "Wall looks fairly open." : "Wall traffic is building here."}</div>
+                                    {entries.slice(0, 4).map((entry) => (
                                       <div key={entry.climber_id} className="flex items-center justify-between gap-3">
                                         <span className="truncate">
-                                          {index + 1}. {entry.climber_name}
+                                          {entry.climber_name}
                                         </span>
                                         <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
                                           #{entry.climber_number}

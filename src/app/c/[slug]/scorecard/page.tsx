@@ -63,16 +63,20 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
   }
 }
 
-function formatQueueStatus(position: number) {
-  if (position <= 0) {
-    return "You're up";
+function formatCrowdStatus(count: number) {
+  if (count <= 0) {
+    return "Open wall";
   }
 
-  if (position === 1) {
-    return "1 away";
+  if (count === 1) {
+    return "Light traffic";
   }
 
-  return `${position} away`;
+  if (count <= 3) {
+    return "Busy";
+  }
+
+  return "Crowded";
 }
 
 function ScorecardContent() {
@@ -399,19 +403,19 @@ function ScorecardContent() {
                 <div className="results-meta-card">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Live boulder queue</div>
+                      <div className="results-kicker">Live boulder guide</div>
                       <div className="mt-2 text-xl font-semibold text-slate-950">
-                        {activeQueueSession ? activeQueueSession.label : "Queue waiting for a live session"}
+                        {activeQueueSession ? activeQueueSession.label : "Guide waiting for a live session"}
                       </div>
                       <div className="mt-2 text-sm text-slate-600">
                         {activeQueueSession
-                          ? `${formatTimeRange(activeQueueSession.start_time, activeQueueSession.end_time)} · One live check-in at a time per climber. Switching boulders puts you at the back of that line.`
-                          : "Staff needs to mark your scramble session live before climbers can check into a boulder queue."}
+                          ? `${formatTimeRange(activeQueueSession.start_time, activeQueueSession.end_time)} · One live check-in at a time per climber so the wall can see where traffic is building.`
+                          : "Staff needs to mark your scramble session live before climbers can use the boulder guide."}
                       </div>
                     </div>
                     {currentQueueEntry ? (
                       <div className="results-chip results-chip-live">
-                        Queued on Boulder {currentQueueEntry.climb_number}
+                        Checked in on Boulder {currentQueueEntry.climb_number}
                       </div>
                     ) : null}
                   </div>
@@ -420,10 +424,10 @@ function ScorecardContent() {
                     <div className="mt-4 rounded-[1.1rem] border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
                       {(() => {
                         const activeEntries = queueByClimb.get(currentQueueEntry.climb_number) ?? [];
-                        const currentPosition = activeEntries.findIndex((entry) => entry.climber_id === climber.id);
-                        return currentPosition >= 0
-                          ? `${formatQueueStatus(currentPosition)} on Boulder ${currentQueueEntry.climb_number}.`
-                          : `Queued on Boulder ${currentQueueEntry.climb_number}.`;
+                        const othersHere = Math.max(0, activeEntries.length - 1);
+                        return othersHere > 0
+                          ? `You are checked in on Boulder ${currentQueueEntry.climb_number} with ${othersHere} other ${othersHere === 1 ? "climber" : "climbers"} currently there.`
+                          : `You are checked in on Boulder ${currentQueueEntry.climb_number}. Right now it looks open around that wall.`;
                       })()}
                     </div>
                   ) : null}
@@ -435,7 +439,7 @@ function ScorecardContent() {
                     </div>
                   ) : queueOpen ? (
                     <div className="results-alert results-alert-success mt-4">
-                      Join the boulder you are walking to now. Leaving or switching keeps this as a simple live check-in board instead of a booking system.
+                      Tap the boulder you are walking to now. This is a soft crowd guide, not a strict turn-order system. Saving an attempt clears your check-in automatically, and stale check-ins fall away after a few minutes.
                     </div>
                   ) : null}
 
@@ -447,13 +451,14 @@ function ScorecardContent() {
                           <div key={climbNumber} className="rounded-[1.2rem] border border-slate-200 bg-white/80 px-4 py-3">
                             <div className="flex items-center justify-between gap-3">
                               <span className="text-sm font-semibold text-slate-950">Boulder {climbNumber}</span>
-                              <span className="results-chip">{entries.length} in line</span>
+                              <span className="results-chip">{formatCrowdStatus(entries.length)}</span>
                             </div>
                             <div className="mt-3 space-y-2 text-sm text-slate-600">
-                              {entries.slice(0, 3).map((entry, index) => (
+                              <div>{entries.length} {entries.length === 1 ? "climber checked in" : "climbers checked in"}</div>
+                              {entries.slice(0, 3).map((entry) => (
                                 <div key={entry.climber_id} className="flex items-center justify-between gap-3">
                                   <span className="truncate">
-                                    {index + 1}. {entry.climber_name}
+                                    {entry.climber_name}
                                   </span>
                                   <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
                                     #{entry.climber_number}
@@ -489,9 +494,8 @@ function ScorecardContent() {
                 ? getClimbs(snapshot.competition.total_climbs).map((climb) => {
                     const draft = drafts[climb.number] ?? { attemptCount: 0, topped: false };
                     const queueEntries = queueByClimb.get(climb.number) ?? [];
-                    const yourQueuePosition = queueEntries.findIndex((entry) => entry.climber_id === climber.id);
                     const queuedHere = currentQueueEntry?.climb_number === climb.number;
-                    const queueStatusLabel = queuedHere && yourQueuePosition >= 0 ? formatQueueStatus(yourQueuePosition) : "";
+                    const otherClimbersHere = queueEntries.filter((entry) => entry.climber_id !== climber.id).length;
                     return (
                       <div key={climb.number} className="results-meta-card">
                         <div className="flex items-center justify-between gap-3">
@@ -506,22 +510,24 @@ function ScorecardContent() {
                         {snapshot.competition.format === "scramble" ? (
                           <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="text-sm font-semibold text-slate-950">Live queue</div>
-                              <div className="results-chip">{queueEntries.length} waiting</div>
+                              <div className="text-sm font-semibold text-slate-950">Live boulder guide</div>
+                              <div className="results-chip">{formatCrowdStatus(queueEntries.length)}</div>
                             </div>
                             <div className="mt-2 text-sm text-slate-600">
                               {queuedHere
-                                ? `${queueStatusLabel}. You are currently #${yourQueuePosition + 1} in line for this boulder.`
+                                ? otherClimbersHere > 0
+                                  ? `You are checked in here with ${otherClimbersHere} other ${otherClimbersHere === 1 ? "climber" : "climbers"} currently around this boulder.`
+                                  : "You are checked in here. Right now the wall looks clear."
                                 : queueEntries.length
-                                  ? `Next up: ${queueEntries[0]?.climber_name}.`
-                                  : "No one is checked in for this boulder yet."}
+                                  ? `${queueEntries.length} ${queueEntries.length === 1 ? "climber is" : "climbers are"} checked in around this boulder right now.`
+                                  : "No one is checked in for this boulder right now."}
                             </div>
                             {queueEntries.length ? (
                               <div className="mt-3 space-y-2 text-sm text-slate-600">
-                                {queueEntries.slice(0, 4).map((entry, index) => (
+                                {queueEntries.slice(0, 4).map((entry) => (
                                   <div key={entry.climber_id} className="flex items-center justify-between gap-3">
                                     <span className={entry.climber_id === climber.id ? "font-semibold text-slate-950" : ""}>
-                                      {index + 1}. {entry.climber_name}
+                                      {entry.climber_name}
                                     </span>
                                     <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
                                       #{entry.climber_number}
@@ -540,7 +546,7 @@ function ScorecardContent() {
                                   disabled={queueSaving}
                                   className={`w-full ${queuedHere ? "results-secondary-button results-secondary-button-active" : "results-secondary-button"}`}
                                 >
-                                  {queuedHere ? "Leave queue" : currentQueueEntry ? "Switch queue here" : "Join queue"}
+                                  {queuedHere ? "Clear my check-in" : currentQueueEntry ? "Move check-in here" : "Check in here"}
                                 </button>
                               </div>
                             ) : null}

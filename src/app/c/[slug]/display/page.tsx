@@ -87,10 +87,10 @@ export default function CompetitionDisplayPage() {
           <>
           {scrambleFormat && activeQueueSession ? (
             <section className="results-card">
-              <div className="results-kicker">Live queue board</div>
+              <div className="results-kicker">Live crowd guide</div>
               <h2 className="mt-2 text-3xl font-semibold text-slate-950">{activeQueueSession.label}</h2>
               <p className="mt-3 text-lg text-slate-600">
-                Shared scramble session check-ins. Each climber can hold one live place in line.
+                Shared scramble session check-ins. Use this as a live traffic guide for the wall, not a strict next-up list.
               </p>
               {queueByClimb.size ? (
                 <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -100,13 +100,16 @@ export default function CompetitionDisplayPage() {
                       <div key={climbNumber} className="results-meta-card">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-xl font-semibold text-slate-950">Boulder {climbNumber}</div>
-                          <div className="results-chip">{entries.length} waiting</div>
+                          <div className="results-chip">{entries.length} checked in</div>
+                        </div>
+                        <div className="mt-3 text-sm text-slate-600">
+                          {entries.length <= 1 ? "Wall looks fairly open." : "Wall traffic is building here."}
                         </div>
                         <div className="mt-4 space-y-3">
-                          {entries.slice(0, 5).map((entry, index) => (
+                          {entries.slice(0, 5).map((entry) => (
                             <div key={entry.climber_id} className="flex items-center justify-between gap-3 text-sm text-slate-700">
                               <span className="truncate">
-                                {index + 1}. {entry.climber_name}
+                                {entry.climber_name}
                               </span>
                               <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
                                 #{entry.climber_number}
