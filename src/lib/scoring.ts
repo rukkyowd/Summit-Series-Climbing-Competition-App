@@ -985,13 +985,24 @@ export function canRegisterForCompetition(competition: Pick<Competition, "curren
 }
 
 export function isCompetitionLiveNow(
-  competition: Pick<Competition, "current_phase" | "status">
+  competition: Pick<Competition, "current_phase" | "status"> & {
+    schedule_blocks?: Pick<CompetitionScheduleBlock, "phase_type" | "is_active">[];
+  }
 ) {
   if (competition.status !== "active") {
     return false;
   }
 
-  return competition.current_phase === "qualifier_open" || competition.current_phase === "finals_open";
+  if (competition.current_phase === "qualifier_open" || competition.current_phase === "finals_open") {
+    return true;
+  }
+
+  const activeScheduleBlock = competition.schedule_blocks?.find((block) => block.is_active);
+  if (!activeScheduleBlock) {
+    return false;
+  }
+
+  return activeScheduleBlock.phase_type === "qualifier_round" || activeScheduleBlock.phase_type === "finals_round";
 }
 
 function parseDateOnlyBoundary(value: string | null | undefined, endOfDay = false) {
@@ -1005,7 +1016,9 @@ function parseDateOnlyBoundary(value: string | null | undefined, endOfDay = fals
 }
 
 export function getCompetitionLifecycleLabel(
-  competition: Pick<Competition, "status" | "current_phase" | "start_date" | "end_date">
+  competition: Pick<Competition, "status" | "current_phase" | "start_date" | "end_date"> & {
+    schedule_blocks?: Pick<CompetitionScheduleBlock, "phase_type" | "is_active">[];
+  }
 ): CompetitionLifecycleLabel {
   const now = new Date();
   const start = parseDateOnlyBoundary(competition.start_date, false);
@@ -1017,10 +1030,6 @@ export function getCompetitionLifecycleLabel(
 
   if (end && now > end) {
     return "Past";
-  }
-
-  if (start && end && now >= start && now <= end) {
-    return "Live / Ongoing";
   }
 
   if (start && start > now) {
