@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
@@ -142,6 +143,8 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
 }
 
 export default function StaffDashboard({ initialCompetitionSlug }: { initialCompetitionSlug?: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
   const [draft, setDraft] = useState<Competition | null>(null);
@@ -154,6 +157,8 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
   const [createName, setCreateName] = useState("");
   const [createFormat, setCreateFormat] = useState<Competition["format"]>("scramble");
   const [createLocation, setCreateLocation] = useState("");
+  const [createStartDate, setCreateStartDate] = useState("");
+  const [createEndDate, setCreateEndDate] = useState("");
   const [isPhasePending, setIsPhasePending] = useState(false);
   const [phaseBlockMemory, setPhaseBlockMemory] = useState<Partial<Record<Competition["current_phase"], string>>>({});
   const [confirming, setConfirming] = useState<null | {
@@ -165,6 +170,7 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     action: () => Promise<void>;
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
+  const importedDraftApplied = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -202,6 +208,42 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
       setShareOrigin(window.location.origin);
     }
   }, []);
+
+  useEffect(() => {
+    if (importedDraftApplied.current) {
+      return;
+    }
+
+    const importedName = searchParams.get("createName")?.trim() ?? "";
+    const importedLocation = searchParams.get("createLocation")?.trim() ?? "";
+    const importedStartDate = searchParams.get("createStartDate")?.trim() ?? "";
+    const importedEndDate = searchParams.get("createEndDate")?.trim() ?? "";
+    const importedFormat = searchParams.get("createFormat")?.trim() as Competition["format"] | null;
+
+    if (!importedName && !importedLocation && !importedStartDate && !importedEndDate && !importedFormat) {
+      return;
+    }
+
+    importedDraftApplied.current = true;
+    if (importedName) {
+      setCreateName(importedName);
+    }
+    if (importedLocation) {
+      setCreateLocation(importedLocation);
+    }
+    if (importedStartDate) {
+      setCreateStartDate(importedStartDate);
+    }
+    if (importedEndDate) {
+      setCreateEndDate(importedEndDate);
+    }
+    if (importedFormat && FORMAT_TEMPLATES.some((template) => template.value === importedFormat)) {
+      setCreateFormat(importedFormat);
+    }
+
+    setMessage("Official event imported into the create form. Review it and create the competition when ready.");
+    router.replace("/staff/dashboard", { scroll: false });
+  }, [router, searchParams]);
 
   const selectedSummary = useMemo(
     () => allSummaries.find((entry) => entry.competition.id === selectedCompetitionId) ?? null,
@@ -684,6 +726,10 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                 </select>
                 <input value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="Location" />
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
+                <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
+              </div>
               <button
                 type="button"
                 disabled={isPending || !createName.trim()}
@@ -695,9 +741,13 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                           name: createName,
                           format: createFormat,
                           location_name: createLocation,
+                          start_date: createStartDate || null,
+                          end_date: createEndDate || null,
                         });
                         setCreateName("");
                         setCreateLocation("");
+                        setCreateStartDate("");
+                        setCreateEndDate("");
                         await refreshAfterChange(created.id);
                         setSelectedCompetitionId(created.id);
                         setMessage(`Created ${created.name}.`);

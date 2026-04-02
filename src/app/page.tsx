@@ -20,6 +20,18 @@ type OfficialEvent = {
   source_url: string;
 };
 
+function buildOfficialImportHref(event: OfficialEvent) {
+  const params = new URLSearchParams({
+    createName: event.title,
+    createLocation: event.location,
+    createStartDate: event.start_date,
+    createEndDate: event.end_date,
+    createFormat: "flash_format",
+  });
+
+  return `/staff/dashboard?${params.toString()}`;
+}
+
 export default function HomePage() {
   const [summaries, setSummaries] = useState<CompetitionSummary[]>([]);
   const [officialEvents, setOfficialEvents] = useState<OfficialEvent[]>([]);
@@ -187,13 +199,7 @@ export default function HomePage() {
 
           <div className="mt-8 space-y-4">
             {officialEvents.map((event) => (
-              <a
-                key={event.id}
-                href={event.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="results-list-row"
-              >
+              <div key={event.id} className="results-list-row">
                 <div>
                   <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{event.title}</div>
                   <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
@@ -209,16 +215,30 @@ export default function HomePage() {
                   </div>
                   <div>
                     <div className="results-kicker md:hidden">Source</div>
-                    <div className="text-sm text-slate-600">Official event page</div>
+                    <a
+                      href={event.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-sky-700 underline-offset-4 hover:underline"
+                    >
+                      Official event page
+                    </a>
                   </div>
                   <div className="md:justify-self-end">
                     <div className="results-kicker md:hidden">Date</div>
-                    <div className="pt-2 text-sm text-slate-600 md:pt-0">
-                      {formatDateRange(event.start_date, event.end_date)}
+                    <div className="flex flex-col items-start gap-3 pt-2 md:items-end md:pt-0">
+                      <div className="text-sm text-slate-600">
+                        {formatDateRange(event.start_date, event.end_date)}
+                      </div>
+                      {isStaffRole(profile?.role) ? (
+                        <Link href={buildOfficialImportHref(event)} className="results-secondary-button">
+                          Import to dashboard
+                        </Link>
+                      ) : null}
                     </div>
                   </div>
                 </div>
-              </a>
+              </div>
             ))}
             {!officialEvents.length && !loading && !officialEventsError ? (
               <div className="results-card text-center text-slate-600">
