@@ -11,6 +11,7 @@ import { getAuthState, isStaffRole } from "@/lib/auth";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
+  formatUsesSelfScoredQualifiers,
   formatCompetitionPhaseLabel,
   formatDateRange,
   formatSchedulePhaseLabel,
@@ -80,6 +81,9 @@ export default function CompetitionOverviewPage() {
     () => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null),
     [snapshot]
   );
+  const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(snapshot.competition.format) : false;
+  const activeScrambleSession =
+    scrambleFormat && activeBlock?.phase_type === "qualifier_round" ? activeBlock : null;
   const workflowGuide = useMemo(
     () => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null),
     [snapshot]
@@ -224,7 +228,7 @@ export default function CompetitionOverviewPage() {
 
             <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
               <section className="results-card">
-                <div className="results-kicker">Live schedule</div>
+                <div className="results-kicker">{activeScrambleSession ? "Active scramble session" : "Live schedule"}</div>
                 <h2 className="mt-2 text-3xl font-semibold text-slate-950">
                   {activeBlock ? activeBlock.label : "No block live"}
                 </h2>
@@ -237,6 +241,18 @@ export default function CompetitionOverviewPage() {
                     <div className="mt-4 text-base text-slate-600">
                       {formatTimeRange(activeBlock.start_time, activeBlock.end_time)}
                     </div>
+                    {activeScrambleSession ? (
+                      <div className="results-alert results-alert-success mt-4">
+                        This is the live shared session window. Multiple climbers can score across the wall during this block.
+                      </div>
+                    ) : null}
+                    {scrambleFormat ? (
+                      <div className="mt-4">
+                        <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button">
+                          Open live leaderboard
+                        </Link>
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <div className="mt-4 space-y-3">
@@ -326,8 +342,27 @@ export default function CompetitionOverviewPage() {
                   <div className="results-meta-card">
                     <div className="results-kicker">Scorecard access</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
-                      Private links per climber
+                      {scrambleFormat ? "Private scorecards per climber" : "Private links per climber"}
                     </div>
+                    {scrambleFormat ? (
+                      <div className="mt-2 text-sm text-slate-600">
+                        Climbers self-score inside their session while the public leaderboard can keep updating live.
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="results-meta-card">
+                    <div className="results-kicker">{scrambleFormat ? "Live leaderboard" : "Standings"}</div>
+                    <div className="mt-2 text-lg font-semibold text-slate-950">
+                      {scrambleFormat ? "Live session rankings" : "Public rankings"}
+                    </div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      {scrambleFormat
+                        ? "Standings update as climbers submit scores during the active scramble session."
+                        : "Open the standings page to follow qualifier or finals rankings."}
+                    </div>
+                    <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button mt-4">
+                      View standings
+                    </Link>
                   </div>
                 </div>
 

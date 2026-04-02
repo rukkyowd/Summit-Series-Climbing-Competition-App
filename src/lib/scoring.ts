@@ -937,12 +937,12 @@ export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
 }
 
 export function getRegistrationAssignmentLabel(competition: Pick<Competition, "format">) {
-  return formatUsesSelfScoredQualifiers(competition.format) ? "Time slot" : "Start group";
+  return formatUsesSelfScoredQualifiers(competition.format) ? "Session" : "Start group";
 }
 
 export function getRegistrationAssignmentHelpText(competition: Pick<Competition, "format">) {
   return formatUsesSelfScoredQualifiers(competition.format)
-    ? "Choose the climbing window when you will be on the wall."
+    ? "Choose the open session window you will climb in. Many climbers can score during the same session."
     : "Choose the qualifier wave or start group. Staff can still publish the full official start list separately.";
 }
 
@@ -1164,17 +1164,21 @@ export function getEventWorkflowGuide(
     scramble: {
       headline: "Open scramble qualifier",
       summary:
-        "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
+        "This mode runs as an open session window: climbers register into a session, move freely across the wall, and log attempts live from their phone while the standings keep updating.",
       notes: [
         `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
-        "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
-        "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
-        "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode.",
+        "Use schedule blocks as check-in windows and scramble sessions so athletes can see the active session window at a glance.",
+        "Multiple climbers score during the same session; these are shared heat windows, not one-athlete-at-a-time appointments.",
+        "Live qualifier standings can stay public during the session so the event feels active without waiting for a final upload.",
+        competitionHasFinals(competition)
+          ? "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode."
+          : "This qualifier-only scramble ends with the qualifier standings, so there is no separate finals round to configure.",
+        "If you ever add a queue, keep it as a lightweight live check-in per boulder rather than a pre-booked schedule.",
       ],
       roles: [
-        { role: "Admin", title: "Set up the day flow", detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule." },
-        { role: "Judge", title: "Override only when needed", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections." },
-        { role: "Climber", title: "Register and self-score", detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings." },
+        { role: "Admin", title: "Run shared session windows", detail: "Name the sessions in plain language like Morning Session or Open Session so athletes know exactly which heat they belong to." },
+        { role: "Judge", title: "Support the live floor", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in for corrections, bottlenecks, or spot checks." },
+        { role: "Climber", title: "Climb inside your session", detail: "Register into a session, save the private scorecard link, and move between boulders freely while the live leaderboard updates." },
       ],
     },
   };
@@ -1592,7 +1596,7 @@ export function buildRegistrationChoices(competition: Competition, climbers: Cli
 
 export function getTimeSlotLabel(slotId: string | null | undefined, competition: Competition) {
   if (!slotId) {
-    return "No schedule block";
+    return formatUsesSelfScoredQualifiers(competition.format) ? "No session selected" : "No schedule block";
   }
   return competition.schedule_blocks.find((slot) => slot.id === slotId)?.label ?? "No schedule block";
 }

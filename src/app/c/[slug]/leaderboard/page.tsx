@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
-import { formatCompetitionPhaseLabel, formatFinalPoints } from "@/lib/scoring";
+import { formatCompetitionPhaseLabel, formatFinalPoints, formatUsesSelfScoredQualifiers } from "@/lib/scoring";
 
 export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
@@ -63,6 +63,7 @@ export default function CompetitionLeaderboardPage() {
 
   const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
   const finalsActive = snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results";
+  const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(snapshot.competition.format) : false;
 
   return (
     <main className="results-page">
@@ -95,7 +96,14 @@ export default function CompetitionLeaderboardPage() {
           ) : (
             <section className="results-card">
               <div className="results-kicker">Qualifier standings</div>
-              <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">Live qualifier rankings</h1>
+              <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">
+                {scrambleFormat ? "Live scramble standings" : "Live qualifier rankings"}
+              </h1>
+              {scrambleFormat ? (
+                <div className="results-alert results-alert-success mt-4">
+                  Rankings update as climbers submit scores during the shared scramble session window.
+                </div>
+              ) : null}
 
               <div className="sticky top-20 z-20 mt-5 flex flex-wrap gap-2 bg-white/95 py-2 backdrop-blur sm:top-24">
                 {categories.map((category) => (
@@ -106,7 +114,11 @@ export default function CompetitionLeaderboardPage() {
               </div>
 
               {!qualifierRows.length ? (
-                <div className="results-meta-card mt-5 text-slate-600">Scoring has not started yet. Check back during the qualifier round.</div>
+                <div className="results-meta-card mt-5 text-slate-600">
+                  {scrambleFormat
+                    ? "This session has not recorded any scores yet. Check back once climbers start logging attempts."
+                    : "Scoring has not started yet. Check back during the qualifier round."}
+                </div>
               ) : (
                 <>
                   <div className="mt-6 space-y-3 md:hidden">
