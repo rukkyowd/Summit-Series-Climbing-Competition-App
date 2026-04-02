@@ -510,6 +510,39 @@ async function fetchBoulderQueueRows(competitionId: string, scheduleBlockId: str
   }));
 }
 
+function isDemoCompetitionSlug(slug: string) {
+  return slug.startsWith("mock-") || slug.startsWith("spring-send-");
+}
+
+async function fetchBoulderQueueRowsForCompetition(competition: Competition, scheduleBlockId: string | null) {
+  const freshRows = await fetchBoulderQueueRows(competition.id, scheduleBlockId);
+
+  if (freshRows.length || !scheduleBlockId || !isDemoCompetitionSlug(competition.slug)) {
+    return freshRows;
+  }
+
+  const { data, error } = await publicSupabase
+    .from("competition_boulder_queue")
+    .select("*")
+    .eq("competition_id", competition.id)
+    .eq("schedule_block_id", scheduleBlockId)
+    .order("checked_in_at", { ascending: true })
+    .limit(12);
+
+  if (error) {
+    return [] as BoulderQueueRow[];
+  }
+
+  return ((data ?? []) as any[]).map((row) => ({
+    id: row.id,
+    competition_id: row.competition_id,
+    climber_id: row.climber_id,
+    schedule_block_id: row.schedule_block_id,
+    climb_number: row.climb_number ?? 1,
+    checked_in_at: row.checked_in_at ?? row.created_at ?? new Date().toISOString(),
+  }));
+}
+
 async function fetchOfficialQualifierLeaderboard(competitionId: string) {
   const { data, error } = await publicSupabase.rpc("compute_qualifier_standings", {
     p_competition_id: competitionId,
@@ -724,7 +757,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     fetchQualifierAttempts([competition.id]),
     fetchFinalAttempts([competition.id]),
     fetchFinalists([competition.id]),
-    fetchBoulderQueueRows(competition.id, activeQueueSession?.id ?? null),
+    fetchBoulderQueueRowsForCompetition(competition, activeQueueSession?.id ?? null),
     fetchOfficialQualifierLeaderboard(competition.id),
     fetchProjectedFinalists(competition.id),
     fetchUndoAvailability(competition.id).catch(() => ({

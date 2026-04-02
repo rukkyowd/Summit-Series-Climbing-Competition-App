@@ -9,6 +9,12 @@ begin
   end if;
 
   execute 'alter table public.competitions add column if not exists current_phase text';
+  execute 'alter table public.competitions add column if not exists has_finals boolean not null default true';
+  execute 'alter table public.competitions add column if not exists qualifier_eligible_age_groups jsonb not null default ''["Youth D","Youth C","Youth B","Youth A","Junior","Rec","Masters","Open"]''::jsonb';
+  execute 'alter table public.competitions add column if not exists finals_eligible_age_groups jsonb not null default ''["Open"]''::jsonb';
+  execute 'alter table public.competitions add column if not exists qualifier_locked_at timestamptz';
+  execute 'alter table public.competitions add column if not exists finals_started_at timestamptz';
+  execute 'alter table public.competitions add column if not exists finals_problem_count integer not null default 4';
 
   execute $sql$
     update public.competitions
@@ -22,6 +28,17 @@ begin
   execute $sql$
     alter table public.competitions
     alter column current_phase set default 'qualifier_open'
+  $sql$;
+
+  execute $sql$
+    alter table public.competitions
+    drop constraint if exists competitions_finals_problem_count_check
+  $sql$;
+
+  execute $sql$
+    alter table public.competitions
+    add constraint competitions_finals_problem_count_check
+    check (finals_problem_count between 1 and 8)
   $sql$;
 
   execute $sql$
@@ -40,6 +57,19 @@ begin
       closed_at timestamptz,
       created_at timestamptz not null default now(),
       unique (competition_id, round_number)
+    )
+  $sql$;
+
+  execute $sql$
+    create table if not exists public.competition_boulder_queue (
+      id uuid primary key default gen_random_uuid(),
+      competition_id uuid not null references public.competitions(id) on delete cascade,
+      climber_id uuid not null references public.climbers(id) on delete cascade,
+      schedule_block_id uuid not null references public.competition_schedule_blocks(id) on delete cascade,
+      climb_number integer not null check (climb_number >= 1),
+      checked_in_at timestamptz not null default now(),
+      created_at timestamptz not null default now(),
+      unique (competition_id, climber_id)
     )
   $sql$;
 
