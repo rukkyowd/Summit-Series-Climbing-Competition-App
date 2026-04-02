@@ -15,6 +15,7 @@ import {
   getCompetitionSnapshot,
   listCompetitionSummaries,
   saveCompetitionConfig,
+  saveFinalistField,
   setCompetitionLiveScheduleBlock,
   setCompetitionPhase,
   setCompetitionStatus,
@@ -473,7 +474,11 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
     }
 
     [next[index], next[target]] = [next[target], next[index]];
-    await updateFinalistClimbingOrder(draft.id, next.map((entry) => entry.climber_id));
+    if (snapshot?.finalistsPersisted) {
+      await updateFinalistClimbingOrder(draft.id, next.map((entry) => entry.climber_id));
+    } else {
+      await saveFinalistField(draft.id, next);
+    }
     await refreshSelectedSnapshot(draft.id);
     setMessage("Finals climbing order updated.");
   };
@@ -1190,12 +1195,14 @@ export default function StaffDashboard({ initialCompetitionSlug }: { initialComp
                   </div>
                 ) : null}
 
-                {finalsOrder.length && snapshot?.finalistsPersisted ? (
+                {finalsOrder.length && (snapshot?.finalistsPersisted || canEditFinalsOrder) ? (
                   <div className="results-meta-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-2 text-sm text-slate-600">
                       {canEditFinalsOrder
-                        ? "Observation is live, so you can set the finals climbing order now."
+                        ? snapshot?.finalistsPersisted
+                          ? "Observation is live, so you can set the finals climbing order now."
+                          : "Observation is live. The first change will create the finals field from the projected finalists."
                         : "Finals climbing order locks outside observation."}
                     </div>
                     <div className="mt-4 space-y-3">

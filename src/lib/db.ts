@@ -1070,6 +1070,49 @@ export async function updateFinalistClimbingOrder(competitionId: string, ordered
   return getCompetitionSnapshot(competitionId);
 }
 
+export async function saveFinalistField(
+  competitionId: string,
+  orderedFinalists: FinalistSelection[]
+) {
+  ensureConfigured();
+
+  const { error: deleteError } = await supabase
+    .from("competition_finalists")
+    .delete()
+    .eq("competition_id", competitionId);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  if (!orderedFinalists.length) {
+    return getCompetitionSnapshot(competitionId);
+  }
+
+  const { error: insertError } = await supabase
+    .from("competition_finalists")
+    .insert(
+      orderedFinalists.map((finalist, index) => ({
+        competition_id: competitionId,
+        climber_id: finalist.climber_id,
+        name: finalist.name,
+        category_id: finalist.category_id,
+        display_category: finalist.display_category,
+        gender_division: finalist.gender_division,
+        age_group: finalist.age_group,
+        qualifier_rank: finalist.qualifier_rank,
+        advanced_with_tie: finalist.advanced_with_tie,
+        climbing_order: index + 1,
+      }))
+    );
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return getCompetitionSnapshot(competitionId);
+}
+
 export async function resetCompetition(competitionId: string) {
   ensureConfigured();
 
