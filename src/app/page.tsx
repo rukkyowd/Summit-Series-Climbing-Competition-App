@@ -28,7 +28,30 @@ type OfficialEvent = {
 };
 
 function buildOfficialImportHref(event: OfficialEvent) {
-  return `/staff/dashboard?importOfficialEvent=${encodeURIComponent(event.id)}`;
+  const params = new URLSearchParams({
+    importOfficialEvent: event.id,
+    createName: event.title,
+    createLocation: event.location,
+    createStartDate: event.start_date,
+    createEndDate: event.end_date,
+    createDescription: event.description,
+    createOfficialEventUrl: event.official_event_url,
+    createOfficialRegistrationUrl: event.official_registration_url,
+    createOfficialScheduleUrl: event.official_schedule_url,
+    createHeroImageUrl: event.hero_image_url,
+    createDisciplineLabel: event.disciplines,
+    createFormat: "flash_format",
+  });
+
+  if (event.registration_opens_at) {
+    params.set("createRegistrationOpensAt", event.registration_opens_at);
+  }
+
+  if (event.registration_closes_at) {
+    params.set("createRegistrationClosesAt", event.registration_closes_at);
+  }
+
+  return `/staff/dashboard?${params.toString()}`;
 }
 
 export default function HomePage() {

@@ -17,23 +17,40 @@ export default async function StaffDashboardPage({
   const importedOfficialEventId = readSingleValue(searchParams?.importOfficialEvent).trim();
   const officialEvents = importedOfficialEventId ? await fetchOfficialBoulderingEvents().catch(() => []) : [];
   const importedOfficialEvent = officialEvents.find((event) => event.id === importedOfficialEventId);
+  const directName = readSingleValue(searchParams?.createName).trim();
+  const directLocation = readSingleValue(searchParams?.createLocation).trim();
+  const directStartDate = readSingleValue(searchParams?.createStartDate).trim();
+  const directEndDate = readSingleValue(searchParams?.createEndDate).trim();
+  const directDescription = readSingleValue(searchParams?.createDescription).trim();
+  const directRegistrationOpensAt = readSingleValue(searchParams?.createRegistrationOpensAt).trim();
+  const directRegistrationClosesAt = readSingleValue(searchParams?.createRegistrationClosesAt).trim();
+  const directOfficialEventUrl = readSingleValue(searchParams?.createOfficialEventUrl).trim();
+  const directOfficialRegistrationUrl = readSingleValue(searchParams?.createOfficialRegistrationUrl).trim();
+  const directOfficialScheduleUrl = readSingleValue(searchParams?.createOfficialScheduleUrl).trim();
+  const directHeroImageUrl = readSingleValue(searchParams?.createHeroImageUrl).trim();
+  const directDisciplineLabel = readSingleValue(searchParams?.createDisciplineLabel).trim();
+  const directFormat = readSingleValue(searchParams?.createFormat).trim();
 
   return (
     <StaffDashboard
       initialCreateDraft={{
-        name: importedOfficialEvent?.title || readSingleValue(searchParams?.createName).trim(),
-        location: importedOfficialEvent?.location || readSingleValue(searchParams?.createLocation).trim(),
-        startDate: importedOfficialEvent?.start_date || readSingleValue(searchParams?.createStartDate).trim(),
-        endDate: importedOfficialEvent?.end_date || readSingleValue(searchParams?.createEndDate).trim(),
-        description: importedOfficialEvent?.description || readSingleValue(searchParams?.createDescription).trim(),
-        registrationOpensAt: importedOfficialEvent?.registration_opens_at ?? null,
-        registrationClosesAt: importedOfficialEvent?.registration_closes_at ?? null,
-        officialEventUrl: importedOfficialEvent?.official_event_url || "",
-        officialRegistrationUrl: importedOfficialEvent?.official_registration_url || "",
-        officialScheduleUrl: importedOfficialEvent?.official_schedule_url || "",
-        heroImageUrl: importedOfficialEvent?.hero_image_url || "",
-        disciplineLabel: importedOfficialEvent?.disciplines || "",
-        format: importedOfficialEvent ? "flash_format" : readSingleValue(searchParams?.createFormat).trim(),
+        name: directName || importedOfficialEvent?.title || "",
+        location: directLocation || importedOfficialEvent?.location || "",
+        startDate: directStartDate || importedOfficialEvent?.start_date || "",
+        endDate: directEndDate || importedOfficialEvent?.end_date || "",
+        description: directDescription || importedOfficialEvent?.description || "",
+        registrationOpensAt:
+          directRegistrationOpensAt || importedOfficialEvent?.registration_opens_at || null,
+        registrationClosesAt:
+          directRegistrationClosesAt || importedOfficialEvent?.registration_closes_at || null,
+        officialEventUrl: directOfficialEventUrl || importedOfficialEvent?.official_event_url || "",
+        officialRegistrationUrl:
+          directOfficialRegistrationUrl || importedOfficialEvent?.official_registration_url || "",
+        officialScheduleUrl:
+          directOfficialScheduleUrl || importedOfficialEvent?.official_schedule_url || "",
+        heroImageUrl: directHeroImageUrl || importedOfficialEvent?.hero_image_url || "",
+        disciplineLabel: directDisciplineLabel || importedOfficialEvent?.disciplines || "",
+        format: directFormat || (importedOfficialEvent ? "flash_format" : ""),
       }}
     />
   );

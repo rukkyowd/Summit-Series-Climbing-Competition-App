@@ -221,7 +221,8 @@ function parseWorldClimbingEvents(html: string): OfficialEvent[] {
 
 function extractAnchorHrefs(segment: string) {
   const anchors = new Map<string, string>();
-  const anchorPattern = /<a[^>]*href="([^"]+)"[^>]*>[\s\S]*?<h4[^>]*>([\s\S]*?)<\/h4>/gi;
+  const anchorPattern =
+    /<a[^>]*class="[^"]*icon-tile[^"]*"[^>]*href="([^"]+)"[^>]*>[\s\S]*?<h4[^>]*>([\s\S]*?)<\/h4>/gi;
   let match: RegExpExecArray | null;
 
   while ((match = anchorPattern.exec(segment)) !== null) {
