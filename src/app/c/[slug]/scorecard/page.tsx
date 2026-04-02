@@ -6,7 +6,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import {
   getClimberByAccessToken,
-  getClimberWithAttempts,
   getCompetitionSnapshot,
   joinLiveBoulderQueue,
   leaveLiveBoulderQueue,
@@ -17,7 +16,6 @@ import { saveScorecardAccessToken } from "@/lib/scorecard-access";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
-  buildQualifierLeaderboard,
   canClimberSelfScoreQualifier,
   canUseLiveBoulderQueue,
   formatCompetitionPhaseLabel,
@@ -63,6 +61,18 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
     default:
       return state;
   }
+}
+
+function formatQueueStatus(position: number) {
+  if (position <= 0) {
+    return "You're up";
+  }
+
+  if (position === 1) {
+    return "1 away";
+  }
+
+  return `${position} away`;
 }
 
 function ScorecardContent() {
@@ -205,7 +215,7 @@ function ScorecardContent() {
   }, [snapshot]);
 
   const saveQualifier = async (climbNumber: number) => {
-    if (!snapshot || !climber) {
+    if (!snapshot) {
       return;
     }
 
@@ -216,18 +226,21 @@ function ScorecardContent() {
 
     try {
       await updateQualifierAttemptByToken(token, snapshot.competition.id, climbNumber, draft.attemptCount, draft.topped);
-      const refreshedClimber = await getClimberWithAttempts(snapshot.competition.id, climber.id);
-      if (refreshedClimber) {
-        const nextClimbers = snapshot.climbers.map((entry) => (entry.id === climber.id ? refreshedClimber : entry));
-        const nextQualifierLeaderboard = buildQualifierLeaderboard(nextClimbers, snapshot.competition);
-        setClimber(refreshedClimber);
-        setSnapshot({
-          ...snapshot,
-          climbers: nextClimbers,
-          qualifierLeaderboard: nextQualifierLeaderboard,
-        });
+
+      if (currentQueueEntry) {
+        try {
+          await leaveLiveBoulderQueue(token, snapshot.competition.id);
+        } catch {
+          // Keep the score save successful even if queue cleanup misses a beat.
+        }
       }
-      setMessage(`Saved boulder ${climbNumber}.`);
+
+      await refreshScorecard();
+      setMessage(
+        currentQueueEntry
+          ? `Saved boulder ${climbNumber} and cleared your live queue check-in.`
+          : `Saved boulder ${climbNumber}.`
+      );
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to save qualifier score.");
     } finally {
@@ -344,9 +357,18 @@ function ScorecardContent() {
               <div className="results-kicker">Competition phase</div>
               <div className="mt-2 text-3xl font-semibold text-slate-950">{formatCompetitionPhaseLabel(snapshot.competition.current_phase)}</div>
               {stage === "qualifier" ? (
-                <div className="mt-4 text-sm text-slate-600">
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
                   {qualifierEntry
-                    ? `Overall #${qualifierEntry.overall_rank} | Category #${qualifierEntry.category_rank}`
+                    ? (
+                      <>
+                        <div>{`Overall #${qualifierEntry.overall_rank} | Category #${qualifierEntry.category_rank}`}</div>
+                        <div className="font-medium text-slate-950">
+                          {Number.isInteger(qualifierEntry.total_score)
+                            ? `${qualifierEntry.total_score.toLocaleString()} total points`
+                            : `${formatFinalPoints(qualifierEntry.total_score)} total points`}
+                        </div>
+                      </>
+                    )
                     : "No qualifier score recorded yet."}
                 </div>
               ) : (
@@ -393,6 +415,18 @@ function ScorecardContent() {
                       </div>
                     ) : null}
                   </div>
+
+                  {currentQueueEntry ? (
+                    <div className="mt-4 rounded-[1.1rem] border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
+                      {(() => {
+                        const activeEntries = queueByClimb.get(currentQueueEntry.climb_number) ?? [];
+                        const currentPosition = activeEntries.findIndex((entry) => entry.climber_id === climber.id);
+                        return currentPosition >= 0
+                          ? `${formatQueueStatus(currentPosition)} on Boulder ${currentQueueEntry.climb_number}.`
+                          : `Queued on Boulder ${currentQueueEntry.climb_number}.`;
+                      })()}
+                    </div>
+                  ) : null}
 
                   {queueSessionMismatch ? (
                     <div className="results-alert results-alert-error mt-4">
@@ -457,6 +491,7 @@ function ScorecardContent() {
                     const queueEntries = queueByClimb.get(climb.number) ?? [];
                     const yourQueuePosition = queueEntries.findIndex((entry) => entry.climber_id === climber.id);
                     const queuedHere = currentQueueEntry?.climb_number === climb.number;
+                    const queueStatusLabel = queuedHere && yourQueuePosition >= 0 ? formatQueueStatus(yourQueuePosition) : "";
                     return (
                       <div key={climb.number} className="results-meta-card">
                         <div className="flex items-center justify-between gap-3">
@@ -476,7 +511,7 @@ function ScorecardContent() {
                             </div>
                             <div className="mt-2 text-sm text-slate-600">
                               {queuedHere
-                                ? `You are currently #${yourQueuePosition + 1} in line for this boulder.`
+                                ? `${queueStatusLabel}. You are currently #${yourQueuePosition + 1} in line for this boulder.`
                                 : queueEntries.length
                                   ? `Next up: ${queueEntries[0]?.climber_name}.`
                                   : "No one is checked in for this boulder yet."}
