@@ -934,7 +934,7 @@ export function getActiveScheduleBlock(competition: Pick<Competition, "schedule_
 }
 
 export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
-  return phaseType === "qualifier_round" || phaseType === "custom";
+  return phaseType === "qualifier_round";
 }
 
 export function getRegistrationAssignmentLabel(competition: Pick<Competition, "format">) {

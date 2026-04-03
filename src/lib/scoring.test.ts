@@ -218,6 +218,18 @@ describe("competition normalization", () => {
           capacity: 80,
           eligible_category_ids: [],
         },
+        {
+          id: "score-verification",
+          competition_id: "comp-4",
+          label: "Score verification",
+          phase_type: "custom",
+          audience_label: "Officials",
+          is_active: false,
+          start_time: "1:00 PM",
+          end_time: "1:30 PM",
+          capacity: 20,
+          eligible_category_ids: [],
+        },
       ]
     );
 
