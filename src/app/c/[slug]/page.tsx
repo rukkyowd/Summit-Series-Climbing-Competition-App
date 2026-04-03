@@ -176,21 +176,21 @@ export default function CompetitionOverviewPage() {
           qualifierEntries.length > 0 &&
           qualifierEntries.every((entry) => entry.category_rank === 1 && entry.total_score === 0);
 
-        let status = "Projected";
-        let detail = "Current qualifier standings are shaping the finalist field in this category.";
+        let status = "In range";
+        let detail = "Current qualifier standings are shaping the finals field for this category.";
 
         if (snapshot.finalistsPersisted || isFinalsStage(snapshot.competition)) {
-          status = "Locked";
+          status = "Finalized";
           detail = "This category's finals field is locked and follows the saved finals order.";
         } else if (registeredCount <= cutoff) {
-          status = "Everyone advances";
-          detail = "This category has at or below the finals cutoff, so every registered climber currently advances.";
+          status = "All advance";
+          detail = "This category is at or below the cutoff, so every registered climber currently advances.";
         } else if (allTiedAtZero && scoredCount === 0) {
-          status = "Awaiting scores";
+          status = "Waiting on scores";
           detail = "No qualifier scores are recorded yet, so everyone in this category is still tied.";
         } else if (projectedCount > cutoff) {
-          status = "Tie at cutoff";
-          detail = "More climbers are currently projected because the cutline is still tied in live standings.";
+          status = "Cutline tied";
+          detail = "More climbers are currently in range because the cutline is still tied in the live standings.";
         }
 
         return {
@@ -221,7 +221,7 @@ export default function CompetitionOverviewPage() {
       return {
         headline: `${snapshot.finalists.length} finalists locked`,
         detail: `Top ${snapshot.competition.finals_cutoff} per category across ${eligibleCategoryCount} eligible categories.`,
-        progress: `${scoredCount}/${registeredCount} eligible climbers have qualifier scores recorded.`,
+        progress: `${scoredCount} of ${registeredCount} eligible climbers have qualifier scores recorded.`,
       };
     }
 
@@ -229,7 +229,7 @@ export default function CompetitionOverviewPage() {
       return {
         headline: "Too early to project finalists",
         detail: `No eligible climbers have recorded qualifier scores yet. Top ${snapshot.competition.finals_cutoff} per category will advance once standings start to separate.`,
-        progress: `${scoredCount}/${registeredCount} eligible climbers have qualifier scores recorded.`,
+        progress: `${scoredCount} of ${registeredCount} eligible climbers have qualifier scores recorded.`,
       };
     }
 
@@ -237,9 +237,9 @@ export default function CompetitionOverviewPage() {
       headline: `${snapshot.finalists.length} projected across ${eligibleCategoryCount} categories`,
       detail:
         unresolvedCount > 0
-          ? `${unresolvedCount} ${unresolvedCount === 1 ? "category is" : "categories are"} still tied above the cutline.`
+          ? `${unresolvedCount} ${unresolvedCount === 1 ? "category is" : "categories are"} still tied at the cutline.`
           : `Current standings are projecting the top ${snapshot.competition.finals_cutoff} in each eligible category.`,
-      progress: `${scoredCount}/${registeredCount} eligible climbers have qualifier scores recorded.`,
+      progress: `${scoredCount} of ${registeredCount} eligible climbers have qualifier scores recorded.`,
     };
   }, [finalsEnabled, finalsProjectionRows, snapshot]);
   const finalsGroups = useMemo(() => {
@@ -501,14 +501,14 @@ export default function CompetitionOverviewPage() {
                 ) : null}
 
                 <div className="results-kicker">Competition snapshot</div>
-                <div className="mt-4 grid auto-rows-fr gap-4 sm:grid-cols-2">
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div className="results-meta-card self-start">
                     <div className="results-kicker">Climbers</div>
                     <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.climbers.length}</div>
                   </div>
                   {finalsEnabled ? (
                     <div className="results-meta-card self-start">
-                      <div className="results-kicker">Scores recorded</div>
+                      <div className="results-kicker">Qualifying Scores Logged</div>
                       <div className="mt-2 text-3xl font-semibold text-slate-950">
                         {finalsProjectionRows.reduce((sum, row) => sum + row.scoredCount, 0)}
                       </div>
@@ -527,7 +527,7 @@ export default function CompetitionOverviewPage() {
                   )}
                   {finalsEnabled ? (
                     <div className="results-meta-card self-start">
-                      <div className="results-kicker">Eligible finals categories</div>
+                      <div className="results-kicker">Eligible Finals Categories</div>
                       <div className="mt-2 text-3xl font-semibold text-slate-950">{finalsProjectionRows.length}</div>
                       <div className="mt-2 text-sm text-slate-600">
                         Top {snapshot.competition.finals_cutoff} per category can advance to finals.
@@ -545,9 +545,28 @@ export default function CompetitionOverviewPage() {
                       </div>
                     ) : null}
                   </div>
-                  {finalsEnabled ? (
-                    <div className="results-meta-card self-start sm:col-span-2">
-                      <div className="results-kicker">{finalistsLabel}</div>
+                  {!finalsEnabled ? (
+                    <div className="results-meta-card self-start">
+                      <div className="results-kicker">{scrambleFormat ? "Live leaderboard" : "Standings"}</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-950">
+                        {scrambleFormat ? "Live session rankings" : "Public rankings"}
+                      </div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        {scrambleFormat
+                          ? "Standings update as climbers submit scores during the active scramble session."
+                          : "Open the standings page to follow qualifier or finals rankings."}
+                      </div>
+                      <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button mt-4">
+                        View standings
+                      </Link>
+                    </div>
+                  ) : null}
+                </div>
+
+                {finalsEnabled ? (
+                  <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(14rem,0.95fr)]">
+                    <div className="results-meta-card self-start">
+                      <div className="results-kicker">Finals Field Outlook</div>
                       <div className="mt-2 text-2xl font-semibold text-slate-950">
                         {finalsProjectionSummary?.headline ?? `${snapshot.finalists.length} ${finalistsLabel.toLowerCase()}`}
                       </div>
@@ -556,30 +575,30 @@ export default function CompetitionOverviewPage() {
                       </div>
                       {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
                         <div className="mt-4 rounded-[1.15rem] border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-600">
-                          Live qualifier projections stay category-based. Tie advances do not expand until the qualifier round is closed.
+                          Live projections stay category-based. Tie advances are only added after the qualifier round closes.
                         </div>
                       ) : null}
                     </div>
-                  ) : null}
-                  <div className="results-meta-card self-start">
-                    <div className="results-kicker">{scrambleFormat ? "Live leaderboard" : "Standings"}</div>
-                    <div className="mt-2 text-lg font-semibold text-slate-950">
-                      {scrambleFormat ? "Live session rankings" : "Public rankings"}
+                    <div className="results-meta-card self-start">
+                      <div className="results-kicker">{scrambleFormat ? "Live leaderboard" : "Standings"}</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-950">
+                        {scrambleFormat ? "Live session rankings" : "Public rankings"}
+                      </div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        {scrambleFormat
+                          ? "Standings update as climbers submit scores during the active scramble session."
+                          : "Open the standings page to follow qualifier or finals rankings."}
+                      </div>
+                      <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button mt-4">
+                        View standings
+                      </Link>
                     </div>
-                    <div className="mt-2 text-sm text-slate-600">
-                      {scrambleFormat
-                        ? "Standings update as climbers submit scores during the active scramble session."
-                        : "Open the standings page to follow qualifier or finals rankings."}
-                    </div>
-                    <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button mt-4">
-                      View standings
-                    </Link>
                   </div>
-                </div>
+                ) : null}
 
                 {finalsEnabled && finalsProjectionRows.length ? (
                   <div className="mt-6">
-                    <div className="results-kicker">Finals projection by category</div>
+                    <div className="results-kicker">Finals Outlook By Category</div>
                     <div className="mt-3 space-y-3">
                       {finalsProjectionRows.map((row) => (
                         <div key={row.displayCategory} className="results-meta-card">
@@ -591,21 +610,21 @@ export default function CompetitionOverviewPage() {
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className="results-kicker">{finalistsLabel}</div>
+                              <div className="results-kicker">Currently In Range</div>
                               <div className="mt-2 text-2xl font-semibold text-slate-950">{row.projectedCount}</div>
                             </div>
                           </div>
                           <div className="mt-4 flex flex-wrap gap-2">
                             <span className="results-chip">
-                              {row.scoredCount}/{row.registeredCount} scored
+                              {row.scoredCount} of {row.registeredCount} scored
                             </span>
                             <span
                               className={
-                                row.status === "Locked"
+                                row.status === "Finalized"
                                   ? "results-chip border-sky-200 bg-sky-50 text-sky-700"
-                                  : row.status === "Tie at cutoff"
+                                  : row.status === "Cutline tied"
                                     ? "results-chip border-amber-200 bg-amber-50 text-amber-700"
-                                    : row.status === "Awaiting scores"
+                                    : row.status === "Waiting on scores"
                                       ? "results-chip border-slate-200 bg-slate-50 text-slate-700"
                                       : "results-chip"
                               }
