@@ -420,6 +420,10 @@ body::after {
       border-color 220ms ease;
   }
 
+  .results-meta-card-compact {
+    @apply p-3;
+  }
+
   .results-workspace-hero {
     @apply grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start;
   }

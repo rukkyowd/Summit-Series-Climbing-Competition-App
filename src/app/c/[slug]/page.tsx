@@ -502,22 +502,22 @@ export default function CompetitionOverviewPage() {
 
                 <div className="results-kicker">Competition snapshot</div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div className="results-meta-card self-start">
+                  <div className="results-meta-card results-meta-card-compact self-start">
                     <div className="results-kicker">Climbers</div>
                     <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.climbers.length}</div>
+                    <div className="mt-1 text-sm text-slate-600">Registered for this event</div>
                   </div>
                   {finalsEnabled ? (
-                    <div className="results-meta-card self-start">
-                      <div className="results-kicker">Qualifying Scores Logged</div>
+                    <div className="results-meta-card results-meta-card-compact self-start">
+                      <div className="results-kicker">Scores Logged</div>
                       <div className="mt-2 text-3xl font-semibold text-slate-950">
-                        {finalsProjectionRows.reduce((sum, row) => sum + row.scoredCount, 0)}
+                        {finalsProjectionRows.reduce((sum, row) => sum + row.scoredCount, 0)} /{" "}
+                        {finalsProjectionRows.reduce((sum, row) => sum + row.registeredCount, 0)}
                       </div>
-                      <div className="mt-2 text-sm text-slate-600">
-                        {finalsProjectionSummary?.progress ?? "Qualifier scoring progress updates live."}
-                      </div>
+                      <div className="mt-1 text-sm text-slate-600">Eligible climbers with qualifier scores</div>
                     </div>
                   ) : (
-                    <div className="results-meta-card self-start">
+                    <div className="results-meta-card results-meta-card-compact self-start">
                       <div className="results-kicker">Round structure</div>
                       <div className="mt-2 text-lg font-semibold text-slate-950">Qualifier only</div>
                       <div className="mt-2 text-sm text-slate-600">
@@ -526,24 +526,20 @@ export default function CompetitionOverviewPage() {
                     </div>
                   )}
                   {finalsEnabled ? (
-                    <div className="results-meta-card self-start">
-                      <div className="results-kicker">Eligible Finals Categories</div>
+                    <div className="results-meta-card results-meta-card-compact self-start">
+                      <div className="results-kicker">Finals Categories</div>
                       <div className="mt-2 text-3xl font-semibold text-slate-950">{finalsProjectionRows.length}</div>
-                      <div className="mt-2 text-sm text-slate-600">
-                        Top {snapshot.competition.finals_cutoff} per category can advance to finals.
-                      </div>
+                      <div className="mt-1 text-sm text-slate-600">Top {snapshot.competition.finals_cutoff} per category</div>
                     </div>
                   ) : null}
-                  <div className="results-meta-card self-start">
-                    <div className="results-kicker">Scorecard access</div>
+                  <div className="results-meta-card results-meta-card-compact self-start">
+                    <div className="results-kicker">Scorecards</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
-                      {scrambleFormat ? "Private scorecards per climber" : "Private links per climber"}
+                      {scrambleFormat ? "Private scorecards" : "Private links"}
                     </div>
-                    {scrambleFormat ? (
-                      <div className="mt-2 text-sm text-slate-600">
-                        Climbers self-score inside their session while the public leaderboard can keep updating live.
-                      </div>
-                    ) : null}
+                    <div className="mt-1 text-sm text-slate-600">
+                      {scrambleFormat ? "One per climber, with live self-scoring." : "One secure link per climber."}
+                    </div>
                   </div>
                   {!finalsEnabled ? (
                     <div className="results-meta-card self-start">
@@ -565,31 +561,39 @@ export default function CompetitionOverviewPage() {
 
                 {finalsEnabled ? (
                   <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(14rem,0.95fr)]">
-                    <div className="results-meta-card self-start">
+                    <div className="results-meta-card results-meta-card-compact self-start">
                       <div className="results-kicker">Finals Field Outlook</div>
-                      <div className="mt-2 text-2xl font-semibold text-slate-950">
+                      <div className="mt-2 text-xl font-semibold text-slate-950 sm:text-2xl">
                         {finalsProjectionSummary?.headline ?? `${snapshot.finalists.length} ${finalistsLabel.toLowerCase()}`}
                       </div>
-                      <div className="mt-2 text-sm text-slate-600">
+                      <div className="mt-1 text-sm text-slate-600">
                         {finalsProjectionSummary?.detail}
                       </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="results-chip">
+                          {finalsProjectionSummary?.progress ?? "Scoring progress updates live."}
+                        </span>
+                        <span className="results-chip">
+                          Top {snapshot.competition.finals_cutoff} per category
+                        </span>
+                      </div>
                       {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
-                        <div className="mt-4 rounded-[1.15rem] border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-600">
+                        <div className="mt-3 rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-600">
                           Live projections stay category-based. Tie advances are only added after the qualifier round closes.
                         </div>
                       ) : null}
                     </div>
-                    <div className="results-meta-card self-start">
+                    <div className="results-meta-card results-meta-card-compact self-start">
                       <div className="results-kicker">{scrambleFormat ? "Live leaderboard" : "Standings"}</div>
                       <div className="mt-2 text-lg font-semibold text-slate-950">
                         {scrambleFormat ? "Live session rankings" : "Public rankings"}
                       </div>
-                      <div className="mt-2 text-sm text-slate-600">
+                      <div className="mt-1 text-sm text-slate-600">
                         {scrambleFormat
                           ? "Standings update as climbers submit scores during the active scramble session."
                           : "Open the standings page to follow qualifier or finals rankings."}
                       </div>
-                      <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button mt-4">
+                      <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button mt-3">
                         View standings
                       </Link>
                     </div>
