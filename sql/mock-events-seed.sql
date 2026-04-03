@@ -1214,12 +1214,14 @@ select
   checked_in_at
 from materialized_queue;
 
--- 7. Seed qualifier attempts for live/finals/results competitions.
+-- 7. Seed qualifier attempts for live/finals/results competitions,
+--    including the live Spring Send youth qualifier.
 with scored_events as (
   select id, slug, format, total_climbs
   from public.competitions
   where slug in (
     'spring-send-recreational',
+    'spring-send-youth',
     'mock-rec-scramble-live',
     'mock-youth-series-live',
     'mock-national-finals-live',
@@ -1250,20 +1252,44 @@ attempt_outcomes as (
     slug,
     format,
     case
+      when slug = 'spring-send-youth' then seed_a < 90
       when format = 'scramble' then seed_a < 72
       else seed_a < 82
     end as attempted,
     case
+      when slug = 'spring-send-youth' then
+        seed_b < case
+          when climb_number <= 5 then 34
+          when climb_number <= 10 then 24
+          when climb_number <= 14 then 16
+          else 10
+        end
       when format = 'scramble' then seed_b < 24
       else seed_b < 18
     end as topped_raw,
     case
+      when slug = 'spring-send-youth' then
+        seed_c < case
+          when climb_number <= 5 then 78
+          when climb_number <= 10 then 62
+          when climb_number <= 14 then 48
+          else 34
+        end
       when format = 'scramble' then false
       else seed_c < 48
     end as zone_raw,
-    1 + (seed_b % 4) as top_tries,
-    1 + (seed_c % 5) as zone_tries,
-    1 + (seed_d % 6) as generic_tries
+    case
+      when slug = 'spring-send-youth' then 1 + (seed_b % 3)
+      else 1 + (seed_b % 4)
+    end as top_tries,
+    case
+      when slug = 'spring-send-youth' then 1 + (seed_c % 4)
+      else 1 + (seed_c % 5)
+    end as zone_tries,
+    case
+      when slug = 'spring-send-youth' then 1 + (seed_d % 5)
+      else 1 + (seed_d % 6)
+    end as generic_tries
   from attempt_source
 ),
 materialized_attempts as (

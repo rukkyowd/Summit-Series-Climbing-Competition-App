@@ -12,7 +12,6 @@ import {
   formatDateTimeLabel,
   formatTimeRange,
   getActiveScheduleBlock,
-  getEventWorkflowGuide,
   getRegistrationAssignmentHelpText,
   getRegistrationAssignmentLabel,
   isValidClimberNumber,
@@ -67,7 +66,6 @@ export default function CompetitionRegisterPage() {
     () => availableSlots.find((slot) => slot.id === timeSlotId) ?? null,
     [availableSlots, timeSlotId]
   );
-  const workflowGuide = useMemo(() => (snapshot ? getEventWorkflowGuide(snapshot.competition) : null), [snapshot]);
   const activeScheduleBlock = useMemo(() => (snapshot ? getActiveScheduleBlock(snapshot.competition) : null), [snapshot]);
   const registrationOpen = snapshot ? canRegisterDuringCompetition(snapshot.competition) : false;
   const registrationMessage = useMemo(() => {
@@ -199,14 +197,6 @@ export default function CompetitionRegisterPage() {
               </div>
             ))}
           </div>
-
-          {workflowGuide ? (
-            <div className="results-meta-card mt-6">
-              <div className="results-kicker">How this round works</div>
-              <div className="mt-2 text-xl font-semibold text-slate-950">{workflowGuide.headline}</div>
-              <p className="mt-3 text-slate-600">{workflowGuide.summary}</p>
-            </div>
-          ) : null}
 
           {activeScheduleBlock ? (
             <div className="results-meta-card mt-4">

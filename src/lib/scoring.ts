@@ -330,19 +330,6 @@ export interface FinalsSummary {
   attempts_to_zone: number;
 }
 
-export interface WorkflowRoleGuide {
-  role: string;
-  title: string;
-  detail: string;
-}
-
-export interface EventWorkflowGuide {
-  headline: string;
-  summary: string;
-  notes: string[];
-  roles: WorkflowRoleGuide[];
-}
-
 export type CompetitionLifecycleLabel = "Live / Ongoing" | "Upcoming" | "Future" | "Past";
 
 export function createCategoryKey(genderDivision: string, ageGroup: string) {
@@ -1119,106 +1106,6 @@ export function isQualifierStage(competition: Pick<Competition, "current_phase" 
 
 export function isFinalsStage(competition: Pick<Competition, "current_phase" | "stage_mode">) {
   return phaseToStageMode(competition.current_phase) === "finals";
-}
-
-export function getEventWorkflowGuide(
-  competition: Pick<Competition, "format" | "current_phase" | "qualifier_eligible_age_groups" | "finals_eligible_age_groups" | "has_finals">
-): EventWorkflowGuide {
-  const qualifierAgeGroups = competition.qualifier_eligible_age_groups.join(", ");
-  if (phaseToStageMode(competition.current_phase) === "finals") {
-    return {
-      headline: "CEC / IFSC isolation final live",
-      summary:
-        "Registration is closed, finalists move through four isolation-format boulders, and judges control every top, zone, and attempt.",
-      notes: [
-        "CEC boulder finals follow the 2025 World Climbing points model: 25 for a top, 10 for the zone, minus 0.1 per failed try before the scoring hold.",
-        "Finals advancement follows the competition's configured finals age groups across Men and Women divisions.",
-        "This round is run in isolation. No coach communication belongs in the active finals rotation.",
-        "The current app still models a direct qualifier-to-finals handoff rather than a separate CEC semifinal round.",
-      ],
-      roles: [
-        { role: "Admin", title: "Run the isolation round", detail: "Keep the public finals board live, confirm finalists, and avoid reopening qualifier edits once presentation and observation begin." },
-        { role: "Judge", title: "Record official scoring holds", detail: "Use the scorecard page to enter zone, top, attempts to zone, and attempts to top for each finalist on each finals boulder." },
-        { role: "Climber", title: "Compete under isolation rules", detail: "Finalists do not self-score. They wait for their official order, observation window, and judge-recorded attempts." },
-      ],
-    };
-  }
-  const guidesByFormat: Record<EventFormat, EventWorkflowGuide> = {
-    five_on_five_off: {
-      headline: "Competitive qualifier with fixed rotations",
-      summary:
-        "This mode fits youth competitive qualifiers with an official start list, a prescribed order, a five-on and five-off rhythm, and judge-entered 2025 points scoring.",
-      notes: [
-        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
-        "Athletes should start on the assigned boulder and rotate in order; no ad hoc rescheduling.",
-        "Rest periods match the rotation window, and climbers move through transit without watching unattempted boulders.",
-        "Scoring uses the current 25 / 10 points model for top and zone, with 0.1 deducted for each failed try before the scoring hold.",
-        "Use schedule blocks as check-in, isolation, and round windows so the phone view mirrors the day-of schedule.",
-      ],
-      roles: [
-        { role: "Admin", title: "Publish the running order", detail: "Set clear block labels for check-in, isolation, technical meeting, and qualifier blocks so athletes know where they belong." },
-        { role: "Judge", title: "Operate by start list", detail: "Open the scorecard page by climber, record zone and top attempts, and follow the official five-on, five-off rotation instead of treating the round like an open scramble." },
-        { role: "Climber", title: "Check the schedule first", detail: "Use the website to confirm category, slot, and timing, then follow the official order on the wall while judges enter the scoring." },
-      ],
-    },
-    flash_format: {
-      headline: "CEC boulder flash qualifier",
-      summary:
-        "This mode follows the official CEC flash qualifier pattern: six problems, four minutes on and four minutes off, a 15-second transition, and judge-operated points scoring.",
-      notes: [
-        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
-        "All qualifier boulders count in the standings. This is not a best-six scramble leaderboard.",
-        "Qualification scoring uses the 2025 points model: 25 for a top, 10 for the zone, minus 0.1 per failed try before the scoring hold.",
-        "Athletes can communicate outside their active climbing rotation, but no coaching belongs during the live rotation itself.",
-        "Use schedule blocks for check-in, technical meeting, isolation, and the round window so the public site mirrors the event day.",
-      ],
-      roles: [
-        { role: "Admin", title: "Publish the official rhythm", detail: "Label the day with check-in, technical meeting, and round timing so athletes can follow the 4-on, 4-off flash structure." },
-        { role: "Judge", title: "Score with points, not scramble tops", detail: "Record zone, top, and attempts directly on the scorecard page during the flash round." },
-        { role: "Climber", title: "Treat the phone as info, not scoring", detail: "Use the site for timing, schedule, and rankings while judges enter the official scoring." },
-      ],
-    },
-    ifsc_finals_format: {
-      headline: "Open scramble qualifier",
-      summary:
-        "This mode is best for recreational climbers who register themselves, grab a private scorecard link, and log attempts live from their phone.",
-      notes: [
-        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
-        "Use schedule blocks as check-in windows or scramble sessions so the public page feels like a clear day-of schedule.",
-        "Climbers can move more freely than in competitive qualifiers, but they should still see exactly where to register and where to return for scoring.",
-        competitionHasFinals(competition)
-          ? "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode."
-          : "This qualifier-only scramble ends with the qualifier standings, so there is no separate finals round to configure.",
-      ],
-      roles: [
-        { role: "Admin", title: "Set up the day flow", detail: "Name the sessions in plain language like check-in, scramble block, or raffle so mobile users do not have to decode the schedule." },
-        { role: "Judge", title: "Override only when needed", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in only for corrections." },
-        { role: "Climber", title: "Register and self-score", detail: "Register on your phone, save the private scorecard link, and use My Scorecard to jump back after viewing standings." },
-      ],
-    },
-    scramble: {
-      headline: "Open scramble qualifier",
-      summary:
-        "This mode runs as an open session window: climbers register into a session, move freely across the wall, and log attempts live from their phone while the standings keep updating.",
-      notes: [
-        `Qualifier entry is limited to these age groups: ${qualifierAgeGroups}.`,
-        "Use schedule blocks as check-in windows and scramble sessions so athletes can see the active session window at a glance.",
-        "Multiple climbers score during the same session; these are shared heat windows, not one-athlete-at-a-time appointments.",
-        "Live qualifier standings can stay public during the session so the event feels active without waiting for a final upload.",
-        competitionHasFinals(competition)
-          ? "If you later advance to finals, the app freezes qualifier edits and switches the board into judge-run finals mode."
-          : "This qualifier-only scramble ends with the qualifier standings, so there is no separate finals round to configure.",
-        "The live queue works as a lightweight per-boulder check-in board rather than a pre-booked schedule.",
-      ],
-      roles: [
-        { role: "Admin", title: "Run shared session windows", detail: "Name the sessions in plain language like Morning Session or Open Session so athletes know exactly which heat they belong to." },
-        { role: "Judge", title: "Support the live floor", detail: "Most qualifier scoring can happen from private climber links, with staff stepping in for corrections, bottlenecks, or spot checks." },
-        { role: "Climber", title: "Climb inside your session", detail: "Register into a session, save the private scorecard link, and move between boulders freely while the live leaderboard updates." },
-      ],
-    },
-  };
-
-  return guidesByFormat[competition.format] ?? guidesByFormat.scramble;
 }
 
 export function getClimbs(totalClimbs: number): ClimbDefinition[] {
