@@ -24,6 +24,22 @@ import {
   isFinalsStage,
 } from "@/lib/scoring";
 
+function hasRecordedQualifierScore(snapshot: CompetitionSnapshot, climberId: string) {
+  const climber = snapshot.climbers.find((entry) => entry.id === climberId);
+  if (!climber) {
+    return false;
+  }
+
+  return climber.qualifier_attempts.some(
+    (attempt) =>
+      attempt.attempt_count > 0 ||
+      attempt.topped ||
+      attempt.zone ||
+      attempt.attempts_to_top != null ||
+      attempt.attempts_to_zone != null
+  );
+}
+
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
   const slug = typeof params?.slug === "string" ? params.slug : "";
@@ -107,6 +123,125 @@ export default function CompetitionOverviewPage() {
       ? "Finalists"
       : "Projected finalists"
     : "Finalists";
+  const finalsProjectionRows = useMemo(() => {
+    if (!snapshot || !finalsEnabled) {
+      return [];
+    }
+
+    const registeredCounts = new Map<string, number>();
+    const scoredCounts = new Map<string, number>();
+    const projectedCounts = new Map<string, number>();
+    const qualifierGroups = new Map<string, CompetitionSnapshot["qualifierLeaderboard"]>();
+
+    snapshot.climbers.forEach((climber) => {
+      const finalsEligible =
+        (climber.gender_division === "Men" || climber.gender_division === "Women") &&
+        snapshot.competition.finals_eligible_age_groups.includes(climber.age_group);
+
+      if (!finalsEligible) {
+        return;
+      }
+
+      registeredCounts.set(climber.display_category, (registeredCounts.get(climber.display_category) ?? 0) + 1);
+
+      if (hasRecordedQualifierScore(snapshot, climber.id)) {
+        scoredCounts.set(climber.display_category, (scoredCounts.get(climber.display_category) ?? 0) + 1);
+      }
+    });
+
+    snapshot.finalists.forEach((finalist) => {
+      projectedCounts.set(finalist.display_category, (projectedCounts.get(finalist.display_category) ?? 0) + 1);
+    });
+
+    snapshot.qualifierLeaderboard.forEach((entry) => {
+      if (
+        (entry.gender_division !== "Men" && entry.gender_division !== "Women") ||
+        !snapshot.competition.finals_eligible_age_groups.includes(entry.age_group)
+      ) {
+        return;
+      }
+
+      const next = qualifierGroups.get(entry.display_category) ?? [];
+      next.push(entry);
+      qualifierGroups.set(entry.display_category, next);
+    });
+
+    return Array.from(registeredCounts.entries())
+      .map(([displayCategory, registeredCount]) => {
+        const scoredCount = scoredCounts.get(displayCategory) ?? 0;
+        const projectedCount = projectedCounts.get(displayCategory) ?? 0;
+        const qualifierEntries = qualifierGroups.get(displayCategory) ?? [];
+        const cutoff = snapshot.competition.finals_cutoff;
+        const allTiedAtZero =
+          qualifierEntries.length > 0 &&
+          qualifierEntries.every((entry) => entry.category_rank === 1 && entry.total_score === 0);
+
+        let status = "Projected";
+        let detail = "Current qualifier standings are shaping the finalist field in this category.";
+
+        if (snapshot.finalistsPersisted || isFinalsStage(snapshot.competition)) {
+          status = "Locked";
+          detail = "This category's finals field is locked and follows the saved finals order.";
+        } else if (registeredCount <= cutoff) {
+          status = "Everyone advances";
+          detail = "This category has at or below the finals cutoff, so every registered climber currently advances.";
+        } else if (allTiedAtZero && scoredCount === 0) {
+          status = "Awaiting scores";
+          detail = "No qualifier scores are recorded yet, so everyone in this category is still tied.";
+        } else if (projectedCount > cutoff) {
+          status = "Tie at cutoff";
+          detail = "More climbers are currently projected because the cutline is still tied in live standings.";
+        }
+
+        return {
+          displayCategory,
+          registeredCount,
+          scoredCount,
+          projectedCount,
+          cutoff,
+          status,
+          detail,
+          allTiedAtZero,
+        };
+      })
+      .sort((left, right) => left.displayCategory.localeCompare(right.displayCategory));
+  }, [finalsEnabled, snapshot]);
+  const finalsProjectionSummary = useMemo(() => {
+    if (!snapshot || !finalsEnabled) {
+      return null;
+    }
+
+    const eligibleCategoryCount = finalsProjectionRows.length;
+    const scoredCount = finalsProjectionRows.reduce((sum, row) => sum + row.scoredCount, 0);
+    const registeredCount = finalsProjectionRows.reduce((sum, row) => sum + row.registeredCount, 0);
+    const unresolvedCount = finalsProjectionRows.filter((row) => row.projectedCount > row.cutoff).length;
+    const awaitingScores = finalsProjectionRows.every((row) => row.scoredCount === 0);
+
+    if (snapshot.finalistsPersisted || isFinalsStage(snapshot.competition)) {
+      return {
+        headline: `${snapshot.finalists.length} finalists locked`,
+        detail: `Top ${snapshot.competition.finals_cutoff} per category across ${eligibleCategoryCount} eligible categories.`,
+        progress: `${scoredCount}/${registeredCount} eligible climbers have qualifier scores recorded.`,
+      };
+    }
+
+    if (awaitingScores) {
+      return {
+        headline: "Too early to project finalists",
+        detail: `No eligible climbers have recorded qualifier scores yet. Top ${snapshot.competition.finals_cutoff} per category will advance once standings start to separate.`,
+        progress: `${scoredCount}/${registeredCount} eligible climbers have qualifier scores recorded.`,
+      };
+    }
+
+    return {
+      headline: `${snapshot.finalists.length} projected across ${eligibleCategoryCount} categories`,
+      detail:
+        unresolvedCount > 0
+          ? `${unresolvedCount} ${unresolvedCount === 1 ? "category is" : "categories are"} still tied above the cutline.`
+          : `Current standings are projecting the top ${snapshot.competition.finals_cutoff} in each eligible category.`,
+      progress: `${scoredCount}/${registeredCount} eligible climbers have qualifier scores recorded.`,
+    };
+  }, [finalsEnabled, finalsProjectionRows, snapshot]);
   const finalsGroups = useMemo(() => {
     const groups = new Map<string, CompetitionSnapshot["finalsLeaderboard"]>();
     snapshot?.finalsLeaderboard.forEach((entry) => {
@@ -373,13 +508,13 @@ export default function CompetitionOverviewPage() {
                   </div>
                   {finalsEnabled ? (
                     <div className="results-meta-card self-start">
-                      <div className="results-kicker">{finalistsLabel}</div>
-                      <div className="mt-2 text-3xl font-semibold text-slate-950">{snapshot.finalists.length}</div>
-                      {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
-                        <div className="mt-2 text-sm text-slate-600">
-                          Live qualifier projections do not expand tie-advances until the round is closed.
-                        </div>
-                      ) : null}
+                      <div className="results-kicker">Scores recorded</div>
+                      <div className="mt-2 text-3xl font-semibold text-slate-950">
+                        {finalsProjectionRows.reduce((sum, row) => sum + row.scoredCount, 0)}
+                      </div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        {finalsProjectionSummary?.progress ?? "Qualifier scoring progress updates live."}
+                      </div>
                     </div>
                   ) : (
                     <div className="results-meta-card self-start">
@@ -390,6 +525,15 @@ export default function CompetitionOverviewPage() {
                       </div>
                     </div>
                   )}
+                  {finalsEnabled ? (
+                    <div className="results-meta-card self-start">
+                      <div className="results-kicker">Eligible finals categories</div>
+                      <div className="mt-2 text-3xl font-semibold text-slate-950">{finalsProjectionRows.length}</div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        Top {snapshot.competition.finals_cutoff} per category can advance to finals.
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="results-meta-card self-start">
                     <div className="results-kicker">Scorecard access</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
@@ -401,6 +545,22 @@ export default function CompetitionOverviewPage() {
                       </div>
                     ) : null}
                   </div>
+                  {finalsEnabled ? (
+                    <div className="results-meta-card self-start sm:col-span-2">
+                      <div className="results-kicker">{finalistsLabel}</div>
+                      <div className="mt-2 text-2xl font-semibold text-slate-950">
+                        {finalsProjectionSummary?.headline ?? `${snapshot.finalists.length} ${finalistsLabel.toLowerCase()}`}
+                      </div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        {finalsProjectionSummary?.detail}
+                      </div>
+                      {!snapshot.finalistsPersisted && !isFinalsStage(snapshot.competition) ? (
+                        <div className="mt-4 rounded-[1.15rem] border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-600">
+                          Live qualifier projections stay category-based. Tie advances do not expand until the qualifier round is closed.
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="results-meta-card self-start">
                     <div className="results-kicker">{scrambleFormat ? "Live leaderboard" : "Standings"}</div>
                     <div className="mt-2 text-lg font-semibold text-slate-950">
@@ -416,6 +576,54 @@ export default function CompetitionOverviewPage() {
                     </Link>
                   </div>
                 </div>
+
+                {finalsEnabled && finalsProjectionRows.length ? (
+                  <div className="mt-6">
+                    <div className="results-kicker">Finals projection by category</div>
+                    <div className="mt-3 space-y-3">
+                      {finalsProjectionRows.map((row) => (
+                        <div key={row.displayCategory} className="results-meta-card">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-lg font-semibold text-slate-950">{row.displayCategory}</div>
+                              <div className="mt-1 text-sm text-slate-600">
+                                {row.registeredCount} registered | Top {row.cutoff} advance
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="results-kicker">{finalistsLabel}</div>
+                              <div className="mt-2 text-2xl font-semibold text-slate-950">{row.projectedCount}</div>
+                            </div>
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <span className="results-chip">
+                              {row.scoredCount}/{row.registeredCount} scored
+                            </span>
+                            <span
+                              className={
+                                row.status === "Locked"
+                                  ? "results-chip border-sky-200 bg-sky-50 text-sky-700"
+                                  : row.status === "Tie at cutoff"
+                                    ? "results-chip border-amber-200 bg-amber-50 text-amber-700"
+                                    : row.status === "Awaiting scores"
+                                      ? "results-chip border-slate-200 bg-slate-50 text-slate-700"
+                                      : "results-chip"
+                              }
+                            >
+                              {row.status}
+                            </span>
+                            {row.allTiedAtZero ? (
+                              <span className="results-chip border-slate-200 bg-slate-50 text-slate-700">
+                                Everyone tied
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-3 text-sm text-slate-600">{row.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="mt-6">
                   <div className="results-kicker">Categories</div>
