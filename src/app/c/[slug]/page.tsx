@@ -88,6 +88,39 @@ export default function CompetitionOverviewPage() {
     });
     return grouped;
   }, [snapshot]);
+  const categoryById = useMemo(
+    () => new Map(snapshot?.competition.categories.map((category) => [category.id, category]) ?? []),
+    [snapshot]
+  );
+  const getBlockAgeGroups = useCallback(
+    (blockIdList: string[]) => {
+      const ageGroups = new Set<string>();
+      blockIdList.forEach((categoryId) => {
+        const category = categoryById.get(categoryId);
+        if (category?.age_group) {
+          ageGroups.add(category.age_group);
+        }
+      });
+      return Array.from(ageGroups);
+    },
+    [categoryById]
+  );
+  const activeBlockAgeGroups = useMemo(
+    () => (activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids) : []),
+    [activeBlock, getBlockAgeGroups]
+  );
+  const nextBlock = useMemo(() => {
+    if (!snapshot || !activeBlock) {
+      return null;
+    }
+
+    const activeIndex = snapshot.competition.schedule_blocks.findIndex((block) => block.id === activeBlock.id);
+    if (activeIndex < 0) {
+      return null;
+    }
+
+    return snapshot.competition.schedule_blocks[activeIndex + 1] ?? null;
+  }, [activeBlock, snapshot]);
   const finalsGroups = useMemo(() => {
     const groups = new Map<string, CompetitionSnapshot["finalsLeaderboard"]>();
     snapshot?.finalsLeaderboard.forEach((entry) => {
@@ -169,12 +202,50 @@ export default function CompetitionOverviewPage() {
 
               {activeBlock ? (
                 <>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="results-chip">{formatSchedulePhaseLabel(activeBlock.phase_type)}</span>
-                    {activeBlock.audience_label ? <span className="results-chip">{activeBlock.audience_label}</span> : null}
-                  </div>
-                  <div className="mt-4 text-base text-slate-600">
-                    {formatTimeRange(activeBlock.start_time, activeBlock.end_time)}
+                  <div className="results-live-stage mt-4">
+                    <div className="results-live-stage__grid">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="results-chip results-chip-live">
+                            <span className="results-live-dot" aria-hidden="true" />
+                            Now live
+                          </span>
+                          <span className="results-chip">{formatSchedulePhaseLabel(activeBlock.phase_type)}</span>
+                          {activeBlock.audience_label ? <span className="results-chip">{activeBlock.audience_label}</span> : null}
+                        </div>
+
+                        <div className="results-live-stage__headline">
+                          <div className="results-kicker">Live Block</div>
+                          <div className="results-live-stage__title">{activeBlock.label}</div>
+                          <div className="results-live-stage__time">
+                            {formatTimeRange(activeBlock.start_time, activeBlock.end_time)}
+                          </div>
+                        </div>
+
+                        {activeBlockAgeGroups.length ? (
+                          <div className="results-live-stage__categories">
+                            <div className="results-kicker">Live Categories</div>
+                            <div className="results-live-stage__category-row">
+                              {activeBlockAgeGroups.map((ageGroup) => (
+                                <span key={ageGroup} className="results-live-stage__category-pill">
+                                  {ageGroup}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {nextBlock ? (
+                        <div className="results-live-stage__next">
+                          <div className="results-kicker">Up Next</div>
+                          <div className="results-live-stage__next-label">{nextBlock.label}</div>
+                          <div className="results-live-stage__next-time">
+                            {formatTimeRange(nextBlock.start_time, nextBlock.end_time)}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
 
                   {activeScrambleSession ? (
@@ -238,19 +309,36 @@ export default function CompetitionOverviewPage() {
               )}
 
               {snapshot.competition.schedule_blocks.length ? (
-                <div className="mt-6 grid gap-3">
+                <div className="results-schedule-list mt-6 grid gap-3">
                   {snapshot.competition.schedule_blocks.map((block) => (
-                    <div key={block.id} className="results-meta-card">
+                    <div
+                      key={block.id}
+                      className={block.is_active ? "results-meta-card results-schedule-block-live" : "results-meta-card"}
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div className="text-lg font-semibold text-slate-950">{block.label}</div>
                           <div className="mt-1 text-sm text-slate-600">
                             {formatTimeRange(block.start_time, block.end_time)}
                           </div>
+                          {getBlockAgeGroups(block.eligible_category_ids).length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {getBlockAgeGroups(block.eligible_category_ids).map((ageGroup) => (
+                                <span key={`${block.id}-${ageGroup}`} className="results-chip">
+                                  {ageGroup}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <span className="results-chip">{formatSchedulePhaseLabel(block.phase_type)}</span>
-                          {block.is_active ? <span className="results-chip">Live</span> : null}
+                          {block.is_active ? (
+                            <span className="results-chip results-chip-live">
+                              <span className="results-live-dot" aria-hidden="true" />
+                              Now live
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </div>
