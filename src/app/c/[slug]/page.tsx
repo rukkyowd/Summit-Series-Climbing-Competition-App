@@ -16,6 +16,7 @@ import {
   formatUsesSelfScoredQualifiers,
   getActiveQueueSessionBlock,
   getActiveScheduleBlock,
+  parseScheduleTimeToMinutes,
 } from "@/lib/scoring";
 
 export default function CompetitionOverviewPage() {
@@ -84,22 +85,13 @@ export default function CompetitionOverviewPage() {
       return [];
     }
 
-    const toTimestamp = (value: string | null) => {
-      if (!value) {
-        return Number.MAX_SAFE_INTEGER;
-      }
-
-      const timestamp = new Date(value).getTime();
-      return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
-    };
-
     return [...snapshot.competition.schedule_blocks].sort((left, right) => {
-      const startDiff = toTimestamp(left.start_time) - toTimestamp(right.start_time);
+      const startDiff = parseScheduleTimeToMinutes(left.start_time) - parseScheduleTimeToMinutes(right.start_time);
       if (startDiff !== 0) {
         return startDiff;
       }
 
-      const endDiff = toTimestamp(left.end_time) - toTimestamp(right.end_time);
+      const endDiff = parseScheduleTimeToMinutes(left.end_time) - parseScheduleTimeToMinutes(right.end_time);
       if (endDiff !== 0) {
         return endDiff;
       }
