@@ -73,19 +73,31 @@ export default function PwaProvider() {
 
   return (
     <div className="install-banner">
-      <div className="install-banner__content">
-        <div className="flex-1">
-          <div className="meta-label text-fbc-yellow">Install Summit Series</div>
-          <p className="mt-2 text-sm text-slate-200">
-            Add the app to your home screen so FBC judges can launch it like a gym tool, even in
-            spotty reception.
-          </p>
+      <div className="install-banner__backdrop" onClick={dismissBanner} aria-hidden="true" />
+      <div className="install-banner__content" role="dialog" aria-modal="true" aria-labelledby="install-banner-title">
+        <div className="install-banner__lead">
+          <div className="install-banner__badge" aria-hidden="true">
+            <div className="install-banner__badge-core">SS</div>
+          </div>
+          <div className="flex-1">
+            <div className="meta-label text-fbc-yellow">Install Summit Series</div>
+            <h2 id="install-banner-title" className="install-banner__title">Launch it like a real gym tool</h2>
+            <p className="install-banner__copy">
+              Add Summit Series to your home screen for faster judge access, cleaner full-screen use,
+              and better reliability in spotty reception.
+            </p>
+            <div className="install-banner__benefits">
+              <span className="install-banner__benefit">Full screen</span>
+              <span className="install-banner__benefit">Faster launch</span>
+              <span className="install-banner__benefit">Better offline feel</span>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <button onClick={dismissBanner} className="nav-pill">
+        <div className="install-banner__actions">
+          <button onClick={dismissBanner} className="btn-ghost install-banner__dismiss">
             Not now
           </button>
-          <button onClick={() => void installApp()} className="btn-primary justify-center">
+          <button onClick={() => void installApp()} className="btn-primary install-banner__install">
             Install
           </button>
         </div>

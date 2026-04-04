@@ -261,14 +261,84 @@ body::after {
   }
 
   .install-banner {
-    @apply fixed inset-x-4 bottom-24 z-[60] mx-auto max-w-4xl;
+    @apply fixed inset-x-4 bottom-6 z-[60] mx-auto max-w-5xl;
+  }
+
+  .install-banner__backdrop {
+    @apply fixed inset-0 bg-slate-950/40 opacity-0 backdrop-blur-[2px];
+    animation: results-fade-up 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
 
   .install-banner__content {
-    @apply flex flex-col gap-4 rounded-[1.8rem] border border-fbc-yellow/20 bg-[rgba(20,23,29,0.96)] px-5 py-4 shadow-2xl backdrop-blur-xl md:flex-row md:items-center;
+    @apply relative flex flex-col gap-5 overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(17,20,26,0.98),rgba(28,33,41,0.96))] px-5 py-5 shadow-2xl backdrop-blur-xl md:flex-row md:items-center md:justify-between md:px-6;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 24px 60px rgba(0, 0, 0, 0.34);
+  }
+
+  .install-banner__content::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 14% 50%, rgba(244, 208, 63, 0.14), transparent 18%),
+      radial-gradient(circle at 86% 40%, rgba(230, 57, 70, 0.18), transparent 22%),
+      linear-gradient(120deg, rgba(255, 255, 255, 0.04), transparent 38%);
+    pointer-events: none;
+  }
+
+  .install-banner__lead {
+    @apply relative z-10 flex items-start gap-4;
+  }
+
+  .install-banner__badge {
+    @apply flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.3rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))] shadow-[0_16px_28px_rgba(0,0,0,0.22)];
+  }
+
+  .install-banner__badge-core {
+    @apply flex h-10 w-10 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,#f4d03f,#e63946)] text-sm font-semibold uppercase tracking-[0.2em] text-white;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 10px 18px rgba(230, 57, 70, 0.2);
+  }
+
+  .install-banner__title {
+    @apply mt-1 text-xl font-semibold text-white sm:text-2xl;
+  }
+
+  .install-banner__copy {
+    @apply mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-[15px];
+  }
+
+  .install-banner__benefits {
+    @apply mt-3 flex flex-wrap gap-2;
+  }
+
+  .install-banner__benefit {
+    @apply inline-flex items-center rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] font-mono uppercase tracking-[0.18em] text-slate-300;
+  }
+
+  .install-banner__actions {
+    @apply relative z-10 flex flex-col gap-3 sm:flex-row md:shrink-0;
+  }
+
+  .install-banner__dismiss {
+    @apply min-w-[8.5rem] border-white/10 bg-white/[0.02] text-slate-200 hover:bg-white/[0.06];
+  }
+
+  .install-banner__install {
+    @apply min-w-[9.5rem];
+  }
+
+  @media (min-width: 900px) {
+    .install-banner {
+      @apply inset-0 bottom-auto flex max-w-none items-center justify-center px-6;
+    }
+
+    .install-banner__content {
+      width: min(54rem, calc(100vw - 3rem));
+      animation: results-fade-up 300ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
   }
 
   .results-page {
