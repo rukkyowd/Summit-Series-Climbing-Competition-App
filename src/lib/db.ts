@@ -143,6 +143,29 @@ function cleanString(value: string) {
   return value.trim();
 }
 
+const OPTIONAL_COMPETITION_LINK_COLUMNS = [
+  "official_event_url",
+  "official_registration_url",
+  "official_schedule_url",
+] as const;
+
+function stripOptionalCompetitionLinkColumns<T extends Record<string, unknown>>(payload: T) {
+  const next = { ...payload };
+  OPTIONAL_COMPETITION_LINK_COLUMNS.forEach((column) => {
+    delete next[column];
+  });
+  return next;
+}
+
+function isMissingCompetitionLinkColumnError(error: { message?: string } | null | undefined) {
+  const message = error?.message?.toLowerCase() ?? "";
+  if (!message) {
+    return false;
+  }
+
+  return OPTIONAL_COMPETITION_LINK_COLUMNS.some((column) => message.includes(column));
+}
+
 function createAccessToken() {
   const safeRandom =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -878,7 +901,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     finals_cutoff: getRecommendedFinalsCutoff(input.format),
   });
 
-  const { error } = await supabase.from("competitions").insert({
+  const insertPayload = {
     id: competition.id,
     slug: competition.slug,
     name: competition.name,
@@ -908,7 +931,13 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     qualifier_locked_at: null,
     finals_started_at: null,
     finals_problem_count: competition.finals_problem_count,
-  });
+  };
+
+  let { error } = await supabase.from("competitions").insert(insertPayload);
+
+  if (error && isMissingCompetitionLinkColumnError(error)) {
+    ({ error } = await supabase.from("competitions").insert(stripOptionalCompetitionLinkColumns(insertPayload)));
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -948,7 +977,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
     input.schedule_blocks
   );
 
-  const { error } = await supabase.from("competitions").upsert({
+  const upsertPayload = {
     id: payload.id,
     slug: payload.slug,
     name: payload.name,
@@ -978,7 +1007,13 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
     qualifier_locked_at: payload.qualifier_locked_at,
     finals_started_at: payload.finals_started_at,
     finals_problem_count: payload.finals_problem_count,
-  });
+  };
+
+  let { error } = await supabase.from("competitions").upsert(upsertPayload);
+
+  if (error && isMissingCompetitionLinkColumnError(error)) {
+    ({ error } = await supabase.from("competitions").upsert(stripOptionalCompetitionLinkColumns(upsertPayload)));
+  }
 
   if (error) {
     throw new Error(error.message);

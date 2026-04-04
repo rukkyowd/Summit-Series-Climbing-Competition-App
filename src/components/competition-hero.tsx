@@ -93,6 +93,9 @@ export default function CompetitionHero({
             <Link href={buildCompetitionPath(competition.slug, "register")} className="results-primary-button w-full sm:w-auto">
               Register for competition
             </Link>
+            <Link href={buildCompetitionPath(competition.slug, "leaderboard")} className="results-secondary-button w-full sm:w-auto">
+              View standings
+            </Link>
             <button
               type="button"
               onClick={() => {

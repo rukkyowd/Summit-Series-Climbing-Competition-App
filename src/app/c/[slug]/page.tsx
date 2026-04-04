@@ -377,17 +377,12 @@ export default function CompetitionOverviewPage() {
             </section>
 
             <section className="results-card">
-              <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
-                <div>
-                  <div className="results-kicker">Categories</div>
-                  <h2 className="mt-2 text-3xl font-semibold text-slate-950">Competition categories</h2>
-                  <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                    Public standings stay separate by category. Open the rankings page for the current results.
-                  </p>
-                </div>
-                <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button w-full sm:w-auto">
-                  View standings
-                </Link>
+              <div>
+                <div className="results-kicker">Categories</div>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Competition categories</h2>
+                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                  Public standings stay separate by category. Open the rankings page for the current results.
+                </p>
               </div>
 
               <div className="mt-6 flex flex-wrap gap-2">
