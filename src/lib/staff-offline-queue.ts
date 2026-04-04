@@ -9,6 +9,9 @@ export type OfflineQueueItem =
       climbNumber: number;
       attemptCount: number;
       topped: boolean;
+      zone?: boolean;
+      attemptsToTop?: number | null;
+      attemptsToZone?: number | null;
       createdAt: string;
     }
   | {

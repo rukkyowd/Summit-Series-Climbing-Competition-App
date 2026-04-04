@@ -28,8 +28,66 @@ import {
   type FinalAttempt,
 } from "@/lib/scoring";
 
-type QualifierDraftState = Record<string, { attemptCount: number; topped: boolean }>;
-type FinalsDraftState = Record<string, { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number }>;
+type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
+type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
+type QualifierDraftState = Record<string, QualifierDraft>;
+type FinalsDraftState = Record<string, FinalsDraft>;
+
+const EMPTY_QUALIFIER_DRAFT: QualifierDraft = { attemptCount: 0, topped: false, zone: false };
+const EMPTY_FINALS_DRAFT: FinalsDraft = { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
+
+function getQualifierDraftFromAttempt(attempt?: { attempt_count: number; topped: boolean; zone?: boolean | null } | null): QualifierDraft {
+  const normalized = normalizeQualifierAttemptInput({
+    attemptCount: attempt?.attempt_count ?? 0,
+    topped: Boolean(attempt?.topped),
+    zone: Boolean(attempt?.zone ?? attempt?.topped),
+    attemptsToTop: attempt?.attempt_count ?? 0,
+    attemptsToZone: attempt?.attempt_count ?? 0,
+  });
+
+  return {
+    attemptCount: normalized.attemptCount,
+    topped: normalized.topped,
+    zone: normalized.zone,
+  };
+}
+
+function getFinalsDraftFromAttempt(attempt?: FinalAttempt | null): FinalsDraft {
+  const normalized = normalizeFinalAttemptInput({
+    top: Boolean(attempt?.top),
+    zone: Boolean(attempt?.zone),
+    attemptsToTop: attempt?.attempts_to_top ?? 0,
+    attemptsToZone: attempt?.attempts_to_zone ?? 0,
+  });
+
+  return {
+    top: normalized.top,
+    zone: normalized.zone,
+    attemptsToTop: normalized.attemptsToTop ?? 0,
+    attemptsToZone: normalized.attemptsToZone ?? 0,
+  };
+}
+
+function qualifierDraftMatchesSaved(draft: QualifierDraft, attempt?: { attempt_count: number; topped: boolean; zone?: boolean | null } | null) {
+  const normalized = normalizeQualifierAttemptInput(draft);
+  const saved = getQualifierDraftFromAttempt(attempt);
+  return (
+    normalized.attemptCount === saved.attemptCount &&
+    normalized.topped === saved.topped &&
+    normalized.zone === saved.zone
+  );
+}
+
+function finalsDraftMatchesSaved(draft: FinalsDraft, attempt?: FinalAttempt | null) {
+  const normalized = normalizeFinalAttemptInput(draft);
+  const saved = getFinalsDraftFromAttempt(attempt);
+  return (
+    normalized.top === saved.top &&
+    normalized.zone === saved.zone &&
+    (normalized.attemptsToTop ?? 0) === saved.attemptsToTop &&
+    (normalized.attemptsToZone ?? 0) === saved.attemptsToZone
+  );
+}
 
 function shouldQueueFailedSave(error: unknown) {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -38,6 +96,200 @@ function shouldQueueFailedSave(error: unknown) {
 
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /failed to fetch|networkerror|network request failed|load failed|fetch/i.test(message);
+}
+
+type ConfirmationTone = "pending" | "confirmed" | "dirty";
+
+function getQualifierPresentation(
+  draft: QualifierDraft,
+  attempt?: { attempt_count: number; topped: boolean; zone?: boolean | null } | null
+): {
+  normalized: ReturnType<typeof normalizeQualifierAttemptInput>;
+  dirty: boolean;
+  liveLabel: string;
+  liveDetail: string;
+  confirmationLabel: string;
+  confirmationTone: ConfirmationTone;
+} {
+  const normalized = normalizeQualifierAttemptInput(draft);
+  const dirty = !qualifierDraftMatchesSaved(draft, attempt);
+  const hasSavedAttempt = Boolean(attempt);
+
+  let liveLabel = "Waiting for first attempt";
+  let liveDetail = "Tap Attempt each time the climber leaves the floor, then call Zone or Top when control is clear.";
+
+  if (normalized.topped) {
+    liveLabel = `Top called on attempt ${normalized.attemptsToTop ?? normalized.attemptCount}`;
+    liveDetail = "Top automatically keeps the zone on and will save as the official result for this boulder.";
+  } else if (normalized.zone) {
+    liveLabel = `Zone called on attempt ${normalized.attemptsToZone ?? normalized.attemptCount}`;
+    liveDetail = "Zone stands on its own until a top is called. Keep counting attempts live while the climber works.";
+  } else if (normalized.attemptCount > 0) {
+    liveLabel = `${normalized.attemptCount} live ${normalized.attemptCount === 1 ? "attempt" : "attempts"}`;
+    liveDetail = "No scoring hold called yet. Judges can keep counting attempts or mark Zone / Top when control is clear.";
+  }
+
+  return {
+    normalized,
+    dirty,
+    liveLabel,
+    liveDetail,
+    confirmationLabel: dirty ? "Unsaved judge edits" : hasSavedAttempt ? "Official score saved" : "No saved score yet",
+    confirmationTone: dirty ? "dirty" : hasSavedAttempt ? "confirmed" : "pending",
+  };
+}
+
+function getFinalsPresentation(draft: FinalsDraft, attempt?: FinalAttempt | null): {
+  normalized: ReturnType<typeof normalizeFinalAttemptInput>;
+  dirty: boolean;
+  resultLabel: string;
+  pointsLabel: string;
+  confirmationLabel: string;
+  confirmationTone: ConfirmationTone;
+} {
+  const normalized = normalizeFinalAttemptInput(draft);
+  const dirty = !finalsDraftMatchesSaved(draft, attempt);
+  const hasSavedAttempt = Boolean(attempt?.top || attempt?.zone);
+  const pointsValue = normalized.top
+    ? 25 - Math.max(0, ((normalized.attemptsToTop ?? 1) || 1) - 1) * 0.1
+    : normalized.zone
+      ? 10 - Math.max(0, ((normalized.attemptsToZone ?? 1) || 1) - 1) * 0.1
+      : 0;
+
+  return {
+    normalized,
+    dirty,
+    resultLabel: normalized.top
+      ? `Top on ${normalized.attemptsToTop ?? 0}`
+      : normalized.zone
+        ? `Zone on ${normalized.attemptsToZone ?? 0}`
+        : "Pending",
+    pointsLabel: normalized.top || normalized.zone ? `${formatFinalPoints(pointsValue)} pts` : "Tap to score",
+    confirmationLabel: dirty ? "Ready to confirm" : hasSavedAttempt ? "Confirmed" : "Awaiting first score",
+    confirmationTone: dirty ? "dirty" : hasSavedAttempt ? "confirmed" : "pending",
+  };
+}
+
+type FinalsEditorPanelProps = {
+  current: FinalsDraft;
+  dirty: boolean;
+  confirmationLabel: string;
+  confirmationTone: ConfirmationTone;
+  finalsScoringOpen: boolean;
+  finalsBlockedMessage: string;
+  saving: boolean;
+  onAdjustZoneAttempts: (delta: number) => void;
+  onAdjustTopAttempts: (delta: number) => void;
+  onClear: () => void;
+  onSave: () => void;
+  onToggleTop: () => void;
+  onToggleZone: () => void;
+};
+
+function FinalsEditorPanel({
+  current,
+  dirty,
+  confirmationLabel,
+  confirmationTone,
+  finalsScoringOpen,
+  finalsBlockedMessage,
+  saving,
+  onAdjustZoneAttempts,
+  onAdjustTopAttempts,
+  onClear,
+  onSave,
+  onToggleTop,
+  onToggleZone,
+}: FinalsEditorPanelProps) {
+  const pointsValue = current.top
+    ? 25 - Math.max(0, current.attemptsToTop - 1) * 0.1
+    : current.zone
+      ? 10 - Math.max(0, current.attemptsToZone - 1) * 0.1
+      : 0;
+
+  return (
+    <div className="mt-5 grid gap-3">
+      <div className={`judge-confirmation-card judge-confirmation-card-${confirmationTone}`}>
+        <div className="results-kicker">Cell status</div>
+        <div className="mt-2 text-lg font-semibold text-slate-950">{confirmationLabel}</div>
+        <div className="mt-1 text-sm text-slate-600">
+          {dirty
+            ? "This climber / boulder cell has judge edits that still need an official save."
+            : "This cell reflects the current official finals record for the selected boulder."}
+        </div>
+      </div>
+      {!finalsScoringOpen ? (
+        <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {finalsBlockedMessage}
+        </div>
+      ) : null}
+      <div className="route-judge-action-grid">
+        <button
+          type="button"
+          onClick={onToggleZone}
+          className={`route-judge-action route-judge-action-zone ${current.zone ? "route-judge-action-active" : ""}`}
+        >
+          <span className="route-judge-action-label">Zone</span>
+          <span className="route-judge-action-detail">
+            {current.zone ? `Marked on ${current.attemptsToZone || 1}` : "Record control"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onToggleTop}
+          className={`route-judge-action route-judge-action-top ${current.top ? "route-judge-action-active" : ""}`}
+        >
+          <span className="route-judge-action-label">Top</span>
+          <span className="route-judge-action-detail">
+            {current.top ? `Marked on ${current.attemptsToTop || 1}` : "Record finish"}
+          </span>
+        </button>
+      </div>
+      <div className="route-judge-counter-grid">
+        <div className="route-judge-counter-card">
+          <div className="results-kicker">Attempts to zone</div>
+          <div className="route-judge-counter-row">
+            <button type="button" onClick={() => onAdjustZoneAttempts(-1)} className="route-judge-counter-button" aria-label="Decrease attempts to zone">
+              -
+            </button>
+            <div className="route-judge-counter-value">{current.zone ? current.attemptsToZone : 0}</div>
+            <button type="button" onClick={() => onAdjustZoneAttempts(1)} className="route-judge-counter-button" aria-label="Increase attempts to zone">
+              +
+            </button>
+          </div>
+        </div>
+        <div className="route-judge-counter-card">
+          <div className="results-kicker">Attempts to top</div>
+          <div className="route-judge-counter-row">
+            <button type="button" onClick={() => onAdjustTopAttempts(-1)} className="route-judge-counter-button" aria-label="Decrease attempts to top">
+              -
+            </button>
+            <div className="route-judge-counter-value">{current.top ? current.attemptsToTop : 0}</div>
+            <button type="button" onClick={() => onAdjustTopAttempts(1)} className="route-judge-counter-button" aria-label="Increase attempts to top">
+              +
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="judge-live-summary">
+        <div>
+          <div className="results-kicker">Live points</div>
+          <div className="mt-2 text-2xl font-semibold text-slate-950">{formatFinalPoints(pointsValue)}</div>
+        </div>
+        <div className="text-sm text-slate-600">
+          Finals points update from the current judge calls in this editor. Save when the boulder card matches what you observed.
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={onClear} className="results-secondary-button">
+          Clear
+        </button>
+        <button type="button" onClick={onSave} disabled={saving || !finalsScoringOpen} className="results-primary-button flex-1">
+          Confirm finals call
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function StaffJudgePage() {
@@ -73,7 +325,11 @@ export default function StaffJudgePage() {
       for (const item of queue) {
         try {
           if (item.type === "qualifier") {
-            await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped);
+            await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
+              zone: item.zone,
+              attemptsToTop: item.attemptsToTop,
+              attemptsToZone: item.attemptsToZone,
+            });
           } else {
             await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
           }
@@ -108,18 +364,10 @@ export default function StaffJudgePage() {
         const finalsNext: FinalsDraftState = {};
         nextSnapshot.climbers.forEach((climber) => {
           climber.qualifier_attempts.forEach((attempt) => {
-            qualifierNext[`${climber.id}:${attempt.climb_number}`] = {
-              attemptCount: attempt.attempt_count,
-              topped: attempt.topped,
-            };
+            qualifierNext[`${climber.id}:${attempt.climb_number}`] = getQualifierDraftFromAttempt(attempt);
           });
           climber.final_attempts.forEach((attempt) => {
-            finalsNext[`${climber.id}:${attempt.climb_number}`] = {
-              top: attempt.top,
-              zone: attempt.zone,
-              attemptsToTop: attempt.attempts_to_top ?? 0,
-              attemptsToZone: attempt.attempts_to_zone ?? 0,
-            };
+            finalsNext[`${climber.id}:${attempt.climb_number}`] = getFinalsDraftFromAttempt(attempt);
           });
         });
         setQualifierDrafts(qualifierNext);
@@ -233,6 +481,25 @@ export default function StaffJudgePage() {
       : !finalsScoringOpen
         ? `Finals scoring is closed during the ${formatCompetitionPhaseLabel(snapshot.competition.current_phase).toLowerCase()} phase.`
         : "";
+  const selectedFinalAttempt = useMemo(
+    () =>
+      selectedFinalist && selectedCell
+        ? selectedFinalist.final_attempts.find((entry) => entry.climb_number === selectedCell.climbNumber) ?? null
+        : null,
+    [selectedCell, selectedFinalist]
+  );
+  const selectedFinalDraftKey = selectedCell ? `${selectedCell.climberId}:${selectedCell.climbNumber}` : "";
+  const selectedFinalDraft = useMemo(
+    () =>
+      selectedCell
+        ? finalsDrafts[selectedFinalDraftKey] ?? getFinalsDraftFromAttempt(selectedFinalAttempt)
+        : null,
+    [finalsDrafts, selectedCell, selectedFinalAttempt, selectedFinalDraftKey]
+  );
+  const selectedFinalPresentation = useMemo(
+    () => (selectedFinalDraft ? getFinalsPresentation(selectedFinalDraft, selectedFinalAttempt) : null),
+    [selectedFinalAttempt, selectedFinalDraft]
+  );
 
   useEffect(() => {
     if (!finalsWorkspaceVisible && stage === "finals") {
@@ -294,17 +561,37 @@ export default function StaffJudgePage() {
     setSnapshot(updater(nextClimbers));
   };
 
+  const setQualifierDraft = useCallback((key: string, updater: (draft: QualifierDraft) => QualifierDraft) => {
+    setQualifierDrafts((current) => {
+      const nextDraft = updater(current[key] ?? EMPTY_QUALIFIER_DRAFT);
+      return {
+        ...current,
+        [key]: nextDraft,
+      };
+    });
+  }, []);
+
+  const setFinalsDraft = useCallback((key: string, updater: (draft: FinalsDraft) => FinalsDraft) => {
+    setFinalsDrafts((current) => {
+      const nextDraft = updater(current[key] ?? EMPTY_FINALS_DRAFT);
+      return {
+        ...current,
+        [key]: nextDraft,
+      };
+    });
+  }, []);
+
   const saveQualifier = async (climberId: string) => {
     if (!snapshot || !canStaffScoreQualifier(snapshot.competition)) {
       return;
     }
 
     const key = `${climberId}:${selectedBoulder}`;
-    const draft = qualifierDrafts[key] ?? { attemptCount: 0, topped: false };
+    const draft = qualifierDrafts[key] ?? EMPTY_QUALIFIER_DRAFT;
     const normalized = normalizeQualifierAttemptInput(draft);
     setQualifierDrafts((current) => ({
       ...current,
-      [key]: { attemptCount: normalized.attemptCount, topped: normalized.topped },
+      [key]: { attemptCount: normalized.attemptCount, topped: normalized.topped, zone: normalized.zone },
     }));
     setSaving(true);
     setError("");
@@ -338,6 +625,9 @@ export default function StaffJudgePage() {
           climbNumber: selectedBoulder,
           attemptCount: normalized.attemptCount,
           topped: normalized.topped,
+          zone: normalized.zone,
+          attemptsToTop: normalized.attemptsToTop,
+          attemptsToZone: normalized.attemptsToZone,
           createdAt: new Date().toISOString(),
         });
         setQueuedCount(readOfflineQueue().length);
@@ -360,7 +650,7 @@ export default function StaffJudgePage() {
     }
 
     const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
-    const draft = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
+    const draft = finalsDrafts[key] ?? EMPTY_FINALS_DRAFT;
     const normalized = normalizeFinalAttemptInput(draft);
     setFinalsDrafts((state) => ({
       ...state,
@@ -425,10 +715,7 @@ export default function StaffJudgePage() {
     }
 
     const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
-    setFinalsDrafts((state) => ({
-      ...state,
-      [key]: { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 },
-    }));
+    setFinalsDraft(key, () => EMPTY_FINALS_DRAFT);
   };
 
   if (loading) {
@@ -570,67 +857,146 @@ export default function StaffJudgePage() {
                 <div className="space-y-3">
                   {qualifierClimbers.map((climber) => {
                     const key = `${climber.id}:${selectedBoulder}`;
-                    const draft = qualifierDrafts[key] ?? { attemptCount: 0, topped: false };
                     const existingAttempt = climber.qualifier_attempts.find((attempt) => attempt.climb_number === selectedBoulder);
+                    const draft = qualifierDrafts[key] ?? getQualifierDraftFromAttempt(existingAttempt);
+                    const presentation = getQualifierPresentation(draft, existingAttempt);
                     return (
-                      <div key={climber.id} className="results-workspace-card">
+                      <div key={climber.id} className="results-workspace-card route-judge-card">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
                             <div className="mt-1 text-sm text-slate-600">
                               #{climber.climber_number} | {climber.display_category}
                             </div>
-                            <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                              {existingAttempt ? "Existing score loaded" : "No score yet"}
+                            <div className={`judge-status-chip judge-status-chip-${presentation.confirmationTone}`}>
+                              {presentation.confirmationLabel}
                             </div>
                           </div>
                           <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                             Boulder {String(selectedBoulder).padStart(2, "0")}
                           </div>
                         </div>
-                        <div className="mt-4 grid gap-3 lg:grid-cols-[8rem_auto_auto_9rem]">
-                          <label className="space-y-2">
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Attempts</div>
-                            <input
-                              type="number"
-                              min={0}
-                              value={draft.attemptCount}
-                              onChange={(event) =>
-                                setQualifierDrafts((current) => ({
-                                  ...current,
-                                  [key]: { ...draft, attemptCount: Number(event.target.value) || 0 },
-                                }))
-                              }
-                              className="results-input"
-                            />
-                          </label>
+                        <div className="route-judge-live-row">
+                          <div className="route-judge-counter-card">
+                            <div className="results-kicker">Live attempt counter</div>
+                            <div className="route-judge-counter-row">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setQualifierDraft(key, (current) => {
+                                    const nextAttemptCount = Math.max(0, current.attemptCount - 1);
+                                    return {
+                                      attemptCount: nextAttemptCount,
+                                      topped: nextAttemptCount > 0 ? current.topped : false,
+                                      zone: nextAttemptCount > 0 ? current.zone : false,
+                                    };
+                                  })
+                                }
+                                className="route-judge-counter-button"
+                                aria-label={`Decrease live attempts for ${climber.name}`}
+                              >
+                                -
+                              </button>
+                              <div className="route-judge-counter-value">{presentation.normalized.attemptCount}</div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setQualifierDraft(key, (current) => ({
+                                    ...current,
+                                    attemptCount: current.attemptCount + 1,
+                                  }))
+                                }
+                                className="route-judge-counter-button route-judge-counter-button-accent"
+                                aria-label={`Add an attempt for ${climber.name}`}
+                              >
+                                Attempt
+                              </button>
+                            </div>
+                          </div>
+                          <div className="judge-live-summary">
+                            <div>
+                              <div className="results-kicker">Judge call</div>
+                              <div className="mt-2 text-xl font-semibold text-slate-950">{presentation.liveLabel}</div>
+                            </div>
+                            <div className="text-sm text-slate-600">{presentation.liveDetail}</div>
+                          </div>
+                        </div>
+                        <div className="route-judge-action-grid route-judge-action-grid-qualifier">
                           <button
                             type="button"
-                            onClick={() => setQualifierDrafts((current) => ({ ...current, [key]: { ...draft, topped: false } }))}
-                            className={`results-secondary-button ${!draft.topped ? "results-secondary-button-active" : ""}`}
+                            onClick={() =>
+                              setQualifierDraft(key, (current) => ({
+                                ...current,
+                                attemptCount: current.attemptCount + 1,
+                              }))
+                            }
+                            className="route-judge-action route-judge-action-neutral"
                           >
-                            No top
+                            <span className="route-judge-action-label">Attempt</span>
+                            <span className="route-judge-action-detail">Count another live start</span>
                           </button>
                           <button
                             type="button"
                             onClick={() =>
-                              setQualifierDrafts((current) => ({
-                                ...current,
-                                [key]: { ...draft, topped: true, attemptCount: Math.max(1, draft.attemptCount) },
+                              setQualifierDraft(key, (current) => ({
+                                attemptCount: Math.max(1, current.attemptCount),
+                                topped: false,
+                                zone: !current.zone,
                               }))
                             }
-                            className={`results-secondary-button ${draft.topped ? "results-secondary-button-active" : ""}`}
+                            className={`route-judge-action route-judge-action-zone ${presentation.normalized.zone && !presentation.normalized.topped ? "route-judge-action-active" : ""}`}
                           >
-                            Top
+                            <span className="route-judge-action-label">Zone</span>
+                            <span className="route-judge-action-detail">
+                              {presentation.normalized.zone && !presentation.normalized.topped ? "Control marked" : "Mark control"}
+                            </span>
                           </button>
                           <button
                             type="button"
-                            onClick={() => void saveQualifier(climber.id)}
-                            disabled={saving || !canStaffScoreQualifier(snapshot.competition)}
-                            className="results-primary-button"
+                            onClick={() =>
+                              setQualifierDraft(key, (current) => ({
+                                attemptCount: Math.max(1, current.attemptCount),
+                                topped: !current.topped,
+                                zone: !current.topped ? true : current.zone,
+                              }))
+                            }
+                            className={`route-judge-action route-judge-action-top ${presentation.normalized.topped ? "route-judge-action-active" : ""}`}
                           >
-                            Save score
+                            <span className="route-judge-action-label">Top</span>
+                            <span className="route-judge-action-detail">
+                              {presentation.normalized.topped ? "Finish marked" : "Mark finish"}
+                            </span>
                           </button>
+                        </div>
+                        <div className="route-judge-footer">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="judge-status-chip judge-status-chip-pending">
+                              {presentation.normalized.zone ? "Zone on" : "Zone off"}
+                            </div>
+                            <div className={`judge-status-chip ${presentation.normalized.topped ? "judge-status-chip-confirmed" : "judge-status-chip-pending"}`}>
+                              {presentation.normalized.topped ? "Top on" : "Top off"}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setQualifierDraft(key, () => EMPTY_QUALIFIER_DRAFT)}
+                              className="results-secondary-button"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void saveQualifier(climber.id)}
+                              disabled={saving || !canStaffScoreQualifier(snapshot.competition)}
+                              className="results-primary-button"
+                            >
+                              Confirm judge call
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-3 text-sm text-slate-500">
+                          Saved state: {existingAttempt ? `Attempt ${existingAttempt.attempt_count}${existingAttempt.topped ? ", top" : existingAttempt.zone ? ", zone" : ""}` : "No official entry yet"}.
                         </div>
                       </div>
                     );
@@ -669,7 +1035,11 @@ export default function StaffJudgePage() {
                   {selectedFinalist && selectedCell ? `${selectedFinalist.name} / B${selectedCell.climbNumber}` : "Choose a finals cell"}
                 </div>
                 <div className="mt-2 text-sm text-slate-600">
-                  {finalsScoringOpen ? "Finals saves are live now." : finalsBlockedMessage || "Waiting for finals scoring."}
+                  {selectedFinalPresentation
+                    ? `${selectedFinalPresentation.confirmationLabel}. ${selectedFinalPresentation.pointsLabel}.`
+                    : finalsScoringOpen
+                      ? "Finals saves are live now."
+                      : finalsBlockedMessage || "Waiting for finals scoring."}
                 </div>
               </div>
             </div>
@@ -711,13 +1081,8 @@ export default function StaffJudgePage() {
                         {getClimbs(snapshot.competition.finals_problem_count).map((climb) => {
                           const key = `${climber.id}:${climb.number}`;
                           const attempt = climber.final_attempts.find((entry) => entry.climb_number === climb.number);
-                          const draft = finalsDrafts[key] ?? {
-                            top: attempt?.top ?? false,
-                            zone: attempt?.zone ?? false,
-                            attemptsToTop: attempt?.attempts_to_top ?? 0,
-                            attemptsToZone: attempt?.attempts_to_zone ?? 0,
-                          };
-                          const label = draft.top ? `Top · ${draft.attemptsToTop || 0}` : draft.zone ? `Zone · ${draft.attemptsToZone || 0}` : "Pending";
+                          const draft = finalsDrafts[key] ?? getFinalsDraftFromAttempt(attempt);
+                          const presentation = getFinalsPresentation(draft, attempt);
                           const active = selectedCell?.climberId === climber.id && selectedCell?.climbNumber === climb.number;
                           return (
                             <button
@@ -728,22 +1093,22 @@ export default function StaffJudgePage() {
                               className={`results-cell-button ${
                                 active
                                   ? "results-cell-button-active"
-                                  : draft.top
+                                  : presentation.dirty
+                                    ? "results-cell-button-dirty"
+                                    : presentation.normalized.top
                                     ? "results-cell-button-top"
-                                    : draft.zone
+                                    : presentation.normalized.zone
                                       ? "results-cell-button-zone"
                                       : "results-cell-button-pending"
                               }`}
                             >
-                              <div>{label}</div>
+                              <div>{presentation.resultLabel}</div>
                               <div className="mt-2 text-xs font-medium opacity-70">
-                                {draft.top ? `${formatFinalPoints(25 - Math.max(0, (draft.attemptsToTop || 1) - 1) * 0.1)} pts` : draft.zone ? `${formatFinalPoints(10 - Math.max(0, (draft.attemptsToZone || 1) - 1) * 0.1)} pts` : "Tap to edit"}
+                                {presentation.pointsLabel}
                               </div>
-                              {active ? (
-                                <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-600">
-                                  Editing now
-                                </div>
-                              ) : null}
+                              <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-80">
+                                {active ? "Editing now" : presentation.confirmationLabel}
+                              </div>
                             </button>
                           );
                         })}
@@ -757,47 +1122,74 @@ export default function StaffJudgePage() {
                     <div className="results-kicker">Finals editor</div>
                     {selectedFinalist && selectedCell ? (
                       <>
-                        <div className="mt-3 inline-flex rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
-                          Linked to highlighted cell
+                        <div className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+                          selectedFinalPresentation?.confirmationTone === "dirty"
+                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                            : selectedFinalPresentation?.confirmationTone === "confirmed"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-sky-200 bg-white text-sky-700"
+                        }`}>
+                          {selectedFinalPresentation?.confirmationLabel ?? "Linked to highlighted cell"}
                         </div>
                         <div className="mt-2 text-2xl font-semibold text-slate-950">
                           {selectedFinalist.name} / Boulder {selectedCell.climbNumber}
                         </div>
                         <div className="mt-2 text-sm text-slate-600">
-                          Edit the selected finals cell here. Zone can stand alone, and recording a top automatically keeps the zone on.
+                          Route judges can confirm the selected finals cell here. Zone can stand alone, and recording a top automatically keeps the zone on.
                         </div>
-                        {!finalsScoringOpen ? (
-                          <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                            {finalsBlockedMessage}
-                          </div>
+                        {selectedFinalDraft && selectedFinalPresentation ? (
+                          <FinalsEditorPanel
+                            current={selectedFinalDraft}
+                            dirty={selectedFinalPresentation.dirty}
+                            confirmationLabel={selectedFinalPresentation.confirmationLabel}
+                            confirmationTone={selectedFinalPresentation.confirmationTone}
+                            finalsScoringOpen={finalsScoringOpen}
+                            finalsBlockedMessage={finalsBlockedMessage}
+                            saving={saving}
+                            onAdjustZoneAttempts={(delta) =>
+                              setFinalsDraft(selectedFinalDraftKey, (current) => {
+                                const attemptsToZone = Math.max(0, current.attemptsToZone + delta);
+                                return {
+                                  ...current,
+                                  zone: attemptsToZone > 0 ? true : false,
+                                  top: attemptsToZone > 0 ? current.top : false,
+                                  attemptsToZone,
+                                };
+                              })
+                            }
+                            onAdjustTopAttempts={(delta) =>
+                              setFinalsDraft(selectedFinalDraftKey, (current) => {
+                                const attemptsToTop = Math.max(0, current.attemptsToTop + delta);
+                                return {
+                                  ...current,
+                                  top: attemptsToTop > 0,
+                                  zone: attemptsToTop > 0 ? true : current.zone,
+                                  attemptsToTop,
+                                  attemptsToZone: attemptsToTop > 0 ? Math.max(1, current.attemptsToZone) : current.attemptsToZone,
+                                };
+                              })
+                            }
+                            onClear={clearFinalsCell}
+                            onSave={() => void saveFinals()}
+                            onToggleZone={() =>
+                              setFinalsDraft(selectedFinalDraftKey, (current) => ({
+                                ...current,
+                                zone: !current.zone,
+                                top: current.zone ? false : current.top,
+                                attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone,
+                              }))
+                            }
+                            onToggleTop={() =>
+                              setFinalsDraft(selectedFinalDraftKey, (current) => ({
+                                ...current,
+                                top: !current.top,
+                                zone: !current.top ? true : current.zone,
+                                attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop,
+                                attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone,
+                              }))
+                            }
+                          />
                         ) : null}
-                        {(() => {
-                          const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
-                          const current = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
-                          return (
-                            <div className="mt-5 grid gap-3">
-                              <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, zone: !current.zone, top: current.top && !current.zone ? false : current.top, attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.zone ? "results-secondary-button-active" : ""}`}>
-                                {current.zone ? "Zone recorded" : "Record zone"}
-                              </button>
-                              <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, top: !current.top, zone: !current.top ? true : current.zone, attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop, attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.top ? "results-secondary-button-active" : ""}`}>
-                                {current.top ? "Top recorded" : "Record top"}
-                              </button>
-                              <input type="number" min={0} value={current.attemptsToZone} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to zone" />
-                              <input type="number" min={0} value={current.attemptsToTop} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to top" />
-                              <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                                Live points: {formatFinalPoints((current.top ? 25 - Math.max(0, current.attemptsToTop - 1) * 0.1 : current.zone ? 10 - Math.max(0, current.attemptsToZone - 1) * 0.1 : 0))}
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                <button type="button" onClick={clearFinalsCell} className="results-secondary-button">
-                                  Clear
-                                </button>
-                                <button type="button" onClick={() => void saveFinals()} disabled={saving || !finalsScoringOpen} className="results-primary-button flex-1">
-                                  Save finals cell
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })()}
                       </>
                     ) : (
                       <>
@@ -843,38 +1235,59 @@ export default function StaffJudgePage() {
                   <div className="mt-3 text-sm text-slate-600">
                     Judges can score finals here one cell at a time. Zone can stand alone, and recording a top automatically keeps the zone on.
                   </div>
-                  {!finalsScoringOpen ? (
-                    <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                      {finalsBlockedMessage}
-                    </div>
+                  {selectedFinalDraft && selectedFinalPresentation ? (
+                    <FinalsEditorPanel
+                      current={selectedFinalDraft}
+                      dirty={selectedFinalPresentation.dirty}
+                      confirmationLabel={selectedFinalPresentation.confirmationLabel}
+                      confirmationTone={selectedFinalPresentation.confirmationTone}
+                      finalsScoringOpen={finalsScoringOpen}
+                      finalsBlockedMessage={finalsBlockedMessage}
+                      saving={saving}
+                      onAdjustZoneAttempts={(delta) =>
+                        setFinalsDraft(selectedFinalDraftKey, (current) => {
+                          const attemptsToZone = Math.max(0, current.attemptsToZone + delta);
+                          return {
+                            ...current,
+                            zone: attemptsToZone > 0 ? true : false,
+                            top: attemptsToZone > 0 ? current.top : false,
+                            attemptsToZone,
+                          };
+                        })
+                      }
+                      onAdjustTopAttempts={(delta) =>
+                        setFinalsDraft(selectedFinalDraftKey, (current) => {
+                          const attemptsToTop = Math.max(0, current.attemptsToTop + delta);
+                          return {
+                            ...current,
+                            top: attemptsToTop > 0,
+                            zone: attemptsToTop > 0 ? true : current.zone,
+                            attemptsToTop,
+                            attemptsToZone: attemptsToTop > 0 ? Math.max(1, current.attemptsToZone) : current.attemptsToZone,
+                          };
+                        })
+                      }
+                      onClear={clearFinalsCell}
+                      onSave={() => void saveFinals()}
+                      onToggleZone={() =>
+                        setFinalsDraft(selectedFinalDraftKey, (current) => ({
+                          ...current,
+                          zone: !current.zone,
+                          top: current.zone ? false : current.top,
+                          attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone,
+                        }))
+                      }
+                      onToggleTop={() =>
+                        setFinalsDraft(selectedFinalDraftKey, (current) => ({
+                          ...current,
+                          top: !current.top,
+                          zone: !current.top ? true : current.zone,
+                          attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop,
+                          attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone,
+                        }))
+                      }
+                    />
                   ) : null}
-                  {(() => {
-                    const key = `${selectedCell.climberId}:${selectedCell.climbNumber}`;
-                    const current = finalsDrafts[key] ?? { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
-                    return (
-                      <div className="mt-5 grid gap-3">
-                        <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, zone: !current.zone, top: current.top && !current.zone ? false : current.top, attemptsToZone: !current.zone ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.zone ? "results-secondary-button-active" : ""}`}>
-                          {current.zone ? "Zone recorded" : "Record zone"}
-                        </button>
-                        <button type="button" onClick={() => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, top: !current.top, zone: !current.top ? true : current.zone, attemptsToTop: !current.top ? Math.max(1, current.attemptsToTop) : current.attemptsToTop, attemptsToZone: !current.top ? Math.max(1, current.attemptsToZone) : current.attemptsToZone } }))} className={`results-secondary-button w-full ${current.top ? "results-secondary-button-active" : ""}`}>
-                          {current.top ? "Top recorded" : "Record top"}
-                        </button>
-                        <input type="number" min={0} value={current.attemptsToZone} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToZone: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to zone" />
-                        <input type="number" min={0} value={current.attemptsToTop} onChange={(event) => setFinalsDrafts((state) => ({ ...state, [key]: { ...current, attemptsToTop: Number(event.target.value) || 0 } }))} className="results-input" placeholder="Attempts to top" />
-                        <div className="rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                          Live points: {formatFinalPoints((current.top ? 25 - Math.max(0, current.attemptsToTop - 1) * 0.1 : current.zone ? 10 - Math.max(0, current.attemptsToZone - 1) * 0.1 : 0))}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={clearFinalsCell} className="results-secondary-button">
-                            Clear
-                          </button>
-                          <button type="button" onClick={() => void saveFinals()} disabled={saving || !finalsScoringOpen} className="results-primary-button flex-1">
-                            Save finals cell
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               </div>
             ) : null}
