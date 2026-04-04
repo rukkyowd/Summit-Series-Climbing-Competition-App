@@ -580,6 +580,25 @@ body::after {
     background: linear-gradient(180deg, rgba(239, 68, 68, 0.96), rgba(14, 165, 233, 0.85));
   }
 
+  .results-schedule-block-past {
+    border-color: rgba(203, 213, 225, 0.8);
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(241, 245, 249, 0.78));
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.03);
+    opacity: 0.72;
+  }
+
+  .results-schedule-block-past .results-chip {
+    opacity: 0.78;
+  }
+
+  .results-schedule-block-next {
+    border-color: rgba(186, 230, 253, 0.95);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 252, 255, 0.92)),
+      linear-gradient(135deg, rgba(14, 165, 233, 0.03), rgba(255, 255, 255, 0));
+    box-shadow: 0 16px 30px rgba(14, 116, 215, 0.06);
+  }
+
   .results-workspace-hero {
     @apply grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start;
   }

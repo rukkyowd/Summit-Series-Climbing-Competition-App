@@ -133,10 +133,6 @@ export default function CompetitionOverviewPage() {
     },
     [categoryById]
   );
-  const activeBlockAgeGroups = useMemo(
-    () => (activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids) : []),
-    [activeBlock, getBlockAgeGroups]
-  );
   const nextBlock = useMemo(() => {
     if (!activeBlock) {
       return null;
@@ -149,6 +145,10 @@ export default function CompetitionOverviewPage() {
 
     return orderedScheduleBlocks[activeIndex + 1] ?? null;
   }, [activeBlock, orderedScheduleBlocks]);
+  const activeBlockIndex = useMemo(
+    () => (activeBlock ? orderedScheduleBlocks.findIndex((block) => block.id === activeBlock.id) : -1),
+    [activeBlock, orderedScheduleBlocks]
+  );
   const finalsGroups = useMemo(() => {
     const groups = new Map<string, CompetitionSnapshot["finalsLeaderboard"]>();
     snapshot?.finalsLeaderboard.forEach((entry) => {
@@ -228,95 +228,7 @@ export default function CompetitionOverviewPage() {
                 {activeBlock ? activeBlock.label : "No block live"}
               </h2>
 
-              {activeBlock ? (
-                <>
-                  <div className="results-live-stage mt-4">
-                    <div className="results-live-stage__grid">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap gap-2">
-                          <span className="results-chip results-chip-live">
-                            <span className="results-live-dot" aria-hidden="true" />
-                            Now live
-                          </span>
-                          <span className="results-chip">{formatSchedulePhaseLabel(activeBlock.phase_type)}</span>
-                          {activeBlock.audience_label ? <span className="results-chip">{activeBlock.audience_label}</span> : null}
-                        </div>
-
-                        <div className="results-live-stage__headline">
-                          <div className="results-kicker">Live Block</div>
-                          <div className="results-live-stage__title">{activeBlock.label}</div>
-                          <div className="results-live-stage__time">
-                            {formatTimeRange(activeBlock.start_time, activeBlock.end_time)}
-                          </div>
-                        </div>
-
-                        {activeBlockAgeGroups.length ? (
-                          <div className="results-live-stage__categories">
-                            <div className="results-kicker">Live Categories</div>
-                            <div className="results-live-stage__category-row">
-                              {activeBlockAgeGroups.map((ageGroup) => (
-                                <span key={ageGroup} className="results-live-stage__category-pill">
-                                  {ageGroup}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {nextBlock ? (
-                        <div className="results-live-stage__next">
-                          <div className="results-kicker">Up Next</div>
-                          <div className="results-live-stage__next-label">{nextBlock.label}</div>
-                          <div className="results-live-stage__next-time">
-                            {formatTimeRange(nextBlock.start_time, nextBlock.end_time)}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {activeScrambleSession ? (
-                    <div className="results-alert results-alert-success mt-4">
-                      This is the live shared session window. Multiple climbers can score across the wall during this block.
-                    </div>
-                  ) : null}
-
-                  {activeScrambleSession && queueByClimb.size ? (
-                    <div className="mt-4 rounded-[1.35rem] border border-slate-200 bg-white/80 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="results-kicker">Wall traffic</div>
-                          <div className="mt-2 text-lg font-semibold text-slate-950">Live boulder check-ins</div>
-                        </div>
-                        <div className="results-chip">
-                          {snapshot.boulderQueue.length} live {snapshot.boulderQueue.length === 1 ? "check-in" : "check-ins"}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {Array.from(queueByClimb.entries())
-                          .sort(([left], [right]) => left - right)
-                          .map(([climbNumber, entries]) => (
-                            <div key={climbNumber} className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="font-semibold text-slate-950">Boulder {climbNumber}</div>
-                                <div className="results-chip">{entries.length} checked in</div>
-                              </div>
-                              <div className="mt-3 text-sm text-slate-600">
-                                {entries.length <= 1
-                                  ? "Open wall. Little to no wait right now."
-                                  : entries.length <= 3
-                                    ? "Light traffic. A short queue is forming."
-                                    : "Busy wall. Expect a bit of a wait."}
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
+              {!activeBlock ? (
                 <div className="mt-4 space-y-3">
                   <p className="text-base text-slate-600">
                     {snapshot.competition.official_schedule_url
@@ -334,43 +246,140 @@ export default function CompetitionOverviewPage() {
                     </a>
                   ) : null}
                 </div>
-              )}
+              ) : null}
 
               {orderedScheduleBlocks.length ? (
                 <div className="results-schedule-list mt-6 grid gap-3">
-                  {orderedScheduleBlocks.map((block) => (
-                    <div
-                      key={block.id}
-                      className={block.is_active ? "results-meta-card results-schedule-block-live" : "results-meta-card"}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-lg font-semibold text-slate-950">{block.label}</div>
-                          <div className="mt-1 text-sm text-slate-600">
-                            {formatTimeRange(block.start_time, block.end_time)}
-                          </div>
-                          {getBlockAgeGroups(block.eligible_category_ids).length ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {getBlockAgeGroups(block.eligible_category_ids).map((ageGroup) => (
-                                <span key={`${block.id}-${ageGroup}`} className="results-chip">
-                                  {ageGroup}
+                  {orderedScheduleBlocks.map((block, index) => {
+                    const blockAgeGroups = getBlockAgeGroups(block.eligible_category_ids);
+                    const isPastBlock = activeBlockIndex >= 0 && index < activeBlockIndex;
+                    const isNextBlock = activeBlockIndex >= 0 && index === activeBlockIndex + 1;
+
+                    if (block.is_active) {
+                      return (
+                        <div key={block.id} className="results-live-stage">
+                          <div className="results-live-stage__grid">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap gap-2">
+                                <span className="results-chip results-chip-live">
+                                  <span className="results-live-dot" aria-hidden="true" />
+                                  Now live
                                 </span>
-                              ))}
+                                <span className="results-chip">{formatSchedulePhaseLabel(block.phase_type)}</span>
+                                {block.audience_label ? <span className="results-chip">{block.audience_label}</span> : null}
+                              </div>
+
+                              <div className="results-live-stage__headline">
+                                <div className="results-kicker">Live Block</div>
+                                <div className="results-live-stage__title">{block.label}</div>
+                                <div className="results-live-stage__time">
+                                  {formatTimeRange(block.start_time, block.end_time)}
+                                </div>
+                              </div>
+
+                              {blockAgeGroups.length ? (
+                                <div className="results-live-stage__categories">
+                                  <div className="results-kicker">Live Categories</div>
+                                  <div className="results-live-stage__category-row">
+                                    {blockAgeGroups.map((ageGroup) => (
+                                      <span key={`${block.id}-${ageGroup}`} className="results-live-stage__category-pill">
+                                        {ageGroup}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
+
+                            {nextBlock ? (
+                              <div className="results-live-stage__next">
+                                <div className="results-kicker">Up Next</div>
+                                <div className="results-live-stage__next-label">{nextBlock.label}</div>
+                                <div className="results-live-stage__next-time">
+                                  {formatTimeRange(nextBlock.start_time, nextBlock.end_time)}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="results-chip">{formatSchedulePhaseLabel(block.phase_type)}</span>
-                          {block.is_active ? (
-                            <span className="results-chip results-chip-live">
-                              <span className="results-live-dot" aria-hidden="true" />
-                              Now live
-                            </span>
-                          ) : null}
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={block.id}
+                        className={[
+                          "results-meta-card",
+                          isPastBlock ? "results-schedule-block-past" : "",
+                          isNextBlock ? "results-schedule-block-next" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-lg font-semibold text-slate-950">{block.label}</div>
+                            <div className="mt-1 text-sm text-slate-600">
+                              {formatTimeRange(block.start_time, block.end_time)}
+                            </div>
+                            {blockAgeGroups.length ? (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {blockAgeGroups.map((ageGroup) => (
+                                  <span key={`${block.id}-${ageGroup}`} className="results-chip">
+                                    {ageGroup}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {isNextBlock ? <span className="results-chip border-sky-200 bg-sky-50 text-sky-700">Up next</span> : null}
+                            <span className="results-chip">{formatSchedulePhaseLabel(block.phase_type)}</span>
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {activeScrambleSession ? (
+                <div className="results-alert results-alert-success mt-4">
+                  This is the live shared session window. Multiple climbers can score across the wall during this block.
+                </div>
+              ) : null}
+
+              {activeScrambleSession && queueByClimb.size ? (
+                <div className="mt-4 rounded-[1.35rem] border border-slate-200 bg-white/80 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="results-kicker">Wall traffic</div>
+                      <div className="mt-2 text-lg font-semibold text-slate-950">Live boulder check-ins</div>
                     </div>
-                  ))}
+                    <div className="results-chip">
+                      {snapshot.boulderQueue.length} live {snapshot.boulderQueue.length === 1 ? "check-in" : "check-ins"}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {Array.from(queueByClimb.entries())
+                      .sort(([left], [right]) => left - right)
+                      .map(([climbNumber, entries]) => (
+                        <div key={climbNumber} className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="font-semibold text-slate-950">Boulder {climbNumber}</div>
+                            <div className="results-chip">{entries.length} checked in</div>
+                          </div>
+                          <div className="mt-3 text-sm text-slate-600">
+                            {entries.length <= 1
+                              ? "Open wall. Little to no wait right now."
+                              : entries.length <= 3
+                                ? "Light traffic. A short queue is forming."
+                                : "Busy wall. Expect a bit of a wait."}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
                 </div>
               ) : null}
             </section>
