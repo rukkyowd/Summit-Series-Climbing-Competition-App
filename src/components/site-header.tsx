@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -64,7 +65,7 @@ export default function SiteHeader({
       <div className="flex flex-col gap-4 text-left lg:flex-row lg:items-center lg:justify-between">
         <Link href="/" className="results-brand-lockup">
           <div className={`results-brand-mark ${light ? "" : "border-white/20"}`}>
-            <span className="results-brand-initials">SS</span>
+            <Image src="/brand-logo.png" alt="Summit Series logo" width={48} height={48} className="results-brand-logo" />
           </div>
           <div className="results-brand-wordmark">
             <div className={`results-brand-title ${light ? "text-slate-500" : "text-slate-200"}`}>Summit Series</div>

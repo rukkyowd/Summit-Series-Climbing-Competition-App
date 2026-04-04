@@ -274,6 +274,7 @@ body::after {
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 24px 60px rgba(0, 0, 0, 0.34);
+    animation: install-sheet-in 300ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .install-banner__content::before {
@@ -295,11 +296,14 @@ body::after {
     @apply flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.3rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))] shadow-[0_16px_28px_rgba(0,0,0,0.22)];
   }
 
-  .install-banner__badge-core {
-    @apply flex h-10 w-10 items-center justify-center rounded-[1rem] bg-[linear-gradient(135deg,#f4d03f,#e63946)] text-sm font-semibold uppercase tracking-[0.2em] text-white;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.2),
-      0 10px 18px rgba(230, 57, 70, 0.2);
+  .install-banner__badge-image {
+    width: 2.75rem;
+    height: 2.75rem;
+    object-fit: contain;
+    display: block;
+    filter:
+      drop-shadow(0 10px 18px rgba(230, 57, 70, 0.14))
+      drop-shadow(0 4px 10px rgba(244, 208, 63, 0.12));
   }
 
   .install-banner__title {
@@ -328,6 +332,7 @@ body::after {
 
   .install-banner__install {
     @apply min-w-[9.5rem];
+    animation: install-cta-breathe 2.8s ease-in-out infinite;
   }
 
   @media (min-width: 900px) {
@@ -337,7 +342,7 @@ body::after {
 
     .install-banner__content {
       width: min(54rem, calc(100vw - 3rem));
-      animation: results-fade-up 300ms cubic-bezier(0.22, 1, 0.36, 1);
+      animation: install-modal-in 340ms cubic-bezier(0.22, 1, 0.36, 1);
     }
   }
 
@@ -736,6 +741,14 @@ body::after {
     display: none;
   }
 
+  .results-brand-logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    filter: drop-shadow(0 6px 16px rgba(15, 23, 42, 0.08));
+  }
+
   .results-brand-wordmark {
     @apply min-w-0 text-left;
   }
@@ -748,9 +761,6 @@ body::after {
     @apply mt-1 truncate text-base font-semibold text-slate-900;
   }
 
-  .results-brand-initials {
-    @apply flex h-full w-full items-center justify-center text-lg font-semibold tracking-[-0.06em] text-slate-950;
-  }
 }
 
 .gradient-text {
@@ -1078,6 +1088,49 @@ body::after {
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes install-sheet-in {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes install-modal-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.94);
+    filter: blur(6px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes install-cta-breathe {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 12px 26px rgba(14, 116, 215, 0.18);
+    transform: translateY(0);
+  }
+
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 16px 34px rgba(230, 57, 70, 0.26);
+    transform: translateY(-1px);
   }
 }
 

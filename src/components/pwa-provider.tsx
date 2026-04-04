@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 type BeforeInstallPromptEvent = Event & {
@@ -77,7 +78,7 @@ export default function PwaProvider() {
       <div className="install-banner__content" role="dialog" aria-modal="true" aria-labelledby="install-banner-title">
         <div className="install-banner__lead">
           <div className="install-banner__badge" aria-hidden="true">
-            <div className="install-banner__badge-core">SS</div>
+            <Image src="/brand-logo.png" alt="" width={44} height={44} className="install-banner__badge-image" />
           </div>
           <div className="flex-1">
             <div className="meta-label text-fbc-yellow">Install Summit Series</div>
