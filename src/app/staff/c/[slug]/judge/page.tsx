@@ -23,6 +23,7 @@ import {
   formatCompetitionPhaseLabel,
   formatFinalPoints,
   getClimbs,
+  isFinalsStage,
   type ClimberWithAttempts,
   type FinalAttempt,
 } from "@/lib/scoring";
@@ -196,6 +197,7 @@ export default function StaffJudgePage() {
   const qualifierScoringOpen = snapshot ? canStaffScoreQualifier(snapshot.competition) : false;
   const finalsScoringOpen = snapshot ? canStaffScoreFinals(snapshot.competition) : false;
   const finalsEnabled = snapshot ? competitionHasFinals(snapshot.competition) : false;
+  const finalsWorkspaceVisible = snapshot ? finalsEnabled && isFinalsStage(snapshot.competition) : false;
   const finalsReady = finalists.length > 0;
   const finalsProjected = Boolean(snapshot && !snapshot.finalistsPersisted && finalists.length > 0);
   const qualifierSavedCount = useMemo(
@@ -233,10 +235,10 @@ export default function StaffJudgePage() {
         : "";
 
   useEffect(() => {
-    if (!finalsEnabled && stage === "finals") {
+    if (!finalsWorkspaceVisible && stage === "finals") {
       setStage("qualifier");
     }
-  }, [finalsEnabled, stage]);
+  }, [finalsWorkspaceVisible, stage]);
 
   useEffect(() => {
     if (stage !== "finals" || !finalsReady) {
@@ -469,7 +471,10 @@ export default function StaffJudgePage() {
                 {snapshot.competition.name}
               </h1>
               <div className="results-hero-subline">
-                Current phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}. Move between qualifier and finals modes without leaving the scoring workspace.
+                Current phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}.{" "}
+                {finalsWorkspaceVisible
+                  ? "Move between qualifier and finals modes without leaving the scoring workspace."
+                  : "Finals mode appears here once the competition reaches observation."}
               </div>
             </div>
             <div className="results-workspace-callout">
@@ -501,7 +506,7 @@ export default function StaffJudgePage() {
                   {qualifierScoringOpen ? "Open for staff scoring now." : "Locked until qualifier live."}
                 </div>
               </button>
-              {finalsEnabled ? (
+              {finalsWorkspaceVisible ? (
               <button
                 type="button"
                 onClick={() => setStage("finals")}

@@ -110,6 +110,10 @@ export default function FinalsResultsTable({
       </div>
 
       <div className="mt-5 hidden overflow-x-auto md:block">
+        <div className="results-table-scroll-hint">
+          <span>Score column shows finals points.</span>
+          <span>Scroll sideways for the full finals table.</span>
+        </div>
         <div className="finals-table-shell" style={{ minWidth: desktopTableMinWidth }}>
           <div className="grid finals-table-header" style={desktopGridStyle}>
             <div>#</div>

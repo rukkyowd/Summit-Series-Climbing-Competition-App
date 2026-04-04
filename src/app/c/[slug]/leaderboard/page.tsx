@@ -5,7 +5,13 @@ import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
-import { formatCompetitionPhaseLabel, formatFinalPoints, formatUsesSelfScoredQualifiers } from "@/lib/scoring";
+import {
+  formatCompetitionPhaseLabel,
+  formatFinalPoints,
+  formatUsesSelfScoredQualifiers,
+  getFormatCapabilities,
+  pickPreferredQualifierCategory,
+} from "@/lib/scoring";
 
 export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
@@ -29,6 +35,10 @@ export default function CompetitionLeaderboardPage() {
     const offeredCategories = snapshot.registrationChoices.map((choice) => choice.category);
     return offeredCategories.length ? offeredCategories : snapshot.competition.categories;
   }, [snapshot]);
+  const preferredCategoryId = useMemo(
+    () => pickPreferredQualifierCategory(categories, snapshot?.qualifierLeaderboard ?? []),
+    [categories, snapshot?.qualifierLeaderboard]
+  );
   const qualifierRows = useMemo(() => {
     if (!snapshot) {
       return [];
@@ -56,14 +66,28 @@ export default function CompetitionLeaderboardPage() {
   }, [finalsCategories, selectedFinalsCategory]);
 
   useEffect(() => {
-    if (!selectedCategory && categories.length) {
-      setSelectedCategory(categories[0].id);
+    if (!categories.length) {
+      return;
     }
-  }, [categories, selectedCategory]);
+
+    if (!selectedCategory) {
+      setSelectedCategory(preferredCategoryId || categories[0].id);
+      return;
+    }
+
+    if (!categories.some((category) => category.id === selectedCategory)) {
+      setSelectedCategory(preferredCategoryId || categories[0].id);
+    }
+  }, [categories, preferredCategoryId, selectedCategory]);
 
   const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
   const finalsActive = snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results";
   const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(snapshot.competition.format) : false;
+  const qualifierScoreContextLabel = snapshot
+    ? getFormatCapabilities(snapshot.competition.format).qualifierScoringUnit === "climb_points"
+      ? "Score column shows climb points."
+      : "Score column shows official qualifier points."
+    : "";
 
   return (
     <main className="results-page">
@@ -80,6 +104,7 @@ export default function CompetitionLeaderboardPage() {
                   <div className="results-kicker">Finals</div>
                   <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">Finals standings</h1>
                   <div className="mt-3 text-sm text-slate-600">Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}</div>
+                  <div className="mt-2 text-sm text-slate-600">Score column shows finals points.</div>
                   <div className="finals-category-picker mt-5">
                     {finalsCategories.map((category) => (
                       <button key={category} type="button" onClick={() => setSelectedFinalsCategory(category)} className={category === selectedFinalsCategory ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
@@ -99,6 +124,7 @@ export default function CompetitionLeaderboardPage() {
               <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">
                 {scrambleFormat ? "Live scramble standings" : "Live qualifier rankings"}
               </h1>
+              <div className="mt-3 text-sm text-slate-600">{qualifierScoreContextLabel}</div>
               {scrambleFormat ? (
                 <div className="results-alert results-alert-success mt-4">
                   Rankings update as climbers submit scores during the shared scramble session window.
@@ -149,6 +175,10 @@ export default function CompetitionLeaderboardPage() {
                   </div>
 
                   <div className="mt-6 hidden overflow-x-auto md:block">
+                    <div className="results-table-scroll-hint">
+                      <span>{qualifierScoreContextLabel}</span>
+                      <span>Scroll sideways for the full standings table.</span>
+                    </div>
                     <div className="min-w-[920px]">
                       <div className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         <div>Rank</div>

@@ -6,34 +6,6 @@
   "display": "standalone",
   "background_color": "#111111",
   "theme_color": "#111111",
-  "shortcuts": [
-    {
-      "name": "Open Leaderboard",
-      "short_name": "Leaderboard",
-      "description": "Jump straight to the live standings.",
-      "url": "/leaderboard",
-      "icons": [
-        {
-          "src": "/icons/icon-192.svg",
-          "sizes": "192x192",
-          "type": "image/svg+xml"
-        }
-      ]
-    },
-    {
-      "name": "Register Athlete",
-      "short_name": "Register",
-      "description": "Open the athlete registration form.",
-      "url": "/register",
-      "icons": [
-        {
-          "src": "/icons/icon-192.svg",
-          "sizes": "192x192",
-          "type": "image/svg+xml"
-        }
-      ]
-    }
-  ],
   "icons": [
     {
       "src": "/icons/icon-192.svg",

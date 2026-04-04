@@ -46,7 +46,7 @@ export default function SiteHeader({
   }, [competitionSlug, navItems]);
 
   useEffect(() => {
-    const access = readScorecardAccess();
+    const access = readScorecardAccess(competitionSlug);
     if (competitionSlug && access?.competitionSlug === competitionSlug) {
       setScorecardHref(`${buildCompetitionPath(competitionSlug, "scorecard")}?token=${access.token}`);
       return;

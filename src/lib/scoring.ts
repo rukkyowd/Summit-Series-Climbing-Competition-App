@@ -1424,6 +1424,39 @@ export function compareFinalsEntries(left: FinalsLeaderboardEntry, right: Finals
   return left.name.localeCompare(right.name);
 }
 
+export function pickPreferredQualifierCategory(
+  categories: Array<Pick<CompetitionCategory, "id" | "sort_order" | "display_name">>,
+  qualifierEntries: Array<Pick<QualifierLeaderboardEntry, "category_id">>
+) {
+  if (!categories.length) {
+    return "";
+  }
+
+  const counts = new Map<string, number>();
+  qualifierEntries.forEach((entry) => {
+    if (!entry.category_id) {
+      return;
+    }
+
+    counts.set(entry.category_id, (counts.get(entry.category_id) ?? 0) + 1);
+  });
+
+  return [...categories]
+    .sort((left, right) => {
+      const countDiff = (counts.get(right.id) ?? 0) - (counts.get(left.id) ?? 0);
+      if (countDiff !== 0) {
+        return countDiff;
+      }
+
+      const sortDiff = left.sort_order - right.sort_order;
+      if (sortDiff !== 0) {
+        return sortDiff;
+      }
+
+      return left.display_name.localeCompare(right.display_name);
+    })[0]?.id ?? "";
+}
+
 export function pickFinalists(qualifierEntries: QualifierLeaderboardEntry[], competition: Competition) {
   const byCategory = new Map<string, QualifierLeaderboardEntry[]>();
 

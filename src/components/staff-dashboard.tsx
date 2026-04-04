@@ -59,6 +59,8 @@ import {
   type SchedulePhaseType,
 } from "@/lib/scoring";
 
+const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
+
 function cloneCompetition(competition: Competition): Competition {
   return {
     ...competition,
@@ -1312,8 +1314,13 @@ export default function StaffDashboard({
                     </div>
                   ) : null}
                   {snapshot?.undoAvailability?.available ? (
-                    <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                      Undo available for the last {snapshot.undoAvailability.operation_type} until {formatDateTimeLabel(snapshot.undoAvailability.expires_at)}.
+                    <div className="results-undo-banner mt-4">
+                      <div>
+                        <div className="results-kicker text-amber-800">Undo Ready</div>
+                        <div className="mt-2 text-sm text-amber-900">
+                          Undo the last {snapshot.undoAvailability.operation_type} until {formatDateTimeLabel(snapshot.undoAvailability.expires_at)}.
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={() =>
@@ -1324,7 +1331,7 @@ export default function StaffDashboard({
                             })
                         }
                         disabled={!canEditPhase || isPhasePending}
-                        className="results-secondary-button ml-3"
+                        className="results-secondary-button"
                       >
                         Undo
                       </button>
@@ -1837,8 +1844,8 @@ export default function StaffDashboard({
                     <button type="button" onClick={() => setConfirming({
                     title: "Advance to finals",
                     description: finalsAdvanceBlock
-                      ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for 30 seconds.`
-                      : "This will create the finals field from the current standings and move the competition into finals. You can undo it for 30 seconds.",
+                      ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
+                      : `This will create the finals field from the current standings and move the competition into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
                     confirmLabel: "Advance",
                     expectedValue: draft.name,
                     action: async () => {

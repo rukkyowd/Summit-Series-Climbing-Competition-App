@@ -11,6 +11,7 @@ import {
   getFormatCapabilities,
   normalizeCompetition,
   phaseToStageMode,
+  pickPreferredQualifierCategory,
 } from "./scoring";
 
 describe("format capabilities", () => {
@@ -237,5 +238,37 @@ describe("competition normalization", () => {
 
     expect(choices).toHaveLength(1);
     expect(choices[0]?.slots.map((slot) => slot.label)).toEqual(["Recreational Scramble"]);
+  });
+});
+
+describe("leaderboard category defaults", () => {
+  it("prefers the largest qualifier category and breaks ties by sort order", () => {
+    const preferred = pickPreferredQualifierCategory(
+      [
+        { id: "youth-d", sort_order: 3, display_name: "Youth D" },
+        { id: "open", sort_order: 1, display_name: "Open" },
+        { id: "rec", sort_order: 2, display_name: "Rec" },
+      ],
+      [
+        { category_id: "open" },
+        { category_id: "open" },
+        { category_id: "rec" },
+        { category_id: "rec" },
+      ]
+    );
+
+    expect(preferred).toBe("open");
+  });
+
+  it("falls back to the first ordered category when no qualifier scores exist yet", () => {
+    const preferred = pickPreferredQualifierCategory(
+      [
+        { id: "youth-d", sort_order: 3, display_name: "Youth D" },
+        { id: "open", sort_order: 1, display_name: "Open" },
+      ],
+      []
+    );
+
+    expect(preferred).toBe("open");
   });
 });

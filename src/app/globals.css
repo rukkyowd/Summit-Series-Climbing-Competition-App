@@ -761,6 +761,14 @@ body::after {
     @apply border-red-200 bg-red-50 text-red-700;
   }
 
+  .results-undo-banner {
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-[1.35rem] border border-amber-300 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,237,213,0.95))] px-4 py-4 text-amber-900 shadow-[0_14px_30px_rgba(245,158,11,0.12)];
+  }
+
+  .results-table-scroll-hint {
+    @apply mb-3 hidden items-center justify-between gap-3 text-xs font-medium text-slate-500 md:flex;
+  }
+
   .results-select-chip {
     @apply cursor-pointer rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700;
   }

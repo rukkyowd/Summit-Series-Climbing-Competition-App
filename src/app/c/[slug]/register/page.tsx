@@ -29,6 +29,7 @@ export default function CompetitionRegisterPage() {
   const [error, setError] = useState("");
   const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
   const [successLink, setSuccessLink] = useState("");
+  const [redirectingToScorecard, setRedirectingToScorecard] = useState(false);
   const [name, setName] = useState("");
   const [climberNumber, setClimberNumber] = useState("");
   const [province, setProvince] = useState("");
@@ -144,6 +145,7 @@ export default function CompetitionRegisterPage() {
     event.preventDefault();
     setError("");
     setSuccessLink("");
+    setRedirectingToScorecard(false);
     setFieldError(null);
 
     if (!snapshot) {
@@ -164,7 +166,8 @@ export default function CompetitionRegisterPage() {
       const link = climber.scorecard_path;
       saveScorecardAccessToken(climber.access_token, refreshedSnapshot.competition.slug);
       setSuccessLink(link);
-      setTimeout(() => router.push(link), 900);
+      setRedirectingToScorecard(true);
+      router.push(link);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Registration failed.");
     } finally {
@@ -215,7 +218,7 @@ export default function CompetitionRegisterPage() {
             <div ref={errorRef} aria-live="polite" className="mt-4 space-y-3">
               {error ? <div className="results-alert results-alert-error">{error}</div> : null}
               {fieldError ? <div className="results-alert results-alert-error">{fieldError.message}</div> : null}
-              {successLink ? <div className="results-alert results-alert-success">Registration complete. Opening your private scorecard...</div> : null}
+              {successLink ? <div className="results-alert results-alert-success">{redirectingToScorecard ? "Registration complete. Opening your private scorecard..." : "Registration complete."}</div> : null}
             </div>
           ) : null}
 
@@ -326,16 +329,16 @@ export default function CompetitionRegisterPage() {
               ) : null}
 
               <div className="flex flex-wrap justify-between gap-3">
-                <button type="button" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0 || submitting} className="results-secondary-button">
+                <button type="button" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0 || submitting || redirectingToScorecard} className="results-secondary-button">
                   Back
                 </button>
                 {step < steps.length - 1 ? (
-                  <button type="button" onClick={() => validateCurrentStep() && setStep((current) => Math.min(steps.length - 1, current + 1))} disabled={!registrationOpen || submitting} className="results-primary-button">
+                  <button type="button" onClick={() => validateCurrentStep() && setStep((current) => Math.min(steps.length - 1, current + 1))} disabled={!registrationOpen || submitting || redirectingToScorecard} className="results-primary-button">
                     Continue
                   </button>
                 ) : (
-                  <button type="submit" disabled={!registrationOpen || submitting} className="results-primary-button">
-                    {submitting ? "Working..." : "Register and open scorecard"}
+                  <button type="submit" disabled={!registrationOpen || submitting || redirectingToScorecard} className="results-primary-button">
+                    {redirectingToScorecard ? "Opening scorecard..." : submitting ? "Working..." : "Register and open scorecard"}
                   </button>
                 )}
               </div>

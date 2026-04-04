@@ -240,11 +240,7 @@ function ScorecardContent() {
       }
 
       await refreshScorecard();
-      setMessage(
-        currentQueueEntry
-          ? `Saved boulder ${climbNumber} and cleared your live queue check-in.`
-          : `Saved boulder ${climbNumber}.`
-      );
+      setMessage(`Saved boulder ${climbNumber}.`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to save qualifier score.");
     } finally {
@@ -398,8 +394,9 @@ function ScorecardContent() {
               <div className="results-chip">{qualifierOpen ? "Scoring open" : "Scoring closed"}</div>
             </div>
 
+            <div className={`mt-5 grid gap-4 ${snapshot.competition.format === "scramble" ? "xl:grid-cols-[22rem_minmax(0,1fr)] xl:items-start" : ""}`}>
             {snapshot.competition.format === "scramble" ? (
-              <div className="mt-5 space-y-4">
+              <div className="space-y-4 xl:sticky xl:top-24">
                 <div className="results-meta-card">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -426,8 +423,8 @@ function ScorecardContent() {
                         const activeEntries = queueByClimb.get(currentQueueEntry.climb_number) ?? [];
                         const othersHere = Math.max(0, activeEntries.length - 1);
                         return othersHere > 0
-                          ? `You are checked in on Boulder ${currentQueueEntry.climb_number} with ${othersHere} other ${othersHere === 1 ? "climber" : "climbers"} currently there.`
-                          : `You are checked in on Boulder ${currentQueueEntry.climb_number}. Right now it looks open around that wall.`;
+                          ? `You are checked in on Boulder ${currentQueueEntry.climb_number} with ${othersHere} other ${othersHere === 1 ? "climber" : "climbers"} nearby.`
+                          : `You are checked in on Boulder ${currentQueueEntry.climb_number}. Right now that wall looks clear.`;
                       })()}
                     </div>
                   ) : null}
@@ -439,12 +436,12 @@ function ScorecardContent() {
                     </div>
                   ) : queueOpen ? (
                     <div className="results-alert results-alert-success mt-4">
-                      Tap the boulder you are walking to now. This is a soft crowd guide, not a strict turn-order system. Saving an attempt clears your check-in automatically, and stale check-ins fall away after about 3 minutes.
+                      Saving an attempt clears your current check-in automatically, and stale check-ins fall away after about 3 minutes.
                     </div>
                   ) : null}
 
                   {snapshot.boulderQueue.length ? (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="mt-4 space-y-3">
                       {Array.from(queueByClimb.entries())
                         .sort(([left], [right]) => left - right)
                         .map(([climbNumber, entries]) => (
@@ -483,19 +480,21 @@ function ScorecardContent() {
               </div>
             ) : null}
 
+            <div>
             {!qualifierOpen ? (
-              <div className="results-meta-card mt-5 text-slate-600">
+              <div className="results-meta-card text-slate-600">
                 Private self-scoring is currently closed. Your saved score for each boulder remains visible here in read-only mode.
               </div>
             ) : null}
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <div className={`${qualifierOpen ? "" : "mt-5"} grid gap-4 xl:grid-cols-2`}>
               {qualifierOpen
                 ? getClimbs(snapshot.competition.total_climbs).map((climb) => {
                     const draft = drafts[climb.number] ?? { attemptCount: 0, topped: false };
                     const queueEntries = queueByClimb.get(climb.number) ?? [];
                     const queuedHere = currentQueueEntry?.climb_number === climb.number;
                     const otherClimbersHere = queueEntries.filter((entry) => entry.climber_id !== climber.id).length;
+                    const showAttemptNormalizationHint = draft.topped && draft.attemptCount < 1;
                     return (
                       <div key={climb.number} className="results-meta-card">
                         <div className="flex items-center justify-between gap-3">
@@ -510,32 +509,18 @@ function ScorecardContent() {
                         {snapshot.competition.format === "scramble" ? (
                           <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="text-sm font-semibold text-slate-950">Live boulder guide</div>
+                              <div className="text-sm font-semibold text-slate-950">Queue status</div>
                               <div className="results-chip">{formatCrowdStatus(queueEntries.length)}</div>
                             </div>
                             <div className="mt-2 text-sm text-slate-600">
                               {queuedHere
                                 ? otherClimbersHere > 0
-                                  ? `You are checked in here with ${otherClimbersHere} other ${otherClimbersHere === 1 ? "climber" : "climbers"} currently around this boulder.`
+                                  ? `You are checked in here with ${otherClimbersHere} other ${otherClimbersHere === 1 ? "climber" : "climbers"} nearby.`
                                   : "You are checked in here. Right now the wall looks clear."
                                 : queueEntries.length
                                   ? `${queueEntries.length} ${queueEntries.length === 1 ? "climber is" : "climbers are"} checked in around this boulder right now.`
-                                  : "No one is checked in for this boulder right now."}
+                                  : "No live check-ins on this boulder right now."}
                             </div>
-                            {queueEntries.length ? (
-                              <div className="mt-3 space-y-2 text-sm text-slate-600">
-                                {queueEntries.slice(0, 4).map((entry) => (
-                                  <div key={entry.climber_id} className="flex items-center justify-between gap-3">
-                                    <span className={entry.climber_id === climber.id ? "font-semibold text-slate-950" : ""}>
-                                      {entry.climber_name}
-                                    </span>
-                                    <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                                      #{entry.climber_number}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
                             {queueOpen && !queueSessionMismatch ? (
                               <div className="mt-4">
                                 <button
@@ -564,6 +549,11 @@ function ScorecardContent() {
                             </button>
                           </label>
                         </div>
+                        {showAttemptNormalizationHint ? (
+                          <div className="mt-3 text-sm text-sky-700">
+                            A topped boulder will be saved as 1 attempt if you leave attempts at 0.
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })
@@ -590,6 +580,8 @@ function ScorecardContent() {
                       </div>
                     </div>
                   ))}
+            </div>
+            </div>
             </div>
           </section>
         ) : (
