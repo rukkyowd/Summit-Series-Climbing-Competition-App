@@ -33,7 +33,7 @@ export default function SiteHeader({
     }
 
     if (!competitionSlug) {
-      return [{ href: "/", label: "Events" }];
+      return [];
     }
 
     return [
@@ -74,25 +74,27 @@ export default function SiteHeader({
         </Link>
 
         <div className="flex min-w-0 flex-1 flex-col gap-3 lg:items-end">
-          <nav className={`nav-scroll ${competitionSlug || navItems ? "lg:justify-end" : "sm:justify-start lg:justify-end"}`}>
-            {resolvedNavItems.map((item) => {
-              const href = item.label === "Scorecard" ? scorecardHref : item.href;
-              const isActive =
-                href === "/"
-                  ? pathname === "/"
-                  : pathname === href || pathname?.startsWith(`${item.href}/`);
+          {resolvedNavItems.length ? (
+            <nav className={`nav-scroll ${competitionSlug || navItems ? "lg:justify-end" : "sm:justify-start lg:justify-end"}`}>
+              {resolvedNavItems.map((item) => {
+                const href = item.label === "Scorecard" ? scorecardHref : item.href;
+                const isActive =
+                  href === "/"
+                    ? pathname === "/"
+                    : pathname === href || pathname?.startsWith(`${item.href}/`);
 
-              return (
-                <Link
-                  key={item.href}
-                  href={href}
-                  className={`nav-pill ${isActive ? "nav-pill-active" : ""} ${light ? "nav-pill-light" : ""}`}
-                >
-                  {item.label === "Scorecard" && scorecardHref.includes("?token=") ? "My Scorecard" : item.label}
-                </Link>
-              );
-            })}
-          </nav>
+                return (
+                  <Link
+                    key={item.href}
+                    href={href}
+                    className={`nav-pill ${isActive ? "nav-pill-active" : ""} ${light ? "nav-pill-light" : ""}`}
+                  >
+                    {item.label === "Scorecard" && scorecardHref.includes("?token=") ? "My Scorecard" : item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          ) : null}
 
           {status ? <div className="flex w-full flex-wrap items-center justify-start gap-2 lg:justify-end">{status}</div> : null}
         </div>
