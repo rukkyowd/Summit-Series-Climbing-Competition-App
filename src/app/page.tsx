@@ -125,7 +125,6 @@ export default function HomePage() {
           light
           status={
             <div className="flex flex-wrap items-center gap-2">
-              <div className="results-chip">{summaries.length} active competitions</div>
               {isStaffRole(profile?.role) ? (
                 <Link href="/staff/dashboard" className="results-secondary-button">
                   Open staff dashboard
