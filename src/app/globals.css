@@ -293,12 +293,12 @@ body::after {
   }
 
   .install-banner__badge {
-    @apply flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.3rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))] shadow-[0_16px_28px_rgba(0,0,0,0.22)];
+    @apply flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))] shadow-[0_18px_32px_rgba(0,0,0,0.24)];
   }
 
   .install-banner__badge-image {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 4.25rem;
+    height: 4.25rem;
     object-fit: contain;
     display: block;
     filter:
@@ -717,9 +717,9 @@ body::after {
 
   .results-brand-mark {
     position: relative;
-    width: 3rem;
-    height: 3rem;
-    border-radius: 1rem;
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 1.35rem;
     overflow: hidden;
     border: 1px solid rgba(226, 232, 240, 0.85);
     background:
@@ -746,7 +746,8 @@ body::after {
     height: 100%;
     object-fit: contain;
     display: block;
-    filter: drop-shadow(0 6px 16px rgba(15, 23, 42, 0.08));
+    transform: scale(1.18);
+    filter: drop-shadow(0 8px 20px rgba(15, 23, 42, 0.1));
   }
 
   .results-brand-wordmark {
