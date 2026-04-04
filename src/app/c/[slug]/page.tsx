@@ -79,6 +79,34 @@ export default function CompetitionOverviewPage() {
     () => (snapshot ? getActiveQueueSessionBlock(snapshot.competition) : null),
     [snapshot]
   );
+  const orderedScheduleBlocks = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    const toTimestamp = (value: string | null) => {
+      if (!value) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+
+      const timestamp = new Date(value).getTime();
+      return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
+    };
+
+    return [...snapshot.competition.schedule_blocks].sort((left, right) => {
+      const startDiff = toTimestamp(left.start_time) - toTimestamp(right.start_time);
+      if (startDiff !== 0) {
+        return startDiff;
+      }
+
+      const endDiff = toTimestamp(left.end_time) - toTimestamp(right.end_time);
+      if (endDiff !== 0) {
+        return endDiff;
+      }
+
+      return left.label.localeCompare(right.label);
+    });
+  }, [snapshot]);
   const queueByClimb = useMemo(() => {
     const grouped = new Map<number, CompetitionSnapshot["boulderQueue"]>();
     snapshot?.boulderQueue.forEach((entry) => {
@@ -110,17 +138,17 @@ export default function CompetitionOverviewPage() {
     [activeBlock, getBlockAgeGroups]
   );
   const nextBlock = useMemo(() => {
-    if (!snapshot || !activeBlock) {
+    if (!activeBlock) {
       return null;
     }
 
-    const activeIndex = snapshot.competition.schedule_blocks.findIndex((block) => block.id === activeBlock.id);
+    const activeIndex = orderedScheduleBlocks.findIndex((block) => block.id === activeBlock.id);
     if (activeIndex < 0) {
       return null;
     }
 
-    return snapshot.competition.schedule_blocks[activeIndex + 1] ?? null;
-  }, [activeBlock, snapshot]);
+    return orderedScheduleBlocks[activeIndex + 1] ?? null;
+  }, [activeBlock, orderedScheduleBlocks]);
   const finalsGroups = useMemo(() => {
     const groups = new Map<string, CompetitionSnapshot["finalsLeaderboard"]>();
     snapshot?.finalsLeaderboard.forEach((entry) => {
@@ -308,9 +336,9 @@ export default function CompetitionOverviewPage() {
                 </div>
               )}
 
-              {snapshot.competition.schedule_blocks.length ? (
+              {orderedScheduleBlocks.length ? (
                 <div className="results-schedule-list mt-6 grid gap-3">
-                  {snapshot.competition.schedule_blocks.map((block) => (
+                  {orderedScheduleBlocks.map((block) => (
                     <div
                       key={block.id}
                       className={block.is_active ? "results-meta-card results-schedule-block-live" : "results-meta-card"}
