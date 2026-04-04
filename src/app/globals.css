@@ -712,7 +712,7 @@ body::after {
   }
 
   .results-brand-lockup {
-    @apply flex min-w-0 items-center gap-3 self-start;
+    @apply flex min-w-0 items-center gap-2 self-start;
   }
 
   .results-brand-mark {
@@ -751,15 +751,15 @@ body::after {
   }
 
   .results-brand-wordmark {
-    @apply min-w-0 text-left;
+    @apply min-w-0 text-left leading-none;
   }
 
   .results-brand-title {
-    @apply truncate text-sm font-semibold uppercase tracking-[0.28em] text-slate-500;
+    @apply truncate text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500 sm:text-[11px];
   }
 
   .results-brand-subtitle {
-    @apply mt-1 truncate text-base font-semibold text-slate-900;
+    @apply mt-0.5 truncate text-sm font-semibold text-slate-900 sm:text-[15px];
   }
 
 }
