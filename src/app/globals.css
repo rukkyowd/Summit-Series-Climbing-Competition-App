@@ -844,8 +844,8 @@ body::after {
   }
 
   .route-judge-counter-row {
-    @apply mt-3 grid items-center gap-3;
-    grid-template-columns: 3.25rem minmax(0, 1fr) minmax(5.5rem, 6.75rem);
+    @apply mt-3 grid items-center gap-2;
+    grid-template-columns: 3rem 4rem minmax(0, 1fr);
   }
 
   .route-judge-counter-button {
@@ -856,7 +856,7 @@ body::after {
   }
 
   .route-judge-counter-button-accent {
-    @apply border-sky-200 bg-sky-50 px-2 text-sm text-sky-700 sm:text-base;
+    @apply border-sky-200 bg-sky-50 px-3 text-sm text-sky-700 sm:text-base;
   }
 
   .route-judge-counter-value {
