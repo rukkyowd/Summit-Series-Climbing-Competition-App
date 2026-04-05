@@ -844,22 +844,23 @@ body::after {
   }
 
   .route-judge-counter-row {
-    @apply mt-3 flex items-center gap-3;
+    @apply mt-3 grid items-center gap-3;
+    grid-template-columns: 3.25rem minmax(0, 1fr) minmax(5.5rem, 6.75rem);
   }
 
   .route-judge-counter-button {
-    @apply inline-flex min-h-12 min-w-[3.25rem] items-center justify-center rounded-[1rem] border border-slate-200 bg-white px-3 text-base font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300;
+    @apply inline-flex min-h-12 w-full items-center justify-center rounded-[1rem] border border-slate-200 bg-white px-3 text-base font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.9),
       0 8px 18px rgba(15, 23, 42, 0.04);
   }
 
   .route-judge-counter-button-accent {
-    @apply min-w-[6.75rem] border-sky-200 bg-sky-50 text-sky-700;
+    @apply border-sky-200 bg-sky-50 px-2 text-sm text-sky-700 sm:text-base;
   }
 
   .route-judge-counter-value {
-    @apply inline-flex min-h-12 min-w-[4rem] items-center justify-center rounded-[1rem] border border-slate-200 bg-slate-50 px-4 text-2xl font-semibold text-slate-950;
+    @apply inline-flex min-h-12 w-full items-center justify-center rounded-[1rem] border border-slate-200 bg-slate-50 px-4 text-2xl font-semibold text-slate-950;
   }
 
   .route-judge-action-grid {
