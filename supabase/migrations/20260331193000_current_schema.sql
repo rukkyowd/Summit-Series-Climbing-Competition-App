@@ -46,7 +46,7 @@ begin
   insert into public.profiles (id, role, display_name)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data ->> 'role', 'climber'),
+    'climber',
     new.raw_user_meta_data ->> 'display_name'
   )
   on conflict (id) do nothing;
@@ -711,10 +711,6 @@ with check (public.is_admin());
 create policy "climbers public read"
 on public.climbers for select
 using (true);
-
-create policy "climbers public insert"
-on public.climbers for insert
-with check (public.registration_open_for_competition(competition_id));
 
 create policy "climbers staff update"
 on public.climbers for update

@@ -1347,7 +1347,7 @@ export async function getClimberByAccessToken(token: string) {
   return {
     climber,
     competition: snapshot.competition,
-    path: `${buildCompetitionPath(snapshot.competition.slug, "scorecard")}?token=${climber.access_token}`,
+    path: buildCompetitionPath(snapshot.competition.slug, "scorecard"),
   };
 }
 
@@ -1381,38 +1381,6 @@ export async function searchClimbers(competitionId: string, query: string) {
       climber.display_category.toLowerCase().includes(normalized)
     );
   });
-}
-
-async function registerClimberFallback(
-  snapshot: CompetitionSnapshot,
-  category: CompetitionCategory,
-  slot: CompetitionScheduleBlock | null,
-  accessToken: string,
-  input: RegisterClimberInput
-): Promise<RegisteredClimberResult> {
-  const payload = {
-    competition_id: snapshot.competition.id,
-    name: cleanString(input.name),
-    climber_number: cleanString(input.climberNumber),
-    province: cleanString(input.province),
-    category_id: category.id,
-    gender_division: cleanString(category.gender_division),
-    age_group: cleanString(category.age_group),
-    display_category: category.display_name,
-    time_slot_id: slot?.id ?? null,
-    access_token: accessToken,
-  };
-
-  const { data, error } = await supabase.from("climbers").insert(payload).select("*").single();
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return {
-    ...(data as Climber),
-    competition_slug: snapshot.competition.slug,
-    scorecard_path: `${buildCompetitionPath(snapshot.competition.slug, "scorecard")}?token=${data.access_token}`,
-  };
 }
 
 export async function registerClimber(input: RegisterClimberInput) {
@@ -1488,7 +1456,9 @@ export async function registerClimber(input: RegisterClimberInput) {
     error &&
     error.message.includes("Could not find the function public.register_climber_for_competition")
   ) {
-    return registerClimberFallback(snapshot, category, slot, accessToken, input);
+    throw new Error(
+      "Registration is unavailable because the latest database migration has not been applied yet."
+    );
   }
 
   if (error) {
@@ -1503,7 +1473,7 @@ export async function registerClimber(input: RegisterClimberInput) {
   return {
     ...climber,
     competition_slug: snapshot.competition.slug,
-    scorecard_path: `${buildCompetitionPath(snapshot.competition.slug, "scorecard")}?token=${climber.access_token}`,
+    scorecard_path: buildCompetitionPath(snapshot.competition.slug, "scorecard"),
   };
 }
 

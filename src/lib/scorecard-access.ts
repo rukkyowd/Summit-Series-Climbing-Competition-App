@@ -8,6 +8,22 @@ export interface SavedScorecardAccess {
   competitionSlug: string;
 }
 
+function getSessionStorage() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.sessionStorage;
+}
+
+function getLegacyStorage() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage;
+}
+
 function buildScorecardAccessKey(competitionSlug: string) {
   return `${SCORECARD_ACCESS_TOKEN_PREFIX}${competitionSlug}`;
 }
@@ -33,13 +49,10 @@ function parseSavedScorecardAccess(raw: string | null) {
 }
 
 export function saveScorecardAccessToken(token: string, competitionSlug?: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
   const normalizedToken = token.trim();
   const normalizedSlug = competitionSlug?.trim() ?? "";
-  if (!normalizedToken || !normalizedSlug) {
+  const storage = getSessionStorage();
+  if (!storage || !normalizedToken || !normalizedSlug) {
     return;
   }
 
@@ -48,38 +61,40 @@ export function saveScorecardAccessToken(token: string, competitionSlug?: string
     competitionSlug: normalizedSlug,
   };
 
-  window.localStorage.setItem(buildScorecardAccessKey(normalizedSlug), JSON.stringify(payload));
-  window.localStorage.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
+  storage.setItem(buildScorecardAccessKey(normalizedSlug), JSON.stringify(payload));
+  getLegacyStorage()?.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
 }
 
 export function readScorecardAccess(competitionSlug?: string) {
-  if (typeof window === "undefined") {
+  const storage = getSessionStorage();
+  if (!storage) {
     return null;
   }
 
   const normalizedSlug = competitionSlug?.trim() ?? "";
   if (normalizedSlug) {
-    const scoped = parseSavedScorecardAccess(window.localStorage.getItem(buildScorecardAccessKey(normalizedSlug)));
+    const scoped = parseSavedScorecardAccess(storage.getItem(buildScorecardAccessKey(normalizedSlug)));
     if (scoped) {
       return scoped;
     }
   }
 
-  const legacy = parseSavedScorecardAccess(window.localStorage.getItem(SCORECARD_ACCESS_TOKEN_KEY));
+  const legacyStorage = getLegacyStorage();
+  const legacy = parseSavedScorecardAccess(legacyStorage?.getItem(SCORECARD_ACCESS_TOKEN_KEY) ?? null);
   if (legacy && (!normalizedSlug || legacy.competitionSlug === normalizedSlug)) {
-    window.localStorage.setItem(buildScorecardAccessKey(legacy.competitionSlug), JSON.stringify(legacy));
-    window.localStorage.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
+    storage.setItem(buildScorecardAccessKey(legacy.competitionSlug), JSON.stringify(legacy));
+    legacyStorage?.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
     return legacy;
   }
 
   if (!normalizedSlug) {
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
       if (!key?.startsWith(SCORECARD_ACCESS_TOKEN_PREFIX)) {
         continue;
       }
 
-      const scoped = parseSavedScorecardAccess(window.localStorage.getItem(key));
+      const scoped = parseSavedScorecardAccess(storage.getItem(key));
       if (scoped) {
         return scoped;
       }
@@ -96,27 +111,29 @@ export function readScorecardAccessToken(competitionSlug?: string) {
 }
 
 export function clearScorecardAccessToken(competitionSlug?: string) {
-  if (typeof window === "undefined") {
+  const storage = getSessionStorage();
+  const legacyStorage = getLegacyStorage();
+  if (!storage) {
     return;
   }
 
   const normalizedSlug = competitionSlug?.trim() ?? "";
   if (normalizedSlug) {
-    window.localStorage.removeItem(buildScorecardAccessKey(normalizedSlug));
-    const legacy = parseSavedScorecardAccess(window.localStorage.getItem(SCORECARD_ACCESS_TOKEN_KEY));
+    storage.removeItem(buildScorecardAccessKey(normalizedSlug));
+    const legacy = parseSavedScorecardAccess(legacyStorage?.getItem(SCORECARD_ACCESS_TOKEN_KEY) ?? null);
     if (legacy?.competitionSlug === normalizedSlug) {
-      window.localStorage.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
+      legacyStorage?.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
     }
     return;
   }
 
   const keysToRemove: string[] = [];
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
     if (key?.startsWith(SCORECARD_ACCESS_TOKEN_PREFIX)) {
       keysToRemove.push(key);
     }
   }
-  keysToRemove.forEach((key) => window.localStorage.removeItem(key));
-  window.localStorage.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
+  keysToRemove.forEach((key) => storage.removeItem(key));
+  legacyStorage?.removeItem(SCORECARD_ACCESS_TOKEN_KEY);
 }

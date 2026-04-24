@@ -39,6 +39,7 @@ describe("scorecard access storage", () => {
 
   beforeEach(() => {
     (globalThis as { window?: Window & typeof globalThis }).window = {
+      sessionStorage: new MemoryStorage() as unknown as Storage,
       localStorage: new MemoryStorage() as unknown as Storage,
     } as Window & typeof globalThis;
   });
@@ -60,6 +61,7 @@ describe("scorecard access storage", () => {
       token: "token-one",
       competitionSlug: "spring-send",
     });
+    expect(window.sessionStorage.getItem("scorecard_access_spring-send")).not.toBeNull();
     expect(readScorecardAccess("granite-open")).toEqual({
       token: "token-two",
       competitionSlug: "granite-open",
@@ -80,6 +82,7 @@ describe("scorecard access storage", () => {
       competitionSlug: "spring-send",
     });
     expect(window.localStorage.getItem(SCORECARD_ACCESS_TOKEN_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem("scorecard_access_spring-send")).not.toBeNull();
   });
 
   it("clears all scoped scorecard access tokens when requested", () => {
@@ -90,5 +93,6 @@ describe("scorecard access storage", () => {
 
     expect(readScorecardAccess("spring-send")).toBeNull();
     expect(readScorecardAccess("granite-open")).toBeNull();
+    expect(window.sessionStorage.length).toBe(0);
   });
 });

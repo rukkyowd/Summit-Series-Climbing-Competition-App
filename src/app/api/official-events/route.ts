@@ -6,10 +6,11 @@ export async function GET() {
     const events = await fetchOfficialBoulderingEvents();
     return NextResponse.json({ events });
   } catch (error) {
+    console.error("Unable to load official events.", error);
     return NextResponse.json(
       {
         events: [],
-        error: error instanceof Error ? error.message : "Unable to load official events.",
+        error: "Unable to load official events.",
       },
       { status: 500 }
     );
