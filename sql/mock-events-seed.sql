@@ -953,23 +953,854 @@ resolved_athletes as (
   select
     gen_random_uuid() as id,
     na.competition_id,
-    (
+        (
       array[
-        'Avery','Jordan','Parker','Mason','Logan','Taylor','Alex','Riley','Rowan','Cameron',
-        'Finley','Reese','Quinn','Emerson','Casey','Sydney','Morgan','Jamie','Harper','Sawyer',
-        'Dakota','Charlie','Elliot','Hayden','Blair','Skyler','Ainsley','Noah','Luca','Tatum',
-        'Nico','Kai','Brooke','Remy','Sage','Peyton','Ari','Devon','Jules','Maren'
+        'Andi Powell',
+        'Bennett McCall',
+        'Kai Hutchinson',
+        'Korbin Glass',
+        'Clare Hall',
+        'Thomas Shannon',
+        'Harlee Vega',
+        'Aidan McFarland',
+        'Annika Trevino',
+        'Jaime Bauer',
+        'Haley Walton',
+        'Dominick Richards',
+        'Trinity Medina',
+        'George Wallace',
+        'Arianna Reynolds',
+        'Vincent Townsend',
+        'Azalea McIntosh',
+        'Kristian Duffy',
+        'Addisyn Cabrera',
+        'Cade Leal',
+        'Murphy Maxwell',
+        'Eden Torres',
+        'Violet Owens',
+        'Adriel Avalos',
+        'Paloma Hogan',
+        'Sonny Rodriguez',
+        'Evelyn Mejia',
+        'Atticus Carpenter',
+        'Lilly Randall',
+        'Trenton Wilson',
+        'Luna Bridges',
+        'Mohammed Goodwin',
+        'Shiloh Williamson',
+        'Emerson Kramer',
+        'Hanna Cummings',
+        'Raiden Hull',
+        'Andi Huang',
+        'Ayaan Paul',
+        'Daphne Joseph',
+        'Kyle Petersen',
+        'Fernanda Greene',
+        'Griffin Phan',
+        'Elsa Wyatt',
+        'Sam Suarez',
+        'Jimena Daugherty',
+        'Turner Ray',
+        'Ruth Reyna',
+        'Reginald Hoover',
+        'Virginia Frank',
+        'Braylen Higgins',
+        'Leighton Valentine',
+        'Demetrius Rasmussen',
+        'Esperanza Spears',
+        'Ameer Sweeney',
+        'Yara Hoover',
+        'Jaziel Wood',
+        'Natalia Barr',
+        'Harley Carr',
+        'Rowan Pineda',
+        'Gerardo Stout',
+        'Chana Luna',
+        'Erick Lowe',
+        'Amari Yoder',
+        'Johan Hunt',
+        'Genevieve Bradshaw',
+        'Emory Saunders',
+        'Meadow Mosley',
+        'Rayden Madden',
+        'Violette Tate',
+        'Dalton Gutierrez',
+        'Savannah Dickson',
+        'Maxton Hester',
+        'Zendaya Wells',
+        'Max Chambers',
+        'Makayla Cooper',
+        'Jonathan Armstrong',
+        'Presley Pugh',
+        'Judson Bowers',
+        'Elisa Carey',
+        'Watson Hammond',
+        'Holly Phelps',
+        'Hamza Tang',
+        'Belle Powers',
+        'Sean Delacruz',
+        'Celine Potts',
+        'Alfred Cantrell',
+        'Yamileth Carson',
+        'Ares Kent',
+        'Jazmine Freeman',
+        'Jayce Pruitt',
+        'Brylee Buckley',
+        'Aryan Ramirez',
+        'Grace Delgado',
+        'Colt Warren',
+        'Sloane Costa',
+        'Kenji Tyler',
+        'Helena Barry',
+        'Emery Dudley',
+        'Hadleigh Rivera',
+        'Charles Eaton',
+        'Miley Vo',
+        'Gordon Maldonado',
+        'Elaina Bernal',
+        'Eithan Sutton',
+        'Izabella Zuniga',
+        'Sincere Atkinson',
+        'Jazmin Orozco',
+        'Keanu Andrade',
+        'Emmy Li',
+        'Jorge Woodard',
+        'Aubrie Kramer',
+        'Kylan Diaz',
+        'Elena Simon',
+        'Zayne Woods',
+        'Reese Moran',
+        'Tate Hardy',
+        'Jessica Jaramillo',
+        'Riggs Davenport',
+        'Adrianna Anthony',
+        'Shiloh Clay',
+        'Aliana Rangel',
+        'Saint Walsh',
+        'Leia Rodgers',
+        'Mathias Hester',
+        'Zendaya Harper',
+        'Hayes Guevara',
+        'Teresa Stafford',
+        'Alfredo Gross',
+        'Angel Guerra',
+        'Leland Hamilton',
+        'Mackenzie Arellano',
+        'Kellan Kaur',
+        'Holland Mullen',
+        'Shepard Villegas',
+        'Jessie Marks',
+        'Amos Rush',
+        'Maleah Wiggins',
+        'Azariah Beard',
+        'Ezra Bryant',
+        'Jonah Stout',
+        'Chana Mack',
+        'Esteban Luna',
+        'Journey Bradley',
+        'Richard Kelly',
+        'Ruby Luna',
+        'Erick Shannon',
+        'Harlee Gilbert',
+        'Tobias Roth',
+        'Elliot Jefferson',
+        'Raylan Harrington',
+        'Legacy Le',
+        'Damien Proctor',
+        'Chandler Arroyo',
+        'Alberto Lambert',
+        'Nina Contreras',
+        'Emilio Chapman',
+        'Zuri Hail',
+        'Hector Walsh',
+        'Leia Hart',
+        'Joel Becker',
+        'Laura Crane',
+        'Fox McConnell',
+        'Denise Livingston',
+        'Ambrose Christensen',
+        'Carmen Castro',
+        'Jasper Lynch',
+        'Malia Colon',
+        'Bruce McMillan',
+        'Oakleigh Green',
+        'Anthony Bradley',
+        'Vanessa Sims',
+        'Brian Lambert',
+        'Nina Robertson',
+        'Emiliano Johns',
+        'Giovanna Flowers',
+        'Saul Buckley',
+        'Theodora Mejia',
+        'Atticus Gonzalez',
+        'Abigail Burgess',
+        'Kolton Andrade',
+        'Emmy Rubio',
+        'Titan Montgomery',
+        'Evangeline Hodge',
+        'Reign Miranda',
+        'Amina Woods',
+        'Zion Davis',
+        'Mia Carey',
+        'Watson Barnes',
+        'Liliana Bond',
+        'Roger Bentley',
+        'Jaylin Lane',
+        'Matias Decker',
+        'Aleena Carson',
+        'Ares Ramsey',
+        'Lyric Noble',
+        'Idris George',
+        'Adelyn Wade',
+        'Jake Riley',
+        'Kayla Schneider',
+        'Raymond Jennings',
+        'Palmer Terrell',
+        'Jaxen Pugh',
+        'Landry Sharp',
+        'Royce Heath',
+        'Amani Munoz',
+        'Justin Rubio',
+        'Hadassah McCarthy',
+        'Devin Dickerson',
+        'Opal Medina',
+        'George Huang',
+        'Francesca Becker',
+        'Lawson Todd',
+        'Zariah Jimenez',
+        'Silas Bauer',
+        'Haley Bruce',
+        'Uriah Pham',
+        'Raelyn Graves',
+        'Cesar Jefferson',
+        'Julieta Vargas',
+        'Ryker Crosby',
+        'Keily Morton',
+        'Roland Valenzuela',
+        'Henley Yoder',
+        'Johan Mercado',
+        'Mckinley Gaines',
+        'Talon Pugh',
+        'Landry Benton',
+        'Jamal Knox',
+        'Kallie Ali',
+        'Arjun Shepherd',
+        'Katalina Cantu',
+        'Anakin Martin',
+        'Mila Morrow',
+        'Kyree Person',
+        'Dylan Phelps',
+        'Hamza Wells',
+        'Cecilia Marsh',
+        'Bo Burke',
+        'Vera Williamson',
+        'Emerson Kim',
+        'Skye O''Donnell',
+        'Callahan O''Neill',
+        'Ellianna O''Connell',
+        'Hadlee O''Connor',
+        'Brantley O''Neal',
+        'Capri O''Connell',
+        'Coraline Macdonald',
+        'Andi Avalos',
+        'Bennett Greene',
+        'Kai Pineda',
+        'Korbin Armstrong',
+        'Clare Delgado',
+        'Thomas Woodard',
+        'Harlee Guerra',
+        'Aidan Harrington',
+        'Annika McMillan',
+        'Jaime Decker',
+        'Haley Pham',
+        'Dominick Burke',
+        'Trinity Bauer',
+        'George Mejia',
+        'Arianna Suarez',
+        'Vincent Lowe',
+        'Azalea Carey',
+        'Kristian Tyler',
+        'Addisyn Woods',
+        'Cade Kaur',
+        'Murphy Arroyo',
+        'Eden Robertson',
+        'Violet George',
+        'Adriel Crosby',
+        'Paloma O''Neill',
+        'Sonny Medina',
+        'Evelyn Wilson',
+        'Atticus Reyna',
+        'Lilly Bradshaw',
+        'Trenton Tang',
+        'Luna Rivera',
+        'Mohammed Jaramillo',
+        'Shiloh Marks',
+        'Emerson Chapman',
+        'Hanna Gonzalez',
+        'Raiden Schneider',
+        'Ayaan Mercado',
+        'Daphne O''Neal',
+        'Kyle Townsend',
+        'Fernanda Williamson',
+        'Griffin Higgins',
+        'Elsa Madden',
+        'Sam Potts',
+        'Jimena Maldonado',
+        'Turner Clay',
+        'Ruth Beard',
+        'Reginald Becker',
+        'Virginia Montgomery',
+        'Braylen Sharp',
+        'Leighton Knox',
+        'Demetrius McCall',
+        'Esperanza Cabrera',
+        'Ameer Hull',
+        'Yara Spears',
+        'Jaziel Dickson',
+        'Natalia Kent',
+        'Harley Zuniga',
+        'Rowan Rodgers',
+        'Gerardo Bradley',
+        'Chana Livingston',
+        'Erick Davis',
+        'Amari McCarthy',
+        'Johan Cantu',
+        'Genevieve Hall',
+        'Emory Torres',
+        'Meadow Joseph',
+        'Rayden Barr',
+        'Violette Chambers',
+        'Dalton Buckley',
+        'Savannah Andrade',
+        'Maxton Stafford',
+        'Zendaya Roth',
+        'Max Lynch',
+        'Makayla Bentley',
+        'Jonathan Jimenez',
+        'Presley Person',
+        'Judson McFarland',
+        'Elisa Hogan',
+        'Watson Phan',
+        'Holly Stout',
+        'Hamza Pugh',
+        'Belle Warren',
+        'Sean Diaz',
+        'Celine Hamilton',
+        'Alfred Le',
+        'Yamileth Green',
+        'Jazmine Graves',
+        'Jayce Kim',
+        'Brylee Walton',
+        'Aryan Carpenter',
+        'Grace Daugherty',
+        'Colt Yoder',
+        'Sloane Hammond',
+        'Kenji Barry',
+        'Helena Moran',
+        'Emery Mullen',
+        'Hadleigh Lambert',
+        'Charles Johns',
+        'Miley Wade',
+        'Gordon Morton',
+        'Elaina O''Connell',
+        'Eithan Wallace',
+        'Izabella Bridges',
+        'Sincere Hoover',
+        'Jazmin Saunders',
+        'Keanu Powers',
+        'Emmy Eaton',
+        'Jorge Davenport',
+        'Aubrie Rush',
+        'Kylan Hail',
+        'Elena Burgess',
+        'Zayne Jennings',
+        'Reese Gaines',
+        'Tate Macdonald',
+        'Jessica McIntosh',
+        'Riggs Kramer',
+        'Adrianna Valentine',
+        'Aliana Tate',
+        'Saint Cantrell',
+        'Leia Bernal',
+        'Mathias Rangel',
+        'Hayes Bryant',
+        'Teresa Crane',
+        'Alfredo Hodge',
+        'Angel Heath',
+        'Leland Ali',
+        'Mackenzie Hutchinson',
+        'Kellan Leal',
+        'Holland Huang',
+        'Shepard Sweeney',
+        'Jessie Hester',
+        'Amos Freeman',
+        'Maleah Atkinson',
+        'Azariah Harper',
+        'Ezra Kelly',
+        'Jonah Christensen',
+        'Esteban Barnes',
+        'Journey Dickerson',
+        'Richard Martin',
+        'Ruby Shannon',
+        'Tobias Owens',
+        'Elliot Petersen',
+        'Raylan Carr',
+        'Legacy Cooper',
+        'Damien Ramirez',
+        'Chandler Li',
+        'Alberto Gross',
+        'Nina Jefferson',
+        'Emilio Colon',
+        'Zuri Lane',
+        'Hector Bruce',
+        'Joel Marsh',
+        'Laura Trevino',
+        'Fox Rodriguez',
+        'Denise Wyatt',
+        'Ambrose Luna',
+        'Carmen Bowers',
+        'Jasper Costa',
+        'Malia Simon',
+        'Bruce Arellano',
+        'Oakleigh Proctor',
+        'Anthony Sims',
+        'Vanessa Noble',
+        'Brian Vargas',
+        'Emiliano O''Donnell',
+        'Giovanna Richards',
+        'Saul Randall',
+        'Theodora Ray',
+        'Abigail Hunt',
+        'Kolton Phelps',
+        'Titan Dudley',
+        'Evangeline Hardy',
+        'Reign Villegas',
+        'Amina Contreras',
+        'Zion Flowers',
+        'Mia Riley',
+        'Liliana Valenzuela',
+        'Roger O''Connor',
+        'Jaylin Reynolds',
+        'Matias Goodwin',
+        'Aleena Frank',
+        'Lyric Mosley',
+        'Idris Delacruz',
+        'Adelyn Vo',
+        'Jake Anthony',
+        'Kayla Wiggins',
+        'Raymond Hart',
+        'Palmer Rubio',
+        'Jaxen Terrell',
+        'Royce Powell',
+        'Amani Duffy',
+        'Justin Cummings',
+        'Hadassah Rasmussen',
+        'Devin Gutierrez',
+        'Opal Carson',
+        'Francesca Sutton',
+        'Lawson Walsh',
+        'Zariah Mack',
+        'Silas McConnell',
+        'Uriah Miranda',
+        'Raelyn Munoz',
+        'Cesar Shepherd',
+        'Julieta Glass',
+        'Ryker Maxwell',
+        'Keily Paul',
+        'Roland Wood',
+        'Henley Wells',
+        'Mckinley Pruitt',
+        'Talon Orozco',
+        'Jamal Guevara',
+        'Kallie Gilbert',
+        'Arjun Castro',
+        'Katalina Bond',
+        'Anakin Todd',
+        'Kyree Vega',
+        'Dylan Avalos',
+        'Cecilia Greene',
+        'Bo Pineda',
+        'Vera Armstrong',
+        'Skye Delgado',
+        'Callahan Woodard',
+        'Ellianna Guerra',
+        'Hadlee Harrington',
+        'Brantley McMillan',
+        'Capri Decker',
+        'Coraline Pham',
+        'A''isha Burke',
+        'A-jay Bauer',
+        'Aab Mejia',
+        'Aaban Suarez',
+        'Aaberg Lowe',
+        'Aabid Carey',
+        'Aabidah Tyler',
+        'Aabish Woods',
+        'Aaby Kaur',
+        'Aadam Arroyo',
+        'Aadarsh Robertson',
+        'Andi George',
+        'Bennett Crosby',
+        'Kai O''Neill',
+        'Korbin Medina',
+        'Clare Wilson',
+        'Thomas Reyna',
+        'Harlee Bradshaw',
+        'Aidan Tang',
+        'Annika Rivera',
+        'Jaime Jaramillo',
+        'Haley Marks',
+        'Dominick Chapman',
+        'Trinity Gonzalez',
+        'George Schneider',
+        'Arianna Mercado',
+        'Vincent O''Neal',
+        'Azalea Townsend',
+        'Kristian Williamson',
+        'Addisyn Higgins',
+        'Cade Madden',
+        'Murphy Potts',
+        'Eden Maldonado',
+        'Violet Clay',
+        'Adriel Beard',
+        'Paloma Becker',
+        'Sonny Montgomery',
+        'Evelyn Sharp',
+        'Atticus Knox',
+        'Lilly McCall',
+        'Trenton Cabrera',
+        'Luna Hull',
+        'Mohammed Spears',
+        'Shiloh Dickson',
+        'Emerson Kent',
+        'Hanna Zuniga',
+        'Raiden Rodgers',
+        'Ayaan Bradley',
+        'Daphne Livingston',
+        'Kyle Davis',
+        'Fernanda McCarthy',
+        'Griffin Cantu',
+        'Elsa Hall',
+        'Sam Torres',
+        'Jimena Joseph',
+        'Turner Barr',
+        'Ruth Chambers',
+        'Reginald Buckley',
+        'Virginia Andrade',
+        'Braylen Stafford',
+        'Leighton Roth',
+        'Demetrius Lynch',
+        'Esperanza Bentley',
+        'Ameer Jimenez',
+        'Yara Person',
+        'Jaziel McFarland',
+        'Natalia Hogan',
+        'Harley Phan',
+        'Rowan Stout',
+        'Gerardo Pugh',
+        'Chana Warren',
+        'Erick Diaz',
+        'Amari Hamilton',
+        'Johan Le',
+        'Genevieve Green',
+        'Emory Ramsey',
+        'Meadow Graves',
+        'Rayden Kim',
+        'Violette Walton',
+        'Dalton Carpenter',
+        'Savannah Daugherty',
+        'Maxton Yoder',
+        'Zendaya Hammond',
+        'Max Barry',
+        'Makayla Moran',
+        'Jonathan Mullen',
+        'Presley Lambert',
+        'Judson Johns',
+        'Elisa Wade',
+        'Watson Morton',
+        'Holly O''Connell',
+        'Hamza Wallace',
+        'Belle Bridges',
+        'Sean Hoover',
+        'Celine Saunders',
+        'Alfred Powers',
+        'Yamileth Eaton',
+        'Ares Davenport',
+        'Jazmine Rush',
+        'Jayce Hail',
+        'Brylee Burgess',
+        'Aryan Jennings',
+        'Grace Gaines',
+        'Colt Macdonald',
+        'Sloane McIntosh',
+        'Kenji Kramer',
+        'Helena Valentine',
+        'Emery Tate',
+        'Hadleigh Cantrell',
+        'Charles Bernal',
+        'Miley Rangel',
+        'Gordon Bryant',
+        'Elaina Crane',
+        'Eithan Hodge',
+        'Izabella Heath',
+        'Sincere Ali',
+        'Jazmin Hutchinson',
+        'Keanu Leal',
+        'Emmy Huang',
+        'Jorge Sweeney',
+        'Aubrie Hester',
+        'Kylan Freeman',
+        'Elena Atkinson',
+        'Zayne Harper',
+        'Reese Kelly',
+        'Tate Christensen',
+        'Jessica Barnes',
+        'Riggs Dickerson',
+        'Adrianna Martin',
+        'Aliana Shannon',
+        'Saint Owens',
+        'Leia Petersen',
+        'Mathias Carr',
+        'Hayes Cooper',
+        'Teresa Ramirez',
+        'Alfredo Li',
+        'Angel Gross',
+        'Leland Jefferson',
+        'Mackenzie Colon',
+        'Kellan Lane',
+        'Holland Bruce',
+        'Shepard Marsh',
+        'Jessie Trevino',
+        'Amos Rodriguez',
+        'Maleah Wyatt',
+        'Azariah Luna',
+        'Ezra Bowers',
+        'Jonah Costa',
+        'Esteban Simon',
+        'Journey Arellano',
+        'Richard Proctor',
+        'Ruby Sims',
+        'Tobias Noble',
+        'Elliot Vargas',
+        'Raylan O''Donnell',
+        'Legacy Richards',
+        'Damien Randall',
+        'Chandler Ray',
+        'Alberto Hunt',
+        'Nina Phelps',
+        'Emilio Dudley',
+        'Zuri Hardy',
+        'Hector Villegas',
+        'Joel Contreras',
+        'Laura Flowers',
+        'Fox Riley',
+        'Denise Valenzuela',
+        'Ambrose O''Connor',
+        'Carmen Reynolds',
+        'Jasper Goodwin',
+        'Malia Frank',
+        'Bruce Mosley',
+        'Oakleigh Delacruz',
+        'Anthony Vo',
+        'Vanessa Anthony',
+        'Brian Wiggins',
+        'Emiliano Hart',
+        'Giovanna Rubio',
+        'Saul Terrell',
+        'Theodora Benton',
+        'Abigail Powell',
+        'Kolton Duffy',
+        'Titan Cummings',
+        'Evangeline Rasmussen',
+        'Reign Gutierrez',
+        'Amina Carson',
+        'Zion Sutton',
+        'Mia Walsh',
+        'Liliana Mack',
+        'Roger McConnell',
+        'Jaylin Miranda',
+        'Matias Munoz',
+        'Aleena Shepherd',
+        'Lyric Glass',
+        'Idris Maxwell',
+        'Adelyn Paul',
+        'Jake Wood',
+        'Kayla Wells',
+        'Raymond Pruitt',
+        'Palmer Orozco',
+        'Jaxen Guevara',
+        'Landry Gilbert',
+        'Royce Castro',
+        'Amani Bond',
+        'Justin Todd',
+        'Hadassah Morrow',
+        'Devin Vega',
+        'Opal Avalos',
+        'Francesca Greene',
+        'Lawson Pineda',
+        'Zariah Armstrong',
+        'Silas Delgado',
+        'Uriah Woodard',
+        'Raelyn Guerra',
+        'Cesar Harrington',
+        'Julieta McMillan',
+        'Ryker Decker',
+        'Keily Pham',
+        'Roland Burke',
+        'Henley Bauer',
+        'Mckinley Mejia',
+        'Talon Suarez',
+        'Jamal Lowe',
+        'Kallie Carey',
+        'Arjun Tyler',
+        'Katalina Woods',
+        'Anakin Kaur',
+        'Mila Arroyo',
+        'Kyree Robertson',
+        'Dylan George',
+        'Cecilia Crosby',
+        'Bo O''Neill',
+        'Vera Medina',
+        'Skye Wilson',
+        'Callahan Reyna',
+        'Ellianna Bradshaw',
+        'Hadlee Tang',
+        'Brantley Rivera',
+        'Capri Jaramillo',
+        'Coraline Marks',
+        'A''isha Chapman',
+        'A-jay Gonzalez',
+        'Aab Schneider',
+        'Aaban Mercado',
+        'Aaberg O''Neal',
+        'Aabid Townsend',
+        'Aabidah Williamson',
+        'Aabish Higgins',
+        'Aaby Madden',
+        'Aadam Potts',
+        'Aadarsh Maldonado',
+        'Andi Clay',
+        'Bennett Beard',
+        'Kai Becker',
+        'Korbin Montgomery',
+        'Clare Sharp',
+        'Thomas Knox',
+        'Harlee McCall',
+        'Aidan Cabrera',
+        'Annika Hull',
+        'Jaime Spears',
+        'Haley Dickson',
+        'Dominick Kent',
+        'Trinity Zuniga',
+        'George Rodgers',
+        'Arianna Bradley',
+        'Vincent Livingston',
+        'Azalea Davis',
+        'Kristian McCarthy',
+        'Addisyn Cantu',
+        'Cade Hall',
+        'Murphy Torres',
+        'Eden Joseph',
+        'Violet Barr',
+        'Adriel Chambers',
+        'Paloma Buckley',
+        'Sonny Andrade',
+        'Evelyn Stafford',
+        'Atticus Roth',
+        'Lilly Lynch',
+        'Trenton Bentley',
+        'Luna Jimenez',
+        'Mohammed Person',
+        'Shiloh McFarland',
+        'Emerson Hogan',
+        'Hanna Phan',
+        'Raiden Stout',
+        'Ayaan Pugh',
+        'Daphne Warren',
+        'Kyle Diaz',
+        'Fernanda Hamilton',
+        'Griffin Le',
+        'Elsa Green',
+        'Sam Ramsey',
+        'Jimena Graves',
+        'Turner Kim',
+        'Ruth Walton',
+        'Reginald Carpenter',
+        'Virginia Daugherty',
+        'Braylen Yoder',
+        'Leighton Hammond',
+        'Demetrius Barry',
+        'Esperanza Moran',
+        'Ameer Mullen',
+        'Yara Lambert',
+        'Jaziel Johns',
+        'Natalia Wade',
+        'Harley Morton',
+        'Rowan O''Connell',
+        'Gerardo Wallace',
+        'Chana Bridges',
+        'Erick Hoover',
+        'Amari Saunders',
+        'Johan Powers',
+        'Genevieve Eaton',
+        'Emory Davenport',
+        'Meadow Rush',
+        'Rayden Hail',
+        'Violette Burgess',
+        'Dalton Jennings',
+        'Savannah Gaines',
+        'Maxton Macdonald',
+        'Zendaya McIntosh',
+        'Max Kramer',
+        'Makayla Valentine',
+        'Jonathan Tate',
+        'Presley Cantrell',
+        'Judson Bernal',
+        'Elisa Rangel',
+        'Watson Bryant',
+        'Holly Crane',
+        'Hamza Hodge',
+        'Belle Heath',
+        'Sean Ali',
+        'Celine Hutchinson',
+        'Alfred Leal',
+        'Yamileth Huang',
+        'Ares Sweeney',
+        'Jazmine Hester',
+        'Jayce Freeman',
+        'Brylee Atkinson',
+        'Aryan Harper',
+        'Grace Kelly',
+        'Colt Christensen',
+        'Sloane Barnes',
+        'Kenji Dickerson',
+        'Helena Martin',
+        'Emery Shannon',
+        'Hadleigh Owens',
+        'Charles Petersen',
+        'Miley Carr',
+        'Gordon Cooper',
+        'Elaina Ramirez',
+        'Eithan Li',
+        'Izabella Gross',
+        'Sincere Jefferson',
+        'Jazmin Colon',
+        'Keanu Lane',
+        'Emmy Bruce',
+        'Jorge Marsh',
+        'Aubrie Trevino',
+        'Kylan Rodriguez',
+        'Elena Wyatt',
+        'Zayne Luna',
+        'Reese Bowers',
+        'Tate Costa',
+        'Jessica Simon',
+        'Riggs Arellano',
+        'Adrianna Proctor',
+        'Aliana Sims',
+        'Saint Noble'
       ]
-    )[1 + ((na.global_sequence - 1) % 40)]
-    || ' ' ||
-    (
-      array[
-        'Chen','Smith','Patel','Johnson','Martin','Lee','Nguyen','Brown','Garcia','Taylor',
-        'Wilson','Anderson','Clark','Young','Hall','Allen','Wright','King','Scott','Green',
-        'Baker','Adams','Hill','Campbell','Mitchell','Parker','Turner','Robinson','Carter','Murphy',
-        'Lopez','Cooper','Morgan','Gray','Ward','Bailey','Cox','Diaz','Long','Brooks'
-      ]
-    )[1 + (((na.global_sequence - 1) * 7) % 40)] as name,
+    )[1 + ((na.global_sequence - 1) % 844)] as name,
     lpad(na.comp_sequence::text, 3, '0') as climber_number,
     (
       array[
@@ -1234,63 +2065,167 @@ attempt_source as (
     c.id as climber_id,
     se.slug,
     se.format,
+    se.total_climbs,
+    c.age_group,
+    c.gender_division,
     gs.climb_number,
+    get_byte(decode(md5(c.id::text || ':profile:a'), 'hex'), 0) as profile_seed_a,
+    get_byte(decode(md5(c.id::text || ':profile:b'), 'hex'), 0) as profile_seed_b,
+    get_byte(decode(md5(c.id::text || ':profile:c'), 'hex'), 0) as profile_seed_c,
+    get_byte(decode(md5(c.id::text || ':profile:d'), 'hex'), 0) as profile_seed_d,
+    get_byte(decode(md5(c.id::text || ':profile:e'), 'hex'), 0) as profile_seed_e,
     get_byte(decode(md5(c.id::text || ':' || gs.climb_number::text || ':a'), 'hex'), 0) as seed_a,
     get_byte(decode(md5(c.id::text || ':' || gs.climb_number::text || ':b'), 'hex'), 0) as seed_b,
     get_byte(decode(md5(c.id::text || ':' || gs.climb_number::text || ':c'), 'hex'), 0) as seed_c,
-    get_byte(decode(md5(c.id::text || ':' || gs.climb_number::text || ':d'), 'hex'), 0) as seed_d
+    get_byte(decode(md5(c.id::text || ':' || gs.climb_number::text || ':d'), 'hex'), 0) as seed_d,
+    get_byte(decode(md5(c.id::text || ':' || gs.climb_number::text || ':e'), 'hex'), 0) as seed_e
   from public.climbers c
   join scored_events se
     on se.id = c.competition_id
   cross join lateral generate_series(1, se.total_climbs) as gs(climb_number)
 ),
-attempt_outcomes as (
-  select
+athlete_profiles as (
+  select distinct on (competition_id, climber_id)
     competition_id,
     climber_id,
-    climb_number,
     slug,
     format,
+    total_climbs,
+    age_group,
+    gender_division,
+    case age_group
+      when 'Rec' then 8.9
+      when 'Masters' then 9.8
+      when 'Youth D' then 9.6
+      when 'Youth C' then 10.4
+      when 'Youth B' then 11.8
+      when 'Youth A' then 12.6
+      when 'Junior' then 13.4
+      else 12.2
+    end
+      + case gender_division when 'Men' then 0.8 when 'Women' then 0.35 else 0.15 end
+      + case slug
+        when 'spring-send-recreational' then -0.8
+        when 'mock-rec-scramble-live' then -0.5
+        when 'spring-send-youth' then 0.35
+        when 'mock-youth-series-live' then 0.55
+        when 'mock-national-finals-live' then 1.1
+        when 'mock-city-boulder-results' then 0.85
+        else 0
+      end
+      + round(((profile_seed_a::numeric / 255) * 4.8) - 2.4, 2) as base_strength,
+    4 + (profile_seed_b % 7) as consistency_band,
+    4 + (profile_seed_c % 8) as endurance_band,
+    3 + (profile_seed_d % 6) as volatility_band,
+    (profile_seed_e % 9) - 4 as upset_band
+  from attempt_source
+  order by competition_id, climber_id
+),
+attempt_outcomes as (
+  select
+    src.competition_id,
+    src.climber_id,
+    src.climb_number,
+    src.slug,
+    src.format,
+    src.total_climbs,
     case
-      when slug = 'spring-send-youth' then seed_a < 90
-      when format = 'scramble' then seed_a < 72
-      else seed_a < 82
+      when src.format = 'scramble' then
+        src.climb_number <= least(src.total_climbs, 10 + ap.endurance_band + (src.seed_a % 8))
+      else
+        src.climb_number <= least(src.total_climbs, 5 + ap.endurance_band + (src.seed_a % 4))
     end as attempted,
+    (
+      ap.base_strength
+      + (ap.consistency_band * 0.34)
+      + case when src.climb_number <= greatest(3, least(5, src.total_climbs / 3)) then 0.7 else 0 end
+      - greatest(src.climb_number - ap.endurance_band, 0) * case when src.format = 'scramble' then 0.08 else 0.16 end
+      + ((src.seed_c % 11) - 5) * 0.22
+      + (ap.upset_band * case when (src.seed_d % 7) = 0 then 0.34 else 0.09 end)
+    ) as performance_rating,
+    (
+      case src.slug
+        when 'spring-send-recreational' then 8.6
+        when 'mock-rec-scramble-live' then 9.1
+        when 'spring-send-youth' then 10.4
+        when 'mock-youth-series-live' then 10.8
+        when 'mock-national-finals-live' then 11.7
+        when 'mock-city-boulder-results' then 11.2
+        else 10.3
+      end
+      + src.climb_number * case when src.format = 'scramble' then 0.34 else 0.56 end
+      + ((src.seed_b % 9) - 4) * 0.17
+      + case when src.climb_number > (src.total_climbs * 3 / 4) then 0.75 else 0 end
+    ) as difficulty_rating,
     case
-      when slug = 'spring-send-youth' then
-        seed_b < case
-          when climb_number <= 5 then 34
-          when climb_number <= 10 then 24
-          when climb_number <= 14 then 16
-          else 10
+      when (
+        ap.base_strength
+        + (ap.consistency_band * 0.34)
+        + case when src.climb_number <= greatest(3, least(5, src.total_climbs / 3)) then 0.7 else 0 end
+        - greatest(src.climb_number - ap.endurance_band, 0) * case when src.format = 'scramble' then 0.08 else 0.16 end
+        + ((src.seed_c % 11) - 5) * 0.22
+        + (ap.upset_band * case when (src.seed_d % 7) = 0 then 0.34 else 0.09 end)
+      ) - (
+        case src.slug
+          when 'spring-send-recreational' then 8.6
+          when 'mock-rec-scramble-live' then 9.1
+          when 'spring-send-youth' then 10.4
+          when 'mock-youth-series-live' then 10.8
+          when 'mock-national-finals-live' then 11.7
+          when 'mock-city-boulder-results' then 11.2
+          else 10.3
         end
-      when format = 'scramble' then seed_b < 24
-      else seed_b < 18
+        + src.climb_number * case when src.format = 'scramble' then 0.34 else 0.56 end
+        + ((src.seed_b % 9) - 4) * 0.17
+        + case when src.climb_number > (src.total_climbs * 3 / 4) then 0.75 else 0 end
+      ) >= case when src.format = 'scramble' then 0.25 else 0.95 end
+        then true
+      else false
     end as topped_raw,
     case
-      when slug = 'spring-send-youth' then
-        seed_c < case
-          when climb_number <= 5 then 78
-          when climb_number <= 10 then 62
-          when climb_number <= 14 then 48
-          else 34
+      when src.format = 'scramble' then false
+      when (
+        ap.base_strength
+        + (ap.consistency_band * 0.34)
+        + case when src.climb_number <= greatest(3, least(5, src.total_climbs / 3)) then 0.7 else 0 end
+        - greatest(src.climb_number - ap.endurance_band, 0) * case when src.format = 'scramble' then 0.08 else 0.16 end
+        + ((src.seed_c % 11) - 5) * 0.22
+        + (ap.upset_band * case when (src.seed_d % 7) = 0 then 0.34 else 0.09 end)
+        + 1.4
+      ) - (
+        case src.slug
+          when 'spring-send-recreational' then 8.6
+          when 'mock-rec-scramble-live' then 9.1
+          when 'spring-send-youth' then 10.4
+          when 'mock-youth-series-live' then 10.8
+          when 'mock-national-finals-live' then 11.7
+          when 'mock-city-boulder-results' then 11.2
+          else 10.3
         end
-      when format = 'scramble' then false
-      else seed_c < 48
+        + src.climb_number * case when src.format = 'scramble' then 0.34 else 0.56 end
+        + ((src.seed_b % 9) - 4) * 0.17
+        + case when src.climb_number > (src.total_climbs * 3 / 4) then 0.75 else 0 end
+      ) >= 0.15
+        then true
+      else false
     end as zone_raw,
     case
-      when slug = 'spring-send-youth' then 1 + (seed_b % 3)
-      else 1 + (seed_b % 4)
+      when src.format = 'scramble' then
+        greatest(1, least(6, 2 + (src.seed_b % 3) + greatest(src.climb_number - ap.endurance_band, 0) / 3))
+      else
+        greatest(1, least(5, 1 + (src.seed_b % 2) + greatest(src.climb_number - ap.consistency_band, 0) / 4))
     end as top_tries,
     case
-      when slug = 'spring-send-youth' then 1 + (seed_c % 4)
-      else 1 + (seed_c % 5)
-    end as zone_tries,
+      greatest(1, least(6, 2 + (src.seed_c % 3) + greatest(src.climb_number - ap.endurance_band, 0) / 3))
+        as zone_tries,
     case
-      when slug = 'spring-send-youth' then 1 + (seed_d % 5)
-      else 1 + (seed_d % 6)
+      when src.format = 'scramble' then 1 + (src.seed_d % 4)
+      else 2 + (src.seed_e % 4)
     end as generic_tries
-  from attempt_source
+  from attempt_source src
+  join athlete_profiles ap
+    on ap.competition_id = src.competition_id
+   and ap.climber_id = src.climber_id
 ),
 materialized_attempts as (
   select
@@ -1310,9 +2245,21 @@ materialized_attempts as (
       when format <> 'scramble' and zone_raw then zone_tries
       else null
     end as attempts_to_zone,
-    case when format = 'scramble' then 'climber' else 'staff' end as entered_by
+    case
+      when format = 'scramble' and (climb_number <= 10 or ((climb_number + generic_tries) % 4) <> 0) then 'climber'
+      when format = 'scramble' then 'staff'
+      when ((climb_number + generic_tries + top_tries) % 3) = 0 then 'climber'
+      else 'staff'
+    end as entered_by
   from attempt_outcomes
   where attempted
+    and not (
+      format <> 'scramble'
+      and climb_number > greatest(4, total_climbs - 2)
+      and ((competition_id::text || ':' || climber_id::text || ':' || climb_number::text) is not null)
+      and generic_tries >= 5
+      and ((climb_number + generic_tries + zone_tries) % 5) = 0
+    )
 )
 insert into public.qualifier_attempts (
   competition_id,
@@ -1381,20 +2328,43 @@ with finals_events as (
   from public.competitions c
   where c.slug in ('mock-national-finals-live', 'mock-city-boulder-results')
 ),
-final_attempt_source as (
+finalist_profiles as (
   select
     fe.competition_id,
     fe.slug,
     fe.current_phase,
+    fe.finals_problem_count,
     cf.climber_id,
-    gs.climb_number,
-    get_byte(decode(md5(cf.climber_id::text || ':' || gs.climb_number::text || ':fa'), 'hex'), 0) as seed_a,
-    get_byte(decode(md5(cf.climber_id::text || ':' || gs.climb_number::text || ':fb'), 'hex'), 0) as seed_b,
-    get_byte(decode(md5(cf.climber_id::text || ':' || gs.climb_number::text || ':fc'), 'hex'), 0) as seed_c
+    cf.qualifier_rank,
+    cf.age_group,
+    cf.gender_division,
+    13.4
+      - least(cf.qualifier_rank, 10) * 0.42
+      + case cf.age_group when 'Junior' then 0.2 else 0.7 end
+      + case cf.gender_division when 'Men' then 0.25 when 'Women' then 0.15 else 0 end
+      + round((((get_byte(decode(md5(cf.climber_id::text || ':final-profile'), 'hex'), 0))::numeric / 255) * 2.8) - 1.4, 2) as finals_strength,
+    4 + (get_byte(decode(md5(cf.climber_id::text || ':final-consistency'), 'hex'), 0) % 5) as consistency_band,
+    3 + (get_byte(decode(md5(cf.climber_id::text || ':final-volatility'), 'hex'), 0) % 5) as volatility_band
   from finals_events fe
   join public.competition_finalists cf
     on cf.competition_id = fe.competition_id
-  cross join lateral generate_series(1, fe.finals_problem_count) as gs(climb_number)
+),
+final_attempt_source as (
+  select
+    fp.competition_id,
+    fp.slug,
+    fp.current_phase,
+    fp.climber_id,
+    fp.qualifier_rank,
+    fp.finals_strength,
+    fp.consistency_band,
+    fp.volatility_band,
+    gs.climb_number,
+    get_byte(decode(md5(fp.climber_id::text || ':' || gs.climb_number::text || ':fa'), 'hex'), 0) as seed_a,
+    get_byte(decode(md5(fp.climber_id::text || ':' || gs.climb_number::text || ':fb'), 'hex'), 0) as seed_b,
+    get_byte(decode(md5(fp.climber_id::text || ':' || gs.climb_number::text || ':fc'), 'hex'), 0) as seed_c
+  from finalist_profiles fp
+  cross join lateral generate_series(1, fp.finals_problem_count) as gs(climb_number)
 ),
 final_attempts_seed as (
   select
@@ -1405,10 +2375,32 @@ final_attempts_seed as (
       when current_phase = 'finals_open' then climb_number <= 2
       else true
     end as should_insert,
-    seed_a < 22 as top_raw,
-    seed_b < 54 as zone_raw,
-    1 + (seed_b % 4) as top_tries,
-    1 + (seed_c % 5) as zone_tries
+    (
+      finals_strength
+      + (consistency_band * 0.32)
+      - qualifier_rank * 0.08
+      + (((seed_a % 11) - 5) * 0.18)
+      + (((seed_b % 7) - 3) * 0.12)
+    ) >= (
+      14.1
+      + climb_number * 0.78
+      + (((seed_c % 9) - 4) * 0.14)
+      + 0.65
+    ) as top_raw,
+    (
+      finals_strength
+      + (consistency_band * 0.32)
+      - qualifier_rank * 0.08
+      + (((seed_a % 11) - 5) * 0.18)
+      + (((seed_b % 7) - 3) * 0.12)
+      + 1.1
+    ) >= (
+      14.1
+      + climb_number * 0.78
+      + (((seed_c % 9) - 4) * 0.14)
+    ) as zone_raw,
+    greatest(1, least(4, 1 + (seed_b % 3) + greatest(climb_number - consistency_band, 0) / 3)) as top_tries,
+    greatest(1, least(5, 1 + (seed_c % 3) + greatest(climb_number - volatility_band, 0) / 3)) as zone_tries
   from final_attempt_source
 ),
 materialized_final_attempts as (
