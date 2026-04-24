@@ -559,6 +559,121 @@ export const DEFAULT_COMPETITION: Competition = {
   schedule_blocks: [],
 };
 
+type DemoCompetitionTiming = {
+  startOffsetDays: number;
+  endOffsetDays?: number;
+  registrationOpensOffsetMs?: number;
+  registrationClosesOffsetMs?: number;
+  qualifierLockedOffsetMs?: number;
+  finalsStartedOffsetMs?: number;
+};
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+const DEMO_COMPETITION_TIMINGS: Record<string, DemoCompetitionTiming> = {
+  "spring-send-recreational": {
+    startOffsetDays: 0,
+    endOffsetDays: 0,
+    registrationOpensOffsetMs: -14 * DAY,
+    registrationClosesOffsetMs: 5 * HOUR,
+  },
+  "spring-send-youth": {
+    startOffsetDays: 7,
+    endOffsetDays: 7,
+    registrationOpensOffsetMs: -7 * DAY,
+    registrationClosesOffsetMs: 6 * DAY,
+  },
+  "mock-rec-scramble-live": {
+    startOffsetDays: 0,
+    endOffsetDays: 0,
+    registrationOpensOffsetMs: -18 * DAY,
+    registrationClosesOffsetMs: 2 * HOUR,
+  },
+  "mock-youth-series-live": {
+    startOffsetDays: 0,
+    endOffsetDays: 0,
+    registrationOpensOffsetMs: -32 * DAY,
+    registrationClosesOffsetMs: 90 * 60 * 1000,
+  },
+  "mock-flash-upcoming": {
+    startOffsetDays: 14,
+    endOffsetDays: 15,
+    registrationOpensOffsetMs: 2 * DAY,
+    registrationClosesOffsetMs: 12 * DAY,
+  },
+  "mock-national-finals-live": {
+    startOffsetDays: 0,
+    endOffsetDays: 0,
+    registrationOpensOffsetMs: -30 * DAY,
+    registrationClosesOffsetMs: -8 * HOUR,
+    qualifierLockedOffsetMs: -4 * HOUR,
+    finalsStartedOffsetMs: -40 * 60 * 1000,
+  },
+  "mock-city-boulder-results": {
+    startOffsetDays: -7,
+    endOffsetDays: -7,
+    registrationOpensOffsetMs: -40 * DAY,
+    registrationClosesOffsetMs: -8 * DAY,
+    qualifierLockedOffsetMs: -(7 * DAY + 5 * HOUR),
+    finalsStartedOffsetMs: -(7 * DAY + 2 * HOUR),
+  },
+  "mock-scramble-upcoming": {
+    startOffsetDays: 30,
+    endOffsetDays: 30,
+    registrationOpensOffsetMs: 7 * DAY,
+    registrationClosesOffsetMs: 28 * DAY,
+  },
+};
+
+function formatDateOnly(date: Date) {
+  return `${date.getFullYear().toString().padStart(4, "0")}-${(date.getMonth() + 1)
+    .toString()
+    .padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
+}
+
+function applyOffset(date: Date, offsetMs: number) {
+  return new Date(date.getTime() + offsetMs).toISOString();
+}
+
+function realignDemoCompetitionTimeline(competition: Competition): Competition {
+  const timing = DEMO_COMPETITION_TIMINGS[competition.slug];
+  if (!timing) {
+    return competition;
+  }
+
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() + timing.startOffsetDays);
+
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + (timing.endOffsetDays ?? timing.startOffsetDays));
+
+  return {
+    ...competition,
+    start_date: formatDateOnly(start),
+    end_date: formatDateOnly(end),
+    registration_opens_at:
+      timing.registrationOpensOffsetMs !== undefined
+        ? applyOffset(now, timing.registrationOpensOffsetMs)
+        : competition.registration_opens_at,
+    registration_closes_at:
+      timing.registrationClosesOffsetMs !== undefined
+        ? applyOffset(now, timing.registrationClosesOffsetMs)
+        : competition.registration_closes_at,
+    qualifier_locked_at:
+      timing.qualifierLockedOffsetMs !== undefined
+        ? applyOffset(now, timing.qualifierLockedOffsetMs)
+        : competition.qualifier_locked_at,
+    finals_started_at:
+      timing.finalsStartedOffsetMs !== undefined
+        ? applyOffset(now, timing.finalsStartedOffsetMs)
+        : competition.finals_started_at,
+  };
+}
+
 export function getFormatTemplate(format: EventFormat) {
   return FORMAT_TEMPLATES.find((template) => template.value === format) ?? FORMAT_TEMPLATES[0];
 }
@@ -849,7 +964,7 @@ export function normalizeCompetition(
       : true;
   let activeBlockSeen = false;
 
-  return {
+  const normalized: Competition = {
     id,
     slug: slugifyCompetitionName(competition?.slug?.trim() || name),
     name,
@@ -879,7 +994,7 @@ export function normalizeCompetition(
         defaultCountingClimbs
       ),
       has_finals: nextHasFinals,
-      finals_cutoff: clampNumber(competition?.finals_cutoff, 6, 8, defaultFinalsCutoff) >= 8 ? 8 : 6,
+      finals_cutoff: (clampNumber(competition?.finals_cutoff, 6, 8, defaultFinalsCutoff) >= 8 ? 8 : 6) as 6 | 8,
       finals_tie_advances: competition?.finals_tie_advances ?? true,
       qualifier_eligible_age_groups: normalizeQualifierEligibleAgeGroups(competition?.qualifier_eligible_age_groups),
       finals_eligible_age_groups: normalizeFinalsEligibleAgeGroups(competition?.finals_eligible_age_groups),
@@ -916,6 +1031,8 @@ export function normalizeCompetition(
       }))
       .sort(compareScheduleBlocks),
   };
+
+  return realignDemoCompetitionTimeline(normalized);
 }
 
 export function formatSchedulePhaseLabel(phaseType: SchedulePhaseType) {

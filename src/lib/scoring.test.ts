@@ -239,6 +239,45 @@ describe("competition normalization", () => {
     expect(choices).toHaveLength(1);
     expect(choices[0]?.slots.map((slot) => slot.label)).toEqual(["Recreational Scramble"]);
   });
+
+  it("realigns demo competition dates to the current timeline", () => {
+    const now = new Date();
+    const expectedToday = new Date(now);
+    expectedToday.setHours(0, 0, 0, 0);
+
+    const expectedUpcoming = new Date(now);
+    expectedUpcoming.setHours(0, 0, 0, 0);
+    expectedUpcoming.setDate(expectedUpcoming.getDate() + 14);
+
+    const liveDemo = normalizeCompetition({
+      id: "comp-5",
+      name: "Bridgeport Community Boulder Scramble",
+      slug: "mock-rec-scramble-live",
+      start_date: "2026-04-02",
+      end_date: "2026-04-02",
+      registration_closes_at: "2026-04-02T12:00:00.000Z",
+    });
+
+    const upcomingDemo = normalizeCompetition({
+      id: "comp-6",
+      name: "Quebec City Junior Boulder Championship",
+      slug: "mock-flash-upcoming",
+      start_date: "2026-04-09",
+      end_date: "2026-04-10",
+      registration_opens_at: "2026-04-04T12:00:00.000Z",
+      registration_closes_at: "2026-04-08T12:00:00.000Z",
+    });
+
+    expect(liveDemo.start_date).toBe(expectedToday.toISOString().slice(0, 10));
+    expect(liveDemo.end_date).toBe(expectedToday.toISOString().slice(0, 10));
+    expect(new Date(liveDemo.registration_closes_at ?? "").getTime()).toBeGreaterThan(now.getTime());
+
+    expect(upcomingDemo.start_date).toBe(expectedUpcoming.toISOString().slice(0, 10));
+    expect(upcomingDemo.end_date).toBe(
+      new Date(expectedUpcoming.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    );
+    expect(new Date(upcomingDemo.registration_opens_at ?? "").getTime()).toBeGreaterThan(now.getTime());
+  });
 });
 
 describe("leaderboard category defaults", () => {
