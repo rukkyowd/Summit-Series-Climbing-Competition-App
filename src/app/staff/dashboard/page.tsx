@@ -1,5 +1,6 @@
 import StaffDashboard from "@/components/staff-dashboard";
 import { fetchOfficialBoulderingEvents } from "@/lib/official-events";
+import { sanitizeExternalUrl } from "@/lib/security";
 
 function readSingleValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -38,10 +39,10 @@ export default async function StaffDashboardPage({
   const directDescription = sanitizeDraftText(readSingleValue(searchParams?.createDescription));
   const directRegistrationOpensAt = sanitizeDraftNullable(readSingleValue(searchParams?.createRegistrationOpensAt));
   const directRegistrationClosesAt = sanitizeDraftNullable(readSingleValue(searchParams?.createRegistrationClosesAt));
-  const directOfficialEventUrl = sanitizeDraftText(readSingleValue(searchParams?.createOfficialEventUrl));
-  const directOfficialRegistrationUrl = sanitizeDraftText(readSingleValue(searchParams?.createOfficialRegistrationUrl));
-  const directOfficialScheduleUrl = sanitizeDraftText(readSingleValue(searchParams?.createOfficialScheduleUrl));
-  const directHeroImageUrl = sanitizeDraftText(readSingleValue(searchParams?.createHeroImageUrl));
+  const directOfficialEventUrl = sanitizeExternalUrl(readSingleValue(searchParams?.createOfficialEventUrl));
+  const directOfficialRegistrationUrl = sanitizeExternalUrl(readSingleValue(searchParams?.createOfficialRegistrationUrl));
+  const directOfficialScheduleUrl = sanitizeExternalUrl(readSingleValue(searchParams?.createOfficialScheduleUrl));
+  const directHeroImageUrl = sanitizeExternalUrl(readSingleValue(searchParams?.createHeroImageUrl));
   const directDisciplineLabel = sanitizeDraftText(readSingleValue(searchParams?.createDisciplineLabel));
   const directFormat = sanitizeDraftText(readSingleValue(searchParams?.createFormat));
 

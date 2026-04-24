@@ -1,4 +1,5 @@
 import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
+import { sanitizeExternalUrl } from "./security";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "./attempts";
 import {
   DEFAULT_COMPETITION,
@@ -141,6 +142,10 @@ function ensureConfigured() {
 
 function cleanString(value: string) {
   return value.trim();
+}
+
+function cleanOptionalExternalUrl(value: string | null | undefined) {
+  return sanitizeExternalUrl(value) || "";
 }
 
 const OPTIONAL_COMPETITION_LINK_COLUMNS = [
@@ -890,10 +895,10 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
       registration_opens_at: input.registration_opens_at ?? null,
       registration_closes_at: input.registration_closes_at ?? null,
       description: input.description ?? "",
-      hero_image_url: input.hero_image_url ?? "",
-      official_event_url: input.official_event_url ?? "",
-      official_registration_url: input.official_registration_url ?? "",
-      official_schedule_url: input.official_schedule_url ?? "",
+      hero_image_url: cleanOptionalExternalUrl(input.hero_image_url),
+      official_event_url: cleanOptionalExternalUrl(input.official_event_url),
+      official_registration_url: cleanOptionalExternalUrl(input.official_registration_url),
+      official_schedule_url: cleanOptionalExternalUrl(input.official_schedule_url),
       status: "active",
     stage_mode: "qualifier",
     total_climbs: getRecommendedQualifierClimbCount(input.format),
@@ -972,6 +977,10 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
       ...input,
       id: competitionId,
       slug: input.slug,
+      hero_image_url: cleanOptionalExternalUrl(input.hero_image_url),
+      official_event_url: cleanOptionalExternalUrl(input.official_event_url),
+      official_registration_url: cleanOptionalExternalUrl(input.official_registration_url),
+      official_schedule_url: cleanOptionalExternalUrl(input.official_schedule_url),
     },
     getDefaultCompetitionCategories(competitionId),
     input.schedule_blocks

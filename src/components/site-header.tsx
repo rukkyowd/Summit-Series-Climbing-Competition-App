@@ -25,7 +25,10 @@ export default function SiteHeader({
   navItems?: NavItem[];
 }) {
   const pathname = usePathname();
-  const [scorecardHref, setScorecardHref] = useState(competitionSlug ? buildCompetitionPath(competitionSlug, "scorecard") : "/");
+  const [scorecardHref, setScorecardHref] = useState(
+    competitionSlug ? buildCompetitionPath(competitionSlug, "scorecard") : "/"
+  );
+  const [hasSavedScorecard, setHasSavedScorecard] = useState(false);
 
   const resolvedNavItems = useMemo(() => {
     if (navItems) {
@@ -48,16 +51,19 @@ export default function SiteHeader({
   useEffect(() => {
     const access = readScorecardAccess(competitionSlug);
     if (competitionSlug && access?.competitionSlug === competitionSlug) {
-      setScorecardHref(`${buildCompetitionPath(competitionSlug, "scorecard")}?token=${access.token}`);
+      setScorecardHref(buildCompetitionPath(competitionSlug, "scorecard"));
+      setHasSavedScorecard(true);
       return;
     }
 
     if (competitionSlug) {
       setScorecardHref(buildCompetitionPath(competitionSlug, "scorecard"));
+      setHasSavedScorecard(false);
       return;
     }
 
     setScorecardHref("/");
+    setHasSavedScorecard(false);
   }, [competitionSlug, pathname]);
 
   return (
@@ -89,7 +95,7 @@ export default function SiteHeader({
                     href={href}
                     className={`nav-pill ${isActive ? "nav-pill-active" : ""} ${light ? "nav-pill-light" : ""}`}
                   >
-                    {item.label === "Scorecard" && scorecardHref.includes("?token=") ? "My Scorecard" : item.label}
+                    {item.label === "Scorecard" && hasSavedScorecard ? "My Scorecard" : item.label}
                   </Link>
                 );
               })}

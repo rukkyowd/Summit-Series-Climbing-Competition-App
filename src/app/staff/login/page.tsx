@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import { getAuthState, isStaffRole, signInWithRole } from "@/lib/auth";
+import { sanitizeInternalRedirectPath } from "@/lib/security";
 
 export default function StaffLoginPage() {
   const router = useRouter();
@@ -15,13 +16,13 @@ export default function StaffLoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setRedirectTarget(params.get("redirect") || "/staff/dashboard");
+    setRedirectTarget(sanitizeInternalRedirectPath(params.get("redirect")));
   }, []);
 
   useEffect(() => {
     void getAuthState().then((state) => {
       if (isStaffRole(state.profile?.role)) {
-        router.replace(redirectTarget);
+        router.replace(sanitizeInternalRedirectPath(redirectTarget));
       }
     });
   }, [redirectTarget, router]);
@@ -45,8 +46,9 @@ export default function StaffLoginPage() {
               event.preventDefault();
               setLoading(true);
               setError("");
+              const safeRedirectTarget = sanitizeInternalRedirectPath(redirectTarget);
               void signInWithRole(email, password)
-                .then(() => router.replace(redirectTarget))
+                .then(() => router.replace(safeRedirectTarget))
                 .catch((nextError) => {
                   setError(nextError instanceof Error ? nextError.message : "Unable to sign in.");
                 })

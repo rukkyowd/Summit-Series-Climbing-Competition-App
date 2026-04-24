@@ -6,6 +6,7 @@ import SiteHeader from "@/components/site-header";
 import CompetitionListCard from "@/components/competition-list-card";
 import { getAuthState, isStaffRole, type Profile } from "@/lib/auth";
 import { listCompetitionSummaries, type CompetitionSummary } from "@/lib/db";
+import { sanitizeExternalUrl } from "@/lib/security";
 import { buildCompetitionPath, formatDateRange, getCompetitionLifecycleLabel } from "@/lib/scoring";
 
 type OfficialEvent = {
@@ -35,10 +36,10 @@ function buildOfficialImportHref(event: OfficialEvent) {
     createStartDate: event.start_date,
     createEndDate: event.end_date,
     createDescription: event.description,
-    createOfficialEventUrl: event.official_event_url,
-    createOfficialRegistrationUrl: event.official_registration_url,
-    createOfficialScheduleUrl: event.official_schedule_url,
-    createHeroImageUrl: event.hero_image_url,
+    createOfficialEventUrl: sanitizeExternalUrl(event.official_event_url),
+    createOfficialRegistrationUrl: sanitizeExternalUrl(event.official_registration_url),
+    createOfficialScheduleUrl: sanitizeExternalUrl(event.official_schedule_url),
+    createHeroImageUrl: sanitizeExternalUrl(event.hero_image_url),
     createDisciplineLabel: event.disciplines,
     createFormat: "flash_format",
   });
@@ -262,8 +263,11 @@ export default function HomePage() {
           {officialEventsError ? <div className="results-alert results-alert-error mt-6">{officialEventsError}</div> : null}
 
           <div className="mt-8 space-y-4">
-            {officialEvents.map((event) => (
-              <div key={event.id} className="results-list-row">
+            {officialEvents.map((event) => {
+              const sourceUrl = sanitizeExternalUrl(event.source_url);
+
+              return (
+                <div key={event.id} className="results-list-row">
                 <div>
                   <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{event.title}</div>
                   <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
@@ -279,14 +283,18 @@ export default function HomePage() {
                   </div>
                   <div>
                     <div className="results-kicker md:hidden">Source</div>
-                    <a
-                      href={event.source_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-sky-700 underline-offset-4 hover:underline"
-                    >
-                      Official event page
-                    </a>
+                    {sourceUrl ? (
+                      <a
+                        href={sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-sky-700 underline-offset-4 hover:underline"
+                      >
+                        Official event page
+                      </a>
+                    ) : (
+                      <span className="text-sm text-slate-500">Official link unavailable</span>
+                    )}
                   </div>
                   <div className="md:justify-self-end">
                     <div className="results-kicker md:hidden">Date</div>
@@ -302,8 +310,9 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+                </div>
+              );
+            })}
             {!officialEvents.length && !loading && !officialEventsError ? (
               <div className="results-card text-center text-slate-600">
                 No official bouldering events were available from the configured source feeds.

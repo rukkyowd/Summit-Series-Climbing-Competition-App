@@ -12,7 +12,7 @@ import {
   updateQualifierAttemptByToken,
   type CompetitionSnapshot,
 } from "@/lib/db";
-import { saveScorecardAccessToken } from "@/lib/scorecard-access";
+import { readScorecardAccessToken, saveScorecardAccessToken } from "@/lib/scorecard-access";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
@@ -84,9 +84,11 @@ function ScorecardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
-  const token = searchParams?.get("token") ?? "";
+  const rawToken = searchParams?.get("token") ?? "";
   const legacyClimberId = searchParams?.get("id") ?? "";
   const stage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
+  const [token, setToken] = useState("");
+  const [tokenResolved, setTokenResolved] = useState(false);
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [climber, setClimber] = useState<ClimberWithAttempts | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,6 +97,17 @@ function ScorecardContent() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [drafts, dispatch] = useReducer(draftReducer, {});
+  const scorecardBasePath = useMemo(() => buildCompetitionPath(slug, "scorecard"), [slug]);
+
+  const redirectToJudge = useCallback(() => {
+    const query = legacyClimberId
+      ? `?climberId=${legacyClimberId}&stage=${stage}`
+      : stage === "finals"
+        ? "?stage=finals"
+        : "";
+
+    router.replace(`/staff/c/${slug}/judge${query}`);
+  }, [legacyClimberId, router, slug, stage]);
 
   const refreshScorecard = useCallback(async (resetDrafts = false) => {
     if (!token) {
@@ -118,17 +131,34 @@ function ScorecardContent() {
   }, [slug, token]);
 
   useEffect(() => {
-    if (token) {
-      saveScorecardAccessToken(token, slug);
+    if (!slug) {
       return;
     }
 
-    const query = legacyClimberId ? `?climberId=${legacyClimberId}&stage=${stage}` : stage === "finals" ? "?stage=finals" : "";
-    router.replace(`/staff/c/${slug}/judge${query}`);
-  }, [legacyClimberId, router, slug, stage, token]);
+    const storedToken = readScorecardAccessToken(slug);
+    const resolvedToken = rawToken || storedToken;
+
+    if (rawToken) {
+      saveScorecardAccessToken(rawToken, slug);
+      const nextParams = new URLSearchParams(searchParams?.toString() ?? "");
+      nextParams.delete("token");
+      const nextQuery = nextParams.toString();
+      router.replace(`${scorecardBasePath}${nextQuery ? `?${nextQuery}` : ""}`);
+    }
+
+    if (resolvedToken) {
+      setToken(resolvedToken);
+      setTokenResolved(true);
+      return;
+    }
+
+    setToken("");
+    setTokenResolved(true);
+    redirectToJudge();
+  }, [rawToken, redirectToJudge, router, scorecardBasePath, searchParams, slug]);
 
   useEffect(() => {
-    if (!token) {
+    if (!tokenResolved || !token) {
       return;
     }
 
@@ -141,7 +171,7 @@ function ScorecardContent() {
         setError(nextError instanceof Error ? nextError.message : "Unable to load the scorecard.");
       })
       .finally(() => setLoading(false));
-  }, [refreshScorecard, token]);
+  }, [refreshScorecard, token, tokenResolved]);
 
   useEffect(() => {
     if (!supabaseConfigured || !snapshot) {
@@ -288,7 +318,7 @@ function ScorecardContent() {
     }
   };
 
-  if (!token) {
+  if (!tokenResolved || !token) {
     return (
       <main className="results-page">
         <div className="content-frame">
@@ -348,8 +378,8 @@ function ScorecardContent() {
                 <span className="results-chip">Private scorecard</span>
               </div>
               <div className="mt-6 flex flex-wrap gap-2">
-                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}`} className={`results-secondary-button w-full sm:w-auto ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>Qualifier</Link>
-                <Link href={`${buildCompetitionPath(slug, "scorecard")}?token=${token}&stage=finals`} className={`results-secondary-button w-full sm:w-auto ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</Link>
+                <Link href={scorecardBasePath} className={`results-secondary-button w-full sm:w-auto ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>Qualifier</Link>
+                <Link href={`${scorecardBasePath}?stage=finals`} className={`results-secondary-button w-full sm:w-auto ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</Link>
               </div>
             </div>
 

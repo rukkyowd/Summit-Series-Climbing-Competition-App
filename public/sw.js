@@ -1,4 +1,4 @@
-const CACHE_NAME = "summit-series-v2";
+const CACHE_NAME = "summit-series-v3";
 const APP_SHELL = ["/", "/register", "/scorecard", "/leaderboard", "/manifest.json"];
 const SCORECARD_DATA_PATHS = [
   "/rest/v1/climbers",
@@ -6,6 +6,28 @@ const SCORECARD_DATA_PATHS = [
   "/rest/v1/competition_settings",
   "/rest/v1/leaderboard_view",
 ];
+const STATIC_ASSET_PATTERN = /\.(?:css|gif|ico|jpg|jpeg|js|json|png|svg|webp|woff2?)$/i;
+const PRIVATE_PATH_PATTERN = /^\/c\/[^/]+\/scorecard$/;
+
+function shouldBypassCache(url) {
+  return (
+    url.searchParams.has("token") ||
+    url.pathname.startsWith("/staff") ||
+    PRIVATE_PATH_PATTERN.test(url.pathname)
+  );
+}
+
+function isStaticAssetRequest(url) {
+  return STATIC_ASSET_PATTERN.test(url.pathname);
+}
+
+function canCacheRequest(url) {
+  if (shouldBypassCache(url) || url.search) {
+    return false;
+  }
+
+  return APP_SHELL.includes(url.pathname) || isStaticAssetRequest(url);
+}
 
 function isScorecardDataRequest(url) {
   return SCORECARD_DATA_PATHS.some((path) => url.pathname.includes(path));
@@ -47,6 +69,11 @@ self.addEventListener("fetch", (event) => {
   const sameOrigin = requestUrl.origin === self.location.origin;
 
   if (event.request.mode === "navigate") {
+    if (!canCacheRequest(requestUrl)) {
+      event.respondWith(fetch(event.request));
+      return;
+    }
+
     event.respondWith(
       fetch(event.request)
         .then((response) => putInCache(event.request, response))
@@ -59,6 +86,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isScorecardDataRequest(requestUrl)) {
+    if (!canCacheRequest(requestUrl)) {
+      event.respondWith(fetch(event.request));
+      return;
+    }
+
     event.respondWith(
       fetch(event.request)
         .then((response) => putInCache(event.request, response))
@@ -78,6 +110,10 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (!sameOrigin) {
+    return;
+  }
+
+  if (!canCacheRequest(requestUrl)) {
     return;
   }
 

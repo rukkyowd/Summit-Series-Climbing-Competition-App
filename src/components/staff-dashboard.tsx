@@ -58,6 +58,7 @@ import {
   type CompetitionScheduleBlock,
   type SchedulePhaseType,
 } from "@/lib/scoring";
+import { sanitizeExternalUrl } from "@/lib/security";
 
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
 
@@ -324,10 +325,10 @@ export default function StaffDashboard({
     const importedDescription = sanitizeDraftText(initialCreateDraft?.description);
     const importedRegistrationOpensAt = sanitizeDraftNullable(initialCreateDraft?.registrationOpensAt);
     const importedRegistrationClosesAt = sanitizeDraftNullable(initialCreateDraft?.registrationClosesAt);
-    const importedOfficialEventUrl = sanitizeDraftText(initialCreateDraft?.officialEventUrl);
-    const importedOfficialRegistrationUrl = sanitizeDraftText(initialCreateDraft?.officialRegistrationUrl);
-    const importedOfficialScheduleUrl = sanitizeDraftText(initialCreateDraft?.officialScheduleUrl);
-    const importedHeroImageUrl = sanitizeDraftText(initialCreateDraft?.heroImageUrl);
+    const importedOfficialEventUrl = sanitizeExternalUrl(initialCreateDraft?.officialEventUrl);
+    const importedOfficialRegistrationUrl = sanitizeExternalUrl(initialCreateDraft?.officialRegistrationUrl);
+    const importedOfficialScheduleUrl = sanitizeExternalUrl(initialCreateDraft?.officialScheduleUrl);
+    const importedHeroImageUrl = sanitizeExternalUrl(initialCreateDraft?.heroImageUrl);
     const importedDisciplineLabel = sanitizeDraftText(initialCreateDraft?.disciplineLabel);
     const importedFormat = sanitizeDraftText(initialCreateDraft?.format);
 
@@ -1017,11 +1018,11 @@ export default function StaffDashboard({
                           registration_opens_at: sanitizeDraftNullable(createRegistrationOpensAt),
                           registration_closes_at: sanitizeDraftNullable(createRegistrationClosesAt),
                           description: sanitizeDraftText(createDescription),
-                          hero_image_url: sanitizeDraftText(createHeroImageUrl) || undefined,
+                          hero_image_url: sanitizeExternalUrl(createHeroImageUrl) || undefined,
                           discipline_label: sanitizeDraftText(createDisciplineLabel) || undefined,
-                          official_event_url: sanitizeDraftText(createOfficialEventUrl) || undefined,
-                          official_registration_url: sanitizeDraftText(createOfficialRegistrationUrl) || undefined,
-                          official_schedule_url: sanitizeDraftText(createOfficialScheduleUrl) || undefined,
+                          official_event_url: sanitizeExternalUrl(createOfficialEventUrl) || undefined,
+                          official_registration_url: sanitizeExternalUrl(createOfficialRegistrationUrl) || undefined,
+                          official_schedule_url: sanitizeExternalUrl(createOfficialScheduleUrl) || undefined,
                         });
                         setCreateName("");
                         setCreateHasFinals(true);

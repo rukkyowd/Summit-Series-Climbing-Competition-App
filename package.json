@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/check-no-exposed-secrets.mjs && next build",
     "start": "next start",
     "lint": "next lint",
+    "security:secrets": "node scripts/check-no-exposed-secrets.mjs",
     "test": "vitest run",
     "db:push": "npx supabase db push --linked",
     "db:push:dry": "npx supabase db push --linked --dry-run",

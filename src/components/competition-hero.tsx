@@ -11,6 +11,7 @@ import {
   isCompetitionLiveNow,
   type Competition,
 } from "@/lib/scoring";
+import { sanitizeExternalUrl } from "@/lib/security";
 
 function sanitizeDisplayText(value: string | null | undefined) {
   const trimmed = value?.trim() ?? "";
@@ -38,9 +39,10 @@ export default function CompetitionHero({
   const liveNow = isCompetitionLiveNow(competition);
   const lifecycleLabel = getCompetitionLifecycleLabel(competition);
   const description = sanitizeDisplayText(competition.description);
-  const officialEventUrl = sanitizeDisplayText(competition.official_event_url);
-  const officialRegistrationUrl = sanitizeDisplayText(competition.official_registration_url);
-  const officialScheduleUrl = sanitizeDisplayText(competition.official_schedule_url);
+  const heroImageUrl = sanitizeExternalUrl(competition.hero_image_url, { allowDataImage: true });
+  const officialEventUrl = sanitizeExternalUrl(sanitizeDisplayText(competition.official_event_url));
+  const officialRegistrationUrl = sanitizeExternalUrl(sanitizeDisplayText(competition.official_registration_url));
+  const officialScheduleUrl = sanitizeExternalUrl(sanitizeDisplayText(competition.official_schedule_url));
   const usableRegistrationUrl =
     officialRegistrationUrl && !isGenericRegistrationUrl(officialRegistrationUrl)
       ? officialRegistrationUrl
@@ -58,8 +60,8 @@ export default function CompetitionHero({
       <div
         className="results-hero"
         style={{
-          backgroundImage: competition.hero_image_url
-            ? `${buildHeroAccent(competition)}, url(${competition.hero_image_url})`
+          backgroundImage: heroImageUrl
+            ? `${buildHeroAccent(competition)}, url(${heroImageUrl})`
             : `${buildHeroAccent(competition)}, linear-gradient(135deg, #dbe7f8, #f4f7fb)`,
         }}
       >
@@ -118,7 +120,7 @@ export default function CompetitionHero({
               <a
                 href={officialEventUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="results-secondary-button w-full sm:w-auto"
               >
                 Official event page
@@ -128,7 +130,7 @@ export default function CompetitionHero({
               <a
                 href={officialScheduleUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="results-secondary-button w-full sm:w-auto"
               >
                 Official schedule
@@ -156,7 +158,7 @@ export default function CompetitionHero({
                   <a
                     href={registrationFallbackUrl}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="text-sky-700 underline-offset-4 hover:underline"
                   >
                     {usableRegistrationUrl ? "Official registration" : "Official event page"}
@@ -177,7 +179,7 @@ export default function CompetitionHero({
                   <a
                     href={registrationFallbackUrl}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="text-sky-700 underline-offset-4 hover:underline"
                   >
                     {usableRegistrationUrl ? "See official registration" : "See official event page"}
