@@ -1663,6 +1663,41 @@ export function buildRegistrationChoices(competition: Competition, climbers: Cli
         }));
 
       return { category, slots };
+    })
+    .sort((left, right) => {
+      const leftFirstSlotIndex =
+        left.slots.length > 0
+          ? competition.schedule_blocks.findIndex((block) => block.id === left.slots[0]?.id)
+          : Number.POSITIVE_INFINITY;
+      const rightFirstSlotIndex =
+        right.slots.length > 0
+          ? competition.schedule_blocks.findIndex((block) => block.id === right.slots[0]?.id)
+          : Number.POSITIVE_INFINITY;
+
+      if (leftFirstSlotIndex !== rightFirstSlotIndex) {
+        return leftFirstSlotIndex - rightFirstSlotIndex;
+      }
+
+      const sharedBlock = competition.schedule_blocks[leftFirstSlotIndex];
+      if (sharedBlock?.eligible_category_ids.length) {
+        const leftCategoryIndex = sharedBlock.eligible_category_ids.indexOf(left.category.id);
+        const rightCategoryIndex = sharedBlock.eligible_category_ids.indexOf(right.category.id);
+        const normalizedLeftCategoryIndex =
+          leftCategoryIndex >= 0 ? leftCategoryIndex : Number.POSITIVE_INFINITY;
+        const normalizedRightCategoryIndex =
+          rightCategoryIndex >= 0 ? rightCategoryIndex : Number.POSITIVE_INFINITY;
+
+        if (normalizedLeftCategoryIndex !== normalizedRightCategoryIndex) {
+          return normalizedLeftCategoryIndex - normalizedRightCategoryIndex;
+        }
+      }
+
+      const sortDiff = left.category.sort_order - right.category.sort_order;
+      if (sortDiff !== 0) {
+        return sortDiff;
+      }
+
+      return left.category.display_name.localeCompare(right.category.display_name);
     });
 }
 

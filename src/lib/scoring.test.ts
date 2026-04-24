@@ -240,6 +240,78 @@ describe("competition normalization", () => {
     expect(choices[0]?.slots.map((slot) => slot.label)).toEqual(["Recreational Scramble"]);
   });
 
+  it("orders registration choices by schedule block order before category sort order", () => {
+    const competition = normalizeCompetition(
+      {
+        ...DEFAULT_COMPETITION,
+        id: "comp-7",
+        slug: "spring-send-recreational",
+        name: "Spring Send Recreational",
+        format: "scramble",
+      },
+      [
+        {
+          id: "Men::Rec",
+          competition_id: "comp-7",
+          gender_division: "Men",
+          age_group: "Rec",
+          display_name: "Men / Rec",
+          sort_order: 0,
+        },
+        {
+          id: "Men::Open",
+          competition_id: "comp-7",
+          gender_division: "Men",
+          age_group: "Open",
+          display_name: "Men / Open",
+          sort_order: 1,
+        },
+        {
+          id: "Women::Rec",
+          competition_id: "comp-7",
+          gender_division: "Women",
+          age_group: "Rec",
+          display_name: "Women / Rec",
+          sort_order: 2,
+        },
+      ],
+      [
+        {
+          id: "rec-session",
+          competition_id: "comp-7",
+          label: "Rec Session",
+          phase_type: "qualifier_round",
+          audience_label: "Rec",
+          is_active: true,
+          start_time: "9:00 AM",
+          end_time: "11:00 AM",
+          capacity: 20,
+          eligible_category_ids: ["Men::Rec", "Women::Rec"],
+        },
+        {
+          id: "open-session",
+          competition_id: "comp-7",
+          label: "Open Session",
+          phase_type: "qualifier_round",
+          audience_label: "Open",
+          is_active: false,
+          start_time: "11:30 AM",
+          end_time: "1:30 PM",
+          capacity: 20,
+          eligible_category_ids: ["Men::Open"],
+        },
+      ]
+    );
+
+    const choices = buildRegistrationChoices(competition, []);
+
+    expect(choices.map((choice) => choice.category.display_name)).toEqual([
+      "Men / Rec",
+      "Women / Rec",
+      "Men / Open",
+    ]);
+  });
+
   it("realigns demo competition dates to the current timeline", () => {
     const now = new Date();
     const expectedToday = new Date(now);
