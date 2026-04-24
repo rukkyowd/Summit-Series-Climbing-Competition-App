@@ -17,8 +17,7 @@ export interface OfficialEvent {
   hero_image_url: string;
 }
 
-const WORLD_CLIMBING_SOURCE_URL =
-  "https://www.worldclimbing.com/news/ifsc-announces-climbing-and-para-climbing-calendar-2026";
+const WORLD_CLIMBING_SOURCE_URL = "https://www.worldclimbing.com/calendar/index";
 const USA_CLIMBING_NACS_URL = "https://usaclimbing.org/compete/north-american-cup-series/";
 
 function decodeHtmlEntities(value: string) {
@@ -55,17 +54,6 @@ function normalizeWhitespace(value: string) {
   return repairMojibake(value).replace(/\s+/g, " ").trim();
 }
 
-function extractVisibleText(html: string) {
-  return normalizeWhitespace(
-    decodeHtmlEntities(
-      html
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-    )
-  );
-}
-
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -96,24 +84,6 @@ function formatIsoDate(year: number, month: number, day: number) {
   return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day
     .toString()
     .padStart(2, "0")}`;
-}
-
-function parseWorldClimbingDateRange(range: string, year: number) {
-  const match = range.match(/^(\d{1,2})-(\d{1,2}) ([A-Za-z]+)$/);
-  if (!match) {
-    return null;
-  }
-
-  const [, startDayRaw, endDayRaw, monthRaw] = match;
-  const month = monthNumber(monthRaw);
-  if (!month) {
-    return null;
-  }
-
-  return {
-    start_date: formatIsoDate(year, month, Number(startDayRaw)),
-    end_date: formatIsoDate(year, month, Number(endDayRaw)),
-  };
 }
 
 function parseNamedDateRange(range: string) {
@@ -163,58 +133,111 @@ async function fetchSourceHtml(url: string) {
   return response.text();
 }
 
-function buildWorldClimbingEventUrl(location: string, year: number) {
-  return `https://www.worldclimbing.com/events/world-climbing-series-${slugify(location)}-${year}`;
-}
-
-function parseWorldClimbingEvents(html: string): OfficialEvent[] {
-  const text = extractVisibleText(html);
-  const marker = "The provisional calendar of Climbing and Para Climbing events in 2026 is as follows:";
-  const startIndex = text.indexOf(marker);
-  if (startIndex < 0) {
-    return [];
+function extractWorldClimbingSeasonYear(html: string) {
+  const seasonMatch = html.match(/Season (\d{4})/i);
+  if (seasonMatch) {
+    return Number(seasonMatch[1]);
   }
 
-  const section = text.slice(startIndex + marker.length);
-  const pattern =
-    /(\d{1,2}-\d{1,2} [A-Za-z]+)\s+(Climbing World Cup)\s+([A-Za-z .'-]+?)\s+\(([A-Z]{3})\)\s+([A-Za-z, ]+?)(?=\s+\d{1,2}-\d{1,2} [A-Za-z]+\s+(?:Climbing World Cup|Para Climbing World Cup|Climbing Youth World Championships)|\s+After being|\s+A WELCOME RETURN|\s+CONSOLIDATED PRESENCE|$)/g;
+  const datedMonthMatch = html.match(
+    /<span class="d3-ty-caption[^"]*">([A-Za-z]+)\s+(\d{4})<\/span>/i
+  );
+  if (datedMonthMatch) {
+    return Number(datedMonthMatch[2]);
+  }
+
+  return new Date().getFullYear();
+}
+
+function parseCalendarCardDateRange(dayLabel: string, monthLabel: string, fallbackYear: number) {
+  const normalizedDay = normalizeWhitespace(dayLabel);
+  const normalizedMonth = normalizeWhitespace(monthLabel);
+  const monthMatch = normalizedMonth.match(/^([A-Za-z]+)(?:\s+(\d{4}))?$/);
+  const dayMatch = normalizedDay.match(/^(\d{1,2})(?:-(\d{1,2}))?$/);
+  if (!monthMatch || !dayMatch) {
+    return null;
+  }
+
+  const [, monthRaw, yearRaw] = monthMatch;
+  const [, startDayRaw, endDayRaw] = dayMatch;
+  const month = monthNumber(monthRaw);
+  if (!month) {
+    return null;
+  }
+
+  const year = yearRaw ? Number(yearRaw) : fallbackYear;
+  const startDay = Number(startDayRaw);
+  const endDay = endDayRaw ? Number(endDayRaw) : startDay;
+
+  return {
+    start_date: formatIsoDate(year, month, startDay),
+    end_date: formatIsoDate(year, month, endDay),
+  };
+}
+
+export function parseWorldClimbingEvents(html: string): OfficialEvent[] {
+  const fallbackYear = extractWorldClimbingSeasonYear(html);
+  const cards = html.split('<div class="card__event-horizontal">').slice(1);
 
   const events: OfficialEvent[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(section)) !== null) {
-    const [, dateRange, eventType, location, countryCode, disciplines] = match;
-    if (!disciplines.toLowerCase().includes("boulder")) {
-      continue;
+  cards.forEach((card) => {
+    const titleMatch = card.match(
+      /<a aria-label="([^"]+)" href="([^"]+)">\s*<h4[^>]*>([^<]+)<\/h4>\s*<\/a>/i
+    );
+    const dateMatch = card.match(
+      /<span class="d3-ty-caption-large[^>]*">([^<]+)<\/span>\s*<span class="d3-ty-caption[^>]*">([^<]+)<\/span>/i
+    );
+    const disciplineMatch = card.match(/<div class="uppercase[^>]*">([^<]+)<\/div>/i);
+    const locationMatch = card.match(/<span class="d3-ty-body-small[^>]*">[\s\S]*?<\/svg>([^<]+)<\/span>/i);
+    if (!titleMatch || !dateMatch || !disciplineMatch || !locationMatch) {
+      return;
     }
 
-    const parsedRange = parseWorldClimbingDateRange(dateRange, 2026);
+    const [, , href, rawTitle] = titleMatch;
+    const [, rawDayLabel, rawMonthLabel] = dateMatch;
+    const [, rawDisciplines] = disciplineMatch;
+    const [, rawLocation] = locationMatch;
+
+    const title = normalizeWhitespace(stripTags(rawTitle));
+    const disciplines = normalizeWhitespace(stripTags(rawDisciplines));
+    const location = normalizeWhitespace(stripTags(rawLocation));
+    if (!/^World Climbing Series\b/i.test(title) || !disciplines.toLowerCase().includes("boulder")) {
+      return;
+    }
+
+    const parsedRange = parseCalendarCardDateRange(rawDayLabel, rawMonthLabel, fallbackYear);
     if (!parsedRange) {
-      continue;
+      return;
     }
 
-    const officialEventUrl = buildWorldClimbingEventUrl(location, 2026);
+    const infoSheetUrl = absolutizeUrl(
+      WORLD_CLIMBING_SOURCE_URL,
+      card.match(/<a title="Info sheet"[^>]*href="([^"]+)"/i)?.[1] ?? ""
+    );
+    const registrationUrl = absolutizeUrl(
+      WORLD_CLIMBING_SOURCE_URL,
+      card.match(/<a title="Registrations"[^>]*href="([^"]+)"/i)?.[1] ?? ""
+    );
+    const officialEventUrl = absolutizeUrl(WORLD_CLIMBING_SOURCE_URL, href);
 
     events.push({
       id: `world-climbing-${slugify(location)}-${parsedRange.start_date}`,
-      title: `${eventType} - ${location}`,
+      title,
       series: "World Climbing",
-      location: `${location}, ${countryCode}`,
-      disciplines: disciplines.trim(),
-      description: `${eventType} in ${location} featuring ${disciplines
-        .trim()
-        .toLowerCase()}, as listed on the official World Climbing calendar.`,
-      source_name: "World Climbing 2026 calendar",
+      location,
+      disciplines,
+      description: `${title} in ${location} featuring ${disciplines.toLowerCase()}, as listed on the live World Climbing calendar.`,
+      source_name: "World Climbing live calendar",
       source_url: WORLD_CLIMBING_SOURCE_URL,
       official_event_url: officialEventUrl,
-      official_registration_url: "",
-      official_schedule_url: officialEventUrl,
+      official_registration_url: registrationUrl,
+      official_schedule_url: infoSheetUrl || officialEventUrl,
       registration_opens_at: null,
       registration_closes_at: null,
       hero_image_url: "",
       ...parsedRange,
     });
-  }
+  });
 
   return events;
 }
@@ -255,7 +278,7 @@ function findUsaClimbingLocationUrl(anchors: Map<string, string>) {
   return "";
 }
 
-function parseUsaClimbingEvents(html: string): OfficialEvent[] {
+export function parseUsaClimbingEvents(html: string): OfficialEvent[] {
   const sectionPattern = /<li>\s*<a class="uk-accordion-title uk-accordion-title--event"[\s\S]*?<\/li>/gi;
 
   const events: OfficialEvent[] = [];
