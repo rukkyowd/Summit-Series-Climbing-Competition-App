@@ -2216,8 +2216,9 @@ attempt_outcomes as (
         greatest(1, least(5, 1 + (src.seed_b % 2) + greatest(src.climb_number - ap.consistency_band, 0) / 4))
     end as top_tries,
     case
-      greatest(1, least(6, 2 + (src.seed_c % 3) + greatest(src.climb_number - ap.endurance_band, 0) / 3))
-        as zone_tries,
+      when src.format = 'scramble' then null
+      else greatest(1, least(6, 2 + (src.seed_c % 3) + greatest(src.climb_number - ap.endurance_band, 0) / 3))
+    end as zone_tries,
     case
       when src.format = 'scramble' then 1 + (src.seed_d % 4)
       else 2 + (src.seed_e % 4)

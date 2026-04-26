@@ -96,7 +96,11 @@ async function getStaffRole(request: NextRequest) {
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  if (!pathname.startsWith("/staff") || pathname.startsWith("/staff/login")) {
+  if (
+    !pathname.startsWith("/staff") ||
+    pathname.startsWith("/staff/login") ||
+    pathname === "/staff/demo"
+  ) {
     return applySensitiveHeaders(request, NextResponse.next());
   }
 

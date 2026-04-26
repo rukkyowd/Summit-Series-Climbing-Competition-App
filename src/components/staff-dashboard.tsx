@@ -239,9 +239,11 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
 export default function StaffDashboard({
   initialCompetitionSlug,
   initialCreateDraft,
+  demoMode = false,
 }: {
   initialCompetitionSlug?: string;
   initialCreateDraft?: StaffDashboardCreateDraft;
+  demoMode?: boolean;
 }) {
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
@@ -283,12 +285,17 @@ export default function StaffDashboard({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [summaries, authState] = await Promise.all([
-        listCompetitionSummaries(true),
-        getAuthState(),
-      ]);
+      const summaries = await listCompetitionSummaries(true);
       setAllSummaries(summaries);
-      setProfile(authState.profile);
+      setProfile(
+        demoMode
+          ? {
+              id: "demo-dashboard",
+              role: "admin",
+              display_name: "Demo viewer",
+            }
+          : (await getAuthState()).profile
+      );
       setSelectedCompetitionId((current) => {
         if (current && summaries.some((entry) => entry.competition.id === current)) {
           return current;
@@ -305,7 +312,7 @@ export default function StaffDashboard({
     } finally {
       setLoading(false);
     }
-  }, [initialCompetitionSlug]);
+  }, [demoMode, initialCompetitionSlug]);
 
   useEffect(() => {
     void load();
@@ -861,6 +868,9 @@ export default function StaffDashboard({
       ["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
       Boolean(snapshot?.finalists.length)
     : false;
+  const demoBanner = demoMode
+    ? "Demo mode is public and read-only. Staff sign-in, scoring controls, and competition edits stay protected."
+    : "";
 
   if (loading && !draft) {
     return (
@@ -879,17 +889,24 @@ export default function StaffDashboard({
           light
           status={
             <div className="flex flex-wrap items-center gap-2">
-              <div className="results-chip">{profile?.role ?? "staff"}</div>
-              <button type="button" onClick={() => void signOutUser().then(() => (window.location.href = "/staff/login"))} className="results-secondary-button">
-                Sign out
-              </button>
+              <div className="results-chip">{demoMode ? "demo" : profile?.role ?? "staff"}</div>
+              {demoMode ? (
+                <Link href="/staff/login" className="results-secondary-button">
+                  Staff sign in
+                </Link>
+              ) : (
+                <button type="button" onClick={() => void signOutUser().then(() => (window.location.href = "/staff/login"))} className="results-secondary-button">
+                  Sign out
+                </button>
+              )}
             </div>
           }
         />
-        {draft?.slug ? <StaffCompetitionSubnav competitionSlug={draft.slug} /> : null}
+        {draft?.slug && !demoMode ? <StaffCompetitionSubnav competitionSlug={draft.slug} /> : null}
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
+        {demoMode ? <div className="results-alert">{demoBanner}</div> : null}
 
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="results-card">
@@ -900,7 +917,7 @@ export default function StaffDashboard({
             <div className="results-hero-subline">
               Create a competition, pull in official source details, then manage phases, judging, schedules, and finals from one control room.
             </div>
-            <div className="mt-4 grid gap-3">
+            <fieldset disabled={demoMode} className={demoMode ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
               <label className="results-field-group">
                 <span className="results-field-label">Competition name</span>
                 <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New competition name" />
@@ -1050,7 +1067,12 @@ export default function StaffDashboard({
               >
                 Create competition
               </button>
-            </div>
+            </fieldset>
+            {demoMode ? (
+              <div className="mt-4 text-sm text-slate-600">
+                This panel is intentionally frozen for demos. Use the staff sign-in to create or edit competitions.
+              </div>
+            ) : null}
 
             <div className="results-subtle-divider mt-8" />
             <div className="mt-5 flex items-center justify-between gap-3">
@@ -1092,17 +1114,25 @@ export default function StaffDashboard({
                       {publicUrl || publicPath}
                     </div>
                   </div>
-                  <div className="results-workspace-callout">
-                    <div className="results-kicker">Quick links</div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                      <Link href={publicPath} className="results-secondary-button w-full">Public page</Link>
-                      <Link href={judgeUrl} className="results-secondary-button w-full">Judge panel</Link>
-                      <Link href={displayPath} className="results-secondary-button w-full">Display</Link>
-                      <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button w-full">Preflight</Link>
+                    <div className="results-workspace-callout">
+                      <div className="results-kicker">Quick links</div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                        <Link href={publicPath} className="results-secondary-button w-full">Public page</Link>
+                        {!demoMode ? <Link href={judgeUrl} className="results-secondary-button w-full">Judge panel</Link> : null}
+                        <Link href={displayPath} className="results-secondary-button w-full">Display</Link>
+                        {!demoMode ? (
+                          <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button w-full">Preflight</Link>
+                        ) : null}
+                      </div>
+                      {demoMode ? (
+                        <div className="mt-3 text-sm text-slate-600">
+                          Judge and preflight tools remain protected on staff-only routes.
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                </div>
 
+                <fieldset disabled={demoMode} className={demoMode ? "space-y-6 opacity-70" : "space-y-6"}>
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -1870,6 +1900,7 @@ export default function StaffDashboard({
                     },
                   })} className="results-danger-button">Delete competition</button>
                 </div>
+                </fieldset>
               </div>
             ) : (
               <div className="text-slate-600">Select a competition to edit it.</div>
