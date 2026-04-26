@@ -402,7 +402,8 @@ export default function StaffDashboard({
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
   const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
-  const registrationQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registerUrl || registerPath)}`;
+  const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
+  const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const canEditPhase = profile?.role === "admin";
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
@@ -878,7 +879,7 @@ export default function StaffDashboard({
     }
 
     try {
-      const response = await fetch(registrationQrUrl);
+      const response = await fetch(printableRegistrationQrUrl);
       if (!response.ok) {
         throw new Error("Unable to download the registration QR code.");
       }
@@ -901,7 +902,7 @@ export default function StaffDashboard({
       return;
     }
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=720,height=960");
+    const printWindow = window.open("", "_blank", "width=720,height=960");
     if (!printWindow) {
       setError("Unable to open the print window for the registration QR code.");
       return;
@@ -935,7 +936,7 @@ export default function StaffDashboard({
         <body>
           <h1>${draft.name}</h1>
           <p>Scan this QR code to open the competition registration page.</p>
-          <img src="${registrationQrUrl}" alt="Competition registration QR code" />
+          <img src="${printableRegistrationQrUrl}" alt="Competition registration QR code" onload="window.focus(); window.print();" />
           <p class="url">${registerUrl || registerPath}</p>
         </body>
       </html>
@@ -1860,6 +1861,8 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
+                </fieldset>
+
                 <div className="results-workspace-card">
                   <div className="results-kicker">Share links</div>
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
@@ -1881,6 +1884,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
+                <fieldset disabled={demoMode} className={demoMode ? "space-y-6 opacity-70" : "space-y-6"}>
                 {snapshot?.rounds?.length ? (
                   <div className="results-workspace-card">
                     <div className="results-kicker">Competition rounds</div>
