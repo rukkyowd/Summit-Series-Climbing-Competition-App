@@ -404,9 +404,6 @@ export default function StaffDashboard({
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
-  const absolutePrintableRegistrationQrUrl = shareOrigin
-    ? `${shareOrigin}${printableRegistrationQrUrl}`
-    : printableRegistrationQrUrl;
   const canEditPhase = profile?.role === "admin";
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
@@ -900,10 +897,31 @@ export default function StaffDashboard({
       setError(nextError instanceof Error ? nextError.message : "Unable to download the registration QR code.");
     }
   };
-  const printRegistrationQr = () => {
+  const printRegistrationQr = async () => {
     if (!draft) {
       return;
     }
+
+    try {
+      const response = await fetch(printableRegistrationQrUrl);
+      if (!response.ok) {
+        throw new Error("Unable to prepare the registration QR code for printing.");
+      }
+
+      const blob = await response.blob();
+      const qrDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === "string") {
+            resolve(reader.result);
+            return;
+          }
+
+          reject(new Error("Unable to prepare the registration QR code for printing."));
+        };
+        reader.onerror = () => reject(new Error("Unable to prepare the registration QR code for printing."));
+        reader.readAsDataURL(blob);
+      });
 
     const printWindow = window.open("", "_blank", "width=720,height=960");
     if (!printWindow) {
@@ -939,14 +957,19 @@ export default function StaffDashboard({
         <body>
           <h1>${draft.name}</h1>
           <p>Scan this QR code to open the competition registration page.</p>
-          <img src="${absolutePrintableRegistrationQrUrl}" alt="Competition registration QR code" onload="window.focus(); window.print();" />
+          <img src="${qrDataUrl}" alt="Competition registration QR code" onload="window.focus(); window.print();" />
           <p class="url">${registerUrl || registerPath}</p>
         </body>
       </html>
     `);
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Unable to prepare the registration QR code for printing."
+      );
+    }
   };
 
   if (loading && !draft) {
