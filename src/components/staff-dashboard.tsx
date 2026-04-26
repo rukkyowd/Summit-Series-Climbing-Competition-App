@@ -1577,14 +1577,17 @@ export default function StaffDashboard({
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-slate-700">Qualifier boulders</span>
                     <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} className="results-input" />
+                    <span className="text-xs leading-5 text-slate-500">Total qualifier climbs available to each athlete.</span>
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-slate-700">Climber cap</span>
                     <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} className="results-input" />
+                    <span className="text-xs leading-5 text-slate-500">Maximum number of climbers this event is set up to handle.</span>
                   </label>
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-slate-700">Counting climbs</span>
                     <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} className="results-input" />
+                    <span className="text-xs leading-5 text-slate-500">Only each climber&apos;s best X qualifier climbs count toward rank.</span>
                   </label>
                   {draftHasFinals ? (
                     <label className="space-y-2">
@@ -1593,6 +1596,7 @@ export default function StaffDashboard({
                         <option value={6}>Top 6</option>
                         <option value={8}>Top 8</option>
                       </select>
+                      <span className="text-xs leading-5 text-slate-500">How many climbers advance from qualifiers into finals.</span>
                     </label>
                   ) : null}
                 </div>
@@ -1601,6 +1605,7 @@ export default function StaffDashboard({
                     <label className="space-y-2">
                       <span className="text-sm font-medium text-slate-700">Finals problems</span>
                       <input type="number" min={1} max={8} value={draft.finals_problem_count} onChange={(event) => setDraft({ ...draft, finals_problem_count: Math.max(1, Math.min(8, Number(event.target.value) || 4)) })} className="results-input" />
+                      <span className="text-xs leading-5 text-slate-500">Number of climbs each finalist will attempt in the finals round.</span>
                     </label>
                   ) : (
                     <div className="results-workspace-card">
