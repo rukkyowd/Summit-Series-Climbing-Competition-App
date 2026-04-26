@@ -1798,7 +1798,12 @@ export default function StaffDashboard({
                     <button type="button" onClick={() => void navigator.clipboard.writeText(publicUrl)} className="results-secondary-button">Copy overview</button>
                     <button type="button" onClick={() => void navigator.clipboard.writeText(registerUrl)} className="results-secondary-button">Copy register</button>
                   </div>
-                  <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registerUrl || registerPath)}`} alt="Competition registration QR code" width={160} height={160} unoptimized className="mt-4 rounded-[1.2rem] border border-slate-200 bg-white p-2" />
+                  <div className="mt-4 flex flex-wrap items-start gap-4">
+                    <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registerUrl || registerPath)}`} alt="Competition registration QR code" width={160} height={160} unoptimized className="rounded-[1.2rem] border border-slate-200 bg-white p-2" />
+                    <div className="max-w-xs text-sm leading-6 text-slate-600">
+                      Scan this QR code to open the competition registration page directly.
+                    </div>
+                  </div>
                 </div>
 
                 {snapshot?.rounds?.length ? (
