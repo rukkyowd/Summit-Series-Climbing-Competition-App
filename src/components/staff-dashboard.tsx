@@ -1010,12 +1010,12 @@ export default function StaffDashboard({
 
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="results-card">
-            <div className="results-kicker">Create competition</div>
+            <div className="results-kicker">Create event</div>
             <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
-              Build the event desk.
+              Set up a competition.
             </h1>
             <div className="results-hero-subline">
-              Create a competition, pull in official source details, then manage phases, judging, schedules, and finals from one control room.
+              Start a new event, pull in official details, and manage registration, schedules, judging, and finals from one place.
             </div>
             <fieldset disabled={demoMode} className={demoMode ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
               <label className="results-field-group">
@@ -1165,12 +1165,12 @@ export default function StaffDashboard({
                 }}
                 className="results-primary-button"
               >
-                Create competition
+                  Create event
               </button>
             </fieldset>
             {demoMode ? (
               <div className="mt-4 text-sm text-slate-600">
-                This panel is intentionally frozen for demos. Use the staff sign-in to create or edit competitions.
+                This panel is intentionally frozen for demos. Use staff sign-in to create or edit events.
               </div>
             ) : null}
 
@@ -1178,7 +1178,7 @@ export default function StaffDashboard({
             <div className="mt-5 flex items-center justify-between gap-3">
               <div>
                 <div className="results-kicker">Existing events</div>
-                <div className="mt-2 text-sm text-slate-600">Choose a competition to open its live control surface.</div>
+                <div className="mt-2 text-sm text-slate-600">Choose an event to review its setup, links, and live workflow.</div>
               </div>
               <div className="results-chip">{allSummaries.length} loaded</div>
             </div>
@@ -1208,7 +1208,7 @@ export default function StaffDashboard({
               <div className="space-y-6">
                 <div className="results-workspace-hero">
                   <div>
-                    <div className="results-kicker">Competition setup</div>
+                    <div className="results-kicker">Event setup</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
                     <div className="results-hero-subline">
                       {publicUrl || publicPath}
@@ -1236,7 +1236,7 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Current phase</div>
+                      <div className="results-kicker">Current stage</div>
                       <div className="mt-2 text-2xl font-semibold text-slate-950">{formatCompetitionPhaseLabel(draft.current_phase)}</div>
                       {currentPhaseBlockLabel ? (
                         <div className="mt-2 text-sm font-medium text-sky-700">
@@ -1362,8 +1362,8 @@ export default function StaffDashboard({
                     </div>
                   </div>
                   <div className="mt-4 text-sm text-slate-600">
-                    Competition phase controls scoring and which public standings are shown. When your schedule blocks imply a
-                    phase order, Previous and Next follow that event sequence first
+                    The current stage controls scoring and what the public sees. When schedule blocks imply a stage
+                    order, Previous and Next follow that event timeline first
                     {liveScheduleBlock ? `, and the live block is currently "${liveScheduleBlock.label}".` : "."}
                   </div>
                   {scheduleDrivenPhases.length ? (
@@ -1617,9 +1617,9 @@ export default function StaffDashboard({
                   )}
                   <div className="results-workspace-card">
                     <div className="results-kicker">Archived state</div>
-                    <div className="mt-2 text-sm text-slate-600">Archive hides the competition from public discovery without deleting event-day data.</div>
+                    <div className="mt-2 text-sm text-slate-600">Archiving hides this event from public browsing without deleting registrations or scoring data.</div>
                     <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className={draft.status === "active" ? "results-danger-button mt-4" : "results-secondary-button mt-4"}>
-                      {draft.status === "active" ? "Archive competition" : "Reopen competition"}
+                      {draft.status === "active" ? "Archive event" : "Reopen event"}
                     </button>
                   </div>
                 </div>
@@ -1627,7 +1627,7 @@ export default function StaffDashboard({
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="results-workspace-card">
                     <div className="results-kicker">Qualifier age groups</div>
-                    <div className="mt-2 text-sm text-slate-600">Registration and qualifier leaderboard tabs only show these age groups.</div>
+                    <div className="mt-2 text-sm text-slate-600">Only these age groups appear in registration and qualifier standings.</div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                         const active = draft.qualifier_eligible_age_groups.includes(ageGroup);
@@ -1648,7 +1648,7 @@ export default function StaffDashboard({
                   {draftHasFinals ? (
                     <div className="results-workspace-card">
                       <div className="results-kicker">Finals age groups</div>
-                      <div className="mt-2 text-sm text-slate-600">Only these age groups can advance into finals selections.</div>
+                      <div className="mt-2 text-sm text-slate-600">Only these age groups can qualify into finals.</div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                           const active = draft.finals_eligible_age_groups.includes(ageGroup);
@@ -1673,7 +1673,7 @@ export default function StaffDashboard({
                     <div>
                       <div className="results-kicker">Schedule blocks</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        Add ready-made blocks, then adjust the labels, times, and climbing windows for the day.
+                        Add ready-made schedule blocks, then adjust labels, times, and climbing windows for the day.
                       </div>
                     </div>
                     <div className="results-chip">{draft.schedule_blocks.length} blocks</div>
@@ -1694,7 +1694,7 @@ export default function StaffDashboard({
 
                   <div className="mt-5 space-y-4">
                     <div className="text-sm text-slate-600">
-                      Add qualifier waves separately, then drag one wave card onto another to merge them into a shared start group.
+                      Add qualifier waves separately, then drag one wave onto another to combine them into one shared start group.
                     </div>
                     {draft.schedule_blocks.length ? (
                       draft.schedule_blocks.map((block) => {
@@ -1886,7 +1886,7 @@ export default function StaffDashboard({
                       })
                     ) : (
                       <div className="rounded-[1.4rem] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-600">
-                        No schedule blocks yet. Start with a template above, then edit the labels and times.
+                        No schedule blocks yet. Start with a template above, then adjust the details for your event.
                       </div>
                     )}
                   </div>
@@ -1918,7 +1918,7 @@ export default function StaffDashboard({
                 <fieldset disabled={demoMode} className={demoMode ? "space-y-6 opacity-70" : "space-y-6"}>
                 {snapshot?.rounds?.length ? (
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Competition rounds</div>
+                  <div className="results-kicker">Competition rounds</div>
                     <div className="mt-4 space-y-3">
                       {snapshot.rounds.map((round) => (
                         <div key={round.id} className="results-admin-list-item">
@@ -1941,9 +1941,9 @@ export default function StaffDashboard({
                     <div className="mt-2 text-sm text-slate-600">
                       {canEditFinalsOrder
                         ? snapshot?.finalistsPersisted
-                          ? "Observation is live, so you can set the finals climbing order now."
+                          ? "Observation is live, so you can set finals climbing order now."
                           : "Observation is live. The first change will create the finals field from the projected finalists."
-                        : "Finals climbing order locks outside observation."}
+                        : "Finals climbing order is locked outside observation."}
                     </div>
                     <div className="mt-4 space-y-3">
                       {finalsOrder.map((finalist, index) => (
@@ -1964,7 +1964,7 @@ export default function StaffDashboard({
                   <div className="results-workspace-card">
                     <div className="results-kicker">Finals climbing order</div>
                     <div className="mt-2 text-sm text-slate-600">
-                      Projected finalists are visible, but the order only becomes editable during observation.
+                      Projected finalists are visible, but the climbing order can only be edited during observation.
                     </div>
                   </div>
                 ) : null}
