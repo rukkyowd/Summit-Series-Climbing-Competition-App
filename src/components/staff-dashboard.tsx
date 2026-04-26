@@ -1218,15 +1218,15 @@ export default function StaffDashboard({
                       <div className="results-kicker">Quick links</div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         <Link href={publicPath} className="results-secondary-button w-full">Public page</Link>
-                        {!demoMode ? <Link href={judgeUrl} className="results-secondary-button w-full">Judge panel</Link> : null}
-                        <Link href={displayPath} className="results-secondary-button w-full">Display</Link>
+                        {!demoMode ? <Link href={judgeUrl} className="results-secondary-button w-full">Judge scoring</Link> : null}
+                        <Link href={displayPath} className="results-secondary-button w-full">Public display</Link>
                         {!demoMode ? (
-                          <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button w-full">Preflight</Link>
+                          <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button w-full">Event checklist</Link>
                         ) : null}
                       </div>
                       {demoMode ? (
                         <div className="mt-3 text-sm text-slate-600">
-                          Judge and preflight tools remain protected on staff-only routes.
+                          Judge scoring and checklist tools remain protected on staff-only routes.
                         </div>
                       ) : null}
                     </div>
@@ -1259,7 +1259,7 @@ export default function StaffDashboard({
                               draft.id,
                               targetPhase,
                               -1,
-                              `Live block moved to ${previousScheduleBlock.label}.`,
+                              `Current schedule block moved to ${previousScheduleBlock.label}.`,
                               previousScheduleBlock.id
                             );
                             return;
@@ -1307,7 +1307,7 @@ export default function StaffDashboard({
                                     draft.id,
                                     targetBlockPhase,
                                     1,
-                                    "Competition moved to results.",
+                                    "Event moved to results.",
                                     nextScheduleBlock.id
                                   );
                                 },
@@ -1319,7 +1319,7 @@ export default function StaffDashboard({
                               draft.id,
                               targetBlockPhase,
                               1,
-                              `Live block moved to ${nextScheduleBlock.label}.`,
+                              `Current schedule block moved to ${nextScheduleBlock.label}.`,
                               nextScheduleBlock.id
                             );
                             return;
@@ -1337,7 +1337,7 @@ export default function StaffDashboard({
                               confirmTone: "danger",
                               expectedValue: draft.name,
                               action: async () => {
-                                await runPhaseNavigation(draft.id, targetNextPhase, 1, "Competition moved to results.");
+                                await runPhaseNavigation(draft.id, targetNextPhase, 1, "Event moved to results.");
                               },
                             });
                             return;
@@ -1351,7 +1351,7 @@ export default function StaffDashboard({
                             draft.id,
                             targetNextPhase,
                             1,
-                            `Competition moved to ${formatCompetitionPhaseLabel(targetNextPhase).toLowerCase()}.`
+                            `Event moved to ${formatCompetitionPhaseLabel(targetNextPhase).toLowerCase()}.`
                           );
                         }}
                         disabled={!canGoNext || isPending || isPhasePending || !canEditPhase}
@@ -1373,7 +1373,7 @@ export default function StaffDashboard({
                   ) : null}
                   {liveScheduleBlock ? (
                     <div className="mt-3 rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                      Live schedule block: <span className="font-semibold">{liveScheduleBlock.label}</span>
+                      Current schedule block: <span className="font-semibold">{liveScheduleBlock.label}</span>
                       {" · "}
                       {formatSchedulePhaseLabel(liveScheduleBlock.phase_type)}
                       {impliedCompetitionPhase ? (
@@ -1401,17 +1401,17 @@ export default function StaffDashboard({
                                   draft.id,
                                   draft.current_phase,
                                   1,
-                                  `Live block moved to ${currentPhaseScheduleBlock.label}.`,
+                                  `Current schedule block moved to ${currentPhaseScheduleBlock.label}.`,
                                   currentPhaseScheduleBlock.id
                                 )
                               }
                               disabled={isPending || isPhasePending}
                               className="results-secondary-button ml-3"
                             >
-                              Move live block forward
+                              Move current schedule block forward
                             </button>
                           ) : (
-                            <> Only admins can move the live schedule block forward.</>
+                            <> Only admins can move the current schedule block forward.</>
                           )}
                         </>
                       ) : (
@@ -1425,12 +1425,12 @@ export default function StaffDashboard({
                               onClick={() => void runPhaseChange(
                                 draft.id,
                                 impliedCompetitionPhase,
-                                `Competition synced to ${formatCompetitionPhaseLabel(impliedCompetitionPhase).toLowerCase()}.`
+                                `Event synced to ${formatCompetitionPhaseLabel(impliedCompetitionPhase).toLowerCase()}.`
                               )}
                               disabled={isPending || isPhasePending}
                               className="results-secondary-button ml-3"
                             >
-                              Match live block
+                              Match current schedule block
                             </button>
                           ) : (
                             <> Only admins can sync the competition phase.</>
@@ -1575,23 +1575,23 @@ export default function StaffDashboard({
                 ) : null}
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-700">Qualifier boulders</span>
+                    <span className="text-sm font-medium text-slate-700">Qualifying boulders</span>
                     <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} className="results-input" />
-                    <span className="text-xs leading-5 text-slate-500">Total qualifier climbs available to each athlete.</span>
+                    <span className="text-xs leading-5 text-slate-500">Total qualifying climbs available to each athlete.</span>
                   </label>
                   <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-700">Climber cap</span>
+                    <span className="text-sm font-medium text-slate-700">Max athletes</span>
                     <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} className="results-input" />
                     <span className="text-xs leading-5 text-slate-500">Maximum number of climbers this event is set up to handle.</span>
                   </label>
                   <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-700">Counting climbs</span>
+                    <span className="text-sm font-medium text-slate-700">Top climbs counted</span>
                     <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} className="results-input" />
-                    <span className="text-xs leading-5 text-slate-500">Only each climber&apos;s best X qualifier climbs count toward rank.</span>
+                    <span className="text-xs leading-5 text-slate-500">Only each climber&apos;s best X qualifying climbs count toward rank.</span>
                   </label>
                   {draftHasFinals ? (
                     <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Finals cutoff</span>
+                      <span className="text-sm font-medium text-slate-700">Finalists</span>
                       <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF })} className="results-input">
                         <option value={6}>Top 6</option>
                         <option value={8}>Top 8</option>
@@ -1616,7 +1616,7 @@ export default function StaffDashboard({
                     </div>
                   )}
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Archived state</div>
+                    <div className="results-kicker">Visibility</div>
                     <div className="mt-2 text-sm text-slate-600">Archiving hides this event from public browsing without deleting registrations or scoring data.</div>
                     <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className={draft.status === "active" ? "results-danger-button mt-4" : "results-secondary-button mt-4"}>
                       {draft.status === "active" ? "Archive event" : "Reopen event"}
@@ -1626,8 +1626,8 @@ export default function StaffDashboard({
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Qualifier age groups</div>
-                    <div className="mt-2 text-sm text-slate-600">Only these age groups appear in registration and qualifier standings.</div>
+                    <div className="results-kicker">Qualifying age groups</div>
+                    <div className="mt-2 text-sm text-slate-600">Only these age groups appear in registration and qualifying standings.</div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                         const active = draft.qualifier_eligible_age_groups.includes(ageGroup);
@@ -1671,7 +1671,7 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Schedule blocks</div>
+                      <div className="results-kicker">Event schedule</div>
                       <div className="mt-2 text-sm text-slate-600">
                         Add ready-made schedule blocks, then adjust labels, times, and climbing windows for the day.
                       </div>
@@ -1694,7 +1694,7 @@ export default function StaffDashboard({
 
                   <div className="mt-5 space-y-4">
                     <div className="text-sm text-slate-600">
-                      Add qualifier waves separately, then drag one wave onto another to combine them into one shared start group.
+                      Add qualifying waves separately, then drag one wave onto another to combine them into one shared start group.
                     </div>
                     {draft.schedule_blocks.length ? (
                       draft.schedule_blocks.map((block) => {
@@ -1758,7 +1758,7 @@ export default function StaffDashboard({
                                   onClick={() => setActiveScheduleBlock(block.id)}
                                   className={block.is_active ? "results-primary-button" : "results-secondary-button"}
                                 >
-                                  {block.is_active ? "Live block" : "Set live"}
+                                  {block.is_active ? "Current block" : "Set current"}
                                 </button>
                                 <button
                                   type="button"
@@ -1777,7 +1777,7 @@ export default function StaffDashboard({
                                   value={block.label}
                                   onChange={(event) => updateScheduleBlock(block.id, (current) => ({ ...current, label: event.target.value }))}
                                   className="results-input"
-                                  placeholder="Qualifier A"
+                                  placeholder="Qualifying A"
                                 />
                               </label>
                               <label className="space-y-2">
@@ -1863,7 +1863,7 @@ export default function StaffDashboard({
                                     }
                                     className={!block.eligible_category_ids.length ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                                   >
-                                    All qualifier categories
+                                    All qualifying categories
                                   </button>
                                   {qualifierCategories.map((category) => {
                                     const active = block.eligible_category_ids.includes(category.id);
@@ -1899,7 +1899,7 @@ export default function StaffDashboard({
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                     <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl || publicPath}</div>
                     <div><span className="font-semibold text-slate-950">Register:</span> {registerUrl || registerPath}</div>
-                    <div><span className="font-semibold text-slate-950">Display:</span> {displayUrl || displayPath}</div>
+                  <div><span className="font-semibold text-slate-950">Public display:</span> {displayUrl || displayPath}</div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button type="button" onClick={() => void navigator.clipboard.writeText(publicUrl)} className="results-secondary-button">Copy overview</button>
@@ -1918,7 +1918,7 @@ export default function StaffDashboard({
                 <fieldset disabled={demoMode} className={demoMode ? "space-y-6 opacity-70" : "space-y-6"}>
                 {snapshot?.rounds?.length ? (
                   <div className="results-workspace-card">
-                  <div className="results-kicker">Competition rounds</div>
+                  <div className="results-kicker">Rounds</div>
                     <div className="mt-4 space-y-3">
                       {snapshot.rounds.map((round) => (
                         <div key={round.id} className="results-admin-list-item">
@@ -1937,20 +1937,20 @@ export default function StaffDashboard({
 
                 {draftHasFinals && finalsOrder.length && (snapshot?.finalistsPersisted || canEditFinalsOrder) ? (
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Finals climbing order</div>
+                    <div className="results-kicker">Finals order</div>
                     <div className="mt-2 text-sm text-slate-600">
                       {canEditFinalsOrder
                         ? snapshot?.finalistsPersisted
-                          ? "Observation is live, so you can set finals climbing order now."
-                          : "Observation is live. The first change will create the finals field from the projected finalists."
-                        : "Finals climbing order is locked outside observation."}
+                          ? "Finals preview is live, so you can set finals order now."
+                          : "Finals preview is live. The first change will create the finals field from the projected finalists."
+                        : "Finals order is locked outside finals preview."}
                     </div>
                     <div className="mt-4 space-y-3">
                       {finalsOrder.map((finalist, index) => (
                         <div key={finalist.climber_id} className="results-admin-list-item">
                           <div>
                             <div className="text-lg font-semibold text-slate-950">{finalist.name}</div>
-                            <div className="mt-1 text-sm text-slate-600">{finalist.display_category} | Qualifier #{finalist.qualifier_rank}</div>
+                            <div className="mt-1 text-sm text-slate-600">{finalist.display_category} | Qualifying #{finalist.qualifier_rank}</div>
                           </div>
                           <div className="flex gap-2">
                             <button type="button" onClick={() => void moveFinalist(index, -1)} disabled={!canEditFinalsOrder || index === 0} className="results-secondary-button">Up</button>
@@ -1962,9 +1962,9 @@ export default function StaffDashboard({
                   </div>
                 ) : draftHasFinals && finalsOrder.length ? (
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Finals climbing order</div>
+                    <div className="results-kicker">Finals order</div>
                     <div className="mt-2 text-sm text-slate-600">
-                      Projected finalists are visible, but the climbing order can only be edited during observation.
+                      Projected finalists are visible, but the climbing order can only be edited during finals preview.
                     </div>
                   </div>
                 ) : null}
@@ -1976,13 +1976,13 @@ export default function StaffDashboard({
                   {snapshot ? (
                     <>
                       <button type="button" onClick={() => downloadCsv(`${draft.slug}-qualifiers.csv`, buildQualifierCsv(snapshot))} className="results-secondary-button">
-                        Export qualifier CSV
+                        Export qualifying CSV
                       </button>
                       <button type="button" onClick={() => downloadCsv(`${draft.slug}-finals.csv`, buildFinalsCsv(snapshot))} className="results-secondary-button" disabled={!snapshot.finalsLeaderboard.length}>
                         Export finals CSV
                       </button>
                       <button type="button" onClick={() => window.open(buildDisplayPath(draft.slug), "_blank", "noopener,noreferrer")} className="results-secondary-button">
-                        Open print/display view
+                        Open public display
                       </button>
                     </>
                   ) : null}
@@ -1991,7 +1991,7 @@ export default function StaffDashboard({
                     title: "Advance to finals",
                     description: finalsAdvanceBlock
                       ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
-                      : `This will create the finals field from the current standings and move the competition into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
+                      : `This will create the finals field from the current standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
                     confirmLabel: "Advance",
                     expectedValue: draft.name,
                     action: async () => {
@@ -2000,8 +2000,8 @@ export default function StaffDashboard({
                   })} className="results-secondary-button" disabled={!canAdvanceToFinals || isPending || isPhasePending}>Advance to finals</button>
                   ) : null}
                   <button type="button" onClick={() => setConfirming({
-                    title: "Delete competition",
-                    description: "This permanently deletes the competition and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
+                    title: "Delete event",
+                    description: "This permanently deletes the event and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
                     confirmLabel: "Delete",
                     confirmTone: "danger",
                     expectedValue: draft.name,
@@ -2013,7 +2013,7 @@ export default function StaffDashboard({
                       await refreshAfterChange();
                       setMessage("Competition deleted.");
                     },
-                  })} className="results-danger-button">Delete competition</button>
+                  })} className="results-danger-button">Delete event</button>
                 </div>
                 </fieldset>
               </div>
