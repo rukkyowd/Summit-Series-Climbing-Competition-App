@@ -156,13 +156,6 @@ export default function HomePage() {
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-              <div className="results-meta-card">
-                <div className="results-kicker">Live snapshot</div>
-                <div className="mt-3 text-3xl font-semibold text-slate-950">{summaries.length}</div>
-                <div className="mt-2 text-sm leading-6 text-slate-600">
-                  Active competitions currently available across registration, scorecards, rankings, and display.
-                </div>
-              </div>
               <Link href="/staff/demo" className="results-secondary-button w-full">
                 Preview the demo dashboard
               </Link>
