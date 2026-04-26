@@ -6,6 +6,7 @@ import SiteHeader from "@/components/site-header";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import {
+  compareQualifierEntries,
   formatCompetitionPhaseLabel,
   formatFinalPoints,
   formatUsesSelfScoredQualifiers,
@@ -33,7 +34,15 @@ export default function CompetitionLeaderboardPage() {
     }
 
     const offeredCategories = snapshot.registrationChoices.map((choice) => choice.category);
-    return offeredCategories.length ? offeredCategories : snapshot.competition.categories;
+    const sourceCategories = offeredCategories.length ? offeredCategories : snapshot.competition.categories;
+    return [...sourceCategories].sort((left, right) => {
+      const sortDiff = left.sort_order - right.sort_order;
+      if (sortDiff !== 0) {
+        return sortDiff;
+      }
+
+      return left.display_name.localeCompare(right.display_name);
+    });
   }, [snapshot]);
   const preferredCategoryId = useMemo(
     () => pickPreferredQualifierCategory(categories, snapshot?.qualifierLeaderboard ?? []),
@@ -44,7 +53,16 @@ export default function CompetitionLeaderboardPage() {
       return [];
     }
 
-    return snapshot.qualifierLeaderboard.filter((entry) => !selectedCategory || entry.category_id === selectedCategory);
+    return snapshot.qualifierLeaderboard
+      .filter((entry) => !selectedCategory || entry.category_id === selectedCategory)
+      .sort((left, right) => {
+        const rankDiff = left.category_rank - right.category_rank;
+        if (rankDiff !== 0) {
+          return rankDiff;
+        }
+
+        return compareQualifierEntries(left, right);
+      });
   }, [selectedCategory, snapshot]);
 
   const finalsGroups = useMemo(() => {
