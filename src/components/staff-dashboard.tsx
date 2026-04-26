@@ -402,6 +402,7 @@ export default function StaffDashboard({
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
   const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
+  const registrationQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const canEditPhase = profile?.role === "admin";
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
@@ -871,6 +872,78 @@ export default function StaffDashboard({
   const demoBanner = demoMode
     ? "Demo mode is public and read-only. Staff sign-in, scoring controls, and competition edits stay protected."
     : "";
+  const downloadRegistrationQr = async () => {
+    if (!draft) {
+      return;
+    }
+
+    try {
+      const response = await fetch(registrationQrUrl);
+      if (!response.ok) {
+        throw new Error("Unable to download the registration QR code.");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `${draft.slug}-registration-qr.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to download the registration QR code.");
+    }
+  };
+  const printRegistrationQr = () => {
+    if (!draft) {
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=720,height=960");
+    if (!printWindow) {
+      setError("Unable to open the print window for the registration QR code.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${draft.name} registration QR</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              padding: 32px;
+              color: #0f172a;
+              text-align: center;
+            }
+            img {
+              width: 280px;
+              height: 280px;
+              margin: 24px auto;
+              display: block;
+            }
+            .url {
+              word-break: break-word;
+              color: #475569;
+              font-size: 14px;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${draft.name}</h1>
+          <p>Scan this QR code to open the competition registration page.</p>
+          <img src="${registrationQrUrl}" alt="Competition registration QR code" />
+          <p class="url">${registerUrl || registerPath}</p>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   if (loading && !draft) {
     return (
@@ -1797,9 +1870,11 @@ export default function StaffDashboard({
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button type="button" onClick={() => void navigator.clipboard.writeText(publicUrl)} className="results-secondary-button">Copy overview</button>
                     <button type="button" onClick={() => void navigator.clipboard.writeText(registerUrl)} className="results-secondary-button">Copy register</button>
+                    <button type="button" onClick={() => void downloadRegistrationQr()} className="results-secondary-button">Download QR</button>
+                    <button type="button" onClick={printRegistrationQr} className="results-secondary-button">Print QR</button>
                   </div>
                   <div className="mt-4 flex flex-wrap items-start gap-4">
-                    <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(registerUrl || registerPath)}`} alt="Competition registration QR code" width={160} height={160} unoptimized className="rounded-[1.2rem] border border-slate-200 bg-white p-2" />
+                    <Image src={registrationQrUrl} alt="Competition registration QR code" width={160} height={160} unoptimized className="rounded-[1.2rem] border border-slate-200 bg-white p-2" />
                     <div className="max-w-xs text-sm leading-6 text-slate-600">
                       Scan this QR code to open the competition registration page directly.
                     </div>
