@@ -62,6 +62,11 @@ import { sanitizeExternalUrl } from "@/lib/security";
 
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
 
+function isDemoDataSlug(slug: string | null | undefined) {
+  const normalized = slug?.trim().toLowerCase() ?? "";
+  return normalized.startsWith("mock-") || normalized.startsWith("spring-send-");
+}
+
 function cloneCompetition(competition: Competition): Competition {
   return {
     ...competition,
@@ -873,6 +878,7 @@ export default function StaffDashboard({
   const demoBanner = demoMode
     ? "Demo mode is public and read-only. Staff sign-in, scoring controls, and competition edits stay protected."
     : "";
+  const demoDataExportAllowed = demoMode && isDemoDataSlug(draft?.slug);
   const downloadRegistrationQr = async () => {
     if (!draft) {
       return;
@@ -1975,12 +1981,6 @@ export default function StaffDashboard({
                   </button>
                   {snapshot ? (
                     <>
-                      <button type="button" onClick={() => downloadCsv(`${draft.slug}-qualifiers.csv`, buildQualifierCsv(snapshot))} className="results-secondary-button">
-                        Export qualifying CSV
-                      </button>
-                      <button type="button" onClick={() => downloadCsv(`${draft.slug}-finals.csv`, buildFinalsCsv(snapshot))} className="results-secondary-button" disabled={!snapshot.finalsLeaderboard.length}>
-                        Export finals CSV
-                      </button>
                       <button type="button" onClick={() => window.open(buildDisplayPath(draft.slug), "_blank", "noopener,noreferrer")} className="results-secondary-button">
                         Open public display
                       </button>
@@ -2016,6 +2016,29 @@ export default function StaffDashboard({
                   })} className="results-danger-button">Delete event</button>
                 </div>
                 </fieldset>
+
+                {snapshot && (!demoMode || demoDataExportAllowed) ? (
+                  <div className="results-workspace-card">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="results-kicker">Exports</div>
+                        <div className="mt-2 text-sm text-slate-600">
+                          {demoMode
+                            ? "Demo export uses sample event data only."
+                            : "Download standings to share, review, or import elsewhere."}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <button type="button" onClick={() => downloadCsv(`${draft.slug}-qualifiers.csv`, buildQualifierCsv(snapshot))} className="results-secondary-button">
+                          Export qualifying CSV
+                        </button>
+                        <button type="button" onClick={() => downloadCsv(`${draft.slug}-finals.csv`, buildFinalsCsv(snapshot))} className="results-secondary-button" disabled={!snapshot.finalsLeaderboard.length}>
+                          Export finals CSV
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="text-slate-600">Select a competition to edit it.</div>
