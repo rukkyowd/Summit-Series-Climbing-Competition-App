@@ -404,6 +404,9 @@ export default function StaffDashboard({
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
+  const absolutePrintableRegistrationQrUrl = shareOrigin
+    ? `${shareOrigin}${printableRegistrationQrUrl}`
+    : printableRegistrationQrUrl;
   const canEditPhase = profile?.role === "admin";
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
@@ -936,7 +939,7 @@ export default function StaffDashboard({
         <body>
           <h1>${draft.name}</h1>
           <p>Scan this QR code to open the competition registration page.</p>
-          <img src="${printableRegistrationQrUrl}" alt="Competition registration QR code" onload="window.focus(); window.print();" />
+          <img src="${absolutePrintableRegistrationQrUrl}" alt="Competition registration QR code" onload="window.focus(); window.print();" />
           <p class="url">${registerUrl || registerPath}</p>
         </body>
       </html>
