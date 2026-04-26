@@ -16,6 +16,7 @@ import {
   formatUsesSelfScoredQualifiers,
   getActiveQueueSessionBlock,
   getActiveScheduleBlock,
+  getTimeSlotLabel,
   parseScheduleTimeToMinutes,
 } from "@/lib/scoring";
 
@@ -156,6 +157,58 @@ export default function CompetitionOverviewPage() {
     snapshot?.competition.current_phase === "finals_open" ||
     snapshot?.competition.current_phase === "finals_closed" ||
     snapshot?.competition.current_phase === "results";
+  const overviewNavItems = useMemo(
+    () => [
+      { href: buildCompetitionPath(slug), label: "Overview" },
+      { href: `${buildCompetitionPath(slug)}#start-list`, label: "Start list" },
+      { href: buildCompetitionPath(slug, "register"), label: "Register" },
+      { href: buildCompetitionPath(slug, "scorecard"), label: "Scorecard" },
+      { href: buildCompetitionPath(slug, "leaderboard"), label: "Rankings" },
+    ],
+    [slug]
+  );
+  const sortedStartList = useMemo(() => {
+    if (!snapshot) {
+      return [];
+    }
+
+    const scheduleIndex = new Map(
+      snapshot.competition.schedule_blocks.map((block, index) => [block.id, index] as const)
+    );
+
+    return [...snapshot.climbers].sort((left, right) => {
+      const leftSlotIndex =
+        left.time_slot_id && scheduleIndex.has(left.time_slot_id)
+          ? (scheduleIndex.get(left.time_slot_id) ?? Number.MAX_SAFE_INTEGER)
+          : Number.MAX_SAFE_INTEGER;
+      const rightSlotIndex =
+        right.time_slot_id && scheduleIndex.has(right.time_slot_id)
+          ? (scheduleIndex.get(right.time_slot_id) ?? Number.MAX_SAFE_INTEGER)
+          : Number.MAX_SAFE_INTEGER;
+
+      if (leftSlotIndex !== rightSlotIndex) {
+        return leftSlotIndex - rightSlotIndex;
+      }
+
+      const leftCategoryOrder = categoryById.get(left.category_id ?? "")?.sort_order ?? Number.MAX_SAFE_INTEGER;
+      const rightCategoryOrder = categoryById.get(right.category_id ?? "")?.sort_order ?? Number.MAX_SAFE_INTEGER;
+
+      if (leftCategoryOrder !== rightCategoryOrder) {
+        return leftCategoryOrder - rightCategoryOrder;
+      }
+
+      const leftNumber = Number.parseInt(left.climber_number, 10);
+      const rightNumber = Number.parseInt(right.climber_number, 10);
+      const leftNumberValid = Number.isFinite(leftNumber);
+      const rightNumberValid = Number.isFinite(rightNumber);
+
+      if (leftNumberValid && rightNumberValid && leftNumber !== rightNumber) {
+        return leftNumber - rightNumber;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }, [categoryById, snapshot]);
 
   useEffect(() => {
     if (!selectedFinalsCategory && finalsCategories.length) {
@@ -171,7 +224,7 @@ export default function CompetitionOverviewPage() {
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
-        <SiteHeader light competitionSlug={slug} />
+        <SiteHeader light competitionSlug={slug} navItems={overviewNavItems} />
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 
@@ -372,6 +425,61 @@ export default function CompetitionOverviewPage() {
                         </div>
                       ))}
                   </div>
+                </div>
+              ) : null}
+            </section>
+
+            <section id="start-list" className="results-card scroll-mt-24">
+              <div>
+                <div className="results-kicker">Start list</div>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Registered athletes</h2>
+                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                  See who is entered, which category they are in, and which session or wave they are assigned to.
+                </p>
+              </div>
+
+              {!sortedStartList.length ? (
+                <div className="results-meta-card mt-6 text-slate-600">
+                  No athletes have registered yet.
+                </div>
+              ) : (
+                <div className="mt-6 hidden overflow-x-auto md:block">
+                  <div className="min-w-[920px]">
+                    <div className="grid grid-cols-[1.6fr_1fr_1.2fr_0.8fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <div>Athlete</div>
+                      <div>Category</div>
+                      <div>Session</div>
+                      <div>Province</div>
+                    </div>
+                    {sortedStartList.map((climber) => (
+                      <div key={climber.id} className="grid grid-cols-[1.6fr_1fr_1.2fr_0.8fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
+                        <div>
+                          <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
+                          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{climber.climber_number}</div>
+                        </div>
+                        <div>{climber.display_category}</div>
+                        <div>{getTimeSlotLabel(climber.time_slot_id, snapshot.competition)}</div>
+                        <div>{climber.province}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {sortedStartList.length ? (
+                <div className="mt-6 space-y-3 md:hidden">
+                  {sortedStartList.map((climber) => (
+                    <div key={climber.id} className="results-meta-card">
+                      <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
+                      <div className="mt-1 text-sm text-slate-600">
+                        #{climber.climber_number} | {climber.province}
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <span className="results-chip">{climber.display_category}</span>
+                        <span className="results-chip">{getTimeSlotLabel(climber.time_slot_id, snapshot.competition)}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </section>
