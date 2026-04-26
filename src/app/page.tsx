@@ -126,6 +126,9 @@ export default function HomePage() {
           light
           status={
             <div className="flex flex-wrap items-center gap-2">
+              <Link href="/staff/demo" className="results-secondary-button">
+                View demo dashboard
+              </Link>
               {isStaffRole(profile?.role) ? (
                 <Link href="/staff/dashboard" className="results-secondary-button">
                   Open staff dashboard
@@ -160,6 +163,9 @@ export default function HomePage() {
                   Active competitions currently available across registration, scorecards, rankings, and display.
                 </div>
               </div>
+              <Link href="/staff/demo" className="results-secondary-button w-full">
+                Preview the demo dashboard
+              </Link>
               {featured ? (
                 <Link href={buildCompetitionPath(featured.competition.slug)} className="results-primary-button w-full">
                   Open featured competition
