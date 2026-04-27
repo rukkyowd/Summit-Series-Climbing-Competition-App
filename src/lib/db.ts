@@ -15,6 +15,7 @@ import {
   canStaffScoreFinals,
   canStaffScoreQualifier,
   competitionHasFinals,
+  createCompetitionRoundId,
   createCategoryKey,
   createCompetitionId,
   getActiveQueueSessionBlock,
@@ -23,12 +24,14 @@ import {
   getRecommendedQualifierCountingClimbs,
   getActiveScheduleBlock,
   getDefaultCompetitionCategories,
+  getRoundStatusForCompetition,
   isValidClimberNumber,
   isQualifierEligibleCategory,
   isCompetitionLiveNow,
   isFinalsStage,
   isQualifierStage,
   normalizeCompetition,
+  normalizeCompetitionRounds,
   phaseToStageMode,
   schedulePhaseAllowsRegistration,
   slugifyCompetitionName,
@@ -38,7 +41,10 @@ import {
   type Competition,
   type CompetitionCategory,
   type CompetitionRound,
+  type CompetitionRoundScoringBucket,
   type CompetitionPhase,
+  type CompetitionRoundStatus,
+  type CompetitionRoundType,
   type CompetitionScheduleBlock,
   type CompetitionStatus,
   type FinalAttempt,
@@ -75,8 +81,9 @@ export interface RegisterClimberInput {
   timeSlotId: string | null;
 }
 
-export interface SaveCompetitionConfigInput extends Omit<Competition, "categories" | "schedule_blocks"> {
+export interface SaveCompetitionConfigInput extends Omit<Competition, "categories" | "schedule_blocks" | "rounds"> {
   schedule_blocks: CompetitionScheduleBlock[];
+  rounds: CompetitionRound[];
 }
 
 export interface CompetitionSnapshot {
@@ -321,6 +328,7 @@ async function fetchCompetitionScheduleBlocks(competitionIds: string[]) {
   return ((data ?? []) as any[]).map((row) => ({
     id: row.id ?? createId(),
     competition_id: row.competition_id,
+    round_id: row.round_id ?? null,
     label: row.label ?? "Open block",
     phase_type: row.phase_type ?? "custom",
     audience_label: row.audience_label ?? "",
@@ -349,16 +357,29 @@ async function fetchCompetitionRounds(competitionIds: string[]) {
   }
 
   return ((data ?? []) as any[]).map((row) => ({
-    id: row.id,
+    id: row.id ?? createCompetitionRoundId(),
     competition_id: row.competition_id,
     round_number: row.round_number ?? 1,
+    sort_order: row.sort_order ?? row.round_number ?? 1,
     name: row.name ?? "Round",
     round_type: row.round_type ?? "qualifier",
     format: row.format ?? "scramble",
     status: row.status ?? "pending",
+    runtime_phase: row.runtime_phase ?? "qualifier_open",
+    is_enabled: row.is_enabled ?? true,
+    is_active: row.is_active ?? false,
+    activated_at: row.activated_at ?? null,
     problem_count: row.problem_count ?? 4,
     counting_climbs: row.counting_climbs ?? null,
     finals_cutoff: row.finals_cutoff ?? null,
+    eligible_category_ids: arrayifyIds(row.eligible_category_ids),
+    advancement_source_round_id: row.advancement_source_round_id ?? null,
+    advancement_cutoff: row.advancement_cutoff ?? null,
+    scoring_bucket: row.scoring_bucket ?? "none",
+    scoring_config:
+      row.scoring_config && typeof row.scoring_config === "object" && !Array.isArray(row.scoring_config)
+        ? row.scoring_config
+        : {},
     started_at: row.started_at ?? null,
     closed_at: row.closed_at ?? null,
     created_at: row.created_at ?? undefined,
@@ -373,15 +394,12 @@ function hydrateCompetitions(
 ) {
   return rows.map((row) => {
     const competitionId = row.id;
-    const competition = normalizeCompetition(
+    return normalizeCompetition(
       row,
       categories.filter((category) => category.competition_id === competitionId),
-      scheduleBlocks.filter((block) => block.competition_id === competitionId)
+      scheduleBlocks.filter((block) => block.competition_id === competitionId),
+      rounds.filter((round) => round.competition_id === competitionId)
     );
-    return {
-      ...competition,
-      rounds: rounds.filter((round) => round.competition_id === competitionId),
-    };
   });
 }
 
@@ -680,16 +698,198 @@ function validateSlotForCategory(slot: CompetitionScheduleBlock, categoryId: str
   return !slot.eligible_category_ids.length || slot.eligible_category_ids.includes(categoryId);
 }
 
-async function syncCompetitionRounds(competition: Competition) {
-  const { error } = await supabase.rpc("sync_competition_rounds", {
-    p_competition_id: competition.id,
+function getScoreBearingRounds(rounds: CompetitionRound[]) {
+  const qualifierRound = rounds.find((round) => round.scoring_bucket === "qualifier") ?? null;
+  const finalsRound = rounds.find((round) => round.scoring_bucket === "finals") ?? null;
+
+  return { qualifierRound, finalsRound };
+}
+
+function assertValidCompetitionRounds(rounds: CompetitionRound[]) {
+  const qualifierScoreRounds = rounds.filter((round) => round.scoring_bucket === "qualifier");
+  const finalsScoreRounds = rounds.filter((round) => round.scoring_bucket === "finals");
+  const activeRounds = rounds.filter((round) => round.is_active);
+
+  if (qualifierScoreRounds.length > 1) {
+    throw new Error("Only one round can use the qualifier scoring bucket in v1.");
+  }
+
+  if (finalsScoreRounds.length > 1) {
+    throw new Error("Only one round can use the finals scoring bucket in v1.");
+  }
+
+  if (rounds.some((round) => round.round_type === "semifinal" && round.scoring_bucket !== "none")) {
+    throw new Error("Semifinal rounds are planning-only in v1 and cannot be score-bearing.");
+  }
+
+  if (activeRounds.length > 1) {
+    throw new Error("Only one round can be active at a time.");
+  }
+}
+
+function projectLegacyCompetitionFields(
+  competition: Competition,
+  rounds: CompetitionRound[]
+) {
+  const { qualifierRound, finalsRound } = getScoreBearingRounds(rounds);
+
+  return {
+    format: qualifierRound?.format ?? competition.format,
+    total_climbs: qualifierRound?.problem_count ?? competition.total_climbs,
+    qualifier_counting_climbs: qualifierRound?.counting_climbs ?? competition.qualifier_counting_climbs,
+    finals_cutoff:
+      finalsRound?.finals_cutoff ??
+      qualifierRound?.finals_cutoff ??
+      competition.finals_cutoff,
+    finals_problem_count: finalsRound?.problem_count ?? competition.finals_problem_count,
+    has_finals: finalsRound !== null ? true : competition.has_finals,
+  };
+}
+
+async function persistCompetitionRounds(competition: Competition, rounds: CompetitionRound[]) {
+  const normalizedRounds = normalizeCompetitionRounds(rounds, competition);
+  assertValidCompetitionRounds(normalizedRounds);
+
+  const { error: deleteError } = await supabase.from("competition_rounds").delete().eq("competition_id", competition.id);
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  if (!normalizedRounds.length) {
+    return;
+  }
+
+  const { error: insertError } = await supabase.from("competition_rounds").insert(
+    normalizedRounds.map((round, index) => ({
+      id: round.id || createCompetitionRoundId(),
+      competition_id: competition.id,
+      round_number: round.round_number ?? index + 1,
+      sort_order: round.sort_order ?? round.round_number ?? index + 1,
+      name: cleanString(round.name),
+      round_type: round.round_type,
+      format: round.format,
+      status: round.status,
+      runtime_phase: round.runtime_phase,
+      is_enabled: round.is_enabled,
+      is_active: round.is_active,
+      activated_at: round.activated_at,
+      problem_count: round.problem_count,
+      counting_climbs: round.counting_climbs,
+      finals_cutoff: round.finals_cutoff,
+      eligible_category_ids: round.eligible_category_ids,
+      advancement_source_round_id: round.advancement_source_round_id,
+      advancement_cutoff: round.advancement_cutoff,
+      scoring_bucket: round.scoring_bucket,
+      scoring_config: round.scoring_config,
+      started_at: round.started_at,
+      closed_at: round.closed_at,
+    }))
+  );
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+}
+
+async function syncCompetitionRoundRuntimeState(competitionId: string) {
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    return;
+  }
+
+  const rounds = normalizeCompetitionRounds(competition.rounds ?? [], competition);
+  if (!rounds.length) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const stageMode = phaseToStageMode(competition.current_phase);
+  const preferredActiveRound =
+    rounds.find((round) => (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")) ??
+    rounds.find((round) => round.runtime_phase === competition.current_phase) ??
+    rounds.find((round) => round.is_enabled) ??
+    rounds[0];
+
+  const updatedRounds = rounds.map((round) => {
+    const status: CompetitionRoundStatus =
+      round.scoring_bucket === "qualifier"
+        ? getRoundStatusForCompetition(competition, "qualifier")
+        : round.scoring_bucket === "finals"
+          ? getRoundStatusForCompetition(competition, "finals")
+          : round.status;
+
+    const isActive = round.id === preferredActiveRound?.id;
+    return {
+      ...round,
+      status,
+      is_active: isActive,
+      activated_at: isActive ? round.activated_at ?? now : round.activated_at,
+    };
   });
 
-  if (error) {
-    console.warn("Unable to sync competition rounds", {
-      competitionId: competition.id,
-      error: error.message,
-    });
+  await persistCompetitionRounds(competition, updatedRounds);
+}
+
+async function getCompetitionEditState(competitionId: string) {
+  const snapshot = await getCompetitionSnapshot(competitionId);
+  return {
+    hasRegistrations: snapshot.climbers.length > 0,
+    hasQualifierAttempts: snapshot.climbers.some((climber) => climber.qualifier_attempts.length > 0),
+    hasFinalAttempts: snapshot.climbers.some((climber) => climber.final_attempts.length > 0),
+    hasFinalists: snapshot.finalistsPersisted,
+    isHistorical: snapshot.competition.current_phase === "results" || snapshot.competition.current_phase === "finals_closed",
+  };
+}
+
+function assertStructuralEditsAllowed(
+  previous: Competition,
+  next: Competition,
+  editState: Awaited<ReturnType<typeof getCompetitionEditState>>
+) {
+  const previousRounds = normalizeCompetitionRounds(previous.rounds ?? [], previous);
+  const nextRounds = normalizeCompetitionRounds(next.rounds ?? [], next);
+  const structureChanged =
+    JSON.stringify(
+      previousRounds.map((round) => ({
+        id: round.id,
+        round_type: round.round_type,
+        scoring_bucket: round.scoring_bucket,
+        format: round.format,
+        problem_count: round.problem_count,
+        counting_climbs: round.counting_climbs,
+        finals_cutoff: round.finals_cutoff,
+        advancement_source_round_id: round.advancement_source_round_id,
+        advancement_cutoff: round.advancement_cutoff,
+      }))
+    ) !==
+    JSON.stringify(
+      nextRounds.map((round) => ({
+        id: round.id,
+        round_type: round.round_type,
+        scoring_bucket: round.scoring_bucket,
+        format: round.format,
+        problem_count: round.problem_count,
+        counting_climbs: round.counting_climbs,
+        finals_cutoff: round.finals_cutoff,
+        advancement_source_round_id: round.advancement_source_round_id,
+        advancement_cutoff: round.advancement_cutoff,
+      }))
+    );
+
+  if (!structureChanged) {
+    return;
+  }
+
+  if (editState.hasQualifierAttempts || editState.hasFinalAttempts || editState.hasFinalists) {
+    throw new Error("Round structure is locked after scoring or finalist creation begins.");
+  }
+
+  if (editState.hasRegistrations) {
+    throw new Error("Round structure is locked after registrations begin. You can still adjust schedule details.");
+  }
+
+  if (editState.isHistorical) {
+    throw new Error("Historical competitions cannot change round structure.");
   }
 }
 
@@ -905,13 +1105,14 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(input.format),
     finals_cutoff: getRecommendedFinalsCutoff(input.format),
   });
+  const legacyProjection = projectLegacyCompetitionFields(competition, competition.rounds ?? []);
 
   const insertPayload = {
     id: competition.id,
     slug: competition.slug,
     name: competition.name,
     status: competition.status,
-    format: competition.format,
+    format: legacyProjection.format,
     current_phase: competition.current_phase,
     discipline_label: competition.discipline_label,
     stage_mode: competition.stage_mode,
@@ -925,17 +1126,17 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
       official_event_url: competition.official_event_url,
       official_registration_url: competition.official_registration_url,
       official_schedule_url: competition.official_schedule_url,
-      total_climbs: competition.total_climbs,
+      total_climbs: legacyProjection.total_climbs,
     max_climbers: competition.max_climbers,
-    qualifier_counting_climbs: competition.qualifier_counting_climbs,
-    has_finals: competitionHasFinals(competition),
-    finals_cutoff: competition.finals_cutoff,
+    qualifier_counting_climbs: legacyProjection.qualifier_counting_climbs,
+    has_finals: legacyProjection.has_finals,
+    finals_cutoff: legacyProjection.finals_cutoff,
     finals_tie_advances: competition.finals_tie_advances,
     qualifier_eligible_age_groups: competition.qualifier_eligible_age_groups,
     finals_eligible_age_groups: competition.finals_eligible_age_groups,
     qualifier_locked_at: null,
     finals_started_at: null,
-    finals_problem_count: competition.finals_problem_count,
+    finals_problem_count: legacyProjection.finals_problem_count,
   };
 
   let { error } = await supabase.from("competitions").insert(insertPayload);
@@ -964,13 +1165,17 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     throw new Error(categoryError.message);
   }
 
-  await syncCompetitionRounds(competition);
+  await persistCompetitionRounds(competition, competition.rounds ?? []);
 
-  return competition;
+  return (await getCompetitionById(competition.id)) ?? competition;
 }
 
 export async function saveCompetitionConfig(competitionId: string, input: SaveCompetitionConfigInput) {
   ensureConfigured();
+  const existingCompetition = await getCompetitionById(competitionId);
+  if (!existingCompetition) {
+    throw new Error("Competition not found.");
+  }
 
   const payload = normalizeCompetition(
     {
@@ -983,15 +1188,18 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
       official_schedule_url: cleanOptionalExternalUrl(input.official_schedule_url),
     },
     getDefaultCompetitionCategories(competitionId),
-    input.schedule_blocks
+    input.schedule_blocks,
+    input.rounds
   );
+  await assertStructuralEditsAllowed(existingCompetition, payload, await getCompetitionEditState(competitionId));
+  const legacyProjection = projectLegacyCompetitionFields(payload, payload.rounds ?? []);
 
   const upsertPayload = {
     id: payload.id,
     slug: payload.slug,
     name: payload.name,
     status: payload.status,
-    format: payload.format,
+    format: legacyProjection.format,
     current_phase: payload.current_phase,
     discipline_label: payload.discipline_label,
     stage_mode: payload.stage_mode,
@@ -1005,17 +1213,17 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
       official_event_url: payload.official_event_url,
       official_registration_url: payload.official_registration_url,
       official_schedule_url: payload.official_schedule_url,
-      total_climbs: payload.total_climbs,
+      total_climbs: legacyProjection.total_climbs,
     max_climbers: payload.max_climbers,
-    qualifier_counting_climbs: payload.qualifier_counting_climbs,
-    has_finals: competitionHasFinals(payload),
-    finals_cutoff: payload.finals_cutoff,
+    qualifier_counting_climbs: legacyProjection.qualifier_counting_climbs,
+    has_finals: legacyProjection.has_finals,
+    finals_cutoff: legacyProjection.finals_cutoff,
     finals_tie_advances: payload.finals_tie_advances,
     qualifier_eligible_age_groups: payload.qualifier_eligible_age_groups,
     finals_eligible_age_groups: payload.finals_eligible_age_groups,
     qualifier_locked_at: payload.qualifier_locked_at,
     finals_started_at: payload.finals_started_at,
-    finals_problem_count: payload.finals_problem_count,
+    finals_problem_count: legacyProjection.finals_problem_count,
   };
 
   let { error } = await supabase.from("competitions").upsert(upsertPayload);
@@ -1043,6 +1251,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
         end_time: block.end_time ? cleanString(block.end_time) : null,
         capacity: block.capacity,
         eligible_category_ids: block.eligible_category_ids,
+        round_id: block.round_id ?? null,
       }))
     );
 
@@ -1051,7 +1260,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
     }
   }
 
-  await syncCompetitionRounds(payload);
+  await persistCompetitionRounds(payload, payload.rounds ?? []);
 
   return getCompetitionById(competitionId);
 }
@@ -1154,10 +1363,7 @@ export async function setCompetitionPhase(competitionId: string, nextPhase: Comp
     throw new Error(error.message);
   }
 
-  const competition = await getCompetitionById(competitionId);
-  if (competition) {
-    await syncCompetitionRounds(competition);
-  }
+  await syncCompetitionRoundRuntimeState(competitionId);
 
   return getCompetitionSnapshot(competitionId);
 }
@@ -1173,10 +1379,7 @@ export async function undoCompetitionOperation(competitionId: string) {
     throw new Error(error.message);
   }
 
-  const competition = await getCompetitionById(competitionId);
-  if (competition) {
-    await syncCompetitionRounds(competition);
-  }
+  await syncCompetitionRoundRuntimeState(competitionId);
 
   return getCompetitionSnapshot(competitionId);
 }
@@ -1201,10 +1404,7 @@ export async function advanceCompetitionToFinals(competitionId: string) {
     throw new Error(error.message);
   }
 
-  const competition = await getCompetitionById(competitionId);
-  if (competition) {
-    await syncCompetitionRounds(competition);
-  }
+  await syncCompetitionRoundRuntimeState(competitionId);
 
   return getCompetitionSnapshot(competitionId);
 }
@@ -1295,10 +1495,7 @@ export async function resetCompetition(competitionId: string) {
     throw new Error(error.message);
   }
 
-  const competition = await getCompetitionById(competitionId);
-  if (competition) {
-    await syncCompetitionRounds(competition);
-  }
+  await syncCompetitionRoundRuntimeState(competitionId);
 
   return getCompetitionSnapshot(competitionId);
 }

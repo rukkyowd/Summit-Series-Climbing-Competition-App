@@ -61,6 +61,9 @@ export type AttemptEnteredBy = "climber" | "staff";
 export type FinalEnteredBy = "staff";
 export type SchedulePhaseType = (typeof SCHEDULE_PHASE_TYPES)[number];
 export type CategoryAgeGroup = (typeof CATEGORY_AGE_GROUPS)[number];
+export type CompetitionRoundType = "qualifier" | "semifinal" | "finals";
+export type CompetitionRoundStatus = "pending" | "active" | "scoring" | "closed" | "results";
+export type CompetitionRoundScoringBucket = "none" | "qualifier" | "finals";
 
 export interface FormatCapabilities {
   selfScoredQualifier: boolean;
@@ -86,6 +89,7 @@ export interface CompetitionCategory {
 export interface CompetitionScheduleBlock {
   id: string;
   competition_id: string;
+  round_id?: string | null;
   label: string;
   phase_type: SchedulePhaseType;
   audience_label: string;
@@ -101,13 +105,23 @@ export interface CompetitionRound {
   id: string;
   competition_id: string;
   round_number: number;
+  sort_order: number;
   name: string;
-  round_type: "qualifier" | "semifinal" | "finals";
+  round_type: CompetitionRoundType;
   format: EventFormat;
-  status: "pending" | "active" | "scoring" | "closed" | "results";
+  status: CompetitionRoundStatus;
+  runtime_phase: CompetitionPhase;
+  is_enabled: boolean;
+  is_active: boolean;
+  activated_at: string | null;
   problem_count: number;
   counting_climbs: number | null;
   finals_cutoff: 6 | 8 | null;
+  eligible_category_ids: string[];
+  advancement_source_round_id: string | null;
+  advancement_cutoff: number | null;
+  scoring_bucket: CompetitionRoundScoringBucket;
+  scoring_config: Record<string, unknown>;
   started_at: string | null;
   closed_at: string | null;
   created_at?: string;
@@ -720,6 +734,235 @@ export function getRecommendedFinalsCutoff(format: EventFormat) {
   return RECOMMENDED_FINALS_CUTOFFS[format] ?? DEFAULT_FINALS_CUTOFF;
 }
 
+export function createCompetitionRoundId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `round-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function getRoundRuntimePhase(roundType: CompetitionRoundType): CompetitionPhase {
+  switch (roundType) {
+    case "qualifier":
+      return "qualifier_open";
+    case "semifinal":
+      return "wall_reset";
+    case "finals":
+      return "finals_open";
+    default:
+      return "qualifier_open";
+  }
+}
+
+export function getRoundDefaultScoringBucket(roundType: CompetitionRoundType): CompetitionRoundScoringBucket {
+  switch (roundType) {
+    case "qualifier":
+      return "qualifier";
+    case "finals":
+      return "finals";
+    default:
+      return "none";
+  }
+}
+
+export function getRoundLabel(roundType: CompetitionRoundType, index: number) {
+  switch (roundType) {
+    case "qualifier":
+      return index === 0 ? "Qualifier" : `Qualifier ${index + 1}`;
+    case "semifinal":
+      return index === 0 ? "Semifinal" : `Semifinal ${index + 1}`;
+    case "finals":
+      return index === 0 ? "Finals" : `Finals ${index + 1}`;
+    default:
+      return `Round ${index + 1}`;
+  }
+}
+
+export function buildDefaultCompetitionRounds(
+  competition: Pick<
+    Competition,
+    | "id"
+    | "format"
+    | "current_phase"
+    | "registration_opens_at"
+    | "total_climbs"
+    | "qualifier_counting_climbs"
+    | "finals_cutoff"
+    | "finals_problem_count"
+    | "has_finals"
+    | "qualifier_eligible_age_groups"
+    | "finals_eligible_age_groups"
+    | "qualifier_locked_at"
+    | "finals_started_at"
+  >
+): CompetitionRound[] {
+  const baseRounds: CompetitionRound[] = [
+    {
+      id: createCompetitionRoundId(),
+      competition_id: competition.id,
+      round_number: 1,
+      sort_order: 1,
+      name: "Qualifier",
+      round_type: "qualifier",
+      format: competition.format,
+      status: getRoundStatusForCompetition(competition, "qualifier"),
+      runtime_phase: "qualifier_open",
+      is_enabled: true,
+      is_active: phaseToStageMode(competition.current_phase) === "qualifier",
+      activated_at: competition.current_phase === "qualifier_open" ? competition.registration_opens_at ?? null : null,
+      problem_count: competition.total_climbs,
+      counting_climbs: competition.qualifier_counting_climbs,
+      finals_cutoff: competitionHasFinals(competition) ? competition.finals_cutoff : null,
+      eligible_category_ids: [],
+      advancement_source_round_id: null,
+      advancement_cutoff: competitionHasFinals(competition) ? competition.finals_cutoff : null,
+      scoring_bucket: "qualifier",
+      scoring_config: {},
+      started_at: competition.current_phase === "qualifier_open" ? competition.registration_opens_at ?? null : null,
+      closed_at: competition.current_phase === "qualifier_open" ? null : competition.qualifier_locked_at ?? null,
+    },
+  ];
+
+  if (!competitionHasFinals(competition)) {
+    return baseRounds;
+  }
+
+  return [
+    ...baseRounds,
+    {
+      id: createCompetitionRoundId(),
+      competition_id: competition.id,
+      round_number: 2,
+      sort_order: 2,
+      name: "Finals",
+      round_type: "finals",
+      format: "ifsc_finals_format",
+      status: getRoundStatusForCompetition(competition, "finals"),
+      runtime_phase: "finals_open",
+      is_enabled: true,
+      is_active: phaseToStageMode(competition.current_phase) === "finals",
+      activated_at:
+        competition.current_phase === "observation" ||
+        competition.current_phase === "finals_open" ||
+        competition.current_phase === "finals_closed" ||
+        competition.current_phase === "results"
+          ? competition.finals_started_at ?? null
+          : null,
+      problem_count: competition.finals_problem_count,
+      counting_climbs: null,
+      finals_cutoff: competition.finals_cutoff,
+      eligible_category_ids: [],
+      advancement_source_round_id: baseRounds[0].id,
+      advancement_cutoff: competition.finals_cutoff,
+      scoring_bucket: "finals",
+      scoring_config: {},
+      started_at: competition.finals_started_at ?? null,
+      closed_at:
+        competition.current_phase === "finals_closed" || competition.current_phase === "results"
+          ? competition.finals_started_at ?? null
+          : null,
+    },
+  ];
+}
+
+export function normalizeCompetitionRounds(
+  rounds: CompetitionRound[] | null | undefined,
+  competition: Pick<
+    Competition,
+    | "id"
+    | "format"
+    | "current_phase"
+    | "registration_opens_at"
+    | "total_climbs"
+    | "qualifier_counting_climbs"
+    | "finals_cutoff"
+    | "finals_problem_count"
+    | "has_finals"
+    | "qualifier_eligible_age_groups"
+    | "finals_eligible_age_groups"
+    | "qualifier_locked_at"
+    | "finals_started_at"
+  >
+): CompetitionRound[] {
+  const sourceRounds = rounds?.length ? rounds : buildDefaultCompetitionRounds(competition);
+  let activeRoundSeen = false;
+  const qualifierFallbackCount = clampNumber(
+    competition.qualifier_counting_climbs,
+    1,
+    20,
+    getRecommendedQualifierCountingClimbs(competition.format)
+  );
+
+  return sourceRounds
+    .map((round, index) => {
+      const roundType = (round.round_type ?? "qualifier") as CompetitionRoundType;
+      const scoringBucket = (round.scoring_bucket ?? getRoundDefaultScoringBucket(roundType)) as CompetitionRoundScoringBucket;
+      const normalizedRuntimePhase = (round.runtime_phase ?? getRoundRuntimePhase(roundType)) as CompetitionPhase;
+      const activeForPhase =
+        phaseToStageMode(competition.current_phase) === "qualifier"
+          ? scoringBucket === "qualifier"
+          : scoringBucket === "finals";
+      const isActive = round.is_active && !activeRoundSeen ? true : !activeRoundSeen && activeForPhase;
+
+      if (isActive) {
+        activeRoundSeen = true;
+      }
+
+      return {
+        ...round,
+        id: round.id || createCompetitionRoundId(),
+        competition_id: competition.id,
+        round_number: round.round_number ?? index + 1,
+        sort_order: round.sort_order ?? round.round_number ?? index + 1,
+        name: round.name?.trim() || getRoundLabel(roundType, index),
+        round_type: roundType,
+        format: (round.format ?? (roundType === "finals" ? "ifsc_finals_format" : competition.format)) as EventFormat,
+        status: (round.status ?? (roundType === "finals"
+          ? getRoundStatusForCompetition(competition, "finals")
+          : roundType === "qualifier"
+            ? getRoundStatusForCompetition(competition, "qualifier")
+            : "pending")) as CompetitionRoundStatus,
+        runtime_phase: normalizedRuntimePhase,
+        is_enabled: round.is_enabled ?? true,
+        is_active: isActive,
+        activated_at: round.activated_at ?? (isActive ? round.started_at ?? null : null),
+        problem_count: clampNumber(
+          round.problem_count,
+          1,
+          roundType === "finals" ? 8 : 200,
+          roundType === "finals" ? competition.finals_problem_count : competition.total_climbs
+        ),
+        counting_climbs:
+          roundType === "finals"
+            ? null
+            : clampNumber(round.counting_climbs, 1, 20, qualifierFallbackCount),
+        finals_cutoff:
+          roundType === "qualifier" || roundType === "finals"
+            ? ((clampNumber(round.finals_cutoff, 6, 8, competition.finals_cutoff) >= 8 ? 8 : 6) as 6 | 8)
+            : null,
+        eligible_category_ids: [...(round.eligible_category_ids ?? [])],
+        advancement_source_round_id: round.advancement_source_round_id ?? null,
+        advancement_cutoff: round.advancement_cutoff ?? (scoringBucket === "finals" ? competition.finals_cutoff : null),
+        scoring_bucket:
+          roundType === "semifinal"
+            ? "none"
+            : scoringBucket === "finals"
+              ? "finals"
+              : scoringBucket === "qualifier"
+                ? "qualifier"
+                : "none",
+        scoring_config:
+          round.scoring_config && typeof round.scoring_config === "object" && !Array.isArray(round.scoring_config)
+            ? round.scoring_config
+            : {},
+        started_at: round.started_at ?? null,
+        closed_at: round.closed_at ?? null,
+      } satisfies CompetitionRound;
+    })
+    .sort((left, right) => left.sort_order - right.sort_order || left.round_number - right.round_number);
+}
+
 export function phaseToStageMode(phase: CompetitionPhase): StageMode {
   if (phase === "observation" || phase === "finals_open" || phase === "finals_closed" || phase === "results") {
     return "finals";
@@ -950,7 +1193,8 @@ export function compareScheduleBlocks(left: CompetitionScheduleBlock, right: Com
 export function normalizeCompetition(
   competition: Partial<Competition> | null | undefined,
   categories: CompetitionCategory[] = [],
-  scheduleBlocks: CompetitionScheduleBlock[] = []
+  scheduleBlocks: CompetitionScheduleBlock[] = [],
+  rounds: CompetitionRound[] = []
 ): Competition {
   const id = competition?.id ?? createCompetitionId();
   const name = competition?.name?.trim() || DEFAULT_COMPETITION.name;
@@ -1018,6 +1262,7 @@ export function normalizeCompetition(
       .map((block) => ({
         ...block,
         competition_id: id,
+        round_id: block.round_id ?? null,
         audience_label: block.audience_label?.trim() ?? "",
         phase_type: (block.phase_type ?? "custom") as SchedulePhaseType,
         is_active: (() => {
@@ -1030,7 +1275,10 @@ export function normalizeCompetition(
         eligible_category_ids: [...(block.eligible_category_ids ?? [])],
       }))
       .sort(compareScheduleBlocks),
+    rounds: [],
   };
+
+  normalized.rounds = normalizeCompetitionRounds(rounds, normalized);
 
   return realignDemoCompetitionTimeline(normalized);
 }

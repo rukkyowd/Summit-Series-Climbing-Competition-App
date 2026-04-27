@@ -37,8 +37,12 @@ import {
   compareCompetitionPhases,
   competitionAllowsOptionalFinals,
   competitionHasFinals,
+  createCompetitionRoundId,
   getCompetitionPhaseForSchedulePhase,
   getCompetitionPhaseSequenceFromScheduleBlocks,
+  getRoundDefaultScoringBucket,
+  getRoundLabel,
+  getRoundRuntimePhase,
   formatCompetitionPhaseLabel,
   formatDateTimeLabel,
   formatSchedulePhaseLabel,
@@ -55,6 +59,9 @@ import {
   parseScheduleTimeToMinutes,
   slugifyCompetitionName,
   type Competition,
+  type CompetitionRound,
+  type CompetitionRoundScoringBucket,
+  type CompetitionRoundType,
   type CompetitionScheduleBlock,
   type SchedulePhaseType,
 } from "@/lib/scoring";
@@ -74,6 +81,11 @@ function cloneCompetition(competition: Competition): Competition {
     schedule_blocks: competition.schedule_blocks.map((block) => ({
       ...block,
       eligible_category_ids: [...block.eligible_category_ids],
+    })),
+    rounds: (competition.rounds ?? []).map((round) => ({
+      ...round,
+      eligible_category_ids: [...round.eligible_category_ids],
+      scoring_config: { ...round.scoring_config },
     })),
   };
 }
@@ -97,10 +109,58 @@ function createScheduleBlockId() {
 type ScheduleBlockTemplate = {
   label: string;
   phase_type: SchedulePhaseType;
+  round_type?: CompetitionRoundType;
   audience_label: string;
   capacity?: number;
   eligible_age_groups?: string[];
 };
+
+function createRoundTemplate(
+  competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
+  roundType: CompetitionRoundType,
+  sortOrder: number
+): CompetitionRound {
+  const scoringBucket = getRoundDefaultScoringBucket(roundType);
+  return {
+    id: createCompetitionRoundId(),
+    competition_id: competition.id,
+    round_number: sortOrder,
+    sort_order: sortOrder,
+    name: getRoundLabel(roundType, sortOrder - 1),
+    round_type: roundType,
+    format: roundType === "finals" ? "ifsc_finals_format" : competition.format,
+    status: "pending",
+    runtime_phase: getRoundRuntimePhase(roundType),
+    is_enabled: true,
+    is_active: scoringBucket === "qualifier",
+    activated_at: null,
+    problem_count: roundType === "finals" ? competition.finals_problem_count : competition.total_climbs,
+    counting_climbs: roundType === "finals" ? null : competition.qualifier_counting_climbs,
+    finals_cutoff: roundType === "semifinal" ? null : competition.finals_cutoff,
+    eligible_category_ids: [],
+    advancement_source_round_id: null,
+    advancement_cutoff: roundType === "finals" ? competition.finals_cutoff : null,
+    scoring_bucket: scoringBucket,
+    scoring_config: {},
+    started_at: null,
+    closed_at: null,
+  };
+}
+
+function buildRoundPlanTemplate(competition: Pick<Competition, "id" | "format" | "has_finals" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">) {
+  const rounds = [createRoundTemplate(competition, "qualifier", 1)];
+  if (competitionHasFinals(competition)) {
+    const finalsRound = createRoundTemplate(competition, "finals", rounds.length + 1);
+    finalsRound.advancement_source_round_id = rounds[0].id;
+    rounds.push(finalsRound);
+  }
+
+  return rounds;
+}
+
+function summarizeRoundPlan(rounds: CompetitionRound[]) {
+  return rounds.map((round) => `${round.round_type}:${round.scoring_bucket}:${round.problem_count}:${round.format}`).join("|");
+}
 
 const QUALIFIER_TEMPLATE_AGE_GROUPS = ["Youth D", "Youth C", "Youth B", "Youth A", "Junior", "Open", "Rec", "Masters"] as const;
 
@@ -277,6 +337,7 @@ export default function StaffDashboard({
   const [phaseBlockMemory, setPhaseBlockMemory] = useState<Partial<Record<Competition["current_phase"], string>>>({});
   const [draggedScheduleBlockId, setDraggedScheduleBlockId] = useState<string | null>(null);
   const [mergeTargetBlockId, setMergeTargetBlockId] = useState<string | null>(null);
+  const [roundPlanNeedsReset, setRoundPlanNeedsReset] = useState(false);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -391,6 +452,7 @@ export default function StaffDashboard({
       setDraft(null);
       setSnapshot(null);
       setPhaseBlockMemory({});
+      setRoundPlanNeedsReset(false);
       return;
     }
 
@@ -398,6 +460,7 @@ export default function StaffDashboard({
     void getCompetitionSnapshot(selectedSummary.competition.id)
       .then((nextSnapshot) => setSnapshot(nextSnapshot))
       .catch(() => setSnapshot(null));
+    setRoundPlanNeedsReset(false);
   }, [selectedSummary]);
 
   const publicPath = draft ? buildCompetitionPath(draft.slug) : "";
@@ -511,6 +574,36 @@ export default function StaffDashboard({
   const qualifierCategories = useMemo(
     () =>
       draft?.categories.filter((category) => isQualifierEligibleCategory(draft, category.age_group)) ?? [],
+    [draft]
+  );
+  const roundPlanTemplate = useMemo(
+    () =>
+      draft
+        ? buildRoundPlanTemplate({
+            id: draft.id,
+            format: draft.format,
+            has_finals: draft.has_finals,
+            total_climbs: draft.total_climbs,
+            qualifier_counting_climbs: draft.qualifier_counting_climbs,
+            finals_cutoff: draft.finals_cutoff,
+            finals_problem_count: draft.finals_problem_count,
+          })
+        : [],
+    [draft]
+  );
+  const roundPlanCustomized = useMemo(() => {
+    if (!draft) {
+      return false;
+    }
+
+    return summarizeRoundPlan(draft.rounds ?? []) !== summarizeRoundPlan(roundPlanTemplate);
+  }, [draft, roundPlanTemplate]);
+  const qualifierScoreRoundCount = useMemo(
+    () => draft?.rounds?.filter((round) => round.scoring_bucket === "qualifier").length ?? 0,
+    [draft]
+  );
+  const finalsScoreRoundCount = useMemo(
+    () => draft?.rounds?.filter((round) => round.scoring_bucket === "finals").length ?? 0,
     [draft]
   );
 
@@ -695,14 +788,123 @@ export default function StaffDashboard({
     startTransition(() => {
       void (async () => {
         try {
-          await saveCompetitionConfig(draft.id, { ...draft, schedule_blocks: draft.schedule_blocks });
+          await saveCompetitionConfig(draft.id, {
+            ...draft,
+            schedule_blocks: draft.schedule_blocks,
+            rounds: draft.rounds ?? [],
+          });
           await refreshAfterChange(draft.id);
           setMessage("Competition saved.");
+          setRoundPlanNeedsReset(false);
         } catch (nextError) {
           setError(nextError instanceof Error ? nextError.message : "Unable to save the competition.");
         }
       })();
     });
+  };
+
+  const updateRounds = (updater: (rounds: CompetitionRound[]) => CompetitionRound[]) => {
+    if (!draft) {
+      return;
+    }
+
+    const nextRounds = updater([...(draft.rounds ?? [])]).map((round, index) => ({
+      ...round,
+      round_number: index + 1,
+      sort_order: index + 1,
+      competition_id: draft.id,
+    }));
+
+    setDraft({
+      ...draft,
+      rounds: nextRounds,
+      has_finals: nextRounds.some((round) => round.scoring_bucket === "finals"),
+    });
+  };
+
+  const replaceRoundPlanFromTemplate = (nextFormat?: Competition["format"]) => {
+    if (!draft) {
+      return;
+    }
+
+    const nextDraft = {
+      ...draft,
+      format: nextFormat ?? draft.format,
+      has_finals: nextFormat ? (competitionAllowsOptionalFinals(nextFormat) ? draft.has_finals : true) : draft.has_finals,
+      total_climbs: nextFormat ? getRecommendedQualifierClimbCount(nextFormat) : draft.total_climbs,
+      qualifier_counting_climbs: nextFormat ? getRecommendedQualifierCountingClimbs(nextFormat) : draft.qualifier_counting_climbs,
+      finals_cutoff: nextFormat ? getRecommendedFinalsCutoff(nextFormat) : draft.finals_cutoff,
+    };
+    const nextRounds = buildRoundPlanTemplate(nextDraft);
+    setDraft({
+      ...nextDraft,
+      rounds: nextRounds,
+      schedule_blocks: draft.schedule_blocks.map((block) => {
+        const linkedRound =
+          block.phase_type === "qualifier_round"
+            ? nextRounds.find((round) => round.scoring_bucket === "qualifier")
+            : block.phase_type === "finals_round" || block.phase_type === "isolation" || block.phase_type === "observation"
+              ? nextRounds.find((round) => round.scoring_bucket === "finals")
+              : null;
+        return {
+          ...block,
+          round_id: linkedRound?.id ?? null,
+        };
+      }),
+    });
+    setRoundPlanNeedsReset(false);
+  };
+
+  const addRound = (roundType: CompetitionRoundType) => {
+    if (!draft) {
+      return;
+    }
+
+    updateRounds((current) => {
+      const nextRound = createRoundTemplate(draft, roundType, current.length + 1);
+      if (
+        (roundType === "qualifier" && current.some((round) => round.scoring_bucket === "qualifier")) ||
+        (roundType === "finals" && current.some((round) => round.scoring_bucket === "finals"))
+      ) {
+        nextRound.scoring_bucket = "none";
+      }
+      if (roundType === "finals") {
+        nextRound.advancement_source_round_id =
+          current.find((round) => round.scoring_bucket === "qualifier")?.id ?? current[0]?.id ?? null;
+      }
+
+      return [...current, nextRound];
+    });
+  };
+
+  const updateRound = (roundId: string, updater: (round: CompetitionRound) => CompetitionRound) => {
+    updateRounds((current) => current.map((round) => (round.id === roundId ? updater(round) : round)));
+  };
+
+  const removeRound = (roundId: string) => {
+    if (!draft) {
+      return;
+    }
+
+    updateRounds((current) =>
+      current
+        .filter((round) => round.id !== roundId)
+        .map((round) => ({
+          ...round,
+          advancement_source_round_id: round.advancement_source_round_id === roundId ? null : round.advancement_source_round_id,
+        }))
+    );
+    setDraft((currentDraft) =>
+      currentDraft
+        ? {
+            ...currentDraft,
+            schedule_blocks: currentDraft.schedule_blocks.map((block) => ({
+              ...block,
+              round_id: block.round_id === roundId ? null : block.round_id,
+            })),
+          }
+        : currentDraft
+    );
   };
 
   const moveFinalist = async (index: number, direction: -1 | 1) => {
@@ -742,6 +944,12 @@ export default function StaffDashboard({
       return;
     }
 
+    const linkedRound =
+      template.phase_type === "qualifier_round"
+        ? draft.rounds?.find((round) => round.scoring_bucket === "qualifier") ?? null
+        : template.phase_type === "finals_round" || template.phase_type === "isolation" || template.phase_type === "observation"
+          ? draft.rounds?.find((round) => round.scoring_bucket === "finals") ?? null
+          : null;
     const eligibleCategoryIds =
       template.phase_type === "qualifier_round" || template.phase_type === "custom"
         ? template.eligible_age_groups?.length
@@ -758,6 +966,7 @@ export default function StaffDashboard({
         {
           id: createScheduleBlockId(),
           competition_id: draft.id,
+          round_id: linkedRound?.id ?? null,
           label: template.label,
           phase_type: template.phase_type,
           audience_label: template.audience_label,
@@ -1493,14 +1702,26 @@ export default function StaffDashboard({
                       value={draft.format}
                       onChange={(event) => {
                         const nextFormat = event.target.value as Competition["format"];
-                        setDraft({
+                        if (!roundPlanCustomized) {
+                          replaceRoundPlanFromTemplate(nextFormat);
+                          return;
+                        }
+                        const metadataOnlyDraft = {
                           ...draft,
                           format: nextFormat,
                           has_finals: competitionAllowsOptionalFinals(nextFormat) ? draft.has_finals : true,
                           total_climbs: getRecommendedQualifierClimbCount(nextFormat),
                           qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(nextFormat),
                           finals_cutoff: getRecommendedFinalsCutoff(nextFormat),
+                        };
+                        setDraft({
+                          ...metadataOnlyDraft,
+                          rounds: (draft.rounds ?? []).map((round) => ({
+                            ...round,
+                            format: round.scoring_bucket === "finals" ? "ifsc_finals_format" : nextFormat,
+                          })),
                         });
+                        setRoundPlanNeedsReset(roundPlanCustomized);
                       }}
                       className="results-input"
                     >
@@ -1514,6 +1735,18 @@ export default function StaffDashboard({
                     <input value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Location" />
                   </label>
                 </div>
+                {roundPlanNeedsReset ? (
+                  <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Format changed, but this event has a customized round plan. Current rounds were kept as a metadata-only update.
+                    <button
+                      type="button"
+                      onClick={() => replaceRoundPlanFromTemplate()}
+                      className="results-secondary-button ml-3"
+                    >
+                      Reset rounds from format
+                    </button>
+                  </div>
+                ) : null}
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="results-field-group">
                     <span className="results-field-label">Registration opens</span>
@@ -1550,15 +1783,20 @@ export default function StaffDashboard({
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            has_finals: false,
-                            schedule_blocks: draft.schedule_blocks.filter(
-                              (block) => !["isolation", "observation", "finals_round"].includes(block.phase_type)
-                            ),
-                          })
-                        }
+                        onClick={() => {
+                          updateRounds((current) => current.filter((round) => round.scoring_bucket !== "finals"));
+                          setDraft((currentDraft) =>
+                            currentDraft
+                              ? {
+                                  ...currentDraft,
+                                  has_finals: false,
+                                  schedule_blocks: currentDraft.schedule_blocks.filter(
+                                    (block) => !["isolation", "observation", "finals_round"].includes(block.phase_type)
+                                  ),
+                                }
+                              : currentDraft
+                          );
+                        }}
                         disabled={!canDisableFinals}
                         className={!draftHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                       >
@@ -1566,7 +1804,13 @@ export default function StaffDashboard({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDraft({ ...draft, has_finals: true })}
+                        onClick={() => {
+                          if (draft.rounds?.some((round) => round.scoring_bucket === "finals")) {
+                            setDraft({ ...draft, has_finals: true });
+                            return;
+                          }
+                          addRound("finals");
+                        }}
                         className={draftHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                       >
                         Qualifier + finals
@@ -1821,6 +2065,26 @@ export default function StaffDashboard({
                                 />
                               </label>
                               <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Linked round</span>
+                                <select
+                                  value={block.round_id ?? ""}
+                                  onChange={(event) =>
+                                    updateScheduleBlock(block.id, (current) => ({
+                                      ...current,
+                                      round_id: event.target.value || null,
+                                    }))
+                                  }
+                                  className="results-input"
+                                >
+                                  <option value="">Competition-level block</option>
+                                  {(draft.rounds ?? []).map((round) => (
+                                    <option key={round.id} value={round.id}>
+                                      {round.name} {round.scoring_bucket === "none" ? "(Planning Only)" : "(Score-Bearing)"}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-2">
                                 <span className="text-sm font-medium text-slate-700">Start time</span>
                                 <input
                                   value={block.start_time ?? ""}
@@ -1922,21 +2186,178 @@ export default function StaffDashboard({
                 </div>
 
                 <fieldset disabled={demoMode} className={demoMode ? "space-y-6 opacity-70" : "space-y-6"}>
-                {snapshot?.rounds?.length ? (
+                {draft.rounds?.length ? (
                   <div className="results-workspace-card">
-                  <div className="results-kicker">Rounds</div>
-                    <div className="mt-4 space-y-3">
-                      {snapshot.rounds.map((round) => (
-                        <div key={round.id} className="results-admin-list-item">
-                          <div>
-                            <div className="text-lg font-semibold text-slate-950">{round.name}</div>
-                            <div className="mt-1 text-sm text-slate-600">
-                              {round.format} | {round.problem_count} problems
-                            </div>
-                          </div>
-                          <div className="results-chip">{round.status}</div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="results-kicker">Round designer</div>
+                        <div className="mt-2 text-sm text-slate-600">
+                          Score-bearing rounds drive the existing live engine in v1. Semifinals and extra rounds are planning-only for now.
                         </div>
-                      ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => addRound("qualifier")} className="results-secondary-button">Add qualifier</button>
+                        <button type="button" onClick={() => addRound("semifinal")} className="results-secondary-button">Add semifinal</button>
+                        <button type="button" onClick={() => addRound("finals")} className="results-secondary-button">Add finals</button>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      {draft.rounds.map((round, index) => {
+                        const planningOnly = round.scoring_bucket === "none";
+                        const scoreBearingLabel =
+                          round.scoring_bucket === "qualifier"
+                            ? "Score-Bearing / Qualifiers"
+                            : round.scoring_bucket === "finals"
+                              ? "Score-Bearing / Finals"
+                              : "Planning Only";
+                        return (
+                          <div key={round.id} className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="text-lg font-semibold text-slate-950">{round.name}</div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <span className={planningOnly ? "results-chip" : "results-chip border-emerald-200 bg-emerald-50 text-emerald-800"}>
+                                    {scoreBearingLabel}
+                                  </span>
+                                  <span className="results-chip">{round.status}</span>
+                                  {round.is_active ? <span className="results-chip border-sky-200 bg-sky-50 text-sky-800">Active round</span> : null}
+                                </div>
+                              </div>
+                              <button type="button" onClick={() => removeRound(round.id)} disabled={(draft.rounds?.length ?? 0) <= 1} className="results-danger-button">
+                                Remove
+                              </button>
+                            </div>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Name</span>
+                                <input value={round.name} onChange={(event) => updateRound(round.id, (current) => ({ ...current, name: event.target.value }))} className="results-input" />
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Round type</span>
+                                <select
+                                  value={round.round_type}
+                                  onChange={(event) =>
+                                    updateRound(round.id, (current) => {
+                                      const roundType = event.target.value as CompetitionRoundType;
+                                      const scoringBucket =
+                                        roundType === "semifinal"
+                                          ? "none"
+                                          : current.scoring_bucket === "none"
+                                            ? getRoundDefaultScoringBucket(roundType)
+                                            : current.scoring_bucket;
+                                      return {
+                                        ...current,
+                                        round_type: roundType,
+                                        runtime_phase: getRoundRuntimePhase(roundType),
+                                        scoring_bucket: scoringBucket,
+                                        format: roundType === "finals" ? "ifsc_finals_format" : draft.format,
+                                        counting_climbs: roundType === "finals" ? null : current.counting_climbs ?? draft.qualifier_counting_climbs,
+                                        finals_cutoff: roundType === "semifinal" ? null : current.finals_cutoff ?? draft.finals_cutoff,
+                                      };
+                                    })
+                                  }
+                                  className="results-input"
+                                >
+                                  <option value="qualifier">Qualifier</option>
+                                  <option value="semifinal">Semifinal</option>
+                                  <option value="finals">Finals</option>
+                                </select>
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Scoring status</span>
+                                <select
+                                  value={round.scoring_bucket}
+                                  onChange={(event) =>
+                                    updateRound(round.id, (current) => {
+                                      const nextBucket = event.target.value as CompetitionRoundScoringBucket;
+                                      if (current.round_type === "semifinal") {
+                                        return { ...current, scoring_bucket: "none" };
+                                      }
+                                      if (nextBucket === "qualifier" && qualifierScoreRoundCount >= 1 && current.scoring_bucket !== "qualifier") {
+                                        return current;
+                                      }
+                                      if (nextBucket === "finals" && finalsScoreRoundCount >= 1 && current.scoring_bucket !== "finals") {
+                                        return current;
+                                      }
+                                      return { ...current, scoring_bucket: nextBucket };
+                                    })
+                                  }
+                                  className="results-input"
+                                >
+                                  <option value="none">Planning Only</option>
+                                  {round.round_type !== "finals" ? <option value="qualifier">Score-Bearing / Qualifiers</option> : null}
+                                  {round.round_type !== "qualifier" && round.round_type !== "semifinal" ? <option value="finals">Score-Bearing / Finals</option> : null}
+                                </select>
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Problems</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={round.round_type === "finals" ? 8 : 200}
+                                  value={round.problem_count}
+                                  onChange={(event) =>
+                                    updateRound(round.id, (current) => ({
+                                      ...current,
+                                      problem_count: Math.max(1, Number(event.target.value) || current.problem_count),
+                                    }))
+                                  }
+                                  className="results-input"
+                                />
+                              </label>
+                            </div>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                              {round.round_type !== "finals" ? (
+                                <label className="space-y-2">
+                                  <span className="text-sm font-medium text-slate-700">Counting climbs</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={round.counting_climbs ?? draft.qualifier_counting_climbs}
+                                    onChange={(event) =>
+                                      updateRound(round.id, (current) => ({
+                                        ...current,
+                                        counting_climbs: Math.max(1, Number(event.target.value) || draft.qualifier_counting_climbs),
+                                      }))
+                                    }
+                                    className="results-input"
+                                  />
+                                </label>
+                              ) : null}
+                              {round.round_type !== "semifinal" ? (
+                                <label className="space-y-2">
+                                  <span className="text-sm font-medium text-slate-700">Advancement cutoff</span>
+                                  <select
+                                    value={round.finals_cutoff ?? draft.finals_cutoff}
+                                    onChange={(event) =>
+                                      updateRound(round.id, (current) => ({
+                                        ...current,
+                                        finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF,
+                                        advancement_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF,
+                                      }))
+                                    }
+                                    className="results-input"
+                                  >
+                                    <option value={6}>Top 6</option>
+                                    <option value={8}>Top 8</option>
+                                  </select>
+                                </label>
+                              ) : null}
+                              <label className="space-y-2">
+                                <span className="text-sm font-medium text-slate-700">Enabled</span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
+                                  className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
+                                >
+                                  {round.is_enabled ? "Enabled" : "Disabled"}
+                                </button>
+                              </label>
+                            </div>
+                            {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Advances to next configured round</div> : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

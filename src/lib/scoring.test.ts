@@ -175,6 +175,83 @@ describe("competition normalization", () => {
     expect(flash.has_finals).toBe(true);
   });
 
+  it("builds authored rounds from legacy competition settings when none are provided", () => {
+    const competition = normalizeCompetition({
+      id: "comp-rounds",
+      name: "Round Ready",
+      slug: "round-ready",
+      format: "flash_format",
+      has_finals: true,
+      current_phase: "finals_open",
+      total_climbs: 12,
+      qualifier_counting_climbs: 6,
+      finals_problem_count: 4,
+    });
+
+    expect(competition.rounds?.map((round) => [round.round_type, round.scoring_bucket, round.is_active])).toEqual([
+      ["qualifier", "qualifier", false],
+      ["finals", "finals", true],
+    ]);
+    expect(competition.rounds?.[0]?.problem_count).toBe(12);
+    expect(competition.rounds?.[1]?.problem_count).toBe(4);
+  });
+
+  it("preserves linked round ids on schedule blocks", () => {
+    const competition = normalizeCompetition(
+      {
+        ...DEFAULT_COMPETITION,
+        id: "comp-linked-rounds",
+        slug: "comp-linked-rounds",
+        name: "Linked Rounds",
+      },
+      [],
+      [
+        {
+          id: "qual-wave",
+          competition_id: "comp-linked-rounds",
+          round_id: "round-qualifier",
+          label: "Qualifier Wave A",
+          phase_type: "qualifier_round",
+          audience_label: "Wave A",
+          is_active: true,
+          start_time: "9:00 AM",
+          end_time: "11:00 AM",
+          capacity: 40,
+          eligible_category_ids: [],
+        },
+      ],
+      [
+        {
+          id: "round-qualifier",
+          competition_id: "comp-linked-rounds",
+          round_number: 1,
+          sort_order: 1,
+          name: "Qualifier",
+          round_type: "qualifier",
+          format: "scramble",
+          status: "active",
+          runtime_phase: "qualifier_open",
+          is_enabled: true,
+          is_active: true,
+          activated_at: null,
+          problem_count: 30,
+          counting_climbs: 6,
+          finals_cutoff: null,
+          eligible_category_ids: [],
+          advancement_source_round_id: null,
+          advancement_cutoff: null,
+          scoring_bucket: "qualifier",
+          scoring_config: {},
+          started_at: null,
+          closed_at: null,
+        },
+      ]
+    );
+
+    expect(competition.schedule_blocks[0]?.round_id).toBe("round-qualifier");
+    expect(competition.rounds?.[0]?.id).toBe("round-qualifier");
+  });
+
   it("only offers climbing windows as registration assignments", () => {
     const competition = normalizeCompetition(
       {
