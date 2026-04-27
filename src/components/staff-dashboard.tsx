@@ -255,6 +255,28 @@ function getWaveAudienceLabel(ageGroups: readonly string[]) {
   return formatAgeGroupBandLabel(sortAgeGroups(ageGroups));
 }
 
+function getCompactWaveLabel(ageGroups: readonly string[], competition: Competition) {
+  const sortedAgeGroups = sortAgeGroups(ageGroups);
+  const assignmentLabel = getRegistrationAssignmentLabel(competition);
+  const eligibleAgeGroups = sortAgeGroups(
+    QUALIFIER_TEMPLATE_AGE_GROUPS.filter((ageGroup) => competition.qualifier_eligible_age_groups.includes(ageGroup))
+  );
+
+  if (
+    eligibleAgeGroups.length > 0 &&
+    sortedAgeGroups.length === eligibleAgeGroups.length &&
+    sortedAgeGroups.every((ageGroup, index) => ageGroup === eligibleAgeGroups[index])
+  ) {
+    return `All Categories ${assignmentLabel}`;
+  }
+
+  if (sortedAgeGroups.length <= 2) {
+    return getWaveLabel(sortedAgeGroups, competition);
+  }
+
+  return `${sortedAgeGroups[0]} + ${sortedAgeGroups.length - 1} more ${assignmentLabel}`;
+}
+
 function reindexScheduleBlocks(blocks: CompetitionScheduleBlock[]) {
   return blocks.map((block, index) => ({
     ...block,
@@ -1344,7 +1366,7 @@ export default function StaffDashboard({
           block.id === targetBlockId
             ? {
                 ...block,
-                label: getWaveLabel(mergedAgeGroups, draft),
+                label: getCompactWaveLabel(mergedAgeGroups, draft),
                 audience_label: getWaveAudienceLabel(mergedAgeGroups),
                 eligible_category_ids: mergedEligibleCategoryIds,
                 is_active: block.is_active || sourceBlock.is_active,
