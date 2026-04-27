@@ -35,6 +35,7 @@ import {
   buildDisplayPath,
   buildStaffCompetitionPath,
   compareCompetitionPhases,
+  compareScheduleBlocks,
   competitionAllowsOptionalFinals,
   competitionHasFinals,
   createCompetitionRoundId,
@@ -244,6 +245,13 @@ function getWaveLabel(ageGroups: readonly string[], competition: Competition) {
 
 function getWaveAudienceLabel(ageGroups: readonly string[]) {
   return formatAgeGroupBandLabel(sortAgeGroups(ageGroups));
+}
+
+function reindexScheduleBlocks(blocks: CompetitionScheduleBlock[]) {
+  return blocks.map((block, index) => ({
+    ...block,
+    sort_order: index,
+  }));
 }
 
 function getWaveAgeGroupsFromCategoryIds(
@@ -623,6 +631,10 @@ export default function StaffDashboard({
       },
     ].filter((group) => group.templates.length > 0);
   }, [scheduleTemplates]);
+  const orderedDraftScheduleBlocks = useMemo(
+    () => (draft ? [...draft.schedule_blocks].sort(compareScheduleBlocks) : []),
+    [draft]
+  );
   const qualifierCategories = useMemo(
     () =>
       draft?.categories.filter((category) => isQualifierEligibleCategory(draft, category.age_group)) ?? [],
@@ -1006,12 +1018,13 @@ export default function StaffDashboard({
 
     setDraft({
       ...draft,
-      schedule_blocks: [
+      schedule_blocks: reindexScheduleBlocks([
         ...draft.schedule_blocks,
         {
           id: createScheduleBlockId(),
           competition_id: draft.id,
           round_id: linkedRound?.id ?? null,
+          sort_order: draft.schedule_blocks.length,
           label: template.label,
           phase_type: template.phase_type,
           audience_label: template.audience_label,
@@ -1021,7 +1034,7 @@ export default function StaffDashboard({
           capacity: template.capacity ?? draft.max_climbers,
           eligible_category_ids: eligibleCategoryIds,
         },
-      ],
+      ]),
     });
   };
 
@@ -1033,11 +1046,30 @@ export default function StaffDashboard({
     const remainingBlocks = draft.schedule_blocks.filter((block) => block.id !== blockId);
     setDraft({
       ...draft,
-      schedule_blocks: remainingBlocks.map((block, index) =>
+      schedule_blocks: reindexScheduleBlocks(remainingBlocks).map((block, index) =>
         index === 0 && !remainingBlocks.some((entry) => entry.is_active)
           ? { ...block, is_active: true }
           : block
       ),
+    });
+  };
+
+  const moveScheduleBlock = (blockId: string, direction: -1 | 1) => {
+    if (!draft) {
+      return;
+    }
+
+    const orderedBlocks = [...draft.schedule_blocks].sort(compareScheduleBlocks);
+    const currentIndex = orderedBlocks.findIndex((block) => block.id === blockId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedBlocks.length) {
+      return;
+    }
+
+    [orderedBlocks[currentIndex], orderedBlocks[targetIndex]] = [orderedBlocks[targetIndex], orderedBlocks[currentIndex]];
+    setDraft({
+      ...draft,
+      schedule_blocks: reindexScheduleBlocks(orderedBlocks),
     });
   };
 
@@ -1081,9 +1113,10 @@ export default function StaffDashboard({
 
     setDraft({
       ...draft,
-      schedule_blocks: draft.schedule_blocks
-        .filter((block) => block.id !== sourceBlockId)
-        .map((block) =>
+      schedule_blocks: reindexScheduleBlocks(
+        draft.schedule_blocks
+          .filter((block) => block.id !== sourceBlockId)
+          .map((block) =>
           block.id === targetBlockId
             ? {
                 ...block,
@@ -1094,7 +1127,8 @@ export default function StaffDashboard({
                 capacity: Math.max(block.capacity, sourceBlock.capacity),
               }
             : block
-        ),
+          )
+      ),
     });
     setDraggedScheduleBlockId(null);
     setMergeTargetBlockId(null);
@@ -2022,8 +2056,8 @@ export default function StaffDashboard({
                     <div className="text-sm text-slate-600">
                       Add qualifier waves separately, then drag one wave onto another if you want them combined into one shared start group.
                     </div>
-                    {draft.schedule_blocks.length ? (
-                      draft.schedule_blocks.map((block) => {
+                    {orderedDraftScheduleBlocks.length ? (
+                      orderedDraftScheduleBlocks.map((block, blockIndex) => {
                         const supportsCategoryFilters =
                           block.phase_type === "qualifier_round" || block.phase_type === "custom";
                         const canMergeThisBlock = canMergeWaveBlock(block);
@@ -2079,6 +2113,22 @@ export default function StaffDashboard({
                                 ) : null}
                               </div>
                               <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => moveScheduleBlock(block.id, -1)}
+                                  disabled={blockIndex === 0}
+                                  className="results-secondary-button"
+                                >
+                                  Move up
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveScheduleBlock(block.id, 1)}
+                                  disabled={blockIndex === orderedDraftScheduleBlocks.length - 1}
+                                  className="results-secondary-button"
+                                >
+                                  Move down
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => setActiveScheduleBlock(block.id)}

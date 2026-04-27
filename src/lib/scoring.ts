@@ -90,6 +90,7 @@ export interface CompetitionScheduleBlock {
   id: string;
   competition_id: string;
   round_id?: string | null;
+  sort_order?: number;
   label: string;
   phase_type: SchedulePhaseType;
   audience_label: string;
@@ -1185,8 +1186,10 @@ export function parseScheduleTimeToMinutes(value: string | null | undefined) {
 }
 
 export function compareScheduleBlocks(left: CompetitionScheduleBlock, right: CompetitionScheduleBlock) {
-  if (left.is_active !== right.is_active) {
-    return left.is_active ? -1 : 1;
+  const leftOrder = left.sort_order ?? Number.MAX_SAFE_INTEGER;
+  const rightOrder = right.sort_order ?? Number.MAX_SAFE_INTEGER;
+  if (leftOrder !== rightOrder) {
+    return leftOrder - rightOrder;
   }
 
   const leftStart = parseScheduleTimeToMinutes(left.start_time);
@@ -1267,10 +1270,11 @@ export function normalizeCompetition(
           left.sort_order - right.sort_order || left.display_name.localeCompare(right.display_name)
       ),
     schedule_blocks: scheduleBlocks
-      .map((block) => ({
+      .map((block, index) => ({
         ...block,
         competition_id: id,
         round_id: block.round_id ?? null,
+        sort_order: block.sort_order ?? index,
         audience_label: block.audience_label?.trim() ?? "",
         phase_type: (block.phase_type ?? "custom") as SchedulePhaseType,
         is_active: (() => {

@@ -343,6 +343,7 @@ async function fetchCompetitionScheduleBlocks(competitionIds: string[]) {
     .from("competition_schedule_blocks")
     .select("*")
     .in("competition_id", competitionIds)
+    .order("sort_order", { ascending: true })
     .order("start_time", { ascending: true });
 
   if (error) {
@@ -353,6 +354,7 @@ async function fetchCompetitionScheduleBlocks(competitionIds: string[]) {
     id: row.id ?? createId(),
     competition_id: row.competition_id,
     round_id: row.round_id ?? null,
+    sort_order: row.sort_order ?? 0,
     label: row.label ?? "Open block",
     phase_type: row.phase_type ?? "custom",
     audience_label: row.audience_label ?? "",
@@ -1306,9 +1308,10 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
 
   if (payload.schedule_blocks.length) {
     const { error: scheduleError } = await supabase.from("competition_schedule_blocks").insert(
-      payload.schedule_blocks.map((block) => ({
+      payload.schedule_blocks.map((block, index) => ({
         id: block.id || createId(),
         competition_id: competitionId,
+        sort_order: block.sort_order ?? index,
         label: cleanString(block.label),
         phase_type: block.phase_type,
         audience_label: cleanString(block.audience_label),
