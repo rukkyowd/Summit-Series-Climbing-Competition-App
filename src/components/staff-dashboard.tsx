@@ -130,6 +130,40 @@ type GuidedSetupPreset = {
   description: string;
 };
 
+type DemoFlowStep = {
+  title: string;
+  description: string;
+};
+
+type DemoTourCard = {
+  title: string;
+  description: string;
+  href: string;
+  actionLabel: string;
+};
+
+const DEMO_FLOW_STEPS: DemoFlowStep[] = [
+  { title: "Build the event", description: "Set categories, sessions, and competition stages before registration opens." },
+  { title: "Open registration", description: "Share one clean registration link instead of juggling forms and spreadsheets." },
+  { title: "Run sessions", description: "Organize qualifier, semifinal, and finals windows on a single day schedule." },
+  { title: "Record scores live", description: "Judges capture attempts while standings update in the background." },
+  { title: "Advance finalists", description: "Move athletes into the next stage without rebuilding finals lists by hand." },
+  { title: "Share results", description: "Give climbers and spectators a public leaderboard and display screen." },
+];
+
+const DEMO_REPLACES_POINTS = [
+  "Registration spreadsheets and manual session rosters",
+  "Paper scorecards or disconnected judge notes",
+  "Hand-built finalist lists and climbing orders",
+  "Scattered links for public updates and event-day screens",
+];
+
+const DEMO_TRUST_POINTS = [
+  "Staff can plan categories, sessions, and stages in one place.",
+  "Judging, standings, and finals progression follow the same event model.",
+  "Public pages look polished for climbers, parents, and spectators.",
+];
+
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
   roundType: CompetitionRoundType,
@@ -543,7 +577,12 @@ export default function StaffDashboard({
         const initialMatch = initialCompetitionSlug
           ? summaries.find((entry) => entry.competition.slug === initialCompetitionSlug)
           : null;
-        return initialMatch?.competition.id ?? summaries[0]?.competition.id ?? "";
+        const preferredDemoSummary = demoMode
+          ? summaries.find((entry) => isDemoDataSlug(entry.competition.slug)) ??
+            summaries.find((entry) => entry.live_now) ??
+            summaries[0]
+          : null;
+        return initialMatch?.competition.id ?? preferredDemoSummary?.competition.id ?? summaries[0]?.competition.id ?? "";
       });
       setError("");
     } catch (nextError) {
@@ -638,6 +677,7 @@ export default function StaffDashboard({
 
   const publicPath = draft ? buildCompetitionPath(draft.slug) : "";
   const registerPath = draft ? buildCompetitionPath(draft.slug, "register") : "";
+  const leaderboardPath = draft ? buildCompetitionPath(draft.slug, "leaderboard") : "";
   const judgeUrl = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "";
   const displayPath = draft ? buildDisplayPath(draft.slug) : "";
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
@@ -1410,9 +1450,32 @@ export default function StaffDashboard({
       Boolean(snapshot?.finalists.length)
     : false;
   const demoBanner = demoMode
-    ? "Demo mode is public and read-only. Staff sign-in, scoring controls, and competition edits stay protected."
+    ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
     : "";
   const demoDataExportAllowed = demoMode && isDemoDataSlug(draft?.slug);
+  const currentCompetitionStages = draft?.rounds ?? [];
+  const demoTourCards: DemoTourCard[] = draft
+    ? [
+        {
+          title: "Organizer setup",
+          description: "Review how staff configure categories, day schedule, and competition stages.",
+          href: "#demo-organizer-setup",
+          actionLabel: "See organizer setup",
+        },
+        {
+          title: "Judge scoring",
+          description: "Scoring stays protected on staff-only routes, ready for a live event walkthrough after sign-in.",
+          href: "/staff/login",
+          actionLabel: "Open staff sign-in",
+        },
+        {
+          title: "Public leaderboard",
+          description: "Preview the climber-facing rankings and display experience for this sample event.",
+          href: leaderboardPath,
+          actionLabel: "Open public leaderboard",
+        },
+      ]
+    : [];
   const downloadRegistrationQr = async () => {
     if (!draft) {
       return;
@@ -1553,16 +1616,139 @@ export default function StaffDashboard({
           </div>
         ) : null}
 
+        {demoMode ? (
+          <section className="results-card overflow-hidden">
+            <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+              <div>
+                <div className="results-kicker">Demo dashboard</div>
+                <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
+                  Run a climbing competition from setup to live results in one place.
+                </h1>
+                <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
+                  Explore a sample event to see how staff set up sessions, judges record scores, and climbers follow live rankings and finals from public pages.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <a href="#demo-organizer-setup" className="results-primary-button">
+                    See organizer setup
+                  </a>
+                  {leaderboardPath ? (
+                    <Link href={leaderboardPath} className="results-secondary-button">
+                      See public leaderboard
+                    </Link>
+                  ) : null}
+                  {displayPath ? (
+                    <Link href={displayPath} className="results-secondary-button">
+                      See public display
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+              <div className="results-feature-card">
+                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Sample event
+                </div>
+                <div className="mt-3 text-2xl font-semibold text-slate-950">
+                  {draft?.name ?? "Loading sample event"}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="results-chip">{selectedSummary?.climber_count ?? 0} climbers</span>
+                  <span className="results-chip">{draft?.categories.length ?? 0} categories</span>
+                  <span className="results-chip">{draft?.schedule_blocks.length ?? 0} schedule blocks</span>
+                  <span className="results-chip">{currentCompetitionStages.length} stages</span>
+                </div>
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  <div>{draft?.location_name || "Location TBD"}</div>
+                  <div>{draft?.discipline_label || "Bouldering"}</div>
+                  <div>
+                    {draft
+                      ? `${formatCompetitionPhaseLabel(draft.current_phase)}${currentCompetitionStages.some((round) => round.round_type === "semifinal") ? " with semifinals in the sample flow." : " with a full public results flow."}`
+                      : "Sample flow loading."}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {demoMode ? (
+          <section className="results-card">
+            <div className="results-kicker">How comp day works</div>
+            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              This is the lifecycle gyms care about: plan the event once, run the day confidently, and keep climbers informed live.
+            </div>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {DEMO_FLOW_STEPS.map((step) => (
+                <div key={step.title} className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
+                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{step.title}</div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600">{step.description}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {demoMode && demoTourCards.length ? (
+          <section className="results-card">
+            <div className="results-kicker">Explore the product</div>
+            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Start with the organizer workflow, then jump into the live and public surfaces that make comp day easier for staff and climbers.
+            </div>
+            <div className="mt-6 grid gap-4 lg:grid-cols-3">
+              {demoTourCards.map((card) => (
+                <div key={card.title} className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{card.title}</div>
+                  <div className="mt-3 text-base leading-7 text-slate-700">{card.description}</div>
+                  {card.href.startsWith("#") ? (
+                    <a href={card.href} className="results-secondary-button mt-5 inline-flex">
+                      {card.actionLabel}
+                    </a>
+                  ) : (
+                    <Link href={card.href} className="results-secondary-button mt-5 inline-flex">
+                      {card.actionLabel}
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="results-card">
-            <div className="results-kicker">Create event</div>
-            <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
-              Set up a competition.
-            </h1>
-            <div className="results-hero-subline">
-              Start a new event, pull in official details, and manage registration, schedules, judging, and finals from one place.
-            </div>
-            <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
+            {demoMode ? (
+              <>
+                <div className="results-kicker">Demo walkthrough</div>
+                <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+                  Explore a sample gym event.
+                </h1>
+                <div className="results-hero-subline">
+                  The real dashboard stays underneath, but this demo focuses on how organizers plan the event, how staff run the day, and how climbers see results.
+                </div>
+                <div className="mt-5 rounded-[1.6rem] border border-slate-200 bg-slate-50 px-5 py-5">
+                  <div className="results-kicker">What this replaces</div>
+                  <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
+                    {DEMO_REPLACES_POINTS.map((point) => (
+                      <div key={point} className="flex items-start gap-3">
+                        <span className="mt-2 h-2 w-2 rounded-full bg-sky-500" aria-hidden="true" />
+                        <span>{point}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="results-kicker">Create event</div>
+                <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+                  Set up a competition.
+                </h1>
+                <div className="results-hero-subline">
+                  Start a new event, pull in official details, and manage registration, schedules, judging, and finals from one place.
+                </div>
+              </>
+            )}
+            {!demoMode ? (
+            <fieldset disabled={!canEditSetup} className={!canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
               <label className="results-field-group" htmlFor="create-event-name">
                 <span className="results-field-label">New event name</span>
                 <input id="create-event-name" aria-label="New event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New event name" />
@@ -1721,11 +1907,8 @@ export default function StaffDashboard({
                   Create new event
               </button>
             </fieldset>
-            {demoMode ? (
-              <div className="mt-4 text-sm text-slate-600">
-                This panel is intentionally frozen for demos. Use staff sign-in to create or edit events.
-              </div>
-            ) : !canEditSetup ? (
+            ) : null}
+            {!demoMode && !canEditSetup ? (
               <div className="mt-4 text-sm text-slate-600">
                 Event creation is admin-only.
               </div>
@@ -1734,8 +1917,12 @@ export default function StaffDashboard({
             <div className="results-subtle-divider mt-8" />
             <div className="mt-5 flex items-center justify-between gap-3">
               <div>
-                <div className="results-kicker">Existing events</div>
-                <div className="mt-2 text-sm text-slate-600">Choose an event to review its setup, links, and live workflow.</div>
+                <div className="results-kicker">{demoMode ? "Sample events" : "Existing events"}</div>
+                <div className="mt-2 text-sm text-slate-600">
+                  {demoMode
+                    ? "Choose the sample event you want to walk through with a gym buyer."
+                    : "Choose an event to review its setup, links, and live workflow."}
+                </div>
               </div>
               <div className="results-chip">{allSummaries.length} loaded</div>
             </div>
@@ -1762,14 +1949,22 @@ export default function StaffDashboard({
 
           <section className="results-card">
             {draft ? (
-              <div className="space-y-6">
+              <div id="demo-organizer-setup" className="space-y-6">
                 <div className="results-workspace-hero">
                   <div>
-                    <div className="results-kicker">Event setup</div>
+                    <div className="results-kicker">{demoMode ? "Organizer setup" : "Event setup"}</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
                     <div className="results-hero-subline">
                       {publicUrl || publicPath}
                     </div>
+                    {demoMode ? (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <span className="results-chip">{selectedSummary?.climber_count ?? 0} climbers</span>
+                        <span className="results-chip">{draft.categories.length} categories</span>
+                        <span className="results-chip">{draft.schedule_blocks.length} sessions and logistics blocks</span>
+                        <span className="results-chip">{currentCompetitionStages.length} competition stages</span>
+                      </div>
+                    ) : null}
                   </div>
                     <div className="results-workspace-callout">
                       <div className="results-kicker">Quick links</div>
@@ -1783,13 +1978,13 @@ export default function StaffDashboard({
                       </div>
                       {demoMode ? (
                         <div className="mt-3 text-sm text-slate-600">
-                          Judge scoring and checklist tools remain protected on staff-only routes.
+                          Judge scoring and staff-only checklists stay protected, but you can still preview the public experience from this sample event.
                         </div>
                       ) : null}
                     </div>
                   </div>
 
-                <div className="results-workspace-card">
+                <div id="demo-run-event" className="results-workspace-card">
                   <div className="results-kicker">Setup flow</div>
                   <div className="mt-2 text-sm text-slate-600">
                     Follow this setup from top to bottom: event basics, categories, event setup, day schedule, then competition stages.
@@ -2917,6 +3112,41 @@ export default function StaffDashboard({
             )}
           </section>
         </section>
+
+        {demoMode ? (
+          <section className="grid gap-6 lg:grid-cols-2">
+            <section className="results-card">
+              <div className="results-kicker">Why gyms like this</div>
+              <div className="mt-4 space-y-4 text-sm leading-6 text-slate-600">
+                {DEMO_TRUST_POINTS.map((point) => (
+                  <div key={point} className="flex items-start gap-3">
+                    <span className="mt-2 h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                    <span>{point}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="results-card">
+              <div className="results-kicker">Want this for your gym?</div>
+              <h2 className="results-editorial-title mt-3 text-3xl font-semibold text-slate-950 sm:text-4xl">
+                Use the sample event as your walkthrough.
+              </h2>
+              <p className="mt-4 text-base leading-7 text-slate-600">
+                Show buyers the organizer setup first, then open the public leaderboard and display to demonstrate the event-day experience end to end.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <a href="#demo-organizer-setup" className="results-primary-button">
+                  Start the walkthrough
+                </a>
+                {leaderboardPath ? (
+                  <Link href={leaderboardPath} className="results-secondary-button">
+                    Open sample leaderboard
+                  </Link>
+                ) : null}
+              </div>
+            </section>
+          </section>
+        ) : null}
 
         <ConfirmationModal
           open={Boolean(confirming)}
