@@ -1233,16 +1233,16 @@ export default function StaffDashboard({
             </div>
             <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
               <label className="results-field-group">
-                <span className="results-field-label">Competition name</span>
-                <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New competition name" />
+                <span className="results-field-label">New event name</span>
+                <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New event name" />
               </label>
               <label className="results-field-group">
-                <span className="results-field-label">Slug preview</span>
-                <input value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="competition-slug" />
+                <span className="results-field-label">New event slug preview</span>
+                <input value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="new-event-slug" />
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="results-field-group">
-                  <span className="results-field-label">Format</span>
+                  <span className="results-field-label">New event format</span>
                   <select
                     value={createFormat}
                     onChange={(event) => {
@@ -1260,23 +1260,23 @@ export default function StaffDashboard({
                   </select>
                 </label>
                 <label className="results-field-group">
-                  <span className="results-field-label">Location</span>
-                  <input value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="Location" />
+                  <span className="results-field-label">New event location</span>
+                  <input value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="New event location" />
                 </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="results-field-group">
-                  <span className="results-field-label">Start date</span>
+                  <span className="results-field-label">New event start date</span>
                   <input type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
                 </label>
                 <label className="results-field-group">
-                  <span className="results-field-label">End date</span>
+                  <span className="results-field-label">New event end date</span>
                   <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
                 </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="results-field-group">
-                  <span className="results-field-label">Registration opens</span>
+                  <span className="results-field-label">New event registration opens</span>
                   <input
                     type="datetime-local"
                     value={formatDateTimeLocalInput(createRegistrationOpensAt)}
@@ -1285,7 +1285,7 @@ export default function StaffDashboard({
                   />
                 </label>
                 <label className="results-field-group">
-                  <span className="results-field-label">Registration deadline</span>
+                  <span className="results-field-label">New event registration deadline</span>
                   <input
                     type="datetime-local"
                     value={formatDateTimeLocalInput(createRegistrationClosesAt)}
@@ -1296,32 +1296,32 @@ export default function StaffDashboard({
               </div>
               {competitionAllowsOptionalFinals(createFormat) ? (
                 <label className="results-field-group">
-                  <span className="results-field-label">Finals round</span>
+                  <span className="results-field-label">New event finals plan</span>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => setCreateHasFinals(false)}
                       className={!createHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                     >
-                      Qualifier only
+                      Start with qualifier only
                     </button>
                     <button
                       type="button"
                       onClick={() => setCreateHasFinals(true)}
                       className={createHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                     >
-                      Qualifier + finals
+                      Start with qualifier + finals
                     </button>
                   </div>
                 </label>
               ) : null}
               <label className="results-field-group">
-                <span className="results-field-label">Description</span>
+                <span className="results-field-label">New event description</span>
                 <textarea
                   value={createDescription}
                   onChange={(event) => setCreateDescription(event.target.value)}
                   className="results-input min-h-[120px] resize-y"
-                  placeholder="Competition description"
+                  placeholder="New event description"
                 />
               </label>
               {createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl ? (
@@ -1379,7 +1379,7 @@ export default function StaffDashboard({
                 }}
                 className="results-primary-button"
               >
-                  Create event
+                  Create new event
               </button>
             </fieldset>
             {demoMode ? (

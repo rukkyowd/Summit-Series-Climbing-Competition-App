@@ -5,27 +5,25 @@ alter table public.final_attempts
 add column if not exists round_id uuid references public.competition_rounds(id) on delete cascade;
 
 update public.qualifier_attempts qa
-set round_id = source_round.id
-from lateral (
+set round_id = (
   select cr.id
   from public.competition_rounds cr
   where cr.competition_id = qa.competition_id
     and cr.scoring_bucket = 'qualifier'
   order by cr.sort_order, cr.round_number, cr.created_at
   limit 1
-) source_round
+)
 where qa.round_id is null;
 
 update public.final_attempts fa
-set round_id = source_round.id
-from lateral (
+set round_id = (
   select cr.id
   from public.competition_rounds cr
   where cr.competition_id = fa.competition_id
     and cr.scoring_bucket = 'finals'
   order by cr.sort_order, cr.round_number, cr.created_at
   limit 1
-) source_round
+)
 where fa.round_id is null;
 
 alter table public.qualifier_attempts
