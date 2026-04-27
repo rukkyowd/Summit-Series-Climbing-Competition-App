@@ -488,6 +488,7 @@ export default function StaffDashboard({
   const [draggedScheduleBlockId, setDraggedScheduleBlockId] = useState<string | null>(null);
   const [mergeTargetBlockId, setMergeTargetBlockId] = useState<string | null>(null);
   const [roundPlanNeedsReset, setRoundPlanNeedsReset] = useState(false);
+  const [showAdvancedStageSettings, setShowAdvancedStageSettings] = useState(false);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -1770,7 +1771,7 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Current stage</div>
+                  <div className="results-kicker">Live event controls</div>
                       <div className="mt-2 text-2xl font-semibold text-slate-950">{formatCompetitionPhaseLabel(draft.current_phase)}</div>
                       {currentPhaseBlockLabel ? (
                         <div className="mt-2 text-sm font-medium text-sky-700">
@@ -1896,8 +1897,8 @@ export default function StaffDashboard({
                     </div>
                   </div>
                   <div className="mt-4 text-sm text-slate-600">
-                    The current stage controls scoring and what the public sees. When schedule blocks imply a stage
-                    order, Previous and Next follow that event timeline first
+                    This controls which part of the event is live right now. It decides what can be scored and what the
+                    public sees. When schedule blocks imply a stage order, Previous and Next follow that event timeline first
                     {liveScheduleBlock ? `, and the live block is currently "${liveScheduleBlock.label}".` : "."}
                   </div>
                   {scheduleDrivenPhases.length ? (
@@ -2201,8 +2202,8 @@ export default function StaffDashboard({
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Qualifying age groups</div>
-                    <div className="mt-2 text-sm text-slate-600">Only these age groups appear in registration and qualifying standings.</div>
+                    <div className="results-kicker">Step 2 — Choose qualifier categories</div>
+                    <div className="mt-2 text-sm text-slate-600">These are the categories athletes can register into, and they also drive the guided schedule presets.</div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                         const active = draft.qualifier_eligible_age_groups.includes(ageGroup);
@@ -2222,8 +2223,8 @@ export default function StaffDashboard({
 
                   {draftHasFinals ? (
                     <div className="results-workspace-card">
-                      <div className="results-kicker">Finals age groups</div>
-                      <div className="mt-2 text-sm text-slate-600">Only these age groups can qualify into finals.</div>
+                      <div className="results-kicker">Step 2b — Choose finals categories</div>
+                      <div className="mt-2 text-sm text-slate-600">Only these categories can advance into finals.</div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                           const active = draft.finals_eligible_age_groups.includes(ageGroup);
@@ -2246,7 +2247,7 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Guided setup</div>
+                      <div className="results-kicker">Step 3 — Pick an event setup</div>
                       <div className="mt-2 text-sm text-slate-600">
                         Start with a competition structure first. This will generate the rounds and day schedule for you,
                         and you can fine-tune everything below afterward.
@@ -2270,8 +2271,8 @@ export default function StaffDashboard({
                     ))}
                   </div>
                   <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    Step 2: review the generated <span className="font-semibold text-slate-900">Event schedule</span> and{" "}
-                    <span className="font-semibold text-slate-900">Round designer</span> sections below. They are now pre-linked so
+                    Step 4: review the generated <span className="font-semibold text-slate-900">Day schedule</span> and{" "}
+                    <span className="font-semibold text-slate-900">Competition stages</span> sections below. They are now pre-linked so
                     real climbing sessions already point at the right round.
                   </div>
                 </div>
@@ -2279,9 +2280,9 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Event schedule</div>
+                      <div className="results-kicker">Step 4 — Build the day</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        Add ready-made schedule blocks, then adjust labels, times, and climbing windows for the day.
+                        These blocks describe when things happen during the day. Real climbing sessions should link to a stage; logistics items can stay schedule-only.
                       </div>
                     </div>
                     <div className="results-chip">{draft.schedule_blocks.length} blocks</div>
@@ -2585,12 +2586,19 @@ export default function StaffDashboard({
                   <div className="results-workspace-card">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="results-kicker">Round designer</div>
+                        <div className="results-kicker">Step 5 — Competition stages</div>
                         <div className="mt-2 text-sm text-slate-600">
-                          Score-bearing rounds save real attempts and generate live standings. Qualifier and semifinal rounds share qualifier-style scoring, while finals stays on its own finals scoring path.
+                          A stage is a real part of the competition like Qualifier, Semifinal, or Finals. Stages can either record real scores or exist only for scheduling.
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAdvancedStageSettings((current) => !current)}
+                          className="results-secondary-button"
+                        >
+                          {showAdvancedStageSettings ? "Hide advanced" : "Show advanced"}
+                        </button>
                         <button type="button" onClick={() => addRound("qualifier")} className="results-secondary-button">Add qualifier</button>
                         <button type="button" onClick={() => addRound("semifinal")} className="results-secondary-button">Add semifinal</button>
                         <button type="button" onClick={() => addRound("finals")} className="results-secondary-button">Add finals</button>
@@ -2601,10 +2609,10 @@ export default function StaffDashboard({
                         const planningOnly = round.scoring_bucket === "none";
                         const scoreBearingLabel =
                           round.scoring_bucket === "qualifier"
-                            ? "Score-Bearing / Qualifier-style"
+                            ? "Records real scores"
                             : round.scoring_bucket === "finals"
-                              ? "Score-Bearing / Finals"
-                              : "Planning Only";
+                              ? "Records finals scores"
+                              : "Schedule only";
                         return (
                           <div key={round.id} className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2615,7 +2623,7 @@ export default function StaffDashboard({
                                     {scoreBearingLabel}
                                   </span>
                                   <span className="results-chip">{round.status}</span>
-                                  {round.is_active ? <span className="results-chip border-sky-200 bg-sky-50 text-sky-800">Active round</span> : null}
+                                  {round.is_active ? <span className="results-chip border-sky-200 bg-sky-50 text-sky-800">Live stage</span> : null}
                                 </div>
                               </div>
                               <button type="button" onClick={() => removeRound(round.id)} disabled={(draft.rounds?.length ?? 0) <= 1} className="results-danger-button">
@@ -2657,7 +2665,7 @@ export default function StaffDashboard({
                                 </select>
                               </label>
                               <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">Scoring status</span>
+                                <span className="text-sm font-medium text-slate-700">This stage</span>
                                 <select
                                   value={round.scoring_bucket}
                                   onChange={(event) =>
@@ -2677,13 +2685,16 @@ export default function StaffDashboard({
                                   }
                                   className="results-input"
                                 >
-                                  <option value="none">Planning Only</option>
-                                  {round.round_type !== "finals" ? <option value="qualifier">Score-Bearing / Qualifier-style</option> : null}
-                                  {round.round_type === "finals" ? <option value="finals">Score-Bearing / Finals</option> : null}
+                                  <option value="none">Schedule only</option>
+                                  {round.round_type !== "finals" ? <option value="qualifier">Records real scores</option> : null}
+                                  {round.round_type === "finals" ? <option value="finals">Records finals scores</option> : null}
                                 </select>
+                                <span className="text-xs leading-5 text-slate-500">
+                                  Choose whether this stage is just part of the plan or actually stores competition scores.
+                                </span>
                               </label>
                               <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">Problems</span>
+                                <span className="text-sm font-medium text-slate-700">Boulders in this stage</span>
                                 <input
                                   type="number"
                                   min={1}
@@ -2702,7 +2713,7 @@ export default function StaffDashboard({
                             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                               {round.round_type !== "finals" ? (
                                 <label className="space-y-2">
-                                  <span className="text-sm font-medium text-slate-700">Counting climbs</span>
+                                  <span className="text-sm font-medium text-slate-700">Top climbs counted</span>
                                   <input
                                     type="number"
                                     min={1}
@@ -2719,7 +2730,7 @@ export default function StaffDashboard({
                               ) : null}
                               {round.round_type !== "semifinal" ? (
                                 <label className="space-y-2">
-                                  <span className="text-sm font-medium text-slate-700">Advancement cutoff</span>
+                                  <span className="text-sm font-medium text-slate-700">Athletes who move on</span>
                                   <select
                                     value={round.finals_cutoff ?? draft.finals_cutoff}
                                     onChange={(event) =>
@@ -2734,20 +2745,25 @@ export default function StaffDashboard({
                                     <option value={6}>Top 6</option>
                                     <option value={8}>Top 8</option>
                                   </select>
+                                  <span className="text-xs leading-5 text-slate-500">
+                                    This controls how many climbers advance from this stage into the next one.
+                                  </span>
                                 </label>
                               ) : null}
-                              <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">Enabled</span>
-                                <button
-                                  type="button"
-                                  onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
-                                  className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
-                                >
-                                  {round.is_enabled ? "Enabled" : "Disabled"}
-                                </button>
-                              </label>
+                              {showAdvancedStageSettings ? (
+                                <label className="space-y-2">
+                                  <span className="text-sm font-medium text-slate-700">Enabled</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
+                                    className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
+                                  >
+                                    {round.is_enabled ? "Enabled" : "Disabled"}
+                                  </button>
+                                </label>
+                              ) : null}
                             </div>
-                            {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Advances to next configured round</div> : null}
+                            {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
                           </div>
                         );
                       })}
