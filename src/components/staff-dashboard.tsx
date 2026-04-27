@@ -57,6 +57,7 @@ import {
   getSchedulePhaseDescription,
   isQualifierEligibleCategory,
   isQualifierStage,
+  normalizeCompetition,
   parseScheduleTimeToMinutes,
   slugifyCompetitionName,
   type Competition,
@@ -120,6 +121,13 @@ type ScheduleTemplateGroup = {
   title: string;
   description: string;
   templates: ScheduleBlockTemplate[];
+};
+
+type GuidedSetupPreset = {
+  id: "simple_local" | "qualifier_finals" | "qualifier_semifinal_finals";
+  title: string;
+  summary: string;
+  description: string;
 };
 
 function createRoundTemplate(
@@ -313,6 +321,82 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
       : []),
     { label: "Results / Awards", phase_type: "results", audience_label: "All athletes", capacity: competition.max_climbers },
   ];
+}
+
+const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
+  {
+    id: "simple_local",
+    title: "Simple local comp",
+    summary: "Qualifier only",
+    description: "Best for a straightforward local event with one qualifier stage and a simple day schedule.",
+  },
+  {
+    id: "qualifier_finals",
+    title: "Qualifier + Finals",
+    summary: "Most common format",
+    description: "Use qualifiers during the day, then move the top climbers into finals with isolation and observation.",
+  },
+  {
+    id: "qualifier_semifinal_finals",
+    title: "Qualifier + Semifinal + Finals",
+    summary: "Large event structure",
+    description: "Use this when you need a scored semifinal between qualifiers and finals.",
+  },
+];
+
+function getDefaultRoundIdForSchedulePhase(
+  competition: Pick<Competition, "rounds">,
+  phaseType: SchedulePhaseType,
+  roundType?: CompetitionRoundType
+) {
+  if (roundType) {
+    const exactRound = competition.rounds?.find((round) => round.round_type === roundType);
+    if (exactRound) {
+      return exactRound.id;
+    }
+  }
+
+  if (phaseType === "qualifier_round") {
+    return competition.rounds?.find((round) => round.scoring_bucket === "qualifier")?.id ?? null;
+  }
+
+  if (phaseType === "finals_round" || phaseType === "isolation" || phaseType === "observation") {
+    return competition.rounds?.find((round) => round.scoring_bucket === "finals")?.id ?? null;
+  }
+
+  return null;
+}
+
+function createScheduleBlockFromTemplate(
+  competition: Competition,
+  template: ScheduleBlockTemplate,
+  qualifierCategories: Competition["categories"],
+  index: number
+): CompetitionScheduleBlock {
+  const linkedRoundId = getDefaultRoundIdForSchedulePhase(competition, template.phase_type, template.round_type);
+  const eligibleCategoryIds =
+    template.phase_type === "qualifier_round" || template.phase_type === "custom"
+      ? template.eligible_age_groups?.length
+        ? qualifierCategories
+            .filter((category) => template.eligible_age_groups?.includes(category.age_group))
+            .map((category) => category.id)
+        : qualifierCategories.map((category) => category.id)
+      : [];
+
+  return {
+    id: createScheduleBlockId(),
+    competition_id: competition.id,
+    round_id: linkedRoundId,
+    sort_order: index,
+    label: template.label,
+    phase_type: template.phase_type,
+    audience_label: template.audience_label,
+    is_active: index === 0,
+    start_time: "",
+    end_time: "",
+    capacity: template.capacity ?? competition.max_climbers,
+    eligible_category_ids: eligibleCategoryIds,
+  };
 }
 
 export default function StaffDashboard({
@@ -1001,39 +1085,11 @@ export default function StaffDashboard({
       return;
     }
 
-    const linkedRound =
-      template.phase_type === "qualifier_round"
-        ? draft.rounds?.find((round) => round.scoring_bucket === "qualifier") ?? null
-        : template.phase_type === "finals_round" || template.phase_type === "isolation" || template.phase_type === "observation"
-          ? draft.rounds?.find((round) => round.scoring_bucket === "finals") ?? null
-          : null;
-    const eligibleCategoryIds =
-      template.phase_type === "qualifier_round" || template.phase_type === "custom"
-        ? template.eligible_age_groups?.length
-          ? qualifierCategories
-              .filter((category) => template.eligible_age_groups?.includes(category.age_group))
-              .map((category) => category.id)
-          : qualifierCategories.map((category) => category.id)
-        : [];
-
     setDraft({
       ...draft,
       schedule_blocks: reindexScheduleBlocks([
         ...draft.schedule_blocks,
-        {
-          id: createScheduleBlockId(),
-          competition_id: draft.id,
-          round_id: linkedRound?.id ?? null,
-          sort_order: draft.schedule_blocks.length,
-          label: template.label,
-          phase_type: template.phase_type,
-          audience_label: template.audience_label,
-          is_active: draft.schedule_blocks.length === 0,
-          start_time: "",
-          end_time: "",
-          capacity: template.capacity ?? draft.max_climbers,
-          eligible_category_ids: eligibleCategoryIds,
-        },
+        createScheduleBlockFromTemplate(draft, template, qualifierCategories, draft.schedule_blocks.length),
       ]),
     });
   };
@@ -1089,6 +1145,154 @@ export default function StaffDashboard({
   const canMergeWaveBlock = useCallback((block: CompetitionScheduleBlock) => {
     return block.phase_type === "qualifier_round" && block.eligible_category_ids.length > 0;
   }, []);
+
+  const applyGuidedSetupPreset = (presetId: GuidedSetupPreset["id"]) => {
+    if (!draft) {
+      return;
+    }
+
+    const baseCompetition = {
+      ...draft,
+      has_finals: presetId !== "simple_local",
+    };
+
+    const rounds =
+      presetId === "simple_local"
+        ? [createRoundTemplate(baseCompetition, "qualifier", 1)]
+        : presetId === "qualifier_semifinal_finals"
+          ? (() => {
+              const qualifierRound = createRoundTemplate(baseCompetition, "qualifier", 1);
+              const semifinalRound = createRoundTemplate(baseCompetition, "semifinal", 2);
+              semifinalRound.name = "Semifinal";
+              semifinalRound.problem_count = Math.min(
+                Math.max(4, Math.min(baseCompetition.total_climbs, 6)),
+                baseCompetition.total_climbs
+              );
+              semifinalRound.counting_climbs = semifinalRound.problem_count;
+              const finalsRound = createRoundTemplate(baseCompetition, "finals", 3);
+              finalsRound.advancement_source_round_id = semifinalRound.id;
+              return [qualifierRound, semifinalRound, finalsRound];
+            })()
+          : buildRoundPlanTemplate(baseCompetition);
+
+    const nextCompetition = normalizeCompetition(
+      {
+        ...baseCompetition,
+        rounds,
+      },
+      baseCompetition.categories,
+      [],
+      rounds
+    );
+
+    const assignmentLabel = getRegistrationAssignmentLabel(nextCompetition);
+    const qualifierSessionTemplates: ScheduleBlockTemplate[] = formatUsesSelfScoredQualifiers(nextCompetition.format)
+      ? [
+          {
+            label: `${assignmentLabel} 1`,
+            phase_type: "qualifier_round",
+            round_type: "qualifier",
+            audience_label: "Scramble window",
+            capacity: nextCompetition.max_climbers,
+          },
+          {
+            label: `${assignmentLabel} 2`,
+            phase_type: "qualifier_round",
+            round_type: "qualifier",
+            audience_label: "Scramble window",
+            capacity: nextCompetition.max_climbers,
+          },
+        ]
+      : [
+          {
+            label: `${assignmentLabel} A`,
+            phase_type: "qualifier_round",
+            round_type: "qualifier",
+            audience_label: "Qualifier wave",
+            capacity: nextCompetition.max_climbers,
+          },
+          {
+            label: `${assignmentLabel} B`,
+            phase_type: "qualifier_round",
+            round_type: "qualifier",
+            audience_label: "Qualifier wave",
+            capacity: nextCompetition.max_climbers,
+          },
+        ];
+
+    const scheduleTemplates: ScheduleBlockTemplate[] = [
+      {
+        label: "Check-in",
+        phase_type: "check_in",
+        audience_label: formatUsesSelfScoredQualifiers(nextCompetition.format) ? "All climbers" : "All athletes",
+        capacity: nextCompetition.max_climbers,
+      },
+      ...qualifierSessionTemplates,
+      ...(presetId === "qualifier_semifinal_finals"
+        ? [
+            {
+              label: "Semifinal Session",
+              phase_type: "qualifier_round" as const,
+              round_type: "semifinal" as const,
+              audience_label: "Semifinalists",
+              capacity: nextCompetition.max_climbers,
+            },
+          ]
+        : []),
+      ...(presetId !== "simple_local"
+        ? [
+            {
+              label: "Wall reset",
+              phase_type: "wall_reset" as const,
+              audience_label: "Routesetting",
+              capacity: nextCompetition.max_climbers,
+            },
+            {
+              label: "Isolation",
+              phase_type: "isolation" as const,
+              round_type: "finals" as const,
+              audience_label: "Finalists",
+              capacity: nextCompetition.max_climbers,
+            },
+            {
+              label: "Observation",
+              phase_type: "observation" as const,
+              round_type: "finals" as const,
+              audience_label: "Finalists",
+              capacity: nextCompetition.max_climbers,
+            },
+            {
+              label: "Finals",
+              phase_type: "finals_round" as const,
+              round_type: "finals" as const,
+              audience_label: "Finalists",
+              capacity: nextCompetition.max_climbers,
+            },
+          ]
+        : []),
+      {
+        label: "Results / Awards",
+        phase_type: "results",
+        audience_label: formatUsesSelfScoredQualifiers(nextCompetition.format) ? "All climbers" : "All athletes",
+        capacity: nextCompetition.max_climbers,
+      },
+    ];
+
+    const scheduleBlocks = reindexScheduleBlocks(
+      scheduleTemplates.map((template, index) =>
+        createScheduleBlockFromTemplate(nextCompetition, template, qualifierCategories, index)
+      )
+    );
+
+    setDraft({
+      ...nextCompetition,
+      rounds,
+      schedule_blocks: scheduleBlocks,
+      has_finals: presetId !== "simple_local",
+    });
+    setRoundPlanNeedsReset(false);
+    setMessage(`Guided setup applied: ${GUIDED_SETUP_PRESETS.find((preset) => preset.id === presetId)?.title}.`);
+  };
 
   const mergeScheduleBlocks = (sourceBlockId: string, targetBlockId: string) => {
     if (!draft || sourceBlockId === targetBlockId) {
@@ -2023,6 +2227,39 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
+                      <div className="results-kicker">Guided setup</div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        Start with a competition structure first. This will generate the rounds and day schedule for you,
+                        and you can fine-tune everything below afterward.
+                      </div>
+                    </div>
+                    <div className="results-chip">Step 1</div>
+                  </div>
+                  <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                    {GUIDED_SETUP_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => applyGuidedSetupPreset(preset.id)}
+                        className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 text-left transition hover:border-sky-300 hover:bg-sky-50/50"
+                      >
+                        <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{preset.summary}</div>
+                        <div className="mt-2 text-xl font-semibold text-slate-950">{preset.title}</div>
+                        <div className="mt-3 text-sm leading-6 text-slate-600">{preset.description}</div>
+                        <div className="mt-4 text-sm font-medium text-sky-700">Use this setup</div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Step 2: review the generated <span className="font-semibold text-slate-900">Event schedule</span> and{" "}
+                    <span className="font-semibold text-slate-900">Round designer</span> sections below. They are now pre-linked so
+                    real climbing sessions already point at the right round.
+                  </div>
+                </div>
+
+                <div className="results-workspace-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
                       <div className="results-kicker">Event schedule</div>
                       <div className="mt-2 text-sm text-slate-600">
                         Add ready-made schedule blocks, then adjust labels, times, and climbing windows for the day.
@@ -2160,18 +2397,22 @@ export default function StaffDashboard({
                                 <span className="text-sm font-medium text-slate-700">Block type</span>
                                 <select
                                   value={block.phase_type}
-                                  onChange={(event) =>
+                                  onChange={(event) => {
+                                    const nextPhaseType = event.target.value as SchedulePhaseType;
+                                    const defaultRoundId = getDefaultRoundIdForSchedulePhase(draft, nextPhaseType);
+
                                     updateScheduleBlock(block.id, (current) => ({
                                       ...current,
-                                      phase_type: event.target.value as SchedulePhaseType,
+                                      phase_type: nextPhaseType,
+                                      round_id: defaultRoundId,
                                       eligible_category_ids:
-                                        event.target.value === "qualifier_round" || event.target.value === "custom"
+                                        nextPhaseType === "qualifier_round" || nextPhaseType === "custom"
                                           ? current.eligible_category_ids.length
                                             ? current.eligible_category_ids
                                             : qualifierCategories.map((category) => category.id)
                                           : [],
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                   className="results-input"
                                 >
                                   {SCHEDULE_PHASE_OPTIONS.map((option) => (
