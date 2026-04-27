@@ -1314,6 +1314,48 @@ export function schedulePhaseAllowsRegistration(phaseType: SchedulePhaseType) {
   return phaseType === "qualifier_round";
 }
 
+export function getCompetitionRoundById(
+  competition: Pick<Competition, "rounds">,
+  roundId: string | null | undefined
+) {
+  if (!roundId) {
+    return null;
+  }
+
+  return competition.rounds?.find((round) => round.id === roundId) ?? null;
+}
+
+export function isRoundActiveForCompetitionPhase(
+  competition: Pick<Competition, "current_phase">,
+  round: Pick<CompetitionRound, "is_enabled" | "is_active" | "runtime_phase" | "scoring_bucket">
+) {
+  const expectedBucket = phaseToStageMode(competition.current_phase) === "qualifier" ? "qualifier" : "finals";
+
+  return (
+    round.is_enabled &&
+    round.is_active &&
+    round.runtime_phase === competition.current_phase &&
+    round.scoring_bucket === expectedBucket
+  );
+}
+
+export function canRegisterForScheduleBlock(
+  competition: Pick<Competition, "current_phase" | "schedule_blocks" | "rounds">,
+  block: Pick<CompetitionScheduleBlock, "id" | "phase_type" | "round_id">
+) {
+  if (block.round_id) {
+    const round = getCompetitionRoundById(competition, block.round_id);
+    return Boolean(round && round.scoring_bucket === "qualifier" && isRoundActiveForCompetitionPhase(competition, round));
+  }
+
+  if (!schedulePhaseAllowsRegistration(block.phase_type)) {
+    return false;
+  }
+
+  const activeQualifierRound = getActiveQualifierStyleRound(competition);
+  return Boolean(activeQualifierRound && isRoundActiveForCompetitionPhase(competition, activeQualifierRound));
+}
+
 export function getRegistrationAssignmentLabel(competition: Pick<Competition, "format">) {
   return formatUsesSelfScoredQualifiers(competition.format) ? "Session" : "Start group";
 }
@@ -2001,7 +2043,7 @@ export function buildRegistrationChoices(competition: Competition, climbers: Cli
     .filter((category) => isQualifierEligibleCategory(competition, category.age_group))
     .map((category) => {
       const slots = competition.schedule_blocks
-        .filter((block) => schedulePhaseAllowsRegistration(block.phase_type))
+        .filter((block) => canRegisterForScheduleBlock(competition, block))
         .filter((block) => !block.eligible_category_ids.length || block.eligible_category_ids.includes(category.id))
         .map((block) => ({
           ...block,

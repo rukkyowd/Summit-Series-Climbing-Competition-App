@@ -14,10 +14,12 @@ import {
   canRegisterDuringCompetition,
   canStaffScoreFinals,
   canStaffScoreQualifier,
+  canRegisterForScheduleBlock,
   competitionHasFinals,
   createCompetitionRoundId,
   createCategoryKey,
   createCompetitionId,
+  getCompetitionRoundById,
   getActiveQueueSessionBlock,
   getActiveFinalsRound,
   getRecommendedFinalsCutoff,
@@ -28,6 +30,7 @@ import {
   getDefaultCompetitionCategories,
   getFinalsStyleRounds,
   getQualifierStyleRounds,
+  isRoundActiveForCompetitionPhase,
   getRoundStatusForCompetition,
   isValidClimberNumber,
   isQualifierEligibleCategory,
@@ -461,6 +464,35 @@ async function fetchClimberRows(competitionIds: string[]) {
   }));
 }
 
+async function fetchClimberRowById(competitionId: string, climberId: string) {
+  const { data, error } = await publicSupabase
+    .from("climbers")
+    .select("*")
+    .eq("competition_id", competitionId)
+    .eq("id", climberId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    competition_id: data.competition_id,
+    name: data.name ?? "Unknown climber",
+    climber_number: data.climber_number ?? "",
+    province: data.province ?? "",
+    category_id: data.category_id ?? null,
+    gender_division: data.gender_division ?? "",
+    age_group: data.age_group ?? "",
+    display_category: data.display_category ?? "",
+    time_slot_id: data.time_slot_id ?? null,
+    access_token: data.access_token ?? "",
+    access_token_created_at: data.access_token_created_at ?? undefined,
+    registered_at: data.registered_at ?? undefined,
+  } satisfies Climber;
+}
+
 async function fetchQualifierAttempts(competitionIds: string[]) {
   if (!competitionIds.length) {
     return [] as QualifierAttempt[];
@@ -729,6 +761,91 @@ function validateSlotForCategory(slot: CompetitionScheduleBlock, categoryId: str
   return !slot.eligible_category_ids.length || slot.eligible_category_ids.includes(categoryId);
 }
 
+const ROUND_VALIDATION_ERRORS = {
+  missingLinkedRound: "That schedule block is no longer linked to a valid round.",
+  disabledLinkedRound: "That schedule block belongs to a round that is currently disabled.",
+  inactiveLinkedRound: "That schedule block belongs to a round that is not active for the current phase.",
+  wrongLinkedRoundBucket: "That schedule block is not connected to a qualifier scoring round.",
+  missingClimberSlot: "This climber must be assigned to a session before qualifier scores can be recorded.",
+  missingClimberSlotBlock: "This climber is assigned to a session that no longer exists.",
+  missingClimberSlotRound: "This climber's assigned session is not linked to a scoring round.",
+  mismatchedClimberRound: "This climber is assigned to a different round or session than the one currently being scored.",
+} as const;
+
+function resolveLinkedRoundForScheduleBlock(competition: Competition, slot: CompetitionScheduleBlock) {
+  if (!slot.round_id) {
+    return null;
+  }
+
+  return getCompetitionRoundById(competition, slot.round_id);
+}
+
+function assertRegistrationBlockOpenForRound(competition: Competition, slot: CompetitionScheduleBlock) {
+  if (!schedulePhaseAllowsRegistration(slot.phase_type)) {
+    throw new Error("That schedule block is not open for registration.");
+  }
+
+  if (!slot.round_id) {
+    if (!canRegisterForScheduleBlock(competition, slot)) {
+      throw new Error(ROUND_VALIDATION_ERRORS.inactiveLinkedRound);
+    }
+
+    return null;
+  }
+
+  const round = resolveLinkedRoundForScheduleBlock(competition, slot);
+  if (!round) {
+    throw new Error(ROUND_VALIDATION_ERRORS.missingLinkedRound);
+  }
+
+  if (round.scoring_bucket !== "qualifier") {
+    throw new Error(ROUND_VALIDATION_ERRORS.wrongLinkedRoundBucket);
+  }
+
+  if (!round.is_enabled) {
+    throw new Error(ROUND_VALIDATION_ERRORS.disabledLinkedRound);
+  }
+
+  if (!isRoundActiveForCompetitionPhase(competition, round)) {
+    throw new Error(ROUND_VALIDATION_ERRORS.inactiveLinkedRound);
+  }
+
+  return round;
+}
+
+function resolveClimberAssignedQualifierRound(
+  competition: Competition,
+  climber: Pick<Climber, "time_slot_id">
+) {
+  if (!climber.time_slot_id) {
+    throw new Error(ROUND_VALIDATION_ERRORS.missingClimberSlot);
+  }
+
+  const slot = competition.schedule_blocks.find((entry) => entry.id === climber.time_slot_id) ?? null;
+  if (!slot) {
+    throw new Error(ROUND_VALIDATION_ERRORS.missingClimberSlotBlock);
+  }
+
+  const round = resolveLinkedRoundForScheduleBlock(competition, slot);
+  if (!round) {
+    throw new Error(ROUND_VALIDATION_ERRORS.missingClimberSlotRound);
+  }
+
+  if (round.scoring_bucket !== "qualifier") {
+    throw new Error(ROUND_VALIDATION_ERRORS.wrongLinkedRoundBucket);
+  }
+
+  if (!round.is_enabled) {
+    throw new Error(ROUND_VALIDATION_ERRORS.disabledLinkedRound);
+  }
+
+  if (!isRoundActiveForCompetitionPhase(competition, round)) {
+    throw new Error(ROUND_VALIDATION_ERRORS.inactiveLinkedRound);
+  }
+
+  return { slot, round };
+}
+
 function getScoreBearingRounds(rounds: CompetitionRound[]) {
   const qualifierRound = getQualifierStyleRounds(rounds)[0] ?? null;
   const finalsRound = getFinalsStyleRounds(rounds)[0] ?? null;
@@ -814,60 +931,74 @@ async function persistCompetitionRounds(competition: Competition, rounds: Compet
 }
 
 async function syncCompetitionRoundRuntimeState(competitionId: string) {
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    return;
-  }
-
-  const rounds = normalizeCompetitionRounds(competition.rounds ?? [], competition);
-  if (!rounds.length) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-  const stageMode = phaseToStageMode(competition.current_phase);
-  const activeBlockRoundId = competition.schedule_blocks.find((block) => block.is_active && block.round_id)?.round_id ?? null;
-  const preferredActiveRound =
-    rounds.find(
-      (round) =>
-        round.id === activeBlockRoundId &&
-        round.is_enabled &&
-        (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")
-    ) ??
-    rounds.find((round) => round.is_active && round.is_enabled) ??
-    rounds.find((round) => (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")) ??
-    rounds.find((round) => round.runtime_phase === competition.current_phase) ??
-    rounds.find((round) => round.is_enabled) ??
-    rounds[0];
-
-  const updatedRounds = rounds.map((round) => {
-    const isActive = round.id === preferredActiveRound?.id;
-    let status = round.status;
-    if (round.scoring_bucket === "finals") {
-      status = getRoundStatusForCompetition(competition, "finals");
-    } else if (round.scoring_bucket === "qualifier") {
-      if (competition.current_phase === "qualifier_open") {
-        status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
-      } else if (competition.current_phase === "qualifier_closed" || competition.current_phase === "wall_reset") {
-        status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
-      } else {
-        status = round.activated_at || round.closed_at ? "closed" : "pending";
-      }
-    }
-
-    return {
-      ...round,
-      status,
-      is_active: isActive,
-      activated_at: isActive ? round.activated_at ?? now : round.activated_at,
-      closed_at:
-        !isActive && round.scoring_bucket === "qualifier" && round.activated_at
-          ? round.closed_at ?? now
-          : round.closed_at,
-    };
+  let { error } = await supabase.rpc("sync_competition_round_runtime_state", {
+    p_competition_id: competitionId,
   });
 
-  await persistCompetitionRounds(competition, updatedRounds);
+  if (
+    error &&
+    error.message.includes("Could not find the function public.sync_competition_round_runtime_state")
+  ) {
+    const competition = await getCompetitionById(competitionId);
+    if (!competition) {
+      return;
+    }
+
+    const rounds = normalizeCompetitionRounds(competition.rounds ?? [], competition);
+    if (!rounds.length) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const stageMode = phaseToStageMode(competition.current_phase);
+    const activeBlockRoundId = competition.schedule_blocks.find((block) => block.is_active && block.round_id)?.round_id ?? null;
+    const preferredActiveRound =
+      rounds.find(
+        (round) =>
+          round.id === activeBlockRoundId &&
+          round.is_enabled &&
+          (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")
+      ) ??
+      rounds.find((round) => round.is_active && round.is_enabled) ??
+      rounds.find((round) => (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")) ??
+      rounds.find((round) => round.runtime_phase === competition.current_phase) ??
+      rounds.find((round) => round.is_enabled) ??
+      rounds[0];
+
+    const updatedRounds = rounds.map((round) => {
+      const isActive = round.id === preferredActiveRound?.id;
+      let status = round.status;
+      if (round.scoring_bucket === "finals") {
+        status = getRoundStatusForCompetition(competition, "finals");
+      } else if (round.scoring_bucket === "qualifier") {
+        if (competition.current_phase === "qualifier_open") {
+          status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
+        } else if (competition.current_phase === "qualifier_closed" || competition.current_phase === "wall_reset") {
+          status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
+        } else {
+          status = round.activated_at || round.closed_at ? "closed" : "pending";
+        }
+      }
+
+      return {
+        ...round,
+        status,
+        is_active: isActive,
+        activated_at: isActive ? round.activated_at ?? now : round.activated_at,
+        closed_at:
+          !isActive && round.scoring_bucket === "qualifier" && round.activated_at
+            ? round.closed_at ?? now
+            : round.closed_at,
+      };
+    });
+
+    await persistCompetitionRounds(competition, updatedRounds);
+    return;
+  }
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 async function getCompetitionEditState(competitionId: string) {
@@ -1687,9 +1818,7 @@ export async function registerClimber(input: RegisterClimberInput) {
       throw new Error("Please choose a valid schedule block.");
     }
 
-    if (!schedulePhaseAllowsRegistration(slot.phase_type)) {
-      throw new Error("That schedule block is not open for registration.");
-    }
+    assertRegistrationBlockOpenForRound(snapshot.competition, slot);
 
     if (!validateSlotForCategory(slot, category.id)) {
       throw new Error("That schedule block is not available for the selected category.");
@@ -1701,7 +1830,7 @@ export async function registerClimber(input: RegisterClimberInput) {
     }
   } else if (
     snapshot.competition.schedule_blocks.filter(
-      (block) => block.capacity > 0 && schedulePhaseAllowsRegistration(block.phase_type)
+      (block) => block.capacity > 0 && canRegisterForScheduleBlock(snapshot.competition, block)
     ).length > 0
   ) {
     throw new Error("Please choose a schedule block.");
@@ -1764,7 +1893,15 @@ export async function updateQualifierAttemptByStaff(
     throw new Error("Competition not found.");
   }
   assertStaffQualifierWindowOpen(competition);
+  const climber = await fetchClimberRowById(competitionId, climberId);
+  if (!climber) {
+    throw new Error("Climber not found.");
+  }
+  const { round: linkedRound } = resolveClimberAssignedQualifierRound(competition, climber);
   const activeRound = requireActiveQualifierStyleRound(competition);
+  if (activeRound.id !== linkedRound.id) {
+    throw new Error(ROUND_VALIDATION_ERRORS.mismatchedClimberRound);
+  }
   const normalized = normalizeQualifierAttemptInput({
     attemptCount,
     topped,
@@ -1773,31 +1910,23 @@ export async function updateQualifierAttemptByStaff(
     attemptsToZone: options?.attemptsToZone,
   });
 
-  const { data, error } = await supabase
-    .from("qualifier_attempts")
-    .upsert(
-      {
-        competition_id: competitionId,
-        round_id: activeRound.id,
-        climber_id: climberId,
-        climb_number: climbNumber,
-        attempt_count: normalized.attemptCount,
-        zone: normalized.zone,
-        topped: normalized.topped,
-        attempts_to_top: normalized.attemptsToTop,
-        attempts_to_zone: normalized.attemptsToZone,
-        entered_by: "staff",
-      },
-      { onConflict: "competition_id,round_id,climber_id,climb_number" }
-    )
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc("submit_staff_qualifier_attempt", {
+    p_competition_id: competitionId,
+    p_climber_id: climberId,
+    p_round_id: linkedRound.id,
+    p_climb_number: climbNumber,
+    p_attempt_count: normalized.attemptCount,
+    p_topped: normalized.topped,
+    p_zone: normalized.zone,
+    p_attempts_to_top: normalized.attemptsToTop,
+    p_attempts_to_zone: normalized.attemptsToZone,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data as QualifierAttempt;
+  return (Array.isArray(data) ? data[0] : data) as QualifierAttempt;
 }
 
 export async function updateQualifierAttemptByToken(
@@ -1814,12 +1943,10 @@ export async function updateQualifierAttemptByToken(
     throw new Error("Competition not found.");
   }
   assertClimberQualifierWindowOpen(competition);
-  const activeRound = requireActiveQualifierStyleRound(competition);
 
   const { data, error } = await publicSupabase.rpc("submit_qualifier_attempt", {
     p_access_token: cleanString(accessToken),
     p_competition_id: competitionId,
-    p_round_id: activeRound.id,
     p_climb_number: climbNumber,
     p_attempt_count: attemptCount,
     p_topped: topped,

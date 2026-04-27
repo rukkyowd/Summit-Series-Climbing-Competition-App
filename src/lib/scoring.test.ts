@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildQualifierLeaderboard,
   buildRegistrationChoices,
+  canRegisterForScheduleBlock,
   canClimberSelfScoreQualifier,
   canRegisterDuringCompetition,
   canUseLiveBoulderQueue,
@@ -10,6 +11,7 @@ import {
   getCompetitionPhaseSequenceFromScheduleBlocks,
   getCompetitionPhaseForSchedulePhase,
   getFormatCapabilities,
+  isRoundActiveForCompetitionPhase,
   normalizeCompetition,
   phaseToStageMode,
   pickPreferredQualifierCategory,
@@ -251,6 +253,142 @@ describe("competition normalization", () => {
 
     expect(competition.schedule_blocks[0]?.round_id).toBe("round-qualifier");
     expect(competition.rounds?.[0]?.id).toBe("round-qualifier");
+  });
+
+  it("only offers registration blocks whose linked rounds are active for the current phase", () => {
+    const competition = normalizeCompetition(
+      {
+        ...DEFAULT_COMPETITION,
+        id: "comp-registration-rounds",
+        slug: "comp-registration-rounds",
+        name: "Registration Rounds",
+        current_phase: "qualifier_open",
+      },
+      [],
+      [
+        {
+          id: "linked-open",
+          competition_id: "comp-registration-rounds",
+          round_id: "round-qualifier-open",
+          label: "Open Wave",
+          phase_type: "qualifier_round",
+          audience_label: "Open",
+          is_active: true,
+          start_time: "9:00 AM",
+          end_time: "10:00 AM",
+          capacity: 20,
+          eligible_category_ids: [],
+        },
+        {
+          id: "linked-closed",
+          competition_id: "comp-registration-rounds",
+          round_id: "round-qualifier-closed",
+          label: "Closed Wave",
+          phase_type: "qualifier_round",
+          audience_label: "Closed",
+          is_active: false,
+          start_time: "10:00 AM",
+          end_time: "11:00 AM",
+          capacity: 20,
+          eligible_category_ids: [],
+        },
+      ],
+      [
+        {
+          id: "round-qualifier-open",
+          competition_id: "comp-registration-rounds",
+          round_number: 1,
+          sort_order: 1,
+          name: "Qualifier A",
+          round_type: "qualifier",
+          format: "scramble",
+          status: "active",
+          runtime_phase: "qualifier_open",
+          is_enabled: true,
+          is_active: true,
+          activated_at: null,
+          problem_count: 30,
+          counting_climbs: 6,
+          finals_cutoff: null,
+          eligible_category_ids: [],
+          advancement_source_round_id: null,
+          advancement_cutoff: null,
+          scoring_bucket: "qualifier",
+          scoring_config: {},
+          started_at: null,
+          closed_at: null,
+        },
+        {
+          id: "round-qualifier-closed",
+          competition_id: "comp-registration-rounds",
+          round_number: 2,
+          sort_order: 2,
+          name: "Qualifier B",
+          round_type: "qualifier",
+          format: "scramble",
+          status: "pending",
+          runtime_phase: "qualifier_open",
+          is_enabled: true,
+          is_active: false,
+          activated_at: null,
+          problem_count: 30,
+          counting_climbs: 6,
+          finals_cutoff: null,
+          eligible_category_ids: [],
+          advancement_source_round_id: null,
+          advancement_cutoff: null,
+          scoring_bucket: "qualifier",
+          scoring_config: {},
+          started_at: null,
+          closed_at: null,
+        },
+      ]
+    );
+
+    expect(canRegisterForScheduleBlock(competition, competition.schedule_blocks[0]!)).toBe(true);
+    expect(canRegisterForScheduleBlock(competition, competition.schedule_blocks[1]!)).toBe(false);
+
+    const choices = buildRegistrationChoices(competition, []);
+    expect(choices.some((choice) => choice.slots.some((slot) => slot.id === "linked-open"))).toBe(true);
+    expect(choices.some((choice) => choice.slots.some((slot) => slot.id === "linked-closed"))).toBe(false);
+  });
+
+  it("treats a round as phase-compatible only when it is active, enabled, and matches the phase bucket", () => {
+    expect(
+      isRoundActiveForCompetitionPhase(
+        { current_phase: "qualifier_open" },
+        {
+          is_enabled: true,
+          is_active: true,
+          runtime_phase: "qualifier_open",
+          scoring_bucket: "qualifier",
+        }
+      )
+    ).toBe(true);
+
+    expect(
+      isRoundActiveForCompetitionPhase(
+        { current_phase: "qualifier_open" },
+        {
+          is_enabled: true,
+          is_active: false,
+          runtime_phase: "qualifier_open",
+          scoring_bucket: "qualifier",
+        }
+      )
+    ).toBe(false);
+
+    expect(
+      isRoundActiveForCompetitionPhase(
+        { current_phase: "observation" },
+        {
+          is_enabled: true,
+          is_active: true,
+          runtime_phase: "observation",
+          scoring_bucket: "qualifier",
+        }
+      )
+    ).toBe(false);
   });
 
   it("allows semifinals to remain qualifier-style score-bearing rounds", () => {
