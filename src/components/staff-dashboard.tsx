@@ -1767,11 +1767,25 @@ export default function StaffDashboard({
                     </div>
                   </div>
 
+                <div className="results-workspace-card">
+                  <div className="results-kicker">Setup flow</div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    Follow this setup from top to bottom: event basics, categories, event setup, day schedule, then competition stages.
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                    <span className="results-chip">1 - Event basics</span>
+                    <span className="results-chip">2 - Categories</span>
+                    <span className="results-chip">3 - Event setup</span>
+                    <span className="results-chip">4 - Day schedule</span>
+                    <span className="results-chip">5 - Competition stages</span>
+                  </div>
+                </div>
+
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                  <div className="results-kicker">Live event controls</div>
+                  <div className="results-kicker">After setup - Run event</div>
                       <div className="mt-2 text-2xl font-semibold text-slate-950">{formatCompetitionPhaseLabel(draft.current_phase)}</div>
                       {currentPhaseBlockLabel ? (
                         <div className="mt-2 text-sm font-medium text-sky-700">
@@ -1897,8 +1911,8 @@ export default function StaffDashboard({
                     </div>
                   </div>
                   <div className="mt-4 text-sm text-slate-600">
-                    This controls which part of the event is live right now. It decides what can be scored and what the
-                    public sees. When schedule blocks imply a stage order, Previous and Next follow that event timeline first
+                    This section is for event-day operations after setup is finished. It controls which part of the event is live right now,
+                    what can be scored, and what the public sees. When schedule blocks imply a stage order, Previous and Next follow that event timeline first
                     {liveScheduleBlock ? `, and the live block is currently "${liveScheduleBlock.label}".` : "."}
                   </div>
                   {scheduleDrivenPhases.length ? (
@@ -2003,6 +2017,13 @@ export default function StaffDashboard({
                       </button>
                     </div>
                   ) : null}
+                </div>
+
+                <div className="results-workspace-card">
+                  <div className="results-kicker">Step 1 - Event basics</div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    Set the basic event details first. These choices shape registration, finals availability, and the guided setup options below.
+                  </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -2192,7 +2213,7 @@ export default function StaffDashboard({
                     </div>
                   )}
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Visibility</div>
+                    <div className="results-kicker">After setup - Visibility</div>
                     <div className="mt-2 text-sm text-slate-600">Archiving hides this event from public browsing without deleting registrations or scoring data.</div>
                     <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className={draft.status === "active" ? "results-danger-button mt-4" : "results-secondary-button mt-4"}>
                       {draft.status === "active" ? "Archive event" : "Reopen event"}
@@ -2202,7 +2223,7 @@ export default function StaffDashboard({
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Step 2 — Choose qualifier categories</div>
+                    <div className="results-kicker">Step 2 - Choose qualifier categories</div>
                     <div className="mt-2 text-sm text-slate-600">These are the categories athletes can register into, and they also drive the guided schedule presets.</div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {CATEGORY_AGE_GROUPS.map((ageGroup) => {
@@ -2223,8 +2244,8 @@ export default function StaffDashboard({
 
                   {draftHasFinals ? (
                     <div className="results-workspace-card">
-                      <div className="results-kicker">Step 2b — Choose finals categories</div>
-                      <div className="mt-2 text-sm text-slate-600">Only these categories can advance into finals.</div>
+                    <div className="results-kicker">Finals categories (optional)</div>
+                    <div className="mt-2 text-sm text-slate-600">Only these categories can advance into finals.</div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                           const active = draft.finals_eligible_age_groups.includes(ageGroup);
@@ -2247,13 +2268,12 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Step 3 — Pick an event setup</div>
+                      <div className="results-kicker">Step 3 - Pick an event setup</div>
                       <div className="mt-2 text-sm text-slate-600">
                         Start with a competition structure first. This will generate the rounds and day schedule for you,
                         and you can fine-tune everything below afterward.
                       </div>
                     </div>
-                    <div className="results-chip">Step 1</div>
                   </div>
                   <div className="mt-4 grid gap-3 xl:grid-cols-3">
                     {GUIDED_SETUP_PRESETS.map((preset) => (
@@ -2271,7 +2291,7 @@ export default function StaffDashboard({
                     ))}
                   </div>
                   <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    Step 4: review the generated <span className="font-semibold text-slate-900">Day schedule</span> and{" "}
+                    Next: review the generated <span className="font-semibold text-slate-900">Day schedule</span> and{" "}
                     <span className="font-semibold text-slate-900">Competition stages</span> sections below. They are now pre-linked so
                     real climbing sessions already point at the right round.
                   </div>
@@ -2280,7 +2300,7 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Step 4 — Build the day</div>
+                      <div className="results-kicker">Step 4 - Build the day</div>
                       <div className="mt-2 text-sm text-slate-600">
                         These blocks describe when things happen during the day. Real climbing sessions should link to a stage; logistics items can stay schedule-only.
                       </div>
@@ -2561,7 +2581,7 @@ export default function StaffDashboard({
                 </fieldset>
 
                 <div className="results-workspace-card">
-                  <div className="results-kicker">Share links</div>
+                  <div className="results-kicker">After setup - Share links</div>
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                     <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl || publicPath}</div>
                     <div><span className="font-semibold text-slate-950">Register:</span> {registerUrl || registerPath}</div>
@@ -2586,7 +2606,7 @@ export default function StaffDashboard({
                   <div className="results-workspace-card">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="results-kicker">Step 5 — Competition stages</div>
+                        <div className="results-kicker">Step 5 - Competition stages</div>
                         <div className="mt-2 text-sm text-slate-600">
                           A stage is a real part of the competition like Qualifier, Semifinal, or Finals. Stages can either record real scores or exist only for scheduling.
                         </div>
