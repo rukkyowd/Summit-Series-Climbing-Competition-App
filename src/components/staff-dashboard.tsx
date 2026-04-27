@@ -1232,18 +1232,20 @@ export default function StaffDashboard({
               Start a new event, pull in official details, and manage registration, schedules, judging, and finals from one place.
             </div>
             <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
-              <label className="results-field-group">
+              <label className="results-field-group" htmlFor="create-event-name">
                 <span className="results-field-label">New event name</span>
-                <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New event name" />
+                <input id="create-event-name" aria-label="New event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New event name" />
               </label>
-              <label className="results-field-group">
+              <label className="results-field-group" htmlFor="create-event-slug-preview">
                 <span className="results-field-label">New event slug preview</span>
-                <input value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="new-event-slug" />
+                <input id="create-event-slug-preview" aria-label="New event slug preview" value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="new-event-slug" />
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group">
+                <label className="results-field-group" htmlFor="create-event-format">
                   <span className="results-field-label">New event format</span>
                   <select
+                    id="create-event-format"
+                    aria-label="New event format"
                     value={createFormat}
                     onChange={(event) => {
                       const nextFormat = event.target.value as Competition["format"];
@@ -1259,34 +1261,38 @@ export default function StaffDashboard({
                     ))}
                   </select>
                 </label>
-                <label className="results-field-group">
+                <label className="results-field-group" htmlFor="create-event-location">
                   <span className="results-field-label">New event location</span>
-                  <input value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="New event location" />
+                  <input id="create-event-location" aria-label="New event location" value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="New event location" />
                 </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group">
+                <label className="results-field-group" htmlFor="create-event-start-date">
                   <span className="results-field-label">New event start date</span>
-                  <input type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
+                  <input id="create-event-start-date" aria-label="New event start date" type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
                 </label>
-                <label className="results-field-group">
+                <label className="results-field-group" htmlFor="create-event-end-date">
                   <span className="results-field-label">New event end date</span>
-                  <input type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
+                  <input id="create-event-end-date" aria-label="New event end date" type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
                 </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group">
+                <label className="results-field-group" htmlFor="create-event-registration-opens">
                   <span className="results-field-label">New event registration opens</span>
                   <input
+                    id="create-event-registration-opens"
+                    aria-label="New event registration opens"
                     type="datetime-local"
                     value={formatDateTimeLocalInput(createRegistrationOpensAt)}
                     onChange={(event) => setCreateRegistrationOpensAt(parseDateTimeLocalInput(event.target.value))}
                     className="results-input"
                   />
                 </label>
-                <label className="results-field-group">
+                <label className="results-field-group" htmlFor="create-event-registration-deadline">
                   <span className="results-field-label">New event registration deadline</span>
                   <input
+                    id="create-event-registration-deadline"
+                    aria-label="New event registration deadline"
                     type="datetime-local"
                     value={formatDateTimeLocalInput(createRegistrationClosesAt)}
                     onChange={(event) => setCreateRegistrationClosesAt(parseDateTimeLocalInput(event.target.value))}
@@ -1315,9 +1321,11 @@ export default function StaffDashboard({
                   </div>
                 </label>
               ) : null}
-              <label className="results-field-group">
+                <label className="results-field-group" htmlFor="create-event-description">
                 <span className="results-field-label">New event description</span>
                 <textarea
+                  id="create-event-description"
+                  aria-label="New event description"
                   value={createDescription}
                   onChange={(event) => setCreateDescription(event.target.value)}
                   className="results-input min-h-[120px] resize-y"
@@ -1689,19 +1697,21 @@ export default function StaffDashboard({
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="results-field-group">
-                    <span className="results-field-label">Competition name</span>
-                    <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Competition name" />
+                  <label className="results-field-group" htmlFor="current-event-name">
+                    <span className="results-field-label">Current event name</span>
+                    <input id="current-event-name" aria-label="Current event name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Current event name" />
                   </label>
-                  <label className="results-field-group">
-                    <span className="results-field-label">Slug</span>
-                    <input value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Slug" />
+                  <label className="results-field-group" htmlFor="current-event-slug">
+                    <span className="results-field-label">Current event slug</span>
+                    <input id="current-event-slug" aria-label="Current event slug" value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Current event slug" />
                   </label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="results-field-group">
-                    <span className="results-field-label">Format</span>
+                  <label className="results-field-group" htmlFor="current-event-format">
+                    <span className="results-field-label">Current event format</span>
                     <select
+                      id="current-event-format"
+                      aria-label="Current event format"
                       value={draft.format}
                       onChange={(event) => {
                         const nextFormat = event.target.value as Competition["format"];
@@ -1733,9 +1743,9 @@ export default function StaffDashboard({
                       ))}
                     </select>
                   </label>
-                  <label className="results-field-group">
-                    <span className="results-field-label">Location</span>
-                    <input value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Location" />
+                  <label className="results-field-group" htmlFor="current-event-location">
+                    <span className="results-field-label">Current event location</span>
+                    <input id="current-event-location" aria-label="Current event location" value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Current event location" />
                   </label>
                 </div>
                 {roundPlanNeedsReset ? (
@@ -1751,9 +1761,11 @@ export default function StaffDashboard({
                   </div>
                 ) : null}
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="results-field-group">
-                    <span className="results-field-label">Registration opens</span>
+                  <label className="results-field-group" htmlFor="current-event-registration-opens">
+                    <span className="results-field-label">Current event registration opens</span>
                     <input
+                      id="current-event-registration-opens"
+                      aria-label="Current event registration opens"
                       type="datetime-local"
                       value={formatDateTimeLocalInput(draft.registration_opens_at)}
                       onChange={(event) =>
@@ -1765,9 +1777,11 @@ export default function StaffDashboard({
                       className="results-input"
                     />
                   </label>
-                  <label className="results-field-group">
-                    <span className="results-field-label">Registration deadline</span>
+                  <label className="results-field-group" htmlFor="current-event-registration-deadline">
+                    <span className="results-field-label">Current event registration deadline</span>
                     <input
+                      id="current-event-registration-deadline"
+                      aria-label="Current event registration deadline"
                       type="datetime-local"
                       value={formatDateTimeLocalInput(draft.registration_closes_at)}
                       onChange={(event) =>
@@ -1782,7 +1796,7 @@ export default function StaffDashboard({
                 </div>
                 {draftSupportsOptionalFinals ? (
                   <label className="results-field-group">
-                    <span className="results-field-label">Finals round</span>
+                    <span className="results-field-label">Current event finals plan</span>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
