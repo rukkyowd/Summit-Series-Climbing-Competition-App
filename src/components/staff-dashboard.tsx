@@ -473,6 +473,7 @@ export default function StaffDashboard({
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const canEditPhase = profile?.role === "admin";
+  const canEditSetup = profile?.role === "admin";
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
     ? getCompetitionPhaseForSchedulePhase(liveScheduleBlock.phase_type)
@@ -1222,6 +1223,11 @@ export default function StaffDashboard({
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
         {demoMode ? <div className="results-alert">{demoBanner}</div> : null}
+        {!demoMode && profile?.role === "judge" ? (
+          <div className="results-alert">
+            You can review event setup here, but only admins can create events or edit round and schedule configuration.
+          </div>
+        ) : null}
 
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="results-card">
@@ -1232,7 +1238,7 @@ export default function StaffDashboard({
             <div className="results-hero-subline">
               Start a new event, pull in official details, and manage registration, schedules, judging, and finals from one place.
             </div>
-            <fieldset disabled={demoMode} className={demoMode ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
+            <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
               <label className="results-field-group">
                 <span className="results-field-label">Competition name</span>
                 <input value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New competition name" />
@@ -1387,6 +1393,10 @@ export default function StaffDashboard({
               <div className="mt-4 text-sm text-slate-600">
                 This panel is intentionally frozen for demos. Use staff sign-in to create or edit events.
               </div>
+            ) : !canEditSetup ? (
+              <div className="mt-4 text-sm text-slate-600">
+                Event creation is admin-only.
+              </div>
             ) : null}
 
             <div className="results-subtle-divider mt-8" />
@@ -1447,7 +1457,7 @@ export default function StaffDashboard({
                     </div>
                   </div>
 
-                <fieldset disabled={demoMode} className={demoMode ? "space-y-6 opacity-70" : "space-y-6"}>
+                <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -2185,7 +2195,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
-                <fieldset disabled={demoMode} className={demoMode ? "space-y-6 opacity-70" : "space-y-6"}>
+                <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {draft.rounds?.length ? (
                   <div className="results-workspace-card">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2397,7 +2407,7 @@ export default function StaffDashboard({
                 ) : null}
 
                 <div className="flex flex-wrap gap-3">
-                  <button type="button" onClick={persistDraft} disabled={isPending} className="results-primary-button">
+                  <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button">
                     {isPending ? "Saving..." : "Save competition"}
                   </button>
                   {snapshot ? (
@@ -2434,7 +2444,7 @@ export default function StaffDashboard({
                       await refreshAfterChange();
                       setMessage("Competition deleted.");
                     },
-                  })} className="results-danger-button">Delete event</button>
+                  })} disabled={!canEditSetup} className="results-danger-button">Delete event</button>
                 </div>
                 </fieldset>
 
