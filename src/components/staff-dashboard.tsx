@@ -399,6 +399,58 @@ function createScheduleBlockFromTemplate(
   };
 }
 
+function buildGuidedQualifierSessionTemplates(competition: Competition): ScheduleBlockTemplate[] {
+  const eligibleAgeGroups = QUALIFIER_TEMPLATE_AGE_GROUPS.filter((ageGroup) =>
+    competition.qualifier_eligible_age_groups.includes(ageGroup)
+  );
+
+  if (eligibleAgeGroups.length) {
+    return eligibleAgeGroups.map((ageGroup) => ({
+      label: `${ageGroup} ${getRegistrationAssignmentLabel(competition)}`,
+      phase_type: "qualifier_round" as const,
+      round_type: "qualifier" as const,
+      audience_label: ageGroup,
+      capacity: competition.max_climbers,
+      eligible_age_groups: [ageGroup],
+    }));
+  }
+
+  const assignmentLabel = getRegistrationAssignmentLabel(competition);
+  return formatUsesSelfScoredQualifiers(competition.format)
+    ? [
+        {
+          label: `${assignmentLabel} 1`,
+          phase_type: "qualifier_round" as const,
+          round_type: "qualifier" as const,
+          audience_label: "Scramble window",
+          capacity: competition.max_climbers,
+        },
+        {
+          label: `${assignmentLabel} 2`,
+          phase_type: "qualifier_round" as const,
+          round_type: "qualifier" as const,
+          audience_label: "Scramble window",
+          capacity: competition.max_climbers,
+        },
+      ]
+    : [
+        {
+          label: `${assignmentLabel} A`,
+          phase_type: "qualifier_round" as const,
+          round_type: "qualifier" as const,
+          audience_label: "Qualifier wave",
+          capacity: competition.max_climbers,
+        },
+        {
+          label: `${assignmentLabel} B`,
+          phase_type: "qualifier_round" as const,
+          round_type: "qualifier" as const,
+          audience_label: "Qualifier wave",
+          capacity: competition.max_climbers,
+        },
+      ];
+}
+
 export default function StaffDashboard({
   initialCompetitionSlug,
   initialCreateDraft,
@@ -1185,40 +1237,7 @@ export default function StaffDashboard({
       rounds
     );
 
-    const assignmentLabel = getRegistrationAssignmentLabel(nextCompetition);
-    const qualifierSessionTemplates: ScheduleBlockTemplate[] = formatUsesSelfScoredQualifiers(nextCompetition.format)
-      ? [
-          {
-            label: `${assignmentLabel} 1`,
-            phase_type: "qualifier_round",
-            round_type: "qualifier",
-            audience_label: "Scramble window",
-            capacity: nextCompetition.max_climbers,
-          },
-          {
-            label: `${assignmentLabel} 2`,
-            phase_type: "qualifier_round",
-            round_type: "qualifier",
-            audience_label: "Scramble window",
-            capacity: nextCompetition.max_climbers,
-          },
-        ]
-      : [
-          {
-            label: `${assignmentLabel} A`,
-            phase_type: "qualifier_round",
-            round_type: "qualifier",
-            audience_label: "Qualifier wave",
-            capacity: nextCompetition.max_climbers,
-          },
-          {
-            label: `${assignmentLabel} B`,
-            phase_type: "qualifier_round",
-            round_type: "qualifier",
-            audience_label: "Qualifier wave",
-            capacity: nextCompetition.max_climbers,
-          },
-        ];
+    const qualifierSessionTemplates = buildGuidedQualifierSessionTemplates(nextCompetition);
 
     const scheduleTemplates: ScheduleBlockTemplate[] = [
       {
