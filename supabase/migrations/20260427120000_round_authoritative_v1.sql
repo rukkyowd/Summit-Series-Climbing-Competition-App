@@ -107,7 +107,26 @@ where not exists (
   from public.competition_rounds cr
   where cr.competition_id = c.id
     and cr.scoring_bucket = 'qualifier'
-);
+)
+on conflict (competition_id, round_number)
+do update set
+  sort_order = excluded.sort_order,
+  name = excluded.name,
+  round_type = excluded.round_type,
+  format = excluded.format,
+  status = excluded.status,
+  runtime_phase = excluded.runtime_phase,
+  is_enabled = excluded.is_enabled,
+  is_active = excluded.is_active,
+  activated_at = excluded.activated_at,
+  problem_count = excluded.problem_count,
+  counting_climbs = excluded.counting_climbs,
+  finals_cutoff = excluded.finals_cutoff,
+  advancement_cutoff = excluded.advancement_cutoff,
+  scoring_bucket = excluded.scoring_bucket,
+  scoring_config = excluded.scoring_config,
+  started_at = excluded.started_at,
+  closed_at = excluded.closed_at;
 
 insert into public.competition_rounds (
   competition_id,
@@ -174,7 +193,27 @@ where c.has_finals
     from public.competition_rounds cr
     where cr.competition_id = c.id
       and cr.scoring_bucket = 'finals'
-  );
+  )
+on conflict (competition_id, round_number)
+do update set
+  sort_order = excluded.sort_order,
+  name = excluded.name,
+  round_type = excluded.round_type,
+  format = excluded.format,
+  status = excluded.status,
+  runtime_phase = excluded.runtime_phase,
+  is_enabled = excluded.is_enabled,
+  is_active = excluded.is_active,
+  activated_at = excluded.activated_at,
+  problem_count = excluded.problem_count,
+  counting_climbs = excluded.counting_climbs,
+  finals_cutoff = excluded.finals_cutoff,
+  advancement_source_round_id = excluded.advancement_source_round_id,
+  advancement_cutoff = excluded.advancement_cutoff,
+  scoring_bucket = excluded.scoring_bucket,
+  scoring_config = excluded.scoring_config,
+  started_at = excluded.started_at,
+  closed_at = excluded.closed_at;
 
 update public.competition_rounds finals_round
 set advancement_source_round_id = qualifier_round.id
