@@ -2191,7 +2191,7 @@ export default function StaffDashboard({
                                 />
                               </label>
                               <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">Linked round</span>
+                                <span className="text-sm font-medium text-slate-700">Round link</span>
                                 <select
                                   value={block.round_id ?? ""}
                                   onChange={(event) =>
@@ -2202,13 +2202,22 @@ export default function StaffDashboard({
                                   }
                                   className="results-input"
                                 >
-                                  <option value="">Competition-level block</option>
+                                  <option value="">No round link (schedule only)</option>
                                   {(draft.rounds ?? []).map((round) => (
                                     <option key={round.id} value={round.id}>
-                                      {round.name} {round.scoring_bucket === "none" ? "(Planning Only)" : "(Score-Bearing)"}
+                                      {round.name}{" "}
+                                      {round.scoring_bucket === "none"
+                                        ? "(schedule only)"
+                                        : round.scoring_bucket === "finals"
+                                          ? "(real finals scoring)"
+                                          : "(real scoring)"}
                                     </option>
                                   ))}
                                 </select>
+                                <div className="text-xs text-slate-500">
+                                  Link real climbing sessions to a scoring round. Leave this off for logistics-only blocks like check-in,
+                                  reset, or awards.
+                                </div>
                               </label>
                               <label className="space-y-2">
                                 <span className="text-sm font-medium text-slate-700">Start time</span>
