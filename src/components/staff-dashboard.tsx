@@ -115,6 +115,12 @@ type ScheduleBlockTemplate = {
   eligible_age_groups?: string[];
 };
 
+type ScheduleTemplateGroup = {
+  title: string;
+  description: string;
+  templates: ScheduleBlockTemplate[];
+};
+
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
   roundType: CompetitionRoundType,
@@ -572,6 +578,51 @@ export default function StaffDashboard({
     [snapshot]
   );
   const scheduleTemplates = useMemo(() => (draft ? buildScheduleBlockTemplates(draft) : []), [draft]);
+  const groupedScheduleTemplates = useMemo<ScheduleTemplateGroup[]>(() => {
+    const arrivalTemplates = scheduleTemplates.filter((template) =>
+      ["check_in", "technical_meeting"].includes(template.phase_type)
+    );
+    const categoryWaveTemplates = scheduleTemplates.filter(
+      (template) =>
+        template.phase_type === "qualifier_round" &&
+        (template.eligible_age_groups?.length ?? 0) > 0
+    );
+    const genericWaveTemplates = scheduleTemplates.filter(
+      (template) =>
+        template.phase_type === "qualifier_round" &&
+        (template.eligible_age_groups?.length ?? 0) === 0
+    );
+    const finalsTemplates = scheduleTemplates.filter((template) =>
+      ["isolation", "observation", "finals_round"].includes(template.phase_type)
+    );
+    const closingTemplates = scheduleTemplates.filter((template) =>
+      ["wall_reset", "results"].includes(template.phase_type)
+    );
+
+    return [
+      {
+        title: "Arrival",
+        description: "Use these for athlete check-in and the pre-climb briefing.",
+        templates: arrivalTemplates,
+      },
+      {
+        title: "Qualifier Waves",
+        description:
+          "Choose one wave style: use generic sessions for simple time slots, or category sessions when each age group gets its own wave.",
+        templates: [...genericWaveTemplates, ...categoryWaveTemplates],
+      },
+      {
+        title: "Finals Flow",
+        description: "Add these only if your event has finals and you need isolation, observation, or a finals block.",
+        templates: finalsTemplates,
+      },
+      {
+        title: "Closing",
+        description: "Use these for resets, score verification, results, or awards at the end of the day.",
+        templates: closingTemplates,
+      },
+    ].filter((group) => group.templates.length > 0);
+  }, [scheduleTemplates]);
   const qualifierCategories = useMemo(
     () =>
       draft?.categories.filter((category) => isQualifierEligibleCategory(draft, category.age_group)) ?? [],
@@ -1946,22 +1997,30 @@ export default function StaffDashboard({
                     <div className="results-chip">{draft.schedule_blocks.length} blocks</div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {scheduleTemplates.map((template) => (
-                      <button
-                        key={`${template.phase_type}-${template.label}`}
-                        type="button"
-                        onClick={() => addScheduleBlockFromTemplate(template)}
-                        className="results-secondary-button"
-                      >
-                        Add {template.label}
-                      </button>
+                  <div className="mt-4 space-y-5">
+                    {groupedScheduleTemplates.map((group) => (
+                      <div key={group.title} className="rounded-[1.2rem] border border-slate-200 bg-slate-50/70 px-4 py-4">
+                        <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{group.title}</div>
+                        <div className="mt-2 text-sm text-slate-600">{group.description}</div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {group.templates.map((template) => (
+                            <button
+                              key={`${group.title}-${template.phase_type}-${template.label}`}
+                              type="button"
+                              onClick={() => addScheduleBlockFromTemplate(template)}
+                              className="results-secondary-button"
+                            >
+                              Add {template.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
 
                   <div className="mt-5 space-y-4">
                     <div className="text-sm text-slate-600">
-                      Add qualifying waves separately, then drag one wave onto another to combine them into one shared start group.
+                      Add qualifier waves separately, then drag one wave onto another if you want them combined into one shared start group.
                     </div>
                     {draft.schedule_blocks.length ? (
                       draft.schedule_blocks.map((block) => {
