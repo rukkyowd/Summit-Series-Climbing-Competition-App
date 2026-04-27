@@ -191,6 +191,7 @@ export interface Climber {
 export interface QualifierAttempt {
   id?: string;
   competition_id: string;
+  round_id: string | null;
   climber_id: string;
   climb_number: number;
   attempt_count: number;
@@ -205,6 +206,7 @@ export interface QualifierAttempt {
 export interface FinalAttempt {
   id?: string;
   competition_id: string;
+  round_id: string | null;
   climber_id: string;
   climb_number: number;
   top: boolean;
@@ -758,6 +760,7 @@ export function getRoundRuntimePhase(roundType: CompetitionRoundType): Competiti
 export function getRoundDefaultScoringBucket(roundType: CompetitionRoundType): CompetitionRoundScoringBucket {
   switch (roundType) {
     case "qualifier":
+    case "semifinal":
       return "qualifier";
     case "finals":
       return "finals";
@@ -886,6 +889,7 @@ export function normalizeCompetitionRounds(
   >
 ): CompetitionRound[] {
   const sourceRounds = rounds?.length ? rounds : buildDefaultCompetitionRounds(competition);
+  const explicitActiveRoundId = sourceRounds.find((round) => round.is_active)?.id ?? null;
   let activeRoundSeen = false;
   const qualifierFallbackCount = clampNumber(
     competition.qualifier_counting_climbs,
@@ -903,7 +907,11 @@ export function normalizeCompetitionRounds(
         phaseToStageMode(competition.current_phase) === "qualifier"
           ? scoringBucket === "qualifier"
           : scoringBucket === "finals";
-      const isActive = round.is_active && !activeRoundSeen ? true : !activeRoundSeen && activeForPhase;
+      const isActive = explicitActiveRoundId
+        ? round.id === explicitActiveRoundId
+        : round.is_active && !activeRoundSeen
+          ? true
+          : !activeRoundSeen && activeForPhase;
 
       if (isActive) {
         activeRoundSeen = true;
@@ -945,13 +953,13 @@ export function normalizeCompetitionRounds(
         advancement_source_round_id: round.advancement_source_round_id ?? null,
         advancement_cutoff: round.advancement_cutoff ?? (scoringBucket === "finals" ? competition.finals_cutoff : null),
         scoring_bucket:
-          roundType === "semifinal"
-            ? "none"
-            : scoringBucket === "finals"
-              ? "finals"
-              : scoringBucket === "qualifier"
-                ? "qualifier"
-                : "none",
+          roundType === "finals"
+            ? scoringBucket === "none"
+              ? "none"
+              : "finals"
+            : scoringBucket === "qualifier"
+              ? "qualifier"
+              : "none",
         scoring_config:
           round.scoring_config && typeof round.scoring_config === "object" && !Array.isArray(round.scoring_config)
             ? round.scoring_config
@@ -1550,6 +1558,7 @@ export function buildQualifierScoreList(
         ? calculateQualifierAttemptPoints(
             attempt ?? {
               competition_id: "",
+              round_id: null,
               climber_id: "",
               climb_number: climb.number,
               attempt_count: 0,
@@ -1593,13 +1602,87 @@ export function compareQualifierClimbScores(left: QualifierClimbScore, right: Qu
   return left.attempt_count - right.attempt_count;
 }
 
+function buildQualifierRoundCompetition(
+  competition: Competition,
+  round?: Pick<CompetitionRound, "format" | "problem_count" | "counting_climbs"> | null
+): Competition {
+  if (!round) {
+    return competition;
+  }
+
+  return {
+    ...competition,
+    format: round.format,
+    total_climbs: round.problem_count,
+    qualifier_counting_climbs: round.counting_climbs ?? competition.qualifier_counting_climbs,
+  };
+}
+
+export function filterAttemptsForRound<T extends { round_id: string | null }>(attempts: T[], roundId?: string | null) {
+  if (!roundId) {
+    return attempts;
+  }
+
+  return attempts.filter((attempt) => attempt.round_id === roundId);
+}
+
+export function getQualifierStyleRounds(rounds: CompetitionRound[] | null | undefined) {
+  return (rounds ?? []).filter((round) => round.scoring_bucket === "qualifier");
+}
+
+export function getFinalsStyleRounds(rounds: CompetitionRound[] | null | undefined) {
+  return (rounds ?? []).filter((round) => round.scoring_bucket === "finals");
+}
+
+export function getPreferredActiveRound(
+  competition: Pick<Competition, "rounds" | "schedule_blocks" | "current_phase">,
+  scoringBucket: CompetitionRoundScoringBucket
+) {
+  const rounds = [...(competition.rounds ?? [])].sort(
+    (left, right) => left.sort_order - right.sort_order || left.round_number - right.round_number
+  );
+  const activeBlockRoundId =
+    competition.schedule_blocks.find((block) => block.is_active && block.round_id)?.round_id ?? null;
+
+  const fromActiveBlock =
+    rounds.find((round) => round.id === activeBlockRoundId && round.scoring_bucket === scoringBucket && round.is_enabled) ?? null;
+  if (fromActiveBlock) {
+    return fromActiveBlock;
+  }
+
+  const explicitActive =
+    rounds.find((round) => round.scoring_bucket === scoringBucket && round.is_enabled && round.is_active) ?? null;
+  if (explicitActive) {
+    return explicitActive;
+  }
+
+  return rounds.find((round) => round.scoring_bucket === scoringBucket && round.is_enabled) ?? null;
+}
+
+export function getActiveQualifierStyleRound(
+  competition: Pick<Competition, "rounds" | "schedule_blocks" | "current_phase">
+) {
+  return getPreferredActiveRound(competition, "qualifier");
+}
+
+export function getActiveFinalsRound(
+  competition: Pick<Competition, "rounds" | "schedule_blocks" | "current_phase">
+) {
+  return getPreferredActiveRound(competition, "finals");
+}
+
 export function buildQualifierLeaderboard(
   climbers: ClimberWithAttempts[],
-  competition: Competition
+  competition: Competition,
+  round?: CompetitionRound | null
 ): QualifierLeaderboardEntry[] {
-  const officialPointsQualifier = formatUsesOfficialQualifierPoints(competition.format);
+  const scoringCompetition = buildQualifierRoundCompetition(competition, round);
+  const officialPointsQualifier = formatUsesOfficialQualifierPoints(scoringCompetition.format);
   const entries = climbers.map((climber) => {
-    const allClimbs = buildQualifierScoreList(climber.qualifier_attempts, competition);
+    const allClimbs = buildQualifierScoreList(
+      filterAttemptsForRound(climber.qualifier_attempts, round?.id),
+      scoringCompetition
+    );
     const countingClimbs = [...allClimbs].filter((climb) => climb.counting).sort(compareQualifierClimbScores);
     const totalScore = officialPointsQualifier
       ? roundTenths(countingClimbs.reduce((sum, climb) => sum + climb.score, 0))
@@ -1705,7 +1788,7 @@ export function buildFinalProblemResults(attempts: FinalAttempt[], finalsProblem
       attempts_to_top: attempt?.top ? normalizeSuccessfulAttempts(attempt.attempts_to_top) : null,
       attempts_to_zone: attempt?.zone ? normalizeSuccessfulAttempts(attempt.attempts_to_zone) : null,
       points: calculateFinalAttemptPoints(
-        attempt ?? { climb_number: climbNumber, competition_id: "", climber_id: "", top: false, zone: false }
+        attempt ?? { climb_number: climbNumber, competition_id: "", round_id: null, climber_id: "", top: false, zone: false }
       ),
     };
   });
@@ -1738,9 +1821,11 @@ export function summarizeFinalProblemResults(problemResults: FinalProblemResult[
 export function buildFinalsLeaderboard(
   climbers: ClimberWithAttempts[],
   finalists: FinalistSelection[],
-  competition: Competition
+  competition: Competition,
+  round?: CompetitionRound | null
 ): FinalsLeaderboardEntry[] {
   const climberMap = new Map(climbers.map((climber) => [climber.id, climber]));
+  const finalsProblemCount = round?.problem_count ?? competition.finals_problem_count;
 
   const entries = finalists.flatMap((finalist) => {
     const climber = climberMap.get(finalist.climber_id);
@@ -1748,7 +1833,8 @@ export function buildFinalsLeaderboard(
       return [];
     }
 
-    const problemResults = buildFinalProblemResults(climber.final_attempts, competition.finals_problem_count);
+    const scopedAttempts = filterAttemptsForRound(climber.final_attempts, round?.id);
+    const problemResults = buildFinalProblemResults(scopedAttempts, finalsProblemCount);
     const summary = summarizeFinalProblemResults(problemResults);
 
     return [
@@ -1769,7 +1855,7 @@ export function buildFinalsLeaderboard(
         attempts_to_zone: summary.attempts_to_zone,
         overall_rank: 0,
         category_rank: 0,
-        attempts: [...climber.final_attempts].sort((left, right) => left.climb_number - right.climb_number),
+        attempts: [...scopedAttempts].sort((left, right) => left.climb_number - right.climb_number),
         problem_results: problemResults,
       },
     ];
@@ -1822,7 +1908,15 @@ export function pickPreferredQualifierCategory(
     })[0]?.id ?? "";
 }
 
-export function pickFinalists(qualifierEntries: QualifierLeaderboardEntry[], competition: Competition) {
+export function pickFinalists(
+  qualifierEntries: QualifierLeaderboardEntry[],
+  competition: Competition,
+  targetRound?: Pick<CompetitionRound, "advancement_cutoff" | "finals_cutoff"> | null
+) {
+  const advancementCutoff =
+    targetRound?.advancement_cutoff ??
+    targetRound?.finals_cutoff ??
+    competition.finals_cutoff;
   const byCategory = new Map<string, QualifierLeaderboardEntry[]>();
 
   qualifierEntries.forEach((entry) => {
@@ -1838,7 +1932,7 @@ export function pickFinalists(qualifierEntries: QualifierLeaderboardEntry[], com
 
   const finalists: FinalistSelection[] = [];
   byCategory.forEach((entries) => {
-    const cutoffEntry = entries[competition.finals_cutoff - 1];
+    const cutoffEntry = entries[advancementCutoff - 1];
 
     if (!cutoffEntry) {
       entries.forEach((entry) => {
@@ -1857,7 +1951,7 @@ export function pickFinalists(qualifierEntries: QualifierLeaderboardEntry[], com
     }
 
     entries.forEach((entry) => {
-      const withinCutoff = entry.category_rank <= competition.finals_cutoff;
+      const withinCutoff = entry.category_rank <= advancementCutoff;
       const tiedAtCutoff =
         competition.finals_tie_advances &&
         entry.total_score === cutoffEntry.total_score &&

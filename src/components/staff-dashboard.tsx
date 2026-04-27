@@ -599,10 +599,6 @@ export default function StaffDashboard({
 
     return summarizeRoundPlan(draft.rounds ?? []) !== summarizeRoundPlan(roundPlanTemplate);
   }, [draft, roundPlanTemplate]);
-  const qualifierScoreRoundCount = useMemo(
-    () => draft?.rounds?.filter((round) => round.scoring_bucket === "qualifier").length ?? 0,
-    [draft]
-  );
   const finalsScoreRoundCount = useMemo(
     () => draft?.rounds?.filter((round) => round.scoring_bucket === "finals").length ?? 0,
     [draft]
@@ -863,10 +859,7 @@ export default function StaffDashboard({
 
     updateRounds((current) => {
       const nextRound = createRoundTemplate(draft, roundType, current.length + 1);
-      if (
-        (roundType === "qualifier" && current.some((round) => round.scoring_bucket === "qualifier")) ||
-        (roundType === "finals" && current.some((round) => round.scoring_bucket === "finals"))
-      ) {
+      if (roundType === "finals" && current.some((round) => round.scoring_bucket === "finals")) {
         nextRound.scoring_bucket = "none";
       }
       if (roundType === "finals") {
@@ -2202,7 +2195,7 @@ export default function StaffDashboard({
                       <div>
                         <div className="results-kicker">Round designer</div>
                         <div className="mt-2 text-sm text-slate-600">
-                          Score-bearing rounds drive the existing live engine in v1. Semifinals and extra rounds are planning-only for now.
+                          Score-bearing rounds save real attempts and generate live standings. Qualifier and semifinal rounds share qualifier-style scoring, while finals stays on its own finals scoring path.
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -2216,7 +2209,7 @@ export default function StaffDashboard({
                         const planningOnly = round.scoring_bucket === "none";
                         const scoreBearingLabel =
                           round.scoring_bucket === "qualifier"
-                            ? "Score-Bearing / Qualifiers"
+                            ? "Score-Bearing / Qualifier-style"
                             : round.scoring_bucket === "finals"
                               ? "Score-Bearing / Finals"
                               : "Planning Only";
@@ -2250,9 +2243,7 @@ export default function StaffDashboard({
                                     updateRound(round.id, (current) => {
                                       const roundType = event.target.value as CompetitionRoundType;
                                       const scoringBucket =
-                                        roundType === "semifinal"
-                                          ? "none"
-                                          : current.scoring_bucket === "none"
+                                        current.scoring_bucket === "none"
                                             ? getRoundDefaultScoringBucket(roundType)
                                             : current.scoring_bucket;
                                       return {
@@ -2280,13 +2271,13 @@ export default function StaffDashboard({
                                   onChange={(event) =>
                                     updateRound(round.id, (current) => {
                                       const nextBucket = event.target.value as CompetitionRoundScoringBucket;
-                                      if (current.round_type === "semifinal") {
-                                        return { ...current, scoring_bucket: "none" };
-                                      }
-                                      if (nextBucket === "qualifier" && qualifierScoreRoundCount >= 1 && current.scoring_bucket !== "qualifier") {
+                                      if (nextBucket === "finals" && finalsScoreRoundCount >= 1 && current.scoring_bucket !== "finals") {
                                         return current;
                                       }
-                                      if (nextBucket === "finals" && finalsScoreRoundCount >= 1 && current.scoring_bucket !== "finals") {
+                                      if (current.round_type === "finals" && nextBucket === "qualifier") {
+                                        return current;
+                                      }
+                                      if (current.round_type !== "finals" && nextBucket === "finals") {
                                         return current;
                                       }
                                       return { ...current, scoring_bucket: nextBucket };
@@ -2295,8 +2286,8 @@ export default function StaffDashboard({
                                   className="results-input"
                                 >
                                   <option value="none">Planning Only</option>
-                                  {round.round_type !== "finals" ? <option value="qualifier">Score-Bearing / Qualifiers</option> : null}
-                                  {round.round_type !== "qualifier" && round.round_type !== "semifinal" ? <option value="finals">Score-Bearing / Finals</option> : null}
+                                  {round.round_type !== "finals" ? <option value="qualifier">Score-Bearing / Qualifier-style</option> : null}
+                                  {round.round_type === "finals" ? <option value="finals">Score-Bearing / Finals</option> : null}
                                 </select>
                               </label>
                               <label className="space-y-2">

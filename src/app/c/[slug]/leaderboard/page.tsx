@@ -100,9 +100,11 @@ export default function CompetitionLeaderboardPage() {
 
   const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
   const finalsActive = snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results";
-  const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(snapshot.competition.format) : false;
+  const activeQualifierFormat = snapshot?.activeQualifierRound?.format ?? snapshot?.competition.format ?? "scramble";
+  const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(activeQualifierFormat) : false;
+  const activeQualifierRoundName = snapshot?.activeQualifierRound?.name ?? "Qualifier";
   const qualifierScoreContextLabel = snapshot
-    ? getFormatCapabilities(snapshot.competition.format).qualifierScoringUnit === "climb_points"
+    ? getFormatCapabilities(activeQualifierFormat).qualifierScoringUnit === "climb_points"
       ? "Score column shows climb points."
       : "Score column shows official qualifier points."
     : "";
@@ -138,9 +140,9 @@ export default function CompetitionLeaderboardPage() {
             )
           ) : (
             <section className="results-card">
-              <div className="results-kicker">Qualifier standings</div>
+              <div className="results-kicker">{activeQualifierRoundName} standings</div>
               <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">
-                {scrambleFormat ? "Live scramble standings" : "Live qualifier rankings"}
+                {scrambleFormat ? "Live scramble standings" : `Live ${activeQualifierRoundName.toLowerCase()} rankings`}
               </h1>
               <div className="mt-3 text-sm text-slate-600">{qualifierScoreContextLabel}</div>
               {scrambleFormat ? (
@@ -161,7 +163,7 @@ export default function CompetitionLeaderboardPage() {
                 <div className="results-meta-card mt-5 text-slate-600">
                   {scrambleFormat
                     ? "This session has not recorded any scores yet. Check back once climbers start logging attempts."
-                    : "Scoring has not started yet. Check back during the qualifier round."}
+                    : `Scoring has not started yet. Check back during the ${activeQualifierRoundName.toLowerCase()} round.`}
                 </div>
               ) : (
                 <>

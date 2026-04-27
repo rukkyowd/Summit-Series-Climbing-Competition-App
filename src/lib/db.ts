@@ -19,11 +19,15 @@ import {
   createCategoryKey,
   createCompetitionId,
   getActiveQueueSessionBlock,
+  getActiveFinalsRound,
   getRecommendedFinalsCutoff,
   getRecommendedQualifierClimbCount,
   getRecommendedQualifierCountingClimbs,
   getActiveScheduleBlock,
+  getActiveQualifierStyleRound,
   getDefaultCompetitionCategories,
+  getFinalsStyleRounds,
+  getQualifierStyleRounds,
   getRoundStatusForCompetition,
   isValidClimberNumber,
   isQualifierEligibleCategory,
@@ -97,6 +101,8 @@ export interface CompetitionSnapshot {
   registrationChoices: RegistrationChoice[];
   undoAvailability?: CompetitionUndoAvailability;
   rounds?: CompetitionRound[];
+  activeQualifierRound?: CompetitionRound | null;
+  activeFinalsRound?: CompetitionRound | null;
 }
 
 export interface CompetitionSummary {
@@ -249,6 +255,24 @@ function assertFinalsWindowOpen(competition: Competition) {
   if (!canStaffScoreFinals(competition)) {
     throw new Error("Finals scoring is not open during the current competition phase.");
   }
+}
+
+function requireActiveQualifierStyleRound(competition: Competition) {
+  const round = getActiveQualifierStyleRound(competition);
+  if (!round) {
+    throw new Error("No active qualifier-style round is configured for scoring.");
+  }
+
+  return round;
+}
+
+function requireActiveFinalsRound(competition: Competition) {
+  const round = getActiveFinalsRound(competition);
+  if (!round) {
+    throw new Error("No active finals round is configured for scoring.");
+  }
+
+  return round;
 }
 
 async function fetchCompetitionRows(includeArchived = false) {
@@ -453,6 +477,7 @@ async function fetchQualifierAttempts(competitionIds: string[]) {
   return ((data ?? []) as any[]).map((row) => ({
     id: row.id,
     competition_id: row.competition_id,
+    round_id: row.round_id ?? null,
     climber_id: row.climber_id,
     climb_number: row.climb_number ?? 1,
     attempt_count: row.attempt_count ?? 0,
@@ -483,6 +508,7 @@ async function fetchFinalAttempts(competitionIds: string[]) {
   return ((data ?? []) as any[]).map((row) => ({
     id: row.id,
     competition_id: row.competition_id,
+    round_id: row.round_id ?? null,
     climber_id: row.climber_id,
     climb_number: row.climb_number ?? 1,
     top: row.top ?? false,
@@ -589,9 +615,10 @@ async function fetchBoulderQueueRowsForCompetition(competition: Competition, sch
   }));
 }
 
-async function fetchOfficialQualifierLeaderboard(competitionId: string) {
+async function fetchOfficialQualifierLeaderboard(competitionId: string, roundId: string | null) {
   const { data, error } = await publicSupabase.rpc("compute_qualifier_standings", {
     p_competition_id: competitionId,
+    p_round_id: roundId,
   });
 
   if (error) {
@@ -619,9 +646,11 @@ async function fetchOfficialQualifierLeaderboard(competitionId: string) {
   }));
 }
 
-async function fetchProjectedFinalists(competitionId: string) {
+async function fetchProjectedFinalists(competitionId: string, sourceRoundId: string | null, cutoff: number | null = null) {
   const { data, error } = await publicSupabase.rpc("compute_finalist_selection", {
     p_competition_id: competitionId,
+    p_source_round_id: sourceRoundId,
+    p_cutoff_override: cutoff,
   });
 
   if (error) {
@@ -699,27 +728,27 @@ function validateSlotForCategory(slot: CompetitionScheduleBlock, categoryId: str
 }
 
 function getScoreBearingRounds(rounds: CompetitionRound[]) {
-  const qualifierRound = rounds.find((round) => round.scoring_bucket === "qualifier") ?? null;
-  const finalsRound = rounds.find((round) => round.scoring_bucket === "finals") ?? null;
+  const qualifierRound = getQualifierStyleRounds(rounds)[0] ?? null;
+  const finalsRound = getFinalsStyleRounds(rounds)[0] ?? null;
 
   return { qualifierRound, finalsRound };
 }
 
 function assertValidCompetitionRounds(rounds: CompetitionRound[]) {
-  const qualifierScoreRounds = rounds.filter((round) => round.scoring_bucket === "qualifier");
-  const finalsScoreRounds = rounds.filter((round) => round.scoring_bucket === "finals");
+  const qualifierScoreRounds = getQualifierStyleRounds(rounds);
+  const finalsScoreRounds = getFinalsStyleRounds(rounds);
   const activeRounds = rounds.filter((round) => round.is_active);
 
-  if (qualifierScoreRounds.length > 1) {
-    throw new Error("Only one round can use the qualifier scoring bucket in v1.");
-  }
-
   if (finalsScoreRounds.length > 1) {
-    throw new Error("Only one round can use the finals scoring bucket in v1.");
+    throw new Error("Only one round can use the finals scoring bucket.");
   }
 
-  if (rounds.some((round) => round.round_type === "semifinal" && round.scoring_bucket !== "none")) {
-    throw new Error("Semifinal rounds are planning-only in v1 and cannot be score-bearing.");
+  if (rounds.some((round) => round.round_type === "finals" && round.scoring_bucket === "qualifier")) {
+    throw new Error("Finals rounds must use the finals scoring bucket or remain planning-only.");
+  }
+
+  if (rounds.some((round) => round.round_type !== "finals" && round.scoring_bucket === "finals")) {
+    throw new Error("Only finals rounds can use the finals scoring bucket.");
   }
 
   if (activeRounds.length > 1) {
@@ -795,26 +824,44 @@ async function syncCompetitionRoundRuntimeState(competitionId: string) {
 
   const now = new Date().toISOString();
   const stageMode = phaseToStageMode(competition.current_phase);
+  const activeBlockRoundId = competition.schedule_blocks.find((block) => block.is_active && block.round_id)?.round_id ?? null;
   const preferredActiveRound =
+    rounds.find(
+      (round) =>
+        round.id === activeBlockRoundId &&
+        round.is_enabled &&
+        (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")
+    ) ??
+    rounds.find((round) => round.is_active && round.is_enabled) ??
     rounds.find((round) => (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")) ??
     rounds.find((round) => round.runtime_phase === competition.current_phase) ??
     rounds.find((round) => round.is_enabled) ??
     rounds[0];
 
   const updatedRounds = rounds.map((round) => {
-    const status: CompetitionRoundStatus =
-      round.scoring_bucket === "qualifier"
-        ? getRoundStatusForCompetition(competition, "qualifier")
-        : round.scoring_bucket === "finals"
-          ? getRoundStatusForCompetition(competition, "finals")
-          : round.status;
-
     const isActive = round.id === preferredActiveRound?.id;
+    let status = round.status;
+    if (round.scoring_bucket === "finals") {
+      status = getRoundStatusForCompetition(competition, "finals");
+    } else if (round.scoring_bucket === "qualifier") {
+      if (competition.current_phase === "qualifier_open") {
+        status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
+      } else if (competition.current_phase === "qualifier_closed" || competition.current_phase === "wall_reset") {
+        status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
+      } else {
+        status = round.activated_at || round.closed_at ? "closed" : "pending";
+      }
+    }
+
     return {
       ...round,
       status,
       is_active: isActive,
       activated_at: isActive ? round.activated_at ?? now : round.activated_at,
+      closed_at:
+        !isActive && round.scoring_bucket === "qualifier" && round.activated_at
+          ? round.closed_at ?? now
+          : round.closed_at,
     };
   });
 
@@ -969,6 +1016,21 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     throw new Error("Competition not found.");
   }
 
+  const currentRounds = normalizeCompetitionRounds(competition.rounds ?? [], competition);
+  const finalsRound = getFinalsStyleRounds(currentRounds)[0] ?? null;
+  const qualifierStyleRounds = getQualifierStyleRounds(currentRounds);
+  const advancementSourceRound =
+    qualifierStyleRounds.find((round) => round.id === finalsRound?.advancement_source_round_id) ??
+    qualifierStyleRounds[qualifierStyleRounds.length - 1] ??
+    null;
+  const activeQualifierRound = getActiveQualifierStyleRound({
+    ...competition,
+    rounds: currentRounds,
+  });
+  const activeFinalsRound = getActiveFinalsRound({
+    ...competition,
+    rounds: currentRounds,
+  });
   const activeQueueSession = getActiveQueueSessionBlock(competition);
 
   const [climbers, qualifierAttempts, finalAttempts, finalists, queueRows, officialQualifierLeaderboard, projectedFinalists, undoAvailability, rounds] = await Promise.all([
@@ -977,8 +1039,12 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     fetchFinalAttempts([competition.id]),
     fetchFinalists([competition.id]),
     fetchBoulderQueueRowsForCompetition(competition, activeQueueSession?.id ?? null),
-    fetchOfficialQualifierLeaderboard(competition.id),
-    fetchProjectedFinalists(competition.id),
+    fetchOfficialQualifierLeaderboard(competition.id, activeQualifierRound?.id ?? null),
+    fetchProjectedFinalists(
+      competition.id,
+      advancementSourceRound?.id ?? activeQualifierRound?.id ?? null,
+      finalsRound?.advancement_cutoff ?? finalsRound?.finals_cutoff ?? null
+    ),
     fetchUndoAvailability(competition.id).catch(() => ({
       available: false,
       expires_at: null,
@@ -986,6 +1052,13 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     })),
     fetchCompetitionRounds([competition.id]),
   ]);
+  const resolvedRounds = normalizeCompetitionRounds(rounds, competition);
+  const resolvedCompetition = {
+    ...competition,
+    rounds: resolvedRounds,
+  };
+  const resolvedActiveQualifierRound = getActiveQualifierStyleRound(resolvedCompetition);
+  const resolvedActiveFinalsRound = getActiveFinalsRound(resolvedCompetition);
 
   const joined = joinCompetitionData(climbers, qualifierAttempts, finalAttempts);
   const climberMap = new Map(joined.map((climber) => [climber.id, climber]));
@@ -1011,7 +1084,7 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
       } satisfies BoulderQueueEntry;
     })
     .filter((entry): entry is BoulderQueueEntry => entry !== null);
-  const localQualifierLeaderboard = buildQualifierLeaderboard(joined, competition);
+  const localQualifierLeaderboard = buildQualifierLeaderboard(joined, resolvedCompetition, resolvedActiveQualifierRound);
   const officialQualifierMap = new Map(officialQualifierLeaderboard.map((entry) => [entry.climber_id, entry]));
   const qualifierLeaderboard = localQualifierLeaderboard.map((entry) => {
     const official = officialQualifierMap.get(entry.climber_id);
@@ -1033,27 +1106,29 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
     .filter((entry) => entry.competition_id === competition.id)
     .map(({ competition_id, ...entry }) => entry);
   const liveProjectedFinalists =
-    competition.current_phase === "qualifier_open"
+    resolvedCompetition.current_phase === "qualifier_open"
       ? projectedFinalists.filter((entry) => !entry.advanced_with_tie)
       : projectedFinalists;
   const competitionFinalists = dedupeFinalists(
     selectedFinalists.length ? selectedFinalists : liveProjectedFinalists
   );
-  const finalsLeaderboard = isFinalsStage(competition)
-    ? buildFinalsLeaderboard(joined, competitionFinalists, competition)
+  const finalsLeaderboard = isFinalsStage(resolvedCompetition)
+    ? buildFinalsLeaderboard(joined, competitionFinalists, resolvedCompetition, resolvedActiveFinalsRound)
     : [];
 
   return {
-    competition,
+    competition: resolvedCompetition,
     climbers: joined,
     boulderQueue,
     qualifierLeaderboard,
     finalsLeaderboard,
     finalists: competitionFinalists,
     finalistsPersisted: selectedFinalists.length > 0,
-    registrationChoices: buildRegistrationChoices(competition, joined.map((climber) => climber)),
+    registrationChoices: buildRegistrationChoices(resolvedCompetition, joined.map((climber) => climber)),
     undoAvailability,
-    rounds,
+    rounds: resolvedRounds,
+    activeQualifierRound: resolvedActiveQualifierRound,
+    activeFinalsRound: resolvedActiveFinalsRound,
   };
 }
 
@@ -1277,6 +1352,8 @@ export async function setCompetitionLiveScheduleBlock(competitionId: string, blo
   if (setError) {
     throw new Error(setError.message);
   }
+
+  await syncCompetitionRoundRuntimeState(competitionId);
 }
 
 export async function setCompetitionStatus(competitionId: string, status: CompetitionStatus) {
@@ -1684,6 +1761,7 @@ export async function updateQualifierAttemptByStaff(
     throw new Error("Competition not found.");
   }
   assertStaffQualifierWindowOpen(competition);
+  const activeRound = requireActiveQualifierStyleRound(competition);
   const normalized = normalizeQualifierAttemptInput({
     attemptCount,
     topped,
@@ -1697,6 +1775,7 @@ export async function updateQualifierAttemptByStaff(
     .upsert(
       {
         competition_id: competitionId,
+        round_id: activeRound.id,
         climber_id: climberId,
         climb_number: climbNumber,
         attempt_count: normalized.attemptCount,
@@ -1706,7 +1785,7 @@ export async function updateQualifierAttemptByStaff(
         attempts_to_zone: normalized.attemptsToZone,
         entered_by: "staff",
       },
-      { onConflict: "climber_id,climb_number" }
+      { onConflict: "competition_id,round_id,climber_id,climb_number" }
     )
     .select("*")
     .single();
@@ -1732,10 +1811,12 @@ export async function updateQualifierAttemptByToken(
     throw new Error("Competition not found.");
   }
   assertClimberQualifierWindowOpen(competition);
+  const activeRound = requireActiveQualifierStyleRound(competition);
 
   const { data, error } = await publicSupabase.rpc("submit_qualifier_attempt", {
     p_access_token: cleanString(accessToken),
     p_competition_id: competitionId,
+    p_round_id: activeRound.id,
     p_climb_number: climbNumber,
     p_attempt_count: attemptCount,
     p_topped: topped,
@@ -1802,6 +1883,7 @@ export async function updateFinalAttempt(
 
   const snapshot = await getCompetitionSnapshot(competitionId);
   assertFinalsWindowOpen(snapshot.competition);
+  const activeRound = requireActiveFinalsRound(snapshot.competition);
   const normalized = normalizeFinalAttemptInput({
     top,
     zone,
@@ -1818,6 +1900,7 @@ export async function updateFinalAttempt(
     .upsert(
       {
         competition_id: competitionId,
+        round_id: activeRound.id,
         climber_id: climberId,
         climb_number: climbNumber,
         top: normalized.top,
@@ -1826,7 +1909,7 @@ export async function updateFinalAttempt(
         attempts_to_zone: normalized.attemptsToZone,
         entered_by: "staff",
       },
-      { onConflict: "climber_id,climb_number" }
+      { onConflict: "competition_id,round_id,climber_id,climb_number" }
     )
     .select("*")
     .single();

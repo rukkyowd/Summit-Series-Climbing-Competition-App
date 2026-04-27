@@ -77,7 +77,9 @@ export default function CompetitionDisplayPage() {
   }, [snapshot]);
 
   const finalsCategories = useMemo(() => Array.from(finalsGroups.keys()).sort(), [finalsGroups]);
-  const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(snapshot.competition.format) : false;
+  const activeQualifierFormat = snapshot?.activeQualifierRound?.format ?? snapshot?.competition.format ?? "scramble";
+  const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(activeQualifierFormat) : false;
+  const activeQualifierRoundName = snapshot?.activeQualifierRound?.name ?? "Qualifier";
   const activeQueueSession = useMemo(
     () => (snapshot ? getActiveQueueSessionBlock(snapshot.competition) : null),
     [snapshot]
@@ -174,6 +176,7 @@ export default function CompetitionDisplayPage() {
             </section>
           ) : null}
           <section className="results-card">
+            <div className="results-kicker">{activeQualifierRoundName} standings</div>
             <div className="finals-category-picker">
               <button type="button" onClick={() => setSelectedCategory("all")} className={selectedCategory === "all" ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
                 All categories

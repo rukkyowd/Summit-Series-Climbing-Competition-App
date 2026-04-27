@@ -20,8 +20,11 @@ import {
   canStaffScoreFinals,
   canStaffScoreQualifier,
   competitionHasFinals,
+  filterAttemptsForRound,
   formatCompetitionPhaseLabel,
   formatFinalPoints,
+  getActiveFinalsRound,
+  getActiveQualifierStyleRound,
   getClimbs,
   isFinalsStage,
   type ClimberWithAttempts,
@@ -313,6 +316,12 @@ export default function StaffJudgePage() {
   const [queuedCount, setQueuedCount] = useState(0);
   const flushingQueueRef = useRef(false);
   const finalsGridViewportRef = useRef<HTMLDivElement | null>(null);
+  const activeQualifierRoundId = snapshot?.activeQualifierRound?.id ?? getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.id ?? null;
+  const activeQualifierRoundName = snapshot?.activeQualifierRound?.name ?? getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.name ?? "Qualifier";
+  const activeFinalsRoundId = snapshot?.activeFinalsRound?.id ?? getActiveFinalsRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.id ?? null;
+  const activeFinalsRoundName = snapshot?.activeFinalsRound?.name ?? getActiveFinalsRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.name ?? "Finals";
+  const activeQualifierProblemCount = snapshot?.activeQualifierRound?.problem_count ?? snapshot?.competition.total_climbs ?? 0;
+  const activeFinalsProblemCount = snapshot?.activeFinalsRound?.problem_count ?? snapshot?.competition.finals_problem_count ?? 0;
 
   const flushOfflineQueue = useCallback(async () => {
     if (flushingQueueRef.current) {
@@ -363,10 +372,10 @@ export default function StaffJudgePage() {
         const qualifierNext: QualifierDraftState = {};
         const finalsNext: FinalsDraftState = {};
         nextSnapshot.climbers.forEach((climber) => {
-          climber.qualifier_attempts.forEach((attempt) => {
+          filterAttemptsForRound(climber.qualifier_attempts, nextSnapshot.activeQualifierRound?.id).forEach((attempt) => {
             qualifierNext[`${climber.id}:${attempt.climb_number}`] = getQualifierDraftFromAttempt(attempt);
           });
-          climber.final_attempts.forEach((attempt) => {
+          filterAttemptsForRound(climber.final_attempts, nextSnapshot.activeFinalsRound?.id).forEach((attempt) => {
             finalsNext[`${climber.id}:${attempt.climb_number}`] = getFinalsDraftFromAttempt(attempt);
           });
         });
@@ -452,26 +461,26 @@ export default function StaffJudgePage() {
     () =>
       snapshot
         ? snapshot.climbers.filter((climber) =>
-            climber.qualifier_attempts.some((attempt) => attempt.climb_number === selectedBoulder)
+            filterAttemptsForRound(climber.qualifier_attempts, activeQualifierRoundId).some((attempt) => attempt.climb_number === selectedBoulder)
           ).length
         : 0,
-    [selectedBoulder, snapshot]
+    [activeQualifierRoundId, selectedBoulder, snapshot]
   );
   const finalsScoredCellCount = useMemo(
     () =>
       finalists.reduce(
         (count, climber) =>
           count +
-          getClimbs(snapshot?.competition.finals_problem_count ?? 0).filter((climb) => {
-            const attempt = climber.final_attempts.find((entry) => entry.climb_number === climb.number);
+          getClimbs(activeFinalsProblemCount).filter((climb) => {
+            const attempt = filterAttemptsForRound(climber.final_attempts, activeFinalsRoundId).find((entry) => entry.climb_number === climb.number);
             return Boolean(attempt?.top || attempt?.zone);
           }).length,
         0
       ),
-    [finalists, snapshot?.competition.finals_problem_count]
+    [activeFinalsProblemCount, activeFinalsRoundId, finalists]
   );
-  const finalsTotalCellCount = finalists.length * (snapshot?.competition.finals_problem_count ?? 0);
-  const finalsProblemCount = snapshot?.competition.finals_problem_count ?? 0;
+  const finalsTotalCellCount = finalists.length * activeFinalsProblemCount;
+  const finalsProblemCount = activeFinalsProblemCount;
   const finalsGridTemplateColumns = `minmax(9rem, 1.15fr) repeat(${Math.max(finalsProblemCount, 1)}, minmax(6.75rem, 1fr))`;
   const finalsGridMinWidth = `${Math.max(640, 176 + finalsProblemCount * 124)}px`;
   const finalsBlockedMessage = !snapshot
@@ -484,9 +493,9 @@ export default function StaffJudgePage() {
   const selectedFinalAttempt = useMemo(
     () =>
       selectedFinalist && selectedCell
-        ? selectedFinalist.final_attempts.find((entry) => entry.climb_number === selectedCell.climbNumber) ?? null
+        ? filterAttemptsForRound(selectedFinalist.final_attempts, activeFinalsRoundId).find((entry) => entry.climb_number === selectedCell.climbNumber) ?? null
         : null,
-    [selectedCell, selectedFinalist]
+    [activeFinalsRoundId, selectedCell, selectedFinalist]
   );
   const selectedFinalDraftKey = selectedCell ? `${selectedCell.climberId}:${selectedCell.climbNumber}` : "";
   const selectedFinalDraft = useMemo(
@@ -523,12 +532,12 @@ export default function StaffJudgePage() {
 
     const selectedStillValid =
       finalists.some((climber) => climber.id === selectedCell.climberId) &&
-      selectedCell.climbNumber <= (snapshot?.competition.finals_problem_count ?? 0);
+      selectedCell.climbNumber <= activeFinalsProblemCount;
 
     if (!selectedStillValid) {
       setSelectedCell(firstCell);
     }
-  }, [finalists, finalsReady, selectedCell, snapshot?.competition.finals_problem_count, stage]);
+  }, [activeFinalsProblemCount, finalists, finalsReady, selectedCell, stage]);
 
   useEffect(() => {
     if (stage !== "finals" || !selectedCell) {
@@ -546,6 +555,12 @@ export default function StaffJudgePage() {
       inline: "center",
     });
   }, [selectedCell, stage]);
+
+  useEffect(() => {
+    if (selectedBoulder > activeQualifierProblemCount && activeQualifierProblemCount > 0) {
+      setSelectedBoulder(1);
+    }
+  }, [activeQualifierProblemCount, selectedBoulder]);
 
   const updateClimberInSnapshot = async (climberId: string, updater: (nextClimbers: ClimberWithAttempts[]) => CompetitionSnapshot) => {
     if (!snapshot) {
@@ -612,7 +627,7 @@ export default function StaffJudgePage() {
       await updateClimberInSnapshot(climberId, (nextClimbers) => ({
         ...snapshot,
         climbers: nextClimbers,
-        qualifierLeaderboard: buildQualifierLeaderboard(nextClimbers, snapshot.competition),
+        qualifierLeaderboard: buildQualifierLeaderboard(nextClimbers, snapshot.competition, snapshot.activeQualifierRound ?? null),
       }));
       setMessage(`Saved qualifier score for boulder ${selectedBoulder}.`);
     } catch (nextError) {
@@ -678,7 +693,12 @@ export default function StaffJudgePage() {
       await updateClimberInSnapshot(selectedCell.climberId, (nextClimbers) => ({
         ...snapshot,
         climbers: nextClimbers,
-        finalsLeaderboard: buildFinalsLeaderboard(nextClimbers, snapshot.finalists, snapshot.competition),
+        finalsLeaderboard: buildFinalsLeaderboard(
+          nextClimbers,
+          snapshot.finalists,
+          snapshot.competition,
+          snapshot.activeFinalsRound ?? null
+        ),
       }));
       setMessage(`Saved finals score for boulder ${selectedCell.climbNumber}.`);
     } catch (nextError) {
@@ -779,7 +799,7 @@ export default function StaffJudgePage() {
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-slate-600">
-              Judges and admins can score both qualifier and finals rounds from this page. Use qualifier mode for live boulder entry and finals mode for the full finals grid.
+              Judges and admins can score the active qualifier-style round and the active finals round from this page. Use qualifier mode for qualifier or semifinal entry, and finals mode for the full finals grid.
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <button
@@ -787,7 +807,7 @@ export default function StaffJudgePage() {
                 onClick={() => setStage("qualifier")}
                 className={`results-stage-toggle ${stage === "qualifier" ? "results-stage-toggle-active" : ""}`}
               >
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Qualifier</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{activeQualifierRoundName}</div>
                 <div className="mt-2 text-lg font-semibold text-slate-950">Boulder-by-boulder entry</div>
                 <div className="mt-1 text-sm text-slate-600">
                   {qualifierScoringOpen ? "Open for staff scoring now." : "Locked until qualifier live."}
@@ -799,7 +819,7 @@ export default function StaffJudgePage() {
                 onClick={() => setStage("finals")}
                 className={`results-stage-toggle ${stage === "finals" ? "results-stage-toggle-active" : ""}`}
               >
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Finals</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{activeFinalsRoundName}</div>
                 <div className="mt-2 text-lg font-semibold text-slate-950">Grid scoring for finalists</div>
                 <div className="mt-1 text-sm text-slate-600">
                   {finalsScoringOpen ? "Open for finals scoring now." : finalsReady ? "Field loaded, waiting for finals live." : "Waiting for a finals field."}
@@ -820,7 +840,7 @@ export default function StaffJudgePage() {
             <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
               <div className="results-control-stack">
                 <div>
-                  <div className="results-kicker">Qualifier controls</div>
+                  <div className="results-kicker">{activeQualifierRoundName} controls</div>
                   <div className="mt-2 text-2xl font-semibold text-slate-950">
                     Boulder {String(selectedBoulder).padStart(2, "0")}
                   </div>
@@ -835,7 +855,7 @@ export default function StaffJudgePage() {
                   placeholder="Filter by name, number, or category"
                 />
                 <div className="flex max-h-[22rem] flex-wrap gap-2 overflow-y-auto">
-                  {getClimbs(snapshot.competition.total_climbs).map((climb) => (
+                  {getClimbs(activeQualifierProblemCount).map((climb) => (
                     <button
                       key={climb.number}
                       type="button"
@@ -850,14 +870,14 @@ export default function StaffJudgePage() {
               <div>
                 {!qualifierScoringOpen ? (
                   <div className="results-meta-card mb-5 text-slate-600">
-                    Qualifier scoring is currently locked. Move the competition back to qualifier live if staff still need to enter qualifier scores.
+                    {activeQualifierRoundName} scoring is currently locked. Move the competition back to qualifier live if staff still need to enter scores for this round.
                   </div>
                 ) : null}
 
                 <div className="space-y-3">
                   {qualifierClimbers.map((climber) => {
                     const key = `${climber.id}:${selectedBoulder}`;
-                    const existingAttempt = climber.qualifier_attempts.find((attempt) => attempt.climb_number === selectedBoulder);
+                    const existingAttempt = filterAttemptsForRound(climber.qualifier_attempts, activeQualifierRoundId).find((attempt) => attempt.climb_number === selectedBoulder);
                     const draft = qualifierDrafts[key] ?? getQualifierDraftFromAttempt(existingAttempt);
                     const presentation = getQualifierPresentation(draft, existingAttempt);
                     return (
@@ -1014,7 +1034,7 @@ export default function StaffJudgePage() {
           <section className="results-card">
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="results-workspace-card">
-                <div className="results-kicker">Finals field</div>
+                <div className="results-kicker">{activeFinalsRoundName} field</div>
                 <div className="mt-2 text-3xl font-semibold text-slate-950">{finalists.length}</div>
                 <div className="mt-2 text-sm text-slate-600">
                   {finalsProjected ? "Projected from official qualifier standings." : "Finals field is locked and ready."}
@@ -1060,7 +1080,7 @@ export default function StaffJudgePage() {
                     style={{ gridTemplateColumns: finalsGridTemplateColumns }}
                   >
                     <div>Finalist</div>
-                    {getClimbs(snapshot.competition.finals_problem_count).map((climb) => (
+                    {getClimbs(activeFinalsProblemCount).map((climb) => (
                       <div key={climb.number}>B{climb.number}</div>
                     ))}
                   </div>
@@ -1078,9 +1098,9 @@ export default function StaffJudgePage() {
                           <div className="mt-2 text-lg font-semibold text-slate-950">{climber.name}</div>
                           <div className="mt-1 text-sm text-slate-600">{climber.display_category}</div>
                         </div>
-                        {getClimbs(snapshot.competition.finals_problem_count).map((climb) => {
+                        {getClimbs(activeFinalsProblemCount).map((climb) => {
                           const key = `${climber.id}:${climb.number}`;
-                          const attempt = climber.final_attempts.find((entry) => entry.climb_number === climb.number);
+                          const attempt = filterAttemptsForRound(climber.final_attempts, activeFinalsRoundId).find((entry) => entry.climb_number === climb.number);
                           const draft = finalsDrafts[key] ?? getFinalsDraftFromAttempt(attempt);
                           const presentation = getFinalsPresentation(draft, attempt);
                           const active = selectedCell?.climberId === climber.id && selectedCell?.climbNumber === climb.number;

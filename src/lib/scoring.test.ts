@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildQualifierLeaderboard,
   buildRegistrationChoices,
   canClimberSelfScoreQualifier,
   canRegisterDuringCompetition,
@@ -250,6 +251,188 @@ describe("competition normalization", () => {
 
     expect(competition.schedule_blocks[0]?.round_id).toBe("round-qualifier");
     expect(competition.rounds?.[0]?.id).toBe("round-qualifier");
+  });
+
+  it("allows semifinals to remain qualifier-style score-bearing rounds", () => {
+    const competition = normalizeCompetition(
+      {
+        ...DEFAULT_COMPETITION,
+        id: "comp-semifinal",
+        slug: "comp-semifinal",
+        name: "Semifinal Ready",
+        format: "flash_format",
+      },
+      [],
+      [],
+      [
+        {
+          id: "round-qualifier",
+          competition_id: "comp-semifinal",
+          round_number: 1,
+          sort_order: 1,
+          name: "Qualifier",
+          round_type: "qualifier",
+          format: "flash_format",
+          status: "closed",
+          runtime_phase: "qualifier_open",
+          is_enabled: true,
+          is_active: false,
+          activated_at: null,
+          problem_count: 5,
+          counting_climbs: 5,
+          finals_cutoff: 6,
+          eligible_category_ids: [],
+          advancement_source_round_id: null,
+          advancement_cutoff: null,
+          scoring_bucket: "qualifier",
+          scoring_config: {},
+          started_at: null,
+          closed_at: null,
+        },
+        {
+          id: "round-semifinal",
+          competition_id: "comp-semifinal",
+          round_number: 2,
+          sort_order: 2,
+          name: "Semifinal",
+          round_type: "semifinal",
+          format: "flash_format",
+          status: "active",
+          runtime_phase: "qualifier_open",
+          is_enabled: true,
+          is_active: true,
+          activated_at: null,
+          problem_count: 4,
+          counting_climbs: 4,
+          finals_cutoff: null,
+          eligible_category_ids: [],
+          advancement_source_round_id: "round-qualifier",
+          advancement_cutoff: 6,
+          scoring_bucket: "qualifier",
+          scoring_config: {},
+          started_at: null,
+          closed_at: null,
+        },
+      ]
+    );
+
+    expect(competition.rounds?.[1]?.scoring_bucket).toBe("qualifier");
+    expect(competition.rounds?.[1]?.is_active).toBe(true);
+  });
+
+  it("builds qualifier leaderboards from the selected round only", () => {
+    const competition = normalizeCompetition(
+      {
+        ...DEFAULT_COMPETITION,
+        id: "comp-round-leaderboard",
+        slug: "comp-round-leaderboard",
+        name: "Round Scoped",
+        format: "flash_format",
+      },
+      [],
+      [],
+      [
+        {
+          id: "round-qualifier",
+          competition_id: "comp-round-leaderboard",
+          round_number: 1,
+          sort_order: 1,
+          name: "Qualifier",
+          round_type: "qualifier",
+          format: "flash_format",
+          status: "closed",
+          runtime_phase: "qualifier_open",
+          is_enabled: true,
+          is_active: false,
+          activated_at: null,
+          problem_count: 1,
+          counting_climbs: 1,
+          finals_cutoff: 6,
+          eligible_category_ids: [],
+          advancement_source_round_id: null,
+          advancement_cutoff: null,
+          scoring_bucket: "qualifier",
+          scoring_config: {},
+          started_at: null,
+          closed_at: null,
+        },
+        {
+          id: "round-semifinal",
+          competition_id: "comp-round-leaderboard",
+          round_number: 2,
+          sort_order: 2,
+          name: "Semifinal",
+          round_type: "semifinal",
+          format: "flash_format",
+          status: "active",
+          runtime_phase: "qualifier_open",
+          is_enabled: true,
+          is_active: true,
+          activated_at: null,
+          problem_count: 1,
+          counting_climbs: 1,
+          finals_cutoff: null,
+          eligible_category_ids: [],
+          advancement_source_round_id: "round-qualifier",
+          advancement_cutoff: 6,
+          scoring_bucket: "qualifier",
+          scoring_config: {},
+          started_at: null,
+          closed_at: null,
+        },
+      ]
+    );
+
+    const [qualifierRound, semifinalRound] = competition.rounds ?? [];
+    const leaderboard = buildQualifierLeaderboard(
+      [
+        {
+          id: "climber-1",
+          competition_id: competition.id,
+          name: "Ada",
+          climber_number: "12",
+          province: "NS",
+          category_id: "Women::Open",
+          gender_division: "Women",
+          age_group: "Open",
+          display_category: "Women / Open",
+          time_slot_id: null,
+          access_token: "token",
+          qualifier_attempts: [
+            {
+              competition_id: competition.id,
+              round_id: qualifierRound.id,
+              climber_id: "climber-1",
+              climb_number: 1,
+              attempt_count: 2,
+              zone: true,
+              topped: true,
+              attempts_to_top: 2,
+              attempts_to_zone: 1,
+              entered_by: "staff",
+            },
+            {
+              competition_id: competition.id,
+              round_id: semifinalRound.id,
+              climber_id: "climber-1",
+              climb_number: 1,
+              attempt_count: 1,
+              zone: true,
+              topped: true,
+              attempts_to_top: 1,
+              attempts_to_zone: 1,
+              entered_by: "staff",
+            },
+          ],
+          final_attempts: [],
+        },
+      ],
+      competition,
+      semifinalRound
+    );
+
+    expect(leaderboard[0]?.total_score).toBe(25);
+    expect(leaderboard[0]?.counting_attempt_total).toBe(1);
   });
 
   it("only offers climbing windows as registration assignments", () => {

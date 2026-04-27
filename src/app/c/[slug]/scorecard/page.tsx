@@ -18,9 +18,11 @@ import {
   buildCompetitionPath,
   canClimberSelfScoreQualifier,
   canUseLiveBoulderQueue,
+  filterAttemptsForRound,
   formatCompetitionPhaseLabel,
   formatFinalPoints,
   formatTimeRange,
+  getActiveQualifierStyleRound,
   getClimbs,
   getActiveQueueSessionBlock,
   getTimeSlotLabel,
@@ -30,7 +32,7 @@ import {
 type DraftState = Record<number, { attemptCount: number; topped: boolean }>;
 
 type DraftAction =
-  | { type: "initialize"; climber: ClimberWithAttempts | null; totalClimbs: number }
+  | { type: "initialize"; climber: ClimberWithAttempts | null; totalClimbs: number; roundId: string | null }
   | { type: "update"; climbNumber: number; patch: Partial<{ attemptCount: number; topped: boolean }> };
 
 function draftReducer(state: DraftState, action: DraftAction): DraftState {
@@ -42,7 +44,9 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
 
       const next: DraftState = {};
       getClimbs(action.totalClimbs).forEach((climb) => {
-        const attempt = action.climber?.qualifier_attempts.find((entry) => entry.climb_number === climb.number);
+        const attempt = filterAttemptsForRound(action.climber?.qualifier_attempts ?? [], action.roundId).find(
+          (entry) => entry.climb_number === climb.number
+        );
         next[climb.number] = {
           attemptCount: attempt?.attempt_count ?? 0,
           topped: attempt?.topped ?? false,
@@ -98,6 +102,15 @@ function ScorecardContent() {
   const [message, setMessage] = useState("");
   const [drafts, dispatch] = useReducer(draftReducer, {});
   const scorecardBasePath = useMemo(() => buildCompetitionPath(slug, "scorecard"), [slug]);
+  const activeQualifierRoundId =
+    snapshot?.activeQualifierRound?.id ??
+    getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.id ??
+    null;
+  const activeQualifierRoundName =
+    snapshot?.activeQualifierRound?.name ??
+    getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.name ??
+    "Qualifier";
+  const activeQualifierProblemCount = snapshot?.activeQualifierRound?.problem_count ?? snapshot?.competition.total_climbs ?? 0;
 
   const redirectToJudge = useCallback(() => {
     const query = legacyClimberId
@@ -125,7 +138,8 @@ function ScorecardContent() {
       dispatch({
         type: "initialize",
         climber: nextClimberLookup?.climber ?? null,
-        totalClimbs: nextSnapshot.competition.total_climbs,
+        totalClimbs: nextSnapshot.activeQualifierRound?.problem_count ?? nextSnapshot.competition.total_climbs,
+        roundId: nextSnapshot.activeQualifierRound?.id ?? null,
       });
     }
   }, [slug, token]);
@@ -224,7 +238,7 @@ function ScorecardContent() {
 
     return (
       qualifierEntry?.all_climbs ??
-      getClimbs(snapshot.competition.total_climbs).map((climb) => ({
+      getClimbs(activeQualifierProblemCount).map((climb) => ({
         climb_number: climb.number,
         zone: false,
         topped: false,
@@ -237,7 +251,7 @@ function ScorecardContent() {
         counting: false,
       }))
     );
-  }, [qualifierEntry?.all_climbs, snapshot]);
+  }, [activeQualifierProblemCount, qualifierEntry?.all_climbs, snapshot]);
   const queueByClimb = useMemo(() => {
     const grouped = new Map<number, CompetitionSnapshot["boulderQueue"]>();
     snapshot?.boulderQueue.forEach((entry) => {
@@ -247,6 +261,19 @@ function ScorecardContent() {
     });
     return grouped;
   }, [snapshot]);
+
+  useEffect(() => {
+    if (!snapshot || !climber) {
+      return;
+    }
+
+    dispatch({
+      type: "initialize",
+      climber,
+      totalClimbs: activeQualifierProblemCount,
+      roundId: activeQualifierRoundId,
+    });
+  }, [activeQualifierProblemCount, activeQualifierRoundId, climber, snapshot]);
 
   const saveQualifier = async (climbNumber: number) => {
     if (!snapshot) {
@@ -378,7 +405,7 @@ function ScorecardContent() {
                 <span className="results-chip">Private scorecard</span>
               </div>
               <div className="mt-6 flex flex-wrap gap-2">
-                <Link href={scorecardBasePath} className={`results-secondary-button w-full sm:w-auto ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>Qualifier</Link>
+                <Link href={scorecardBasePath} className={`results-secondary-button w-full sm:w-auto ${stage === "qualifier" ? "results-secondary-button-active" : ""}`}>{activeQualifierRoundName}</Link>
                 <Link href={`${scorecardBasePath}?stage=finals`} className={`results-secondary-button w-full sm:w-auto ${stage === "finals" ? "results-secondary-button-active" : ""}`}>Finals</Link>
               </div>
             </div>
@@ -399,7 +426,7 @@ function ScorecardContent() {
                         </div>
                       </>
                     )
-                    : "No qualifier score recorded yet."}
+                    : `No ${activeQualifierRoundName.toLowerCase()} score recorded yet.`}
                 </div>
               ) : (
                 <div className="mt-4 text-sm text-slate-600">
@@ -416,9 +443,9 @@ function ScorecardContent() {
           <section className="results-card">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="results-kicker">Qualifier scorecard</div>
+                <div className="results-kicker">{activeQualifierRoundName} scorecard</div>
                 <h2 className="mt-2 text-3xl font-semibold text-slate-950">
-                  {qualifierOpen ? "Record your attempts" : "Read-only qualifier scorecard"}
+                  {qualifierOpen ? "Record your attempts" : `Read-only ${activeQualifierRoundName.toLowerCase()} scorecard`}
                 </h2>
               </div>
               <div className="results-chip">{qualifierOpen ? "Scoring open" : "Scoring closed"}</div>
@@ -519,7 +546,7 @@ function ScorecardContent() {
 
             <div className={`${qualifierOpen ? "" : "mt-5"} grid gap-4 xl:grid-cols-2`}>
               {qualifierOpen
-                ? getClimbs(snapshot.competition.total_climbs).map((climb) => {
+                  ? getClimbs(activeQualifierProblemCount).map((climb) => {
                     const draft = drafts[climb.number] ?? { attemptCount: 0, topped: false };
                     const queueEntries = queueByClimb.get(climb.number) ?? [];
                     const queuedHere = currentQueueEntry?.climb_number === climb.number;
