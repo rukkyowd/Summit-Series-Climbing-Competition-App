@@ -749,18 +749,9 @@ function projectLegacyCompetitionFields(
 async function persistCompetitionRounds(competition: Competition, rounds: CompetitionRound[]) {
   const normalizedRounds = normalizeCompetitionRounds(rounds, competition);
   assertValidCompetitionRounds(normalizedRounds);
-
-  const { error: deleteError } = await supabase.from("competition_rounds").delete().eq("competition_id", competition.id);
-  if (deleteError) {
-    throw new Error(deleteError.message);
-  }
-
-  if (!normalizedRounds.length) {
-    return;
-  }
-
-  const { error: insertError } = await supabase.from("competition_rounds").insert(
-    normalizedRounds.map((round, index) => ({
+  const { error } = await supabase.rpc("save_competition_rounds", {
+    p_competition_id: competition.id,
+    p_rounds: normalizedRounds.map((round, index) => ({
       id: round.id || createCompetitionRoundId(),
       competition_id: competition.id,
       round_number: round.round_number ?? index + 1,
@@ -783,11 +774,11 @@ async function persistCompetitionRounds(competition: Competition, rounds: Compet
       scoring_config: round.scoring_config,
       started_at: round.started_at,
       closed_at: round.closed_at,
-    }))
-  );
+    })),
+  });
 
-  if (insertError) {
-    throw new Error(insertError.message);
+  if (error) {
+    throw new Error(error.message);
   }
 }
 
