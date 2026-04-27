@@ -29,6 +29,7 @@ import {
   isFinalsStage,
   type ClimberWithAttempts,
   type FinalAttempt,
+  type QualifierAttempt,
 } from "@/lib/scoring";
 
 type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
@@ -38,6 +39,30 @@ type FinalsDraftState = Record<string, FinalsDraft>;
 
 const EMPTY_QUALIFIER_DRAFT: QualifierDraft = { attemptCount: 0, topped: false, zone: false };
 const EMPTY_FINALS_DRAFT: FinalsDraft = { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
+
+function mergeQualifierAttempt(attempts: QualifierAttempt[], nextAttempt: QualifierAttempt) {
+  const remaining = attempts.filter(
+    (attempt) =>
+      !(
+        attempt.round_id === nextAttempt.round_id &&
+        attempt.climb_number === nextAttempt.climb_number
+      )
+  );
+
+  return [...remaining, nextAttempt].sort((left, right) => left.climb_number - right.climb_number);
+}
+
+function mergeFinalAttempt(attempts: FinalAttempt[], nextAttempt: FinalAttempt) {
+  const remaining = attempts.filter(
+    (attempt) =>
+      !(
+        attempt.round_id === nextAttempt.round_id &&
+        attempt.climb_number === nextAttempt.climb_number
+      )
+  );
+
+  return [...remaining, nextAttempt].sort((left, right) => left.climb_number - right.climb_number);
+}
 
 function getQualifierDraftFromAttempt(attempt?: { attempt_count: number; topped: boolean; zone?: boolean | null } | null): QualifierDraft {
   const normalized = normalizeQualifierAttemptInput({
@@ -562,17 +587,28 @@ export default function StaffJudgePage() {
     }
   }, [activeQualifierProblemCount, selectedBoulder]);
 
-  const updateClimberInSnapshot = async (climberId: string, updater: (nextClimbers: ClimberWithAttempts[]) => CompetitionSnapshot) => {
+  const updateClimberInSnapshot = async (
+    climberId: string,
+    updater: (nextClimbers: ClimberWithAttempts[]) => CompetitionSnapshot,
+    fallbackUpdater?: (climber: ClimberWithAttempts) => ClimberWithAttempts
+  ) => {
     if (!snapshot) {
       return;
     }
 
     const refreshed = await getClimberWithAttempts(snapshot.competition.id, climberId);
-    if (!refreshed) {
-      return;
-    }
+    const nextClimbers = snapshot.climbers.map((entry) => {
+      if (entry.id !== climberId) {
+        return entry;
+      }
 
-    const nextClimbers = snapshot.climbers.map((entry) => (entry.id === climberId ? refreshed : entry));
+      if (refreshed) {
+        return refreshed;
+      }
+
+      return fallbackUpdater ? fallbackUpdater(entry) : entry;
+    });
+
     setSnapshot(updater(nextClimbers));
   };
 
@@ -612,7 +648,7 @@ export default function StaffJudgePage() {
     setError("");
     setMessage("");
     try {
-      await updateQualifierAttemptByStaff(
+      const savedAttempt = await updateQualifierAttemptByStaff(
         snapshot.competition.id,
         climberId,
         selectedBoulder,
@@ -624,11 +660,18 @@ export default function StaffJudgePage() {
           attemptsToZone: normalized.attemptsToZone,
         }
       );
-      await updateClimberInSnapshot(climberId, (nextClimbers) => ({
-        ...snapshot,
-        climbers: nextClimbers,
-        qualifierLeaderboard: buildQualifierLeaderboard(nextClimbers, snapshot.competition, snapshot.activeQualifierRound ?? null),
-      }));
+      await updateClimberInSnapshot(
+        climberId,
+        (nextClimbers) => ({
+          ...snapshot,
+          climbers: nextClimbers,
+          qualifierLeaderboard: buildQualifierLeaderboard(nextClimbers, snapshot.competition, snapshot.activeQualifierRound ?? null),
+        }),
+        (climber) => ({
+          ...climber,
+          qualifier_attempts: mergeQualifierAttempt(climber.qualifier_attempts, savedAttempt),
+        })
+      );
       setMessage(`Saved qualifier score for boulder ${selectedBoulder}.`);
     } catch (nextError) {
       if (shouldQueueFailedSave(nextError)) {
@@ -681,7 +724,7 @@ export default function StaffJudgePage() {
     setMessage("");
 
     try {
-      await updateFinalAttempt(
+      const savedAttempt = await updateFinalAttempt(
         snapshot.competition.id,
         selectedCell.climberId,
         selectedCell.climbNumber,
@@ -690,16 +733,23 @@ export default function StaffJudgePage() {
         normalized.attemptsToTop,
         normalized.attemptsToZone
       );
-      await updateClimberInSnapshot(selectedCell.climberId, (nextClimbers) => ({
-        ...snapshot,
-        climbers: nextClimbers,
-        finalsLeaderboard: buildFinalsLeaderboard(
-          nextClimbers,
-          snapshot.finalists,
-          snapshot.competition,
-          snapshot.activeFinalsRound ?? null
-        ),
-      }));
+      await updateClimberInSnapshot(
+        selectedCell.climberId,
+        (nextClimbers) => ({
+          ...snapshot,
+          climbers: nextClimbers,
+          finalsLeaderboard: buildFinalsLeaderboard(
+            nextClimbers,
+            snapshot.finalists,
+            snapshot.competition,
+            snapshot.activeFinalsRound ?? null
+          ),
+        }),
+        (climber) => ({
+          ...climber,
+          final_attempts: mergeFinalAttempt(climber.final_attempts, savedAttempt),
+        })
+      );
       setMessage(`Saved finals score for boulder ${selectedCell.climbNumber}.`);
     } catch (nextError) {
       if (shouldQueueFailedSave(nextError)) {
