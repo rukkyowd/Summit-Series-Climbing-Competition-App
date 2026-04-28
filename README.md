@@ -50,22 +50,38 @@ Examples:
 npm install
 ```
 
-2. Create `.env.local` with your Supabase keys
+2. Create `.env.local` from `.env.example` and add your Supabase values
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 ```
 
-3. Apply the database schema in Supabase SQL Editor
+3. Choose one database setup path
 
-- [supabase-schema.sql](/Users/Paul/Desktop/Scorecard/supabase-schema.sql)
+Recommended for a brand-new Supabase project:
+
+- open the Supabase SQL Editor
+- run [supabase-schema.sql](/Users/Paul/Desktop/Scorecard/supabase-schema.sql)
+- optionally run [supabase-seed.sql](/Users/Paul/Desktop/Scorecard/supabase-seed.sql) for sample data
+
+Recommended if you want the repo to stay migration-driven from day one:
+
+- follow [supabase/README.md](/Users/Paul/Desktop/Scorecard/supabase/README.md)
+- use the baseline migration plus `supabase db push`
+
+Do not apply both the manual schema file and the full migration history to the same fresh database unless you intentionally know why.
 
 4. Start the app
 
 ```bash
 npm run dev
 ```
+
+5. Verify the app
+
+- open `/` to confirm competitions load
+- open `/staff/login` to confirm staff auth renders
 
 ## Database notes
 
@@ -98,6 +114,7 @@ Manual SQL files for testing live at the repo root and in [sql/spring-send](/Use
 ## Quality checks
 
 ```bash
+npm run test
 npm run lint
 npm run build
 ```

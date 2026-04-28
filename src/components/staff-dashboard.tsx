@@ -400,6 +400,39 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
   },
 ];
 
+const SETUP_WIZARD_STEPS = [
+  {
+    id: "basics",
+    shortLabel: "Basics",
+    title: "Event basics",
+    description: "Name the event, confirm the slug, and set the key event details.",
+  },
+  {
+    id: "categories",
+    shortLabel: "Categories",
+    title: "Categories",
+    description: "Choose the age groups that can register and optionally advance to finals.",
+  },
+  {
+    id: "presets",
+    shortLabel: "Presets",
+    title: "Event setup",
+    description: "Start from a guided format template instead of building every round by hand.",
+  },
+  {
+    id: "schedule",
+    shortLabel: "Schedule",
+    title: "Day schedule",
+    description: "Map the event day into blocks, waves, and logistics windows.",
+  },
+  {
+    id: "stages",
+    shortLabel: "Stages",
+    title: "Competition stages",
+    description: "Fine-tune rounds, scoring buckets, problem counts, and advancement cutoffs.",
+  },
+] as const;
+
 function getDefaultRoundIdForSchedulePhase(
   competition: Pick<Competition, "rounds">,
   phaseType: SchedulePhaseType,
@@ -546,6 +579,7 @@ export default function StaffDashboard({
   const [roundPlanNeedsReset, setRoundPlanNeedsReset] = useState(false);
   const [showAdvancedStageSettings, setShowAdvancedStageSettings] = useState(false);
   const [expandedRoundId, setExpandedRoundId] = useState<string | null>(null);
+  const [currentSetupStep, setCurrentSetupStep] = useState(0);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -659,6 +693,29 @@ export default function StaffDashboard({
     () => allSummaries.find((entry) => entry.competition.id === selectedCompetitionId) ?? null,
     [allSummaries, selectedCompetitionId]
   );
+  useEffect(() => {
+    setCurrentSetupStep(0);
+  }, [draft?.id]);
+
+  const setupStepCompletion = useMemo(() => {
+    if (!draft) {
+      return SETUP_WIZARD_STEPS.map(() => false);
+    }
+
+    return [
+      Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()),
+      draft.qualifier_eligible_age_groups.length > 0,
+      (draft.rounds?.length ?? 0) > 0,
+      draft.schedule_blocks.length > 0,
+      (draft.rounds?.length ?? 0) > 0 &&
+        draft.rounds.every((round) => round.name.trim().length > 0 && round.problem_count > 0),
+    ];
+  }, [draft]);
+  const setupProgressCount = setupStepCompletion.filter(Boolean).length;
+  const setupProgressPercent = Math.round((setupProgressCount / SETUP_WIZARD_STEPS.length) * 100);
+  const activeSetupStep = SETUP_WIZARD_STEPS[currentSetupStep] ?? SETUP_WIZARD_STEPS[0];
+  const isFirstSetupStep = currentSetupStep === 0;
+  const isLastSetupStep = currentSetupStep === SETUP_WIZARD_STEPS.length - 1;
 
   useEffect(() => {
     if (!selectedSummary) {
@@ -2005,17 +2062,57 @@ export default function StaffDashboard({
                     </div>
                   </div>
 
-                <div id="demo-run-event" className="results-workspace-card">
-                  <div className="results-kicker">Setup flow</div>
-                  <div className="mt-2 text-sm text-slate-600">
-                    Follow this setup from top to bottom: event basics, categories, event setup, day schedule, then competition stages.
+                <div id="demo-run-event" className="results-workspace-card space-y-6">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="results-kicker">Setup progress</div>
+                      <div className="mt-2 text-2xl font-semibold text-slate-950">
+                        Step {currentSetupStep + 1} of {SETUP_WIZARD_STEPS.length}: {activeSetupStep.title}
+                      </div>
+                      <div className="mt-2 max-w-3xl text-sm text-slate-600">
+                        {activeSetupStep.description}
+                      </div>
+                    </div>
+                    <div className="min-w-[13rem] rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Progress</div>
+                      <div className="mt-2 text-2xl font-semibold text-slate-950">{setupProgressPercent}%</div>
+                      <div className="mt-1 text-sm text-slate-600">
+                        {setupProgressCount} of {SETUP_WIZARD_STEPS.length} steps have the key details filled in.
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
-                    <span className="results-chip">1 - Event basics</span>
-                    <span className="results-chip">2 - Categories</span>
-                    <span className="results-chip">3 - Event setup</span>
-                    <span className="results-chip">4 - Day schedule</span>
-                    <span className="results-chip">5 - Competition stages</span>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${setupProgressPercent}%` }} />
+                  </div>
+                  <div className="grid gap-3 lg:grid-cols-5">
+                    {SETUP_WIZARD_STEPS.map((step, index) => {
+                      const isActive = index === currentSetupStep;
+                      const isComplete = setupStepCompletion[index];
+
+                      return (
+                        <button
+                          key={step.id}
+                          type="button"
+                          onClick={() => setCurrentSetupStep(index)}
+                          aria-current={isActive ? "step" : undefined}
+                          className={`rounded-[1.3rem] border px-4 py-4 text-left transition ${
+                            isActive
+                              ? "border-slate-950 bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
+                              : isComplete
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-950 hover:border-emerald-300"
+                                : "border-slate-200 bg-white text-slate-900 hover:border-sky-300 hover:bg-sky-50/50"
+                          }`}
+                        >
+                          <div className={`text-xs font-semibold uppercase tracking-[0.22em] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-700" : "text-slate-500"}`}>
+                            Step {index + 1}
+                          </div>
+                          <div className="mt-2 text-lg font-semibold">{step.shortLabel}</div>
+                          <div className={`mt-2 text-sm leading-6 ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
+                            {step.description}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -2257,6 +2354,8 @@ export default function StaffDashboard({
                   ) : null}
                 </div>
 
+                {currentSetupStep === 0 ? (
+                  <>
                 <div className="results-workspace-card">
                   <div className="results-kicker">Step 1 - Event basics</div>
                   <div className="mt-2 text-sm text-slate-600">
@@ -2446,7 +2545,10 @@ export default function StaffDashboard({
                     </button>
                   </div>
                 </div>
+                  </>
+                ) : null}
 
+                {currentSetupStep === 1 ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="results-workspace-card">
                     <div className="results-kicker">Step 2 - Choose qualifier categories</div>
@@ -2490,7 +2592,9 @@ export default function StaffDashboard({
                     </div>
                   ) : null}
                 </div>
+                ) : null}
 
+                {currentSetupStep === 2 ? (
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -2522,7 +2626,9 @@ export default function StaffDashboard({
                     real climbing sessions already point at the right round.
                   </div>
                 </div>
+                ) : null}
 
+                {currentSetupStep === 3 ? (
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -2803,8 +2909,41 @@ export default function StaffDashboard({
                     )}
                   </div>
                 </div>
+                ) : null}
 
                 </fieldset>
+
+                <div className="results-workspace-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="results-kicker">Wizard navigation</div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        Move one step at a time, or jump directly from the progress cards above.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentSetupStep((current) => Math.max(0, current - 1))}
+                        disabled={isFirstSetupStep}
+                        className="results-secondary-button"
+                      >
+                        Previous step
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentSetupStep((current) => Math.min(SETUP_WIZARD_STEPS.length - 1, current + 1))}
+                        disabled={isLastSetupStep}
+                        className="results-primary-button"
+                      >
+                        Next step
+                      </button>
+                      <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-secondary-button">
+                        {isPending ? "Saving..." : "Save competition"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
                 <div className="results-workspace-card">
                   <div className="results-kicker">After setup - Share links</div>
@@ -2827,6 +2966,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
+                {currentSetupStep === 4 ? (
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {draft.rounds?.length ? (
                   <div className="results-workspace-card">
@@ -3130,6 +3270,7 @@ export default function StaffDashboard({
                   })} disabled={!canEditSetup} className="results-danger-button">Delete event</button>
                 </div>
                 </fieldset>
+                ) : null}
 
                 {snapshot && (!demoMode || demoDataExportAllowed) ? (
                   <div className="results-workspace-card">
