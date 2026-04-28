@@ -74,7 +74,7 @@ export default function SiteHeader({
     <>
       <header className={`app-header ${light ? "app-header-light" : ""}`}>
         <div className="flex flex-col gap-4 text-left lg:flex-row lg:items-center lg:justify-between">
-          <Link href="/" className="results-brand-lockup">
+          <Link href="/" className="results-brand-lockup max-w-full">
             <div className={`results-brand-mark ${light ? "" : "border-white/20"}`}>
               <Image src="/brand-logo.png" alt="Summit Series logo" width={72} height={72} className="results-brand-logo" />
             </div>
@@ -99,7 +99,7 @@ export default function SiteHeader({
                     <Link
                       key={item.href}
                       href={href}
-                      className={`nav-pill ${isActive ? "nav-pill-active" : ""} ${light ? "nav-pill-light" : ""}`}
+                      className={`nav-pill shrink-0 ${isActive ? "nav-pill-active" : ""} ${light ? "nav-pill-light" : ""}`}
                     >
                       {item.label === "Scorecard" && hasSavedScorecard ? "My Scorecard" : item.label}
                     </Link>

@@ -237,7 +237,7 @@ export default function CompetitionOverviewPage() {
                 <>
                   <section className="results-card">
                     <div className="results-kicker">Finals results</div>
-                    <h2 className="mt-2 text-3xl font-semibold text-slate-950">Final standings</h2>
+                    <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">Final standings</h2>
                     <div className="mt-3 text-sm text-slate-600">
                       Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
                     </div>
@@ -269,7 +269,7 @@ export default function CompetitionOverviewPage() {
 
             <section className="results-card">
               <div className="results-kicker">{activeScrambleSession ? "Active scramble session" : "Live schedule"}</div>
-              <h2 className="mt-2 text-3xl font-semibold text-slate-950">
+              <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">
                 {activeBlock ? activeBlock.label : "No block live"}
               </h2>
 
@@ -339,8 +339,8 @@ export default function CompetitionOverviewPage() {
                             {nextBlock ? (
                               <div className="results-live-stage__next">
                                 <div className="results-kicker">Up Next</div>
-                                <div className="results-live-stage__next-label">{nextBlock.label}</div>
-                                <div className="results-live-stage__next-time">
+                                <div className="results-live-stage__next-label break-words">{nextBlock.label}</div>
+                                <div className="results-live-stage__next-time break-words">
                                   {formatTimeRange(nextBlock.start_time, nextBlock.end_time)}
                                 </div>
                               </div>
@@ -362,9 +362,9 @@ export default function CompetitionOverviewPage() {
                           .join(" ")}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="text-lg font-semibold text-slate-950">{block.label}</div>
-                            <div className="mt-1 text-sm text-slate-600">
+                          <div className="min-w-0">
+                            <div className="break-words text-lg font-semibold text-slate-950">{block.label}</div>
+                            <div className="mt-1 break-words text-sm leading-relaxed text-slate-600">
                               {formatTimeRange(block.start_time, block.end_time)}
                             </div>
                             {blockAgeGroups.length ? (
@@ -410,12 +410,12 @@ export default function CompetitionOverviewPage() {
                     {Array.from(queueByClimb.entries())
                       .sort(([left], [right]) => left - right)
                       .map(([climbNumber, entries]) => (
-                        <div key={climbNumber} className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+                        <div key={climbNumber} className="min-w-0 rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
                           <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-slate-950">Boulder {climbNumber}</div>
                             <div className="results-chip">{entries.length} checked in</div>
                           </div>
-                          <div className="mt-3 text-sm text-slate-600">
+                          <div className="mt-3 break-words text-sm leading-relaxed text-slate-600">
                             {entries.length <= 1
                               ? "Open wall. Little to no wait right now."
                               : entries.length <= 3
@@ -432,8 +432,8 @@ export default function CompetitionOverviewPage() {
             <section id="start-list" className="results-card scroll-mt-24">
               <div>
                 <div className="results-kicker">Start list</div>
-                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Registered athletes</h2>
-                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">Registered athletes</h2>
+                <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600">
                   See who is entered, which category they are in, and which session or wave they are assigned to.
                 </p>
               </div>
@@ -443,7 +443,7 @@ export default function CompetitionOverviewPage() {
                   No athletes have registered yet.
                 </div>
               ) : (
-                <div className="mt-6 hidden overflow-x-auto md:block">
+                <div className="results-data-scroll mt-6 hidden md:block">
                   <div className="min-w-[920px]">
                     <div className="grid grid-cols-[1.6fr_1fr_1.2fr_0.8fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                       <div>Athlete</div>
@@ -453,8 +453,8 @@ export default function CompetitionOverviewPage() {
                     </div>
                     {sortedStartList.map((climber) => (
                       <div key={climber.id} className="grid grid-cols-[1.6fr_1fr_1.2fr_0.8fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
-                        <div>
-                          <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
+                        <div className="min-w-0">
+                          <div className="break-words text-lg font-semibold text-slate-950">{climber.name}</div>
                           <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{climber.climber_number}</div>
                         </div>
                         <div>{climber.display_category}</div>
@@ -470,8 +470,8 @@ export default function CompetitionOverviewPage() {
                 <div className="mt-6 space-y-3 md:hidden">
                   {sortedStartList.map((climber) => (
                     <div key={climber.id} className="results-meta-card">
-                      <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
-                      <div className="mt-1 text-sm text-slate-600">
+                      <div className="break-words text-lg font-semibold text-slate-950">{climber.name}</div>
+                      <div className="mt-1 break-words text-sm leading-relaxed text-slate-600">
                         #{climber.climber_number} | {climber.province}
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -487,8 +487,8 @@ export default function CompetitionOverviewPage() {
             <section className="results-card">
               <div>
                 <div className="results-kicker">Categories</div>
-                <h2 className="mt-2 text-3xl font-semibold text-slate-950">Competition categories</h2>
-                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">Competition categories</h2>
+                <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600">
                   Public standings stay separate by category. Open the rankings page for the current results.
                 </p>
               </div>

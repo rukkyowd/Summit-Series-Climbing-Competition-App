@@ -146,16 +146,16 @@ export default function HomePage() {
 
         <section className="results-card">
           <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
-            <div>
+            <div className="min-w-0">
               <div className="results-kicker">Events</div>
-              <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
+              <h1 className="results-editorial-title mt-3 max-w-4xl break-words text-4xl font-semibold text-slate-950 sm:text-6xl">
                 Find your competition fast.
               </h1>
-              <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
+              <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg sm:leading-8">
                 Public routes now stay competition-first. Choose the event you are climbing in to open registration, scorecards, rankings, and the live display.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-1">
               <Link href="/staff/demo" className="results-secondary-button w-full">
                 Preview the demo dashboard
               </Link>
@@ -170,9 +170,9 @@ export default function HomePage() {
           {featured ? (
             <div className="results-feature mt-6">
               <div className="grid gap-5 lg:grid-cols-[1fr_22rem] lg:items-end">
-                <div className="max-w-2xl">
+                <div className="min-w-0 max-w-2xl">
                   <div className="results-kicker text-white/80">Featured event</div>
-                  <h2 className="results-editorial-title mt-3 text-4xl font-semibold text-white sm:text-5xl">
+                  <h2 className="results-editorial-title mt-3 break-words text-4xl font-semibold text-white sm:text-5xl">
                     {featured.competition.name}
                   </h2>
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -187,7 +187,7 @@ export default function HomePage() {
                     </span>
                   </div>
                 </div>
-                <div className="results-feature-card">
+                <div className="results-feature-card min-w-0">
                   {featuredLiveNow ? (
                     <>
                       <span className="results-live-indicator results-live-indicator--featured" aria-hidden="true">
@@ -199,10 +199,10 @@ export default function HomePage() {
                   <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Featured status
                   </div>
-                  <div className="mt-3 text-2xl font-semibold text-slate-950">{featuredLifecycle}</div>
-                  <div className="mt-4 space-y-2 text-sm text-slate-600">
-                    <div>{featured.competition.location_name || "Location TBD"}</div>
-                    <div>{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
+                  <div className="mt-3 break-words text-2xl font-semibold text-slate-950">{featuredLifecycle}</div>
+                  <div className="mt-4 space-y-2 text-sm leading-relaxed text-slate-600">
+                    <div className="break-words">{featured.competition.location_name || "Location TBD"}</div>
+                    <div className="break-words">{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
                     <div>Open the event to register, score, follow standings, or cast to display.</div>
                   </div>
                   <Link href={buildCompetitionPath(featured.competition.slug)} className="results-secondary-button mt-5 w-full">
@@ -238,16 +238,16 @@ export default function HomePage() {
 
         <section className="results-card">
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-            <div>
+            <div className="min-w-0">
               <div className="results-kicker">Official calendar</div>
-              <h2 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-5xl">
+              <h2 className="results-editorial-title mt-3 max-w-4xl break-words text-4xl font-semibold text-slate-950 sm:text-5xl">
                 Official bouldering calendar.
               </h2>
-              <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
+              <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg sm:leading-8">
                 Read-only events pulled from official World Climbing and Climbing Escalade Canada calendars. These are source-linked references, not in-app scoring competitions.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-1">
               <div className="results-meta-card">
                 <div className="results-kicker">Sources</div>
                 <div className="mt-3 text-lg font-semibold text-slate-950">World Climbing + CEC</div>
@@ -267,48 +267,48 @@ export default function HomePage() {
 
               return (
                 <div key={event.id} className="results-list-row">
-                <div>
-                  <div className="text-xl font-semibold text-slate-950 sm:text-2xl">{event.title}</div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
-                    <span>{event.series}</span>
-                    <span>{event.disciplines}</span>
-                    <span className="results-chip">{event.source_name}</span>
-                  </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 md:contents">
-                  <div>
-                    <div className="results-kicker md:hidden">Location</div>
-                    <div className="text-sm text-slate-600">{event.location}</div>
-                  </div>
-                  <div>
-                    <div className="results-kicker md:hidden">Source</div>
-                    {sourceUrl ? (
-                      <a
-                        href={sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-sky-700 underline-offset-4 hover:underline"
-                      >
-                        Official event page
-                      </a>
-                    ) : (
-                      <span className="text-sm text-slate-500">Official link unavailable</span>
-                    )}
-                  </div>
-                  <div className="md:justify-self-end">
-                    <div className="results-kicker md:hidden">Date</div>
-                    <div className="flex flex-col items-start gap-3 pt-2 md:items-end md:pt-0">
-                      <div className="text-sm text-slate-600">
-                        {formatDateRange(event.start_date, event.end_date)}
-                      </div>
-                      {isStaffRole(profile?.role) ? (
-                        <Link href={buildOfficialImportHref(event)} className="results-secondary-button">
-                          Import to dashboard
-                        </Link>
-                      ) : null}
+                  <div className="min-w-0">
+                    <div className="break-words text-xl font-semibold text-slate-950 sm:text-2xl">{event.title}</div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-600">
+                      <span>{event.series}</span>
+                      <span>{event.disciplines}</span>
+                      <span className="results-chip">{event.source_name}</span>
                     </div>
                   </div>
-                </div>
+                  <div className="grid gap-3 sm:grid-cols-2 md:contents">
+                    <div className="min-w-0">
+                      <div className="results-kicker md:hidden">Location</div>
+                      <div className="break-words text-sm leading-relaxed text-slate-600">{event.location}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="results-kicker md:hidden">Source</div>
+                      {sourceUrl ? (
+                        <a
+                          href={sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-sky-700 underline-offset-4 hover:underline"
+                        >
+                          Official event page
+                        </a>
+                      ) : (
+                        <span className="text-sm text-slate-500">Official link unavailable</span>
+                      )}
+                    </div>
+                    <div className="min-w-0 md:justify-self-end">
+                      <div className="results-kicker md:hidden">Date</div>
+                      <div className="flex flex-col items-start gap-3 pt-2 md:items-end md:pt-0">
+                        <div className="break-words text-sm leading-relaxed text-slate-600">
+                          {formatDateRange(event.start_date, event.end_date)}
+                        </div>
+                        {isStaffRole(profile?.role) ? (
+                          <Link href={buildOfficialImportHref(event)} className="results-secondary-button">
+                            Import to dashboard
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             })}

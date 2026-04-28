@@ -122,7 +122,7 @@ export default function CompetitionLeaderboardPage() {
               <>
                 <section className="results-card">
                   <div className="results-kicker">Finals</div>
-                  <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">Finals standings</h1>
+                  <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Finals standings</h1>
                   <div className="mt-3 text-sm text-slate-600">Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}</div>
                   <div className="mt-2 text-sm text-slate-600">Score column shows finals points.</div>
                   <div className="finals-category-picker mt-5">
@@ -141,7 +141,7 @@ export default function CompetitionLeaderboardPage() {
           ) : (
             <section className="results-card">
               <div className="results-kicker">{activeQualifierRoundName} standings</div>
-              <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">
+              <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
                 {scrambleFormat ? "Live scramble standings" : `Live ${activeQualifierRoundName.toLowerCase()} rankings`}
               </h1>
               <div className="mt-3 text-sm text-slate-600">{qualifierScoreContextLabel}</div>
@@ -151,12 +151,14 @@ export default function CompetitionLeaderboardPage() {
                 </div>
               ) : null}
 
-              <div className="sticky top-20 z-20 mt-5 flex flex-wrap gap-2 bg-white/95 py-2 backdrop-blur sm:top-24">
-                {categories.map((category) => (
-                  <button key={category.id} type="button" onClick={() => setSelectedCategory(category.id)} className={selectedCategory === category.id ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
-                    {category.display_name}
-                  </button>
-                ))}
+              <div className="sticky top-20 z-20 mt-5 w-full overflow-x-auto rounded-[1.4rem] border border-white/70 bg-white/80 px-3 py-3 shadow-[0_8px_30px_rgba(15,23,42,0.05)] backdrop-blur-xl sm:top-24">
+                <div className="flex min-w-max gap-2">
+                  {categories.map((category) => (
+                    <button key={category.id} type="button" onClick={() => setSelectedCategory(category.id)} className={selectedCategory === category.id ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
+                      {category.display_name}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {!qualifierRows.length ? (
@@ -169,12 +171,12 @@ export default function CompetitionLeaderboardPage() {
                 <>
                   <div className="mt-6 space-y-3 md:hidden">
                     {qualifierRows.map((entry) => (
-                      <div key={entry.climber_id} className="results-meta-card">
+                      <div key={entry.climber_id} className="results-meta-card min-w-0">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
+                          <div className="min-w-0">
                             <div className="results-kicker">Rank #{entry.category_rank}</div>
-                            <div className="mt-2 text-lg font-semibold text-slate-950">{entry.name}</div>
-                            <div className="mt-1 text-sm text-slate-600">
+                            <div className="mt-2 break-words text-lg font-semibold text-slate-950">{entry.name}</div>
+                            <div className="mt-1 break-words text-sm leading-relaxed text-slate-600">
                               #{entry.climber_number} | {entry.province}
                             </div>
                           </div>
@@ -194,7 +196,7 @@ export default function CompetitionLeaderboardPage() {
                     ))}
                   </div>
 
-                  <div className="mt-6 hidden overflow-x-auto md:block">
+                  <div className="results-data-scroll mt-6 hidden md:block">
                     <div className="results-table-scroll-hint">
                       <span>{qualifierScoreContextLabel}</span>
                       <span>Scroll sideways for the full standings table.</span>
@@ -211,8 +213,8 @@ export default function CompetitionLeaderboardPage() {
                       {qualifierRows.map((entry) => (
                         <div key={entry.climber_id} className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
                           <div className="text-xl font-semibold text-slate-950">{entry.category_rank}</div>
-                          <div>
-                            <div className="text-lg font-semibold text-slate-950">{entry.name}</div>
+                          <div className="min-w-0">
+                            <div className="break-words text-lg font-semibold text-slate-950">{entry.name}</div>
                             <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
                           </div>
                           <div>{entry.province}</div>

@@ -59,21 +59,21 @@ export default function FinalsResultsTable({
   return (
     <section className="results-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="results-kicker">Finals rankings</div>
-          <h2 className="results-editorial-title mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">{title}</h2>
+          <h2 className="results-editorial-title mt-2 break-words text-3xl font-semibold text-slate-950 sm:text-4xl">{title}</h2>
         </div>
         <div className="results-chip">2025 IFSC points</div>
       </div>
 
       <div className="mt-5 space-y-3 md:hidden">
         {rows.map((entry) => (
-          <div key={entry.climber_id} className="results-meta-card">
+          <div key={entry.climber_id} className="results-meta-card min-w-0">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <div className="results-kicker">Rank #{entry.category_rank}</div>
-                <div className="mt-2 text-xl font-semibold text-slate-950">{entry.name}</div>
-                <div className="mt-1 text-sm text-slate-600">
+                <div className="mt-2 break-words text-xl font-semibold text-slate-950">{entry.name}</div>
+                <div className="mt-1 break-words text-sm leading-relaxed text-slate-600">
                   {entry.province} | Qualifier #{entry.previous_round_rank}
                 </div>
               </div>
@@ -109,7 +109,7 @@ export default function FinalsResultsTable({
         ))}
       </div>
 
-      <div className="mt-5 hidden overflow-x-auto md:block">
+      <div className="results-data-scroll mt-5 hidden md:block">
         <div className="results-table-scroll-hint">
           <span>Score column shows finals points.</span>
           <span>Scroll sideways for the full finals table.</span>
@@ -133,8 +133,8 @@ export default function FinalsResultsTable({
             {rows.map((entry) => (
               <div key={entry.climber_id} className="grid finals-table-row items-center" style={desktopGridStyle}>
                 <div className="finals-rank">{entry.category_rank}</div>
-                <div>
-                  <div className="finals-athlete-name">{entry.name}</div>
+                <div className="min-w-0">
+                  <div className="finals-athlete-name break-words">{entry.name}</div>
                   <div className="finals-athlete-subline">
                     Qualifier #{entry.previous_round_rank}
                   </div>

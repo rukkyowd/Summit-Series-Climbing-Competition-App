@@ -67,7 +67,7 @@ export default function CompetitionHero({
       >
         <div className="results-hero__overlay">
           <div className="results-kicker">Competition</div>
-          <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
+          <h1 className="results-editorial-title mt-3 max-w-4xl break-words text-4xl font-semibold text-slate-950 sm:text-6xl">
             {competition.name}
           </h1>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -78,16 +78,16 @@ export default function CompetitionHero({
               {lifecycleLabel}
             </span>
           </div>
-          <div className="mt-5 text-sm font-medium text-slate-700">
+          <div className="mt-5 max-w-3xl text-sm font-medium leading-relaxed text-slate-700">
             Venue, dates, registration details, and official links in one place.
           </div>
         </div>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <div>
+        <div className="min-w-0">
           <div className="results-kicker">About</div>
-          <p className="results-soft-text mt-3 max-w-3xl text-[1.02rem] leading-7 sm:text-lg sm:leading-8">
+          <p className="results-soft-text mt-3 max-w-3xl break-words text-[1.02rem] leading-relaxed sm:text-lg sm:leading-8">
             {description || "Competition details will appear here once staff adds the event description."}
           </p>
 
@@ -139,18 +139,18 @@ export default function CompetitionHero({
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <div className="results-meta-card">
             <div className="results-kicker">Location</div>
-            <div className="mt-2 text-lg font-semibold text-slate-950">{competition.location_name || "Location TBD"}</div>
+            <div className="mt-2 break-words text-lg font-semibold text-slate-950">{competition.location_name || "Location TBD"}</div>
           </div>
           <div className="results-meta-card">
             <div className="results-kicker">Date</div>
-            <div className="mt-2 text-lg font-semibold text-slate-950">{formatDateRange(competition.start_date, competition.end_date)}</div>
+            <div className="mt-2 break-words text-lg font-semibold text-slate-950">{formatDateRange(competition.start_date, competition.end_date)}</div>
           </div>
           <div className="results-meta-card">
             <div className="results-kicker">Registration opens</div>
-            <div className="mt-2 text-lg font-semibold text-slate-950">
+            <div className="mt-2 break-words text-lg font-semibold text-slate-950">
               {registrationOpensLabel || registrationFallbackUrl ? (
                 registrationOpensLabel ? (
                   registrationOpensLabel
@@ -171,7 +171,7 @@ export default function CompetitionHero({
           </div>
           <div className="results-meta-card">
             <div className="results-kicker">Registration deadline</div>
-            <div className="mt-2 text-lg font-semibold text-slate-950">
+            <div className="mt-2 break-words text-lg font-semibold text-slate-950">
               {registrationDeadlineLabel || registrationFallbackUrl ? (
                 registrationDeadlineLabel ? (
                   registrationDeadlineLabel
