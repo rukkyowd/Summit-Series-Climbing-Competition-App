@@ -129,6 +129,9 @@ type GuidedSetupPreset = {
   summary: string;
   description: string;
   details: string;
+  bestFor: string;
+  includes: string;
+  typicalFlow: string;
 };
 
 type DemoFlowStep = {
@@ -386,6 +389,9 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
     title: "Simple local comp",
     summary: "Qualifier only",
     description: "Best for a straightforward local event with one qualifier stage and a simple day schedule.",
+    bestFor: "Local youth days and small club comps.",
+    includes: "One scoring stage and a simple awards finish.",
+    typicalFlow: "Check-in -> qualifier waves -> results and awards.",
     details: "1 qualifier stage · guided local-day schedule",
   },
   {
@@ -393,6 +399,9 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
     title: "Qualifier + Finals",
     summary: "Most common format",
     description: "Use qualifiers during the day, then move the top climbers into finals with isolation and observation.",
+    bestFor: "Most gyms running a full-day event.",
+    includes: "Qualifier rankings, a finals cut, and finals workflow.",
+    typicalFlow: "Qualifier waves -> reset -> isolation -> observation -> finals.",
     details: "Qualifier rankings · finals field · isolation + observation",
   },
   {
@@ -400,6 +409,9 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
     title: "Qualifier + Semifinal + Finals",
     summary: "Large event structure",
     description: "Use this when you need a scored semifinal between qualifiers and finals.",
+    bestFor: "Large marquee events with deeper fields.",
+    includes: "Three scoring stages with an extra advancement cut.",
+    typicalFlow: "Qualifier waves -> semifinal -> reset -> finals workflow.",
     details: "3 scoring stages · semifinal cutoff · finals workflow",
   },
 ];
@@ -583,6 +595,7 @@ export default function StaffDashboard({
   const [roundPlanNeedsReset, setRoundPlanNeedsReset] = useState(false);
   const [showAdvancedStageSettings, setShowAdvancedStageSettings] = useState(false);
   const [expandedRoundId, setExpandedRoundId] = useState<string | null>(null);
+  const [expandedScheduleBlockId, setExpandedScheduleBlockId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<GuidedSetupPreset["id"] | null>(null);
   const [confirming, setConfirming] = useState<null | {
@@ -727,6 +740,18 @@ export default function StaffDashboard({
   const isLastSetupStep = currentSetupStep === SETUP_WIZARD_STEPS.length - 1;
   const selectedGuidedSetupPreset =
     GUIDED_SETUP_PRESETS.find((preset) => preset.id === selectedGuidedSetupPresetId) ?? null;
+  const setupSectionAnchors = useMemo(
+    () =>
+      [
+        { id: "setup-basics", label: "Basics", stepIndex: 0 },
+        { id: "setup-categories", label: "Categories", stepIndex: 1 },
+        { id: "setup-structure", label: "Structure", stepIndex: 2 },
+        { id: "setup-schedule", label: "Schedule", stepIndex: 3 },
+        { id: "setup-stages", label: "Stages", stepIndex: 4 },
+        { id: "setup-operations", label: "Operations", stepIndex: null },
+      ] as const,
+    []
+  );
 
   useEffect(() => {
     if (!selectedSummary) {
@@ -735,6 +760,7 @@ export default function StaffDashboard({
       setPhaseBlockMemory({});
       setRoundPlanNeedsReset(false);
       setExpandedRoundId(null);
+      setExpandedScheduleBlockId(null);
       return;
     }
 
@@ -744,6 +770,23 @@ export default function StaffDashboard({
       .catch(() => setSnapshot(null));
     setRoundPlanNeedsReset(false);
   }, [selectedSummary]);
+
+  useEffect(() => {
+    const draftBlocks = draft?.schedule_blocks ?? [];
+
+    if (!draftBlocks.length) {
+      setExpandedScheduleBlockId(null);
+      return;
+    }
+
+    setExpandedScheduleBlockId((current) => {
+      if (current && draftBlocks.some((block) => block.id === current)) {
+        return current;
+      }
+
+      return draftBlocks.find((block) => block.is_active)?.id ?? draftBlocks[0]?.id ?? null;
+    });
+  }, [draft?.schedule_blocks]);
 
   useEffect(() => {
     const draftRounds = draft?.rounds ?? [];
@@ -1296,6 +1339,31 @@ export default function StaffDashboard({
     });
   };
 
+  const insertScheduleBlockFromTemplate = (
+    template: ScheduleBlockTemplate,
+    targetIndex: number,
+    position: "above" | "below"
+  ) => {
+    if (!draft) {
+      return;
+    }
+
+    const insertionIndex = position === "above" ? targetIndex : targetIndex + 1;
+    const nextBlock = createScheduleBlockFromTemplate(
+      draft,
+      template,
+      qualifierCategories,
+      Math.max(0, Math.min(insertionIndex, draft.schedule_blocks.length))
+    );
+    const nextBlocks = [...orderedDraftScheduleBlocks];
+    nextBlocks.splice(insertionIndex, 0, nextBlock);
+    setDraft({
+      ...draft,
+      schedule_blocks: reindexScheduleBlocks(nextBlocks),
+    });
+    setExpandedScheduleBlockId(nextBlock.id);
+  };
+
   const removeScheduleBlock = (blockId: string) => {
     if (!draft) {
       return;
@@ -1541,9 +1609,60 @@ export default function StaffDashboard({
     ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
     : "";
   const demoDataExportAllowed = demoMode && isDemoDataSlug(draft?.slug);
-  const currentCompetitionStages = draft?.rounds ?? [];
+  const currentCompetitionStages = useMemo(() => draft?.rounds ?? [], [draft?.rounds]);
   const qualifierStage = currentCompetitionStages.find((round) => round.scoring_bucket === "qualifier") ?? null;
   const finalsStage = currentCompetitionStages.find((round) => round.scoring_bucket === "finals") ?? null;
+  const linkedScheduleBlockCount = orderedDraftScheduleBlocks.filter((block) => Boolean(block.round_id)).length;
+  const setupStepSummaries = useMemo(() => {
+    if (!draft) {
+      return [] as string[];
+    }
+
+    return [
+      setupStepCompletion[0]
+        ? `${draft.name || "Event"} in ${draft.location_name || "your venue"} is ready.`
+        : "Add the event name, slug, and venue.",
+      setupStepCompletion[1]
+        ? `${draft.qualifier_eligible_age_groups.length} qualifier groups selected.`
+        : "Choose the age groups that can register.",
+      selectedGuidedSetupPreset
+        ? `${selectedGuidedSetupPreset.title} applied.`
+        : "Choose a structure template or continue with your current rounds.",
+      orderedDraftScheduleBlocks.length
+        ? `${orderedDraftScheduleBlocks.length} schedule blocks planned.`
+        : "Add schedule blocks for the event day.",
+      currentCompetitionStages.length
+        ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} configured.`
+        : "Define at least one scoring stage.",
+    ];
+  }, [currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset, setupStepCompletion]);
+  const wizardGuardrails = useMemo(() => {
+    if (!draft) {
+      return [] as { label: string; ok: boolean }[];
+    }
+
+    return [
+      { label: "Qualifier categories selected", ok: draft.qualifier_eligible_age_groups.length > 0 },
+      { label: "Schedule blocks added", ok: orderedDraftScheduleBlocks.length > 0 },
+      { label: "Scoring blocks linked to a stage", ok: linkedScheduleBlockCount > 0 },
+      { label: "Finals has a usable scoring stage", ok: !draftHasFinals || Boolean(finalsStage) },
+    ];
+  }, [draft, draftHasFinals, finalsStage, linkedScheduleBlockCount, orderedDraftScheduleBlocks.length]);
+  const readyToSaveChecklist = useMemo(() => {
+    if (!draft) {
+      return [] as { label: string; ok: boolean }[];
+    }
+
+    return [
+      { label: "Event details filled", ok: Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()) },
+      { label: "Categories selected", ok: draft.qualifier_eligible_age_groups.length > 0 },
+      { label: "Schedule exists", ok: orderedDraftScheduleBlocks.length > 0 },
+      { label: "At least one scoring stage exists", ok: currentCompetitionStages.some((round) => round.scoring_bucket !== "none") },
+    ];
+  }, [currentCompetitionStages, draft, orderedDraftScheduleBlocks.length]);
+  const stageFlowSummary = currentCompetitionStages.length
+    ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
+    : "No stage flow yet";
   const demoTourCards: DemoTourCard[] = draft
     ? [
         {
@@ -2042,10 +2161,10 @@ export default function StaffDashboard({
               <div id="demo-organizer-setup" className="space-y-6">
                 <div className="results-workspace-hero">
                   <div>
-                    <div className="results-kicker">{demoMode ? "Organizer setup" : "Event setup"}</div>
+                    <div className="results-kicker">{demoMode ? "Organizer setup" : "Configure selected event"}</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
                     <div className="results-hero-subline">
-                      {publicUrl || publicPath}
+                      Build the event structure first, then move into live operations once the setup cards below are ready.
                     </div>
                     {demoMode ? (
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -2073,6 +2192,41 @@ export default function StaffDashboard({
                       ) : null}
                     </div>
                   </div>
+
+                <div className="results-section-band">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="results-kicker">Configure selected event</div>
+                      <div className="mt-2 text-lg font-semibold tracking-tight text-slate-950">
+                        {publicUrl || publicPath}
+                      </div>
+                      <div className="mt-2 text-sm leading-relaxed text-slate-600">
+                        Use the local section nav to jump between setup areas without losing the guided step flow.
+                      </div>
+                    </div>
+                    <div className="results-chip">{setupProgressCount} / {SETUP_WIZARD_STEPS.length} setup areas ready</div>
+                  </div>
+                </div>
+
+                <div className="results-section-nav">
+                  {setupSectionAnchors.map((item) => {
+                    const isActive = item.stepIndex !== null ? currentSetupStep === item.stepIndex : false;
+                    return (
+                      <a
+                        key={item.id}
+                        href={`#${item.id}`}
+                        onClick={() => {
+                          if (item.stepIndex !== null) {
+                            setCurrentSetupStep(item.stepIndex);
+                          }
+                        }}
+                        className={`results-section-nav__pill ${isActive ? "results-section-nav__pill-active" : ""}`}
+                      >
+                        {item.label}
+                      </a>
+                    );
+                  })}
+                </div>
 
                 <div id="demo-run-event" className="results-workspace-card space-y-6">
                   <div className="space-y-4">
@@ -2125,10 +2279,13 @@ export default function StaffDashboard({
                       );
                     })}
                   </div>
+                  <div className="results-step-summary">
+                    {setupStepSummaries[currentSetupStep] ?? activeSetupStep.description}
+                  </div>
                 </div>
 
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
-                <div className="results-workspace-card">
+                <div id="setup-operations" className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                   <div className="results-kicker">After setup - Run event</div>
@@ -2367,14 +2524,14 @@ export default function StaffDashboard({
 
                 {currentSetupStep === 0 ? (
                   <>
-                <div className="results-workspace-card">
+                <div id="setup-basics" className="results-workspace-card">
                   <div className="results-kicker">Step 1 - Event basics</div>
                   <div className="mt-2 text-sm text-slate-600">
                     Set the basic event details first. These choices shape registration, finals availability, and the guided setup options below.
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div id="setup-categories" className="grid gap-4 md:grid-cols-2">
                   <label className="results-field-group" htmlFor="current-event-name">
                     <span className="results-field-label">Current event name</span>
                     <input id="current-event-name" aria-label="Current event name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Current event name" />
@@ -2606,7 +2763,7 @@ export default function StaffDashboard({
                 ) : null}
 
                 {currentSetupStep === 2 ? (
-                <div className="results-workspace-card">
+                <div id="setup-structure" className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Step 3 - Pick an event setup</div>
@@ -2671,6 +2828,20 @@ export default function StaffDashboard({
                             >
                               {preset.details}
                             </div>
+                            <div className="mt-5 space-y-3 text-sm leading-relaxed">
+                              {[
+                                ["Best for", preset.bestFor],
+                                ["Includes", preset.includes],
+                                ["Typical flow", preset.typicalFlow],
+                              ].map(([label, value]) => (
+                                <div key={`${preset.id}-${label}`} className="grid gap-1 sm:grid-cols-[6.75rem_minmax(0,1fr)] sm:gap-3">
+                                  <div className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
+                                    {label}
+                                  </div>
+                                  <div className={`${isSelected ? "text-slate-100" : "text-slate-700"}`}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
                             <div className={`mt-5 break-words text-sm font-semibold leading-relaxed ${isSelected ? "text-emerald-300" : "text-sky-700"}`}>
                               {isSelected ? "Applied to this event" : "Click to apply this setup"}
                             </div>
@@ -2694,7 +2865,7 @@ export default function StaffDashboard({
                 ) : null}
 
                 {currentSetupStep === 3 ? (
-                <div className="results-workspace-card">
+                <div id="setup-schedule" className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Step 4 - Build the day</div>
@@ -2703,6 +2874,9 @@ export default function StaffDashboard({
                       </div>
                     </div>
                     <div className="results-chip">{draft.schedule_blocks.length} blocks</div>
+                  </div>
+                  <div className="results-step-summary">
+                    {setupStepSummaries[3]}
                   </div>
 
                   <div className="mt-4 space-y-5">
@@ -2726,7 +2900,21 @@ export default function StaffDashboard({
                     ))}
                   </div>
 
-                  <div className="mt-5 space-y-4">
+                  <div className="mt-5">
+                    <div className="results-check-grid">
+                      {wizardGuardrails.map((item) => (
+                        <div
+                          key={`schedule-guardrail-${item.label}`}
+                          className={`results-check-card ${item.ok ? "results-check-card-ok" : "results-check-card-warn"}`}
+                        >
+                          <div className="font-semibold">{item.label}</div>
+                          <div className="mt-1">{item.ok ? "Ready for the event timeline." : "Needs attention before this flow is fully reliable."}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="results-timeline mt-5">
                     <div className="text-sm text-slate-600">
                       Add qualifier waves separately, then drag one wave onto another if you want them combined into one shared start group.
                     </div>
@@ -2736,6 +2924,18 @@ export default function StaffDashboard({
                           block.phase_type === "qualifier_round" || block.phase_type === "custom";
                         const canMergeThisBlock = canMergeWaveBlock(block);
                         const isMergeTarget = mergeTargetBlockId === block.id && draggedScheduleBlockId !== block.id;
+                        const isExpanded = expandedScheduleBlockId === block.id;
+                        const linkedRound = (draft.rounds ?? []).find((round) => round.id === block.round_id) ?? null;
+                        const isScoringPhase = linkedRound ? linkedRound.scoring_bucket !== "none" : false;
+                        const needsRoundLink =
+                          ["qualifier_round", "finals_round", "observation", "isolation"].includes(block.phase_type) &&
+                          !block.round_id;
+                        const insertTemplate: ScheduleBlockTemplate = {
+                          label: "Custom block",
+                          phase_type: "custom",
+                          audience_label: "All athletes",
+                          capacity: draft.max_climbers,
+                        };
 
                         return (
                           <div
@@ -2770,22 +2970,44 @@ export default function StaffDashboard({
                               }
                               mergeScheduleBlocks(draggedScheduleBlockId, block.id);
                             }}
-                            className={`rounded-[1.4rem] border bg-white px-4 py-4 transition ${
-                              isMergeTarget ? "border-sky-400 ring-2 ring-sky-100" : "border-slate-200"
+                            className={`results-timeline-card ${block.is_active ? "results-timeline-card-active" : ""} ${
+                              isMergeTarget ? "border-sky-400 ring-2 ring-sky-100" : ""
                             } ${canMergeThisBlock ? "cursor-grab active:cursor-grabbing" : ""}`}
                           >
+                            <div className="results-inline-insert pb-4">
+                              <button
+                                type="button"
+                                onClick={() => insertScheduleBlockFromTemplate(insertTemplate, blockIndex, "above")}
+                                className="results-secondary-button"
+                              >
+                                Add block above
+                              </button>
+                            </div>
                             <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedScheduleBlockId((current) => (current === block.id ? null : block.id))}
+                                className="min-w-0 text-left"
+                              >
                                 <div className="text-lg font-semibold text-slate-950">{block.label || "Untitled block"}</div>
                                 <div className="mt-1 text-sm text-slate-600">
                                   {formatSchedulePhaseLabel(block.phase_type)} / {getSchedulePhaseDescription(block.phase_type)}
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <span className="results-chip">{block.start_time || "Time TBD"}{block.end_time ? ` - ${block.end_time}` : ""}</span>
+                                  {block.audience_label ? <span className="results-chip">{block.audience_label}</span> : null}
+                                  {linkedRound ? <span className="results-chip">{linkedRound.name}</span> : null}
+                                  {isScoringPhase ? <span className="results-chip border-emerald-200 bg-emerald-50 text-emerald-700">Scoring phase</span> : null}
+                                  {!linkedRound ? <span className="results-chip">Public agenda only</span> : null}
+                                  {block.is_active ? <span className="results-chip border-sky-200 bg-sky-50 text-sky-700">Live now</span> : null}
+                                  {needsRoundLink ? <span className="results-chip border-amber-200 bg-amber-50 text-amber-700">Needs round link</span> : null}
                                 </div>
                                 {canMergeThisBlock ? (
                                   <div className="mt-2 text-xs font-medium uppercase tracking-[0.24em] text-sky-700">
                                     Drag onto another wave to merge
                                   </div>
                                 ) : null}
-                              </div>
+                              </button>
                               <div className="flex flex-wrap gap-2">
                                 <button
                                   type="button"
@@ -2820,6 +3042,8 @@ export default function StaffDashboard({
                               </div>
                             </div>
 
+                            {isExpanded ? (
+                            <>
                             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                               <label className="space-y-2">
                                 <span className="text-sm font-medium text-slate-700">Label</span>
@@ -2964,6 +3188,17 @@ export default function StaffDashboard({
                                 </div>
                               </div>
                             ) : null}
+                            <div className="results-inline-insert pt-4">
+                              <button
+                                type="button"
+                                onClick={() => insertScheduleBlockFromTemplate(insertTemplate, blockIndex, "below")}
+                                className="results-secondary-button"
+                              >
+                                Add block below
+                              </button>
+                            </div>
+                            </>
+                            ) : null}
                           </div>
                         );
                       })
@@ -3033,7 +3268,7 @@ export default function StaffDashboard({
                 {currentSetupStep === 4 ? (
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {draft.rounds?.length ? (
-                  <div className="results-workspace-card">
+                  <div id="setup-stages" className="results-workspace-card">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="results-kicker">Step 5 - Competition stages</div>
@@ -3054,6 +3289,17 @@ export default function StaffDashboard({
                         <button type="button" onClick={() => addRound("finals")} className="results-secondary-button">Add finals</button>
                       </div>
                     </div>
+                    <div className="results-step-summary">
+                      {setupStepSummaries[4]}
+                    </div>
+                    <div className="results-stage-flow mt-4">
+                      {currentCompetitionStages.map((round, index) => (
+                        <div key={`flow-${round.id}`} className="contents">
+                          <span className="results-chip">{round.name}</span>
+                          {index < currentCompetitionStages.length - 1 ? <span className="results-stage-flow__connector">{"->"}</span> : null}
+                        </div>
+                      ))}
+                    </div>
                     <div className="mt-4 space-y-4">
                           {draft.rounds.map((round, index) => {
                             const planningOnly = round.scoring_bucket === "none";
@@ -3067,7 +3313,7 @@ export default function StaffDashboard({
                             return (
                               <div
                                 key={round.id}
-                                className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4"
+                                className="results-storyboard-card"
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <button
@@ -3097,6 +3343,30 @@ export default function StaffDashboard({
                                   >
                                     Remove
                                   </button>
+                                </div>
+                                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                  <div className="rounded-[1rem] border border-slate-200/80 bg-slate-50/80 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Stage type</div>
+                                    <div className="mt-2 text-sm font-semibold text-slate-950">{round.round_type}</div>
+                                  </div>
+                                  <div className="rounded-[1rem] border border-slate-200/80 bg-slate-50/80 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Scoring mode</div>
+                                    <div className="mt-2 text-sm font-semibold text-slate-950">{planningOnly ? "Planning only" : round.scoring_bucket === "finals" ? "Finals rankings" : "Qualifier rankings"}</div>
+                                  </div>
+                                  <div className="rounded-[1rem] border border-slate-200/80 bg-slate-50/80 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Boulder count</div>
+                                    <div className="mt-2 text-sm font-semibold text-slate-950">{round.problem_count}</div>
+                                  </div>
+                                  <div className="rounded-[1rem] border border-slate-200/80 bg-slate-50/80 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Advancement</div>
+                                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                                      {round.round_type === "semifinal"
+                                        ? "Feeds the next stage"
+                                        : round.round_type === "finals"
+                                          ? "Final scoring stage"
+                                          : `Top ${round.finals_cutoff ?? draft.finals_cutoff} move on`}
+                                    </div>
+                                  </div>
                                 </div>
                                 <div className="mt-4 flex flex-wrap gap-2 text-xs leading-5 text-slate-500">
                                   <span className="results-chip border-slate-200 bg-slate-50 text-slate-600 shadow-none">
@@ -3286,6 +3556,31 @@ export default function StaffDashboard({
                   </div>
                 ) : null}
 
+                <div className="results-workspace-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="results-kicker">Ready to save</div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        This last check makes sure the event basics, categories, schedule, and scoring structure all tell the same story.
+                      </div>
+                    </div>
+                    <div className="results-chip">
+                      {readyToSaveChecklist.filter((item) => item.ok).length} / {readyToSaveChecklist.length} ready
+                    </div>
+                  </div>
+                  <div className="results-check-grid mt-4">
+                    {readyToSaveChecklist.map((item) => (
+                      <div
+                        key={`save-check-${item.label}`}
+                        className={`results-check-card ${item.ok ? "results-check-card-ok" : "results-check-card-warn"}`}
+                      >
+                        <div className="font-semibold">{item.label}</div>
+                        <div className="mt-1">{item.ok ? "Looks good." : "Still needs attention."}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap gap-3">
                   <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button">
                     {isPending ? "Saving..." : "Save competition"}
@@ -3317,21 +3612,34 @@ export default function StaffDashboard({
                       Advance to finals
                     </button>
                   ) : null}
-                  <button type="button" onClick={() => setConfirming({
-                    title: "Delete event",
-                    description: "This permanently deletes the event and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
-                    confirmLabel: "Delete",
-                    confirmTone: "danger",
-                    expectedValue: draft.name,
-                    action: async () => {
-                      await deleteCompetition(draft.id);
-                      setDraft(null);
-                      setSnapshot(null);
-                      setSelectedCompetitionId("");
-                      await refreshAfterChange();
-                      setMessage("Competition deleted.");
-                    },
-                  })} disabled={!canEditSetup} className="results-danger-button">Delete event</button>
+                </div>
+                <div className="results-workspace-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="results-kicker">Admin controls</div>
+                      <div className="mt-2 text-sm text-slate-600">
+                        Keep destructive and live-only actions here so setup stays focused on building the event cleanly.
+                      </div>
+                    </div>
+                    <div className="results-chip">{stageFlowSummary}</div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button type="button" onClick={() => setConfirming({
+                      title: "Delete event",
+                      description: "This permanently deletes the event and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
+                      confirmLabel: "Delete",
+                      confirmTone: "danger",
+                      expectedValue: draft.name,
+                      action: async () => {
+                        await deleteCompetition(draft.id);
+                        setDraft(null);
+                        setSnapshot(null);
+                        setSelectedCompetitionId("");
+                        await refreshAfterChange();
+                        setMessage("Competition deleted.");
+                      },
+                    })} disabled={!canEditSetup} className="results-danger-button">Delete event</button>
+                  </div>
                 </div>
                 </fieldset>
                 ) : null}

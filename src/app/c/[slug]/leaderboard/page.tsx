@@ -151,7 +151,7 @@ export default function CompetitionLeaderboardPage() {
                 </div>
               ) : null}
 
-              <div className="sticky top-20 z-20 mt-5 w-full overflow-x-auto rounded-[1.4rem] border border-white/70 bg-white/80 px-3 py-3 shadow-[0_8px_30px_rgba(15,23,42,0.05)] backdrop-blur-xl sm:top-24">
+              <div className="sticky top-20 z-20 mt-5 w-full overflow-x-auto rounded-[1.3rem] border border-slate-200/80 bg-white/72 px-2 py-2 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl sm:top-24">
                 <div className="flex min-w-max gap-2">
                   {categories.map((category) => (
                     <button key={category.id} type="button" onClick={() => setSelectedCategory(category.id)} className={selectedCategory === category.id ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
@@ -169,9 +169,9 @@ export default function CompetitionLeaderboardPage() {
                 </div>
               ) : (
                 <>
-                  <div className="mt-6 space-y-3 md:hidden">
-                    {qualifierRows.map((entry) => (
-                      <div key={entry.climber_id} className="results-meta-card min-w-0">
+                    <div className="mt-6 space-y-3 md:hidden">
+                      {qualifierRows.map((entry) => (
+                        <div key={entry.climber_id} className="results-meta-card min-w-0">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="results-kicker">Rank #{entry.category_rank}</div>

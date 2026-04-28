@@ -10,6 +10,7 @@ import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
+  buildDisplayPath,
   formatCompetitionPhaseLabel,
   formatSchedulePhaseLabel,
   formatTimeRange,
@@ -232,6 +233,34 @@ export default function CompetitionOverviewPage() {
           <>
             <CompetitionHero competition={snapshot.competition} />
 
+            <section className="results-editorial-panel">
+              <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+                <div className="min-w-0">
+                  <div className="results-kicker">What should I do now?</div>
+                  <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                    {activeBlock ? `${activeBlock.label} is the current focus.` : "The event page is ready even before the first live block starts."}
+                  </h2>
+                  <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600">
+                    Open the action you need first, then use the schedule and start list below for the deeper event details.
+                  </p>
+                </div>
+                <div className="results-link-list">
+                  <Link href={buildCompetitionPath(slug, "register")} className="results-primary-button w-full">
+                    Register
+                  </Link>
+                  <Link href={buildCompetitionPath(slug, "scorecard")} className="results-secondary-button w-full">
+                    Open scorecard
+                  </Link>
+                  <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button w-full">
+                    View rankings
+                  </Link>
+                  <Link href={buildDisplayPath(slug)} className="results-secondary-button w-full">
+                    Open display
+                  </Link>
+                </div>
+              </div>
+            </section>
+
             {finalsActive ? (
               finalsRows.length ? (
                 <>
@@ -272,6 +301,9 @@ export default function CompetitionOverviewPage() {
               <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">
                 {activeBlock ? activeBlock.label : "No block live"}
               </h2>
+              <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600">
+                The live block, the next block, and the public-facing schedule stay together here so athletes and spectators can orient themselves quickly.
+              </p>
 
               {!activeBlock ? (
                 <div className="mt-4 space-y-3">

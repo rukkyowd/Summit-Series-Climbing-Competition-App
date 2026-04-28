@@ -144,26 +144,36 @@ export default function HomePage() {
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
 
-        <section className="results-card">
-          <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+        <section className="results-editorial-panel">
+          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
             <div className="min-w-0">
-              <div className="results-kicker">Events</div>
+              <div className="results-kicker">Competition platform</div>
               <h1 className="results-editorial-title mt-3 max-w-4xl break-words text-4xl font-semibold text-slate-950 sm:text-6xl">
-                Find your competition fast.
+                Run the event cleanly. Let climbers follow it live.
               </h1>
               <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg sm:leading-8">
-                Public routes now stay competition-first. Choose the event you are climbing in to open registration, scorecards, rankings, and the live display.
+                Summit Series keeps setup, registration, score capture, standings, finals progression, and public display tied to the same event model.
               </p>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="results-meta-card results-meta-card-compact">
+                  <div className="results-kicker">For organizers</div>
+                  <div className="mt-2 text-base font-semibold text-slate-950">Build categories, schedule, and stages in one flow.</div>
+                </div>
+                <div className="results-meta-card results-meta-card-compact">
+                  <div className="results-kicker">For climbers</div>
+                  <div className="mt-2 text-base font-semibold text-slate-950">Open one event page for registration, scorecards, rankings, and display.</div>
+                </div>
+              </div>
             </div>
             <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-1">
-              <Link href="/staff/demo" className="results-secondary-button w-full">
-                Preview the demo dashboard
-              </Link>
               {featured ? (
                 <Link href={buildCompetitionPath(featured.competition.slug)} className="results-primary-button w-full">
-                  Open featured competition
+                  Open live competition
                 </Link>
               ) : null}
+              <Link href="/staff/demo" className="results-secondary-button w-full">
+                Preview organizer workflow
+              </Link>
             </div>
           </div>
 
@@ -171,7 +181,7 @@ export default function HomePage() {
             <div className="results-feature mt-6">
               <div className="grid gap-5 lg:grid-cols-[1fr_22rem] lg:items-end">
                 <div className="min-w-0 max-w-2xl">
-                  <div className="results-kicker text-white/80">Featured event</div>
+                  <div className="results-kicker text-white/80">Live event spotlight</div>
                   <h2 className="results-editorial-title mt-3 break-words text-4xl font-semibold text-white sm:text-5xl">
                     {featured.competition.name}
                   </h2>
@@ -196,14 +206,12 @@ export default function HomePage() {
                       <span className="sr-only">{featuredLifecycle}</span>
                     </>
                   ) : null}
-                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Featured status
-                  </div>
+                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">What people can do now</div>
                   <div className="mt-3 break-words text-2xl font-semibold text-slate-950">{featuredLifecycle}</div>
                   <div className="mt-4 space-y-2 text-sm leading-relaxed text-slate-600">
+                    <div className="break-words">Registration, scorecards, live standings, and display all live under one event.</div>
                     <div className="break-words">{featured.competition.location_name || "Location TBD"}</div>
                     <div className="break-words">{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
-                    <div>Open the event to register, score, follow standings, or cast to display.</div>
                   </div>
                   <Link href={buildCompetitionPath(featured.competition.slug)} className="results-secondary-button mt-5 w-full">
                     Enter event
