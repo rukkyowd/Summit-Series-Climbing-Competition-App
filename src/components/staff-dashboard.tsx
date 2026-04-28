@@ -548,6 +548,7 @@ export default function StaffDashboard({
   const [mergeTargetBlockId, setMergeTargetBlockId] = useState<string | null>(null);
   const [roundPlanNeedsReset, setRoundPlanNeedsReset] = useState(false);
   const [showAdvancedStageSettings, setShowAdvancedStageSettings] = useState(false);
+  const [expandedRoundId, setExpandedRoundId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -690,6 +691,7 @@ export default function StaffDashboard({
       setSnapshot(null);
       setPhaseBlockMemory({});
       setRoundPlanNeedsReset(false);
+      setExpandedRoundId(null);
       return;
     }
 
@@ -699,6 +701,23 @@ export default function StaffDashboard({
       .catch(() => setSnapshot(null));
     setRoundPlanNeedsReset(false);
   }, [selectedSummary]);
+
+  useEffect(() => {
+    const draftRounds = draft?.rounds ?? [];
+
+    if (!draftRounds.length) {
+      setExpandedRoundId(null);
+      return;
+    }
+
+    setExpandedRoundId((current) => {
+      if (current && draftRounds.some((round) => round.id === current)) {
+        return current;
+      }
+
+      return draftRounds.find((round) => round.is_active)?.id ?? draftRounds[0]?.id ?? null;
+    });
+  }, [draft?.rounds]);
 
   const publicPath = draft ? buildCompetitionPath(draft.slug) : "";
   const registerPath = draft ? buildCompetitionPath(draft.slug, "register") : "";
@@ -2879,6 +2898,7 @@ export default function StaffDashboard({
                         <AnimatePresence initial={false} mode="popLayout">
                           {draft.rounds.map((round, index) => {
                             const planningOnly = round.scoring_bucket === "none";
+                            const isExpanded = expandedRoundId === round.id;
                             const scoreBearingLabel =
                               round.scoring_bucket === "qualifier"
                                 ? "Records real scores"
@@ -2896,8 +2916,17 @@ export default function StaffDashboard({
                                 className="motion-aurora-panel rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4"
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-3">
-                                  <div>
-                                    <div className="text-lg font-semibold text-slate-950">{round.name}</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedRoundId((current) => (current === round.id ? null : round.id))}
+                                    className="flex min-w-0 flex-1 flex-col items-start text-left"
+                                  >
+                                    <div className="flex w-full items-center justify-between gap-3">
+                                      <div className="text-lg font-semibold text-slate-950">{round.name}</div>
+                                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                                        {isExpanded ? "Collapse" : "Expand"}
+                                      </span>
+                                    </div>
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       <span className={planningOnly ? "results-chip" : "results-chip border-emerald-200 bg-emerald-50 text-emerald-800"}>
                                         {scoreBearingLabel}
@@ -2913,7 +2942,7 @@ export default function StaffDashboard({
                                         </motion.span>
                                       ) : null}
                                     </div>
-                                  </div>
+                                  </button>
                                   <motion.button
                                     type="button"
                                     onClick={() => removeRound(round.id)}
@@ -2924,146 +2953,6 @@ export default function StaffDashboard({
                                     Remove
                                   </motion.button>
                                 </div>
-                                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4">
-                              <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">Name</span>
-                                <input value={round.name} onChange={(event) => updateRound(round.id, (current) => ({ ...current, name: event.target.value }))} className="results-input" />
-                              </label>
-                              <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">Round type</span>
-                                <select
-                                  value={round.round_type}
-                                  onChange={(event) =>
-                                    updateRound(round.id, (current) => {
-                                      const roundType = event.target.value as CompetitionRoundType;
-                                      const scoringBucket =
-                                        current.scoring_bucket === "none"
-                                            ? getRoundDefaultScoringBucket(roundType)
-                                            : current.scoring_bucket;
-                                      return {
-                                        ...current,
-                                        round_type: roundType,
-                                        runtime_phase: getRoundRuntimePhase(roundType),
-                                        scoring_bucket: scoringBucket,
-                                        format: roundType === "finals" ? "ifsc_finals_format" : draft.format,
-                                        counting_climbs: roundType === "finals" ? null : current.counting_climbs ?? draft.qualifier_counting_climbs,
-                                        finals_cutoff: roundType === "semifinal" ? null : current.finals_cutoff ?? draft.finals_cutoff,
-                                      };
-                                    })
-                                  }
-                                  className="results-input"
-                                >
-                                  <option value="qualifier">Qualifier</option>
-                                  <option value="semifinal">Semifinal</option>
-                                  <option value="finals">Finals</option>
-                                </select>
-                              </label>
-                              <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">This stage</span>
-                                <select
-                                  value={round.scoring_bucket}
-                                  onChange={(event) =>
-                                    updateRound(round.id, (current) => {
-                                      const nextBucket = event.target.value as CompetitionRoundScoringBucket;
-                                      if (nextBucket === "finals" && finalsScoreRoundCount >= 1 && current.scoring_bucket !== "finals") {
-                                        return current;
-                                      }
-                                      if (current.round_type === "finals" && nextBucket === "qualifier") {
-                                        return current;
-                                      }
-                                      if (current.round_type !== "finals" && nextBucket === "finals") {
-                                        return current;
-                                      }
-                                      return { ...current, scoring_bucket: nextBucket };
-                                    })
-                                  }
-                                  className="results-input"
-                                >
-                                  <option value="none">Schedule only</option>
-                                  {round.round_type !== "finals" ? <option value="qualifier">Records real scores</option> : null}
-                                  {round.round_type === "finals" ? <option value="finals">Records finals scores</option> : null}
-                                </select>
-                              </label>
-                              <label className="space-y-2">
-                                <span className="text-sm font-medium text-slate-700">Boulders in this stage</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={round.round_type === "finals" ? 8 : 200}
-                                  value={round.problem_count}
-                                  onChange={(event) =>
-                                    updateRound(round.id, (current) => ({
-                                      ...current,
-                                      problem_count: Math.max(1, Number(event.target.value) || current.problem_count),
-                                    }))
-                                  }
-                                  className="results-input"
-                                />
-                              </label>
-                                </div>
-                                <motion.div
-                                  layout="position"
-                                  transition={stageCardTransition}
-                                  className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
-                                >
-                              {round.round_type !== "finals" ? (
-                                <label className="space-y-2">
-                                  <span className="text-sm font-medium text-slate-700">Top climbs counted</span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={round.counting_climbs ?? draft.qualifier_counting_climbs}
-                                    onChange={(event) =>
-                                      updateRound(round.id, (current) => ({
-                                        ...current,
-                                        counting_climbs: Math.max(1, Number(event.target.value) || draft.qualifier_counting_climbs),
-                                      }))
-                                    }
-                                    className="results-input"
-                                  />
-                                </label>
-                              ) : null}
-                              {round.round_type !== "semifinal" ? (
-                                <label className="space-y-2">
-                                  <span className="text-sm font-medium text-slate-700">Athletes who move on</span>
-                                  <select
-                                    value={round.finals_cutoff ?? draft.finals_cutoff}
-                                    onChange={(event) =>
-                                      updateRound(round.id, (current) => ({
-                                        ...current,
-                                        finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF,
-                                        advancement_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF,
-                                      }))
-                                    }
-                                    className="results-input"
-                                  >
-                                    <option value={6}>Top 6</option>
-                                    <option value={8}>Top 8</option>
-                                  </select>
-                                </label>
-                              ) : null}
-                                  <AnimatePresence initial={false}>
-                                    {showAdvancedStageSettings ? (
-                                      <motion.label
-                                        key="advanced-enabled"
-                                        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                                        transition={sectionPresenceTransition}
-                                        className="flex flex-col gap-2"
-                                      >
-                                        <span className="text-sm font-medium text-slate-700">Enabled</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
-                                          className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
-                                        >
-                                          {round.is_enabled ? "Enabled" : "Disabled"}
-                                        </button>
-                                      </motion.label>
-                                    ) : null}
-                                  </AnimatePresence>
-                                </motion.div>
                                 <div className="mt-4 flex flex-wrap gap-2 text-xs leading-5 text-slate-500">
                                   <span className="results-chip border-slate-200 bg-slate-50 text-slate-600 shadow-none">
                                     {planningOnly ? "Schedule only" : "Live scoring enabled"}
@@ -3080,6 +2969,155 @@ export default function StaffDashboard({
                                   ) : null}
                                 </div>
                                 {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
+                                <AnimatePresence initial={false}>
+                                  {isExpanded ? (
+                                    <motion.div
+                                      key={`${round.id}-expanded`}
+                                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: 4 }}
+                                      animate={reduceMotion ? { opacity: 1 } : { opacity: 1, height: "auto", y: 0 }}
+                                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -4 }}
+                                      transition={sectionPresenceTransition}
+                                      style={{ overflow: "hidden" }}
+                                    >
+                                      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4">
+                                        <label className="space-y-2">
+                                          <span className="text-sm font-medium text-slate-700">Name</span>
+                                          <input value={round.name} onChange={(event) => updateRound(round.id, (current) => ({ ...current, name: event.target.value }))} className="results-input" />
+                                        </label>
+                                        <label className="space-y-2">
+                                          <span className="text-sm font-medium text-slate-700">Round type</span>
+                                          <select
+                                            value={round.round_type}
+                                            onChange={(event) =>
+                                              updateRound(round.id, (current) => {
+                                                const roundType = event.target.value as CompetitionRoundType;
+                                                const scoringBucket =
+                                                  current.scoring_bucket === "none"
+                                                      ? getRoundDefaultScoringBucket(roundType)
+                                                      : current.scoring_bucket;
+                                                return {
+                                                  ...current,
+                                                  round_type: roundType,
+                                                  runtime_phase: getRoundRuntimePhase(roundType),
+                                                  scoring_bucket: scoringBucket,
+                                                  format: roundType === "finals" ? "ifsc_finals_format" : draft.format,
+                                                  counting_climbs: roundType === "finals" ? null : current.counting_climbs ?? draft.qualifier_counting_climbs,
+                                                  finals_cutoff: roundType === "semifinal" ? null : current.finals_cutoff ?? draft.finals_cutoff,
+                                                };
+                                              })
+                                            }
+                                            className="results-input"
+                                          >
+                                            <option value="qualifier">Qualifier</option>
+                                            <option value="semifinal">Semifinal</option>
+                                            <option value="finals">Finals</option>
+                                          </select>
+                                        </label>
+                                        <label className="space-y-2">
+                                          <span className="text-sm font-medium text-slate-700">This stage</span>
+                                          <select
+                                            value={round.scoring_bucket}
+                                            onChange={(event) =>
+                                              updateRound(round.id, (current) => {
+                                                const nextBucket = event.target.value as CompetitionRoundScoringBucket;
+                                                if (nextBucket === "finals" && finalsScoreRoundCount >= 1 && current.scoring_bucket !== "finals") {
+                                                  return current;
+                                                }
+                                                if (current.round_type === "finals" && nextBucket === "qualifier") {
+                                                  return current;
+                                                }
+                                                if (current.round_type !== "finals" && nextBucket === "finals") {
+                                                  return current;
+                                                }
+                                                return { ...current, scoring_bucket: nextBucket };
+                                              })
+                                            }
+                                            className="results-input"
+                                          >
+                                            <option value="none">Schedule only</option>
+                                            {round.round_type !== "finals" ? <option value="qualifier">Records real scores</option> : null}
+                                            {round.round_type === "finals" ? <option value="finals">Records finals scores</option> : null}
+                                          </select>
+                                        </label>
+                                        <label className="space-y-2">
+                                          <span className="text-sm font-medium text-slate-700">Boulders in this stage</span>
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            max={round.round_type === "finals" ? 8 : 200}
+                                            value={round.problem_count}
+                                            onChange={(event) =>
+                                              updateRound(round.id, (current) => ({
+                                                ...current,
+                                                problem_count: Math.max(1, Number(event.target.value) || current.problem_count),
+                                              }))
+                                            }
+                                            className="results-input"
+                                          />
+                                        </label>
+                                      </div>
+                                      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
+                                        {round.round_type !== "finals" ? (
+                                          <label className="space-y-2">
+                                            <span className="text-sm font-medium text-slate-700">Top climbs counted</span>
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={round.counting_climbs ?? draft.qualifier_counting_climbs}
+                                              onChange={(event) =>
+                                                updateRound(round.id, (current) => ({
+                                                  ...current,
+                                                  counting_climbs: Math.max(1, Number(event.target.value) || draft.qualifier_counting_climbs),
+                                                }))
+                                              }
+                                              className="results-input"
+                                            />
+                                          </label>
+                                        ) : null}
+                                        {round.round_type !== "semifinal" ? (
+                                          <label className="space-y-2">
+                                            <span className="text-sm font-medium text-slate-700">Athletes who move on</span>
+                                            <select
+                                              value={round.finals_cutoff ?? draft.finals_cutoff}
+                                              onChange={(event) =>
+                                                updateRound(round.id, (current) => ({
+                                                  ...current,
+                                                  finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF,
+                                                  advancement_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF,
+                                                }))
+                                              }
+                                              className="results-input"
+                                            >
+                                              <option value={6}>Top 6</option>
+                                              <option value={8}>Top 8</option>
+                                            </select>
+                                          </label>
+                                        ) : null}
+                                        <AnimatePresence initial={false}>
+                                          {showAdvancedStageSettings ? (
+                                            <motion.label
+                                              key="advanced-enabled"
+                                              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                                              animate={{ opacity: 1, y: 0 }}
+                                              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                                              transition={sectionPresenceTransition}
+                                              className="flex flex-col gap-2"
+                                            >
+                                              <span className="text-sm font-medium text-slate-700">Enabled</span>
+                                              <button
+                                                type="button"
+                                                onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
+                                                className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
+                                              >
+                                                {round.is_enabled ? "Enabled" : "Disabled"}
+                                              </button>
+                                            </motion.label>
+                                          ) : null}
+                                        </AnimatePresence>
+                                      </div>
+                                    </motion.div>
+                                  ) : null}
+                                </AnimatePresence>
                               </motion.div>
                             );
                           })}
