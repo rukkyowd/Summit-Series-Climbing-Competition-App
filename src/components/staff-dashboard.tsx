@@ -136,6 +136,25 @@ type DemoFlowStep = {
   description: string;
 };
 
+type DemoWalkthroughField = {
+  label: string;
+  value: string;
+};
+
+type DemoWalkthroughTimelineItem = {
+  time: string;
+  label: string;
+  detail: string;
+};
+
+type DemoWalkthroughStep = {
+  title: string;
+  summary: string;
+  callout: string;
+  fields: DemoWalkthroughField[];
+  timeline: DemoWalkthroughTimelineItem[];
+};
+
 type DemoTourCard = {
   title: string;
   description: string;
@@ -163,6 +182,87 @@ const DEMO_TRUST_POINTS = [
   "Staff can plan categories, sessions, and stages in one place.",
   "Judging, standings, and finals progression follow the same event model.",
   "Public pages look polished for climbers, parents, and spectators.",
+];
+
+const DEMO_WALKTHROUGH_INTERVAL_MS = 4200;
+
+const DEMO_SETUP_WALKTHROUGH: DemoWalkthroughStep[] = [
+  {
+    title: "Create the event shell",
+    summary: "Name the comp, lock the slug, and define the public-facing basics before any athlete data exists.",
+    callout: "This replaces the usual scramble of docs, spreadsheet tabs, and one-off links before registration even opens.",
+    fields: [
+      { label: "Event", value: "Spring Send Youth Competitive" },
+      { label: "Slug", value: "spring-send-youth" },
+      { label: "Location", value: "Fredericton" },
+      { label: "Format", value: "2025 qualifier points" },
+    ],
+    timeline: [
+      { time: "07:30", label: "Doors + check-in", detail: "Public details and venue links are already in place." },
+      { time: "08:15", label: "Judge briefing", detail: "Staff routes and event settings are ready before the day begins." },
+    ],
+  },
+  {
+    title: "Shape the athlete field",
+    summary: "Choose who can register, how categories group together, and which divisions can advance later in the day.",
+    callout: "Category choices flow directly into session planning, score visibility, and finals progression rules.",
+    fields: [
+      { label: "Eligible groups", value: "Youth D, C, B, A, Junior" },
+      { label: "Divisions", value: "Men / Women" },
+      { label: "Finals path", value: "Junior + Youth A advance" },
+      { label: "Capacity", value: "96 climbers" },
+    ],
+    timeline: [
+      { time: "09:00", label: "Wave A", detail: "Youth D / C assigned to the first qualifier block." },
+      { time: "11:30", label: "Wave B", detail: "Youth B / A continue on the same scoring model." },
+    ],
+  },
+  {
+    title: "Apply the event structure",
+    summary: "Start from a real competition template so rounds, advancement, and scheduling stay linked from the beginning.",
+    callout: "Templates do more than prefill labels. They create a usable scoring structure that the rest of the app already understands.",
+    fields: [
+      { label: "Template", value: "Qualifier + Semifinal + Finals" },
+      { label: "Scoring stages", value: "3 linked rounds" },
+      { label: "Advancement", value: "Top 8 to finals" },
+      { label: "Judging mode", value: "Staff-scored qualifier entry" },
+    ],
+    timeline: [
+      { time: "14:00", label: "Semifinal isolation", detail: "Generated automatically from the chosen format." },
+      { time: "17:30", label: "Finals observation", detail: "The public schedule already knows what comes next." },
+    ],
+  },
+  {
+    title: "Map the event day",
+    summary: "Turn the structure into real logistics blocks: waves, isolation windows, observation, and public transitions.",
+    callout: "Operations teams can reason about the whole day in one timeline instead of juggling separate stage notes and check-in sheets.",
+    fields: [
+      { label: "Morning", value: "Qualifier waves + transit" },
+      { label: "Midday", value: "Results review + semifinal reset" },
+      { label: "Evening", value: "Isolation, observation, finals" },
+      { label: "Public flow", value: "Leaderboard + display stay in sync" },
+    ],
+    timeline: [
+      { time: "08:45", label: "Qualifier wave live", detail: "Registration, scorecards, and judges point to the same active block." },
+      { time: "13:20", label: "Results lock", detail: "Staff can transition into advancement without rebuilding lists." },
+      { time: "18:00", label: "Finals live", detail: "Display and rankings switch over when the event phase changes." },
+    ],
+  },
+  {
+    title: "Fine-tune scoring and advancement",
+    summary: "Adjust problem counts, counting climbs, cutoffs, and scoring buckets so the event matches the gym’s exact rules.",
+    callout: "Once those details are tuned, the workflow carries all the way through judging, public standings, and finals ordering.",
+    fields: [
+      { label: "Qualifier", value: "16 boulders, best 5 count" },
+      { label: "Semifinal", value: "4 boulders, zone + top" },
+      { label: "Finals", value: "4 boulders, official finals points" },
+      { label: "Output", value: "Public pages ready to go live" },
+    ],
+    timeline: [
+      { time: "18:45", label: "Judge calls save live", detail: "Route judges record attempts while public pages update." },
+      { time: "20:15", label: "Final standings", detail: "Results, display, and finals order all resolve from the same data model." },
+    ],
+  },
 ];
 
 function createRoundTemplate(
@@ -643,6 +743,20 @@ export default function StaffDashboard({
   }, []);
 
   useEffect(() => {
+    if (!demoMode) {
+      return;
+    }
+
+    const autoplayTimer = window.setInterval(() => {
+      setCurrentSetupStep((current) => (current + 1) % SETUP_WIZARD_STEPS.length);
+    }, DEMO_WALKTHROUGH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(autoplayTimer);
+    };
+  }, [demoMode]);
+
+  useEffect(() => {
     const importedName = sanitizeDraftText(initialCreateDraft?.name);
     const importedLocation = sanitizeDraftText(initialCreateDraft?.location);
     const importedStartDate = sanitizeDraftText(initialCreateDraft?.startDate);
@@ -722,6 +836,8 @@ export default function StaffDashboard({
   const setupProgressCount = setupStepCompletion.filter(Boolean).length;
   const setupProgressPercent = Math.round((setupProgressCount / SETUP_WIZARD_STEPS.length) * 100);
   const activeSetupStep = SETUP_WIZARD_STEPS[currentSetupStep] ?? SETUP_WIZARD_STEPS[0];
+  const activeDemoWalkthroughStep =
+    DEMO_SETUP_WALKTHROUGH[currentSetupStep] ?? DEMO_SETUP_WALKTHROUGH[0];
   const isFirstSetupStep = currentSetupStep === 0;
   const isLastSetupStep = currentSetupStep === SETUP_WIZARD_STEPS.length - 1;
   const selectedGuidedSetupPreset =
@@ -2124,6 +2240,82 @@ export default function StaffDashboard({
                       );
                     })}
                   </div>
+                  {demoMode ? (
+                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] xl:items-start">
+                      <div
+                        key={`demo-walkthrough-panel-${currentSetupStep}`}
+                        className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,250,252,0.9))] shadow-[0_18px_40px_rgba(15,23,42,0.06)]"
+                      >
+                        <div className="border-b border-slate-200/80 px-5 py-4 sm:px-6">
+                          <div className="results-kicker">Animated walkthrough</div>
+                          <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                            {activeDemoWalkthroughStep.title}
+                          </div>
+                          <div className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+                            {activeDemoWalkthroughStep.summary}
+                          </div>
+                        </div>
+                        <div className="grid gap-5 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+                          <div className="space-y-3">
+                            {activeDemoWalkthroughStep.fields.map((field) => (
+                              <div key={`${activeDemoWalkthroughStep.title}-${field.label}`} className="rounded-[1.35rem] border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                  {field.label}
+                                </div>
+                                <div className="mt-2 text-base font-semibold text-slate-950">
+                                  {field.value}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="rounded-[1.5rem] border border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(220,252,231,0.9))] px-4 py-4 shadow-[0_12px_28px_rgba(16,185,129,0.08)]">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                              Why this matters
+                            </div>
+                            <div className="mt-2 text-base leading-relaxed text-emerald-950">
+                              {activeDemoWalkthroughStep.callout}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        key={`demo-logistics-panel-${currentSetupStep}`}
+                        className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(247,250,252,0.98),rgba(255,255,255,0.92))] shadow-[0_18px_40px_rgba(15,23,42,0.05)]"
+                      >
+                        <div className="border-b border-slate-200/80 px-5 py-4 sm:px-6">
+                          <div className="results-kicker">Event logistics</div>
+                          <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                            Day-of flow preview
+                          </div>
+                          <div className="mt-2 text-sm leading-relaxed text-slate-600">
+                            As each setup step advances, the event timeline becomes more concrete for staff, judges, and the public experience.
+                          </div>
+                        </div>
+                        <div className="space-y-3 px-5 py-5 sm:px-6">
+                          {activeDemoWalkthroughStep.timeline.map((item, index) => (
+                            <div
+                              key={`${activeDemoWalkthroughStep.title}-${item.time}-${item.label}`}
+                              className={`relative rounded-[1.4rem] border px-4 py-4 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${
+                                index === 0
+                                  ? "border-slate-950 bg-slate-950 text-white shadow-[0_18px_38px_rgba(15,23,42,0.14)]"
+                                  : "border-slate-200/80 bg-white/92 text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
+                              }`}
+                            >
+                              <div className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${index === 0 ? "text-slate-300" : "text-slate-500"}`}>
+                                {item.time}
+                              </div>
+                              <div className="mt-2 text-lg font-semibold tracking-tight">
+                                {item.label}
+                              </div>
+                              <div className={`mt-2 text-sm leading-relaxed ${index === 0 ? "text-slate-200" : "text-slate-600"}`}>
+                                {item.detail}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
