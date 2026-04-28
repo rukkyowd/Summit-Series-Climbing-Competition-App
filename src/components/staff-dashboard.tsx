@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
@@ -164,8 +163,6 @@ const DEMO_TRUST_POINTS = [
   "Judging, standings, and finals progression follow the same event model.",
   "Public pages look polished for climbers, parents, and spectators.",
 ];
-
-const MOTION_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
@@ -558,28 +555,6 @@ export default function StaffDashboard({
     action: () => Promise<void>;
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
-  const reduceMotion = useReducedMotion();
-  const stageCardTransition = reduceMotion
-    ? { duration: 0.12 }
-    : { duration: 0.18, ease: MOTION_EASE };
-  const sectionPresenceTransition = reduceMotion
-    ? { duration: 0.1 }
-    : { duration: 0.16, ease: MOTION_EASE };
-
-  const selectCompetitionWithTransition = useCallback((competitionId: string) => {
-    const transitionDocument = document as Document & {
-      startViewTransition?: (callback: () => void) => void;
-    };
-
-    if (transitionDocument.startViewTransition && !reduceMotion) {
-      transitionDocument.startViewTransition(() => {
-        setSelectedCompetitionId(competitionId);
-      });
-      return;
-    }
-
-    setSelectedCompetitionId(competitionId);
-  }, [reduceMotion]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1976,13 +1951,8 @@ export default function StaffDashboard({
                 <button
                   key={summary.competition.id}
                   type="button"
-                  onClick={() => selectCompetitionWithTransition(summary.competition.id)}
+                  onClick={() => setSelectedCompetitionId(summary.competition.id)}
                   className={`results-admin-list-item ${selectedCompetitionId === summary.competition.id ? "results-admin-list-item-active" : ""}`}
-                  style={
-                    demoMode
-                      ? { viewTransitionName: selectedCompetitionId === summary.competition.id ? "selected-demo-event-card" : "none" }
-                      : undefined
-                  }
                 >
                   <div>
                     <div className="text-lg font-semibold text-slate-950">{summary.competition.name}</div>
@@ -1999,10 +1969,7 @@ export default function StaffDashboard({
           <section className="results-card">
             {draft ? (
               <div id="demo-organizer-setup" className="space-y-6">
-                <div
-                  className="results-workspace-hero"
-                  style={demoMode ? { viewTransitionName: "selected-demo-event-card" } : undefined}
-                >
+                <div className="results-workspace-hero">
                   <div>
                     <div className="results-kicker">{demoMode ? "Organizer setup" : "Event setup"}</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
@@ -2893,9 +2860,7 @@ export default function StaffDashboard({
                         <button type="button" onClick={() => addRound("finals")} className="results-secondary-button">Add finals</button>
                       </div>
                     </div>
-                    <LayoutGroup id="round-designer">
-                      <motion.div layout className="mt-4 space-y-4">
-                        <AnimatePresence initial={false} mode="popLayout">
+                    <div className="mt-4 space-y-4">
                           {draft.rounds.map((round, index) => {
                             const planningOnly = round.scoring_bucket === "none";
                             const isExpanded = expandedRoundId === round.id;
@@ -2906,14 +2871,9 @@ export default function StaffDashboard({
                                   ? "This stage creates finals rankings"
                                   : "Planning only";
                             return (
-                              <motion.div
+                              <div
                                 key={round.id}
-                                layout="position"
-                                transition={stageCardTransition}
-                                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
-                                className="motion-aurora-panel rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4"
+                                className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4"
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <button
@@ -2932,26 +2892,17 @@ export default function StaffDashboard({
                                         {scoreBearingLabel}
                                       </span>
                                       <span className="results-chip">{round.status}</span>
-                                      {round.is_active ? (
-                                        <motion.span
-                                          layoutId="live-stage-pill"
-                                          transition={stageCardTransition}
-                                          className="results-chip border-sky-200 bg-sky-50 text-sky-800"
-                                        >
-                                          Live stage
-                                        </motion.span>
-                                      ) : null}
+                                      {round.is_active ? <span className="results-chip border-sky-200 bg-sky-50 text-sky-800">Live stage</span> : null}
                                     </div>
                                   </button>
-                                  <motion.button
+                                  <button
                                     type="button"
                                     onClick={() => removeRound(round.id)}
                                     disabled={(draft.rounds?.length ?? 0) <= 1}
                                     className="results-danger-button"
-                                    whileTap={reduceMotion ? undefined : { scale: 0.985 }}
                                   >
                                     Remove
-                                  </motion.button>
+                                  </button>
                                 </div>
                                 <div className="mt-4 flex flex-wrap gap-2 text-xs leading-5 text-slate-500">
                                   <span className="results-chip border-slate-200 bg-slate-50 text-slate-600 shadow-none">
@@ -2969,16 +2920,8 @@ export default function StaffDashboard({
                                   ) : null}
                                 </div>
                                 {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-400">Climbers who advance move into the next stage below</div> : null}
-                                <AnimatePresence initial={false}>
-                                  {isExpanded ? (
-                                    <motion.div
-                                      key={`${round.id}-expanded`}
-                                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: 4 }}
-                                      animate={reduceMotion ? { opacity: 1 } : { opacity: 1, height: "auto", y: 0 }}
-                                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -4 }}
-                                      transition={sectionPresenceTransition}
-                                      style={{ overflow: "hidden" }}
-                                    >
+                                {isExpanded ? (
+                                    <div className="mt-4">
                                       <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4">
                                         <label className="space-y-2">
                                           <span className="text-sm font-medium text-slate-700">Name</span>
@@ -3093,16 +3036,8 @@ export default function StaffDashboard({
                                             </select>
                                           </label>
                                         ) : null}
-                                        <AnimatePresence initial={false}>
-                                          {showAdvancedStageSettings ? (
-                                            <motion.label
-                                              key="advanced-enabled"
-                                              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
-                                              animate={{ opacity: 1, y: 0 }}
-                                              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                                              transition={sectionPresenceTransition}
-                                              className="flex flex-col gap-2"
-                                            >
+                                        {showAdvancedStageSettings ? (
+                                            <label className="flex flex-col gap-2">
                                               <span className="text-sm font-medium text-slate-700">Enabled</span>
                                               <button
                                                 type="button"
@@ -3111,19 +3046,15 @@ export default function StaffDashboard({
                                               >
                                                 {round.is_enabled ? "Enabled" : "Disabled"}
                                               </button>
-                                            </motion.label>
+                                            </label>
                                           ) : null}
-                                        </AnimatePresence>
                                       </div>
-                                    </motion.div>
+                                    </div>
                                   ) : null}
-                                </AnimatePresence>
-                              </motion.div>
+                              </div>
                             );
                           })}
-                        </AnimatePresence>
-                      </motion.div>
-                    </LayoutGroup>
+                    </div>
                   </div>
                 ) : null}
 
@@ -3162,9 +3093,9 @@ export default function StaffDashboard({
                 ) : null}
 
                 <div className="flex flex-wrap gap-3">
-                  <motion.button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button" whileTap={reduceMotion ? undefined : { scale: 0.985 }}>
+                  <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button">
                     {isPending ? "Saving..." : "Save competition"}
-                  </motion.button>
+                  </button>
                   {snapshot ? (
                     <>
                       <button type="button" onClick={() => window.open(buildDisplayPath(draft.slug), "_blank", "noopener,noreferrer")} className="results-secondary-button">
@@ -3173,7 +3104,7 @@ export default function StaffDashboard({
                     </>
                   ) : null}
                   {draftHasFinals ? (
-                    <motion.button
+                    <button
                       type="button"
                       onClick={() => setConfirming({
                         title: "Advance to finals",
@@ -3188,11 +3119,9 @@ export default function StaffDashboard({
                       })}
                       className="results-secondary-button"
                       disabled={!canAdvanceToFinals || isPending || isPhasePending}
-                      whileHover={reduceMotion || !canAdvanceToFinals ? undefined : { y: -2 }}
-                      whileTap={reduceMotion || !canAdvanceToFinals ? undefined : { scale: 0.985 }}
                     >
                       Advance to finals
-                    </motion.button>
+                    </button>
                   ) : null}
                   <button type="button" onClick={() => setConfirming({
                     title: "Delete event",
