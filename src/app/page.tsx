@@ -147,23 +147,13 @@ export default function HomePage() {
         <section className="results-editorial-panel">
           <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
             <div className="min-w-0">
-              <div className="results-kicker">Competition platform</div>
+              <div className="results-kicker">Climbing competitions</div>
               <h1 className="results-editorial-title mt-3 max-w-4xl break-words text-4xl font-semibold text-slate-950 sm:text-6xl">
-                Run the event cleanly. Let climbers follow it live.
+                Everything you need for comp day, all in one place.
               </h1>
               <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg sm:leading-8">
-                Summit Series keeps setup, registration, score capture, standings, finals progression, and public display tied to the same event model.
+                Set up the event, share registration, track scores, and keep climbers, parents, and spectators up to date without juggling a bunch of separate tools.
               </p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <div className="results-meta-card results-meta-card-compact">
-                  <div className="results-kicker">For organizers</div>
-                  <div className="mt-2 text-base font-semibold text-slate-950">Build categories, schedule, and stages in one flow.</div>
-                </div>
-                <div className="results-meta-card results-meta-card-compact">
-                  <div className="results-kicker">For climbers</div>
-                  <div className="mt-2 text-base font-semibold text-slate-950">Open one event page for registration, scorecards, rankings, and display.</div>
-                </div>
-              </div>
             </div>
             <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-1">
               {featured ? (
