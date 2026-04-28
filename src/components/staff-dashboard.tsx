@@ -2625,7 +2625,7 @@ export default function StaffDashboard({
                       </div>
                     )}
                   </div>
-                  <div className="mt-5 grid gap-4 2xl:grid-cols-3 xl:grid-cols-2">
+                  <div className="mt-5 grid gap-4 lg:grid-cols-2">
                     {GUIDED_SETUP_PRESETS.map((preset) => (
                       (() => {
                         const isSelected = selectedGuidedSetupPresetId === preset.id;
@@ -2636,18 +2636,18 @@ export default function StaffDashboard({
                             type="button"
                             aria-pressed={isSelected}
                             onClick={() => applyGuidedSetupPreset(preset.id)}
-                            className={`group flex min-w-0 h-full flex-col rounded-[1.6rem] border px-5 py-5 text-left transition ${
+                            className={`group flex min-w-0 h-full min-h-[21rem] flex-col rounded-[1.6rem] border px-5 py-5 text-left transition ${
                               isSelected
                                 ? "border-slate-950 bg-slate-950 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
                                 : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/50"
                             }`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className={`min-w-0 break-words text-sm font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
+                            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className={`min-w-0 text-sm font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
                                 {preset.summary}
                               </div>
                               <div
-                                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
+                                className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
                                   isSelected
                                     ? "bg-white/12 text-white"
                                     : "border border-slate-200 bg-slate-50 text-slate-600"
@@ -2656,10 +2656,10 @@ export default function StaffDashboard({
                                 {isSelected ? "Selected" : "Template"}
                               </div>
                             </div>
-                            <div className={`mt-4 break-words text-[clamp(2rem,1.8rem+0.4vw,2.5rem)] font-semibold leading-[1.1] ${isSelected ? "text-white" : "text-slate-950"}`}>
+                            <div className={`mt-4 text-[clamp(2rem,1.75rem+0.35vw,2.35rem)] font-semibold leading-[1.08] tracking-tight ${isSelected ? "text-white" : "text-slate-950"}`}>
                               {preset.title}
                             </div>
-                            <div className={`mt-4 break-words text-base leading-relaxed ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
+                            <div className={`mt-4 text-base leading-relaxed ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
                               {preset.description}
                             </div>
                             <div
