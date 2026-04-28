@@ -2074,28 +2074,24 @@ export default function StaffDashboard({
                   </div>
 
                 <div id="demo-run-event" className="results-workspace-card space-y-6">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
+                  <div className="space-y-4">
+                    <div className="min-w-0">
                       <div className="results-kicker">Setup progress</div>
-                      <div className="mt-2 text-2xl font-semibold text-slate-950">
+                      <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
                         Step {currentSetupStep + 1} of {SETUP_WIZARD_STEPS.length}: {activeSetupStep.title}
                       </div>
-                      <div className="mt-2 max-w-3xl text-sm text-slate-600">
+                      <div className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
                         {activeSetupStep.description}
                       </div>
                     </div>
-                    <div className="min-w-[13rem] rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Progress</div>
-                      <div className="mt-2 text-2xl font-semibold text-slate-950">{setupProgressPercent}%</div>
-                      <div className="mt-1 text-sm text-slate-600">
-                        {setupProgressCount} of {SETUP_WIZARD_STEPS.length} steps have the key details filled in.
-                      </div>
-                    </div>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-                    <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${setupProgressPercent}%` }} />
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-200/80">
+                    <div
+                      className="h-full rounded-full bg-slate-950 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
+                      style={{ width: `${setupProgressPercent}%` }}
+                    />
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-5">
+                  <div className="grid gap-4 md:grid-cols-2 xl:gap-5">
                     {SETUP_WIZARD_STEPS.map((step, index) => {
                       const isActive = index === currentSetupStep;
                       const isComplete = setupStepCompletion[index];
@@ -2106,21 +2102,22 @@ export default function StaffDashboard({
                           type="button"
                           onClick={() => setCurrentSetupStep(index)}
                           aria-current={isActive ? "step" : undefined}
-                          className={`min-w-0 rounded-[1.3rem] border px-3 py-4 text-left transition sm:px-4 ${
+                          className={`group min-w-0 rounded-[2rem] border px-5 py-6 text-left transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-1 sm:px-6 sm:py-7 ${
                             isActive
-                              ? "border-slate-950 bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
+                              ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_54px_rgba(15,23,42,0.18)]"
                               : isComplete
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-950 hover:border-emerald-300"
-                                : "border-slate-200 bg-white text-slate-900 hover:border-sky-300 hover:bg-sky-50/50"
+                                ? "border-emerald-200/90 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(220,252,231,0.9))] text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.06)] hover:border-emerald-300"
+                                : "border-slate-200/90 bg-white text-slate-900 shadow-[0_8px_26px_rgba(15,23,42,0.04)] hover:border-slate-300"
                           }`}
+                          style={{ minHeight: "12rem" }}
                         >
-                          <div className={`text-xs font-semibold uppercase tracking-[0.22em] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-700" : "text-slate-500"}`}>
+                          <div className={`text-sm font-semibold uppercase tracking-[0.24em] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-700" : "text-slate-500"}`}>
                             Step {index + 1}
                           </div>
-                          <div className="mt-2 max-w-full break-words text-[clamp(1.35rem,1.22rem+0.22vw,1.55rem)] font-semibold leading-[1.15]">
+                          <div className="mt-4 max-w-full break-words text-[clamp(2rem,1.8rem+0.3vw,2.45rem)] font-semibold leading-[1.08] tracking-tight">
                             {step.shortLabel}
                           </div>
-                          <div className={`mt-2 max-w-full break-words text-sm leading-[1.6] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
+                          <div className={`mt-4 max-w-full break-words text-[1.1rem] leading-relaxed ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
                             {step.description}
                           </div>
                         </button>
