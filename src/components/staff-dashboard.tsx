@@ -2877,7 +2877,7 @@ export default function StaffDashboard({
                       <div>
                         <div className="results-kicker">Step 5 - Competition stages</div>
                         <div className="mt-2 text-sm text-slate-600">
-                          A stage is a real part of the competition like Qualifier, Semifinal, or Finals. Stages can either record real scores or exist only for scheduling.
+                          This is where you define the actual parts of the competition, like Qualifier, Semifinal, and Finals. Use stages to decide which parts create rankings and which parts are only there to organize the day.
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -2901,10 +2901,10 @@ export default function StaffDashboard({
                             const isExpanded = expandedRoundId === round.id;
                             const scoreBearingLabel =
                               round.scoring_bucket === "qualifier"
-                                ? "Records real scores"
+                                ? "This stage creates rankings"
                                 : round.scoring_bucket === "finals"
-                                  ? "Records finals scores"
-                                  : "Schedule only";
+                                  ? "This stage creates finals rankings"
+                                  : "Planning only";
                             return (
                               <motion.div
                                 key={round.id}
@@ -2955,7 +2955,7 @@ export default function StaffDashboard({
                                 </div>
                                 <div className="mt-4 flex flex-wrap gap-2 text-xs leading-5 text-slate-500">
                                   <span className="results-chip border-slate-200 bg-slate-50 text-slate-600 shadow-none">
-                                    {planningOnly ? "Schedule only" : "Live scoring enabled"}
+                                    {planningOnly ? "Used for planning only" : "Scores saved for this stage"}
                                   </span>
                                   {round.round_type !== "finals" ? (
                                     <span>
@@ -2968,7 +2968,7 @@ export default function StaffDashboard({
                                     </span>
                                   ) : null}
                                 </div>
-                                {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
+                                {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-400">Climbers who advance move into the next stage below</div> : null}
                                 <AnimatePresence initial={false}>
                                   {isExpanded ? (
                                     <motion.div
@@ -3014,7 +3014,7 @@ export default function StaffDashboard({
                                           </select>
                                         </label>
                                         <label className="space-y-2">
-                                          <span className="text-sm font-medium text-slate-700">This stage</span>
+                                          <span className="text-sm font-medium text-slate-700">How this stage is used</span>
                                           <select
                                             value={round.scoring_bucket}
                                             onChange={(event) =>
@@ -3034,9 +3034,9 @@ export default function StaffDashboard({
                                             }
                                             className="results-input"
                                           >
-                                            <option value="none">Schedule only</option>
-                                            {round.round_type !== "finals" ? <option value="qualifier">Records real scores</option> : null}
-                                            {round.round_type === "finals" ? <option value="finals">Records finals scores</option> : null}
+                                            <option value="none">Planning only</option>
+                                            {round.round_type !== "finals" ? <option value="qualifier">Creates rankings for this stage</option> : null}
+                                            {round.round_type === "finals" ? <option value="finals">Creates finals rankings</option> : null}
                                           </select>
                                         </label>
                                         <label className="space-y-2">
@@ -3107,7 +3107,7 @@ export default function StaffDashboard({
                                               <button
                                                 type="button"
                                                 onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
-                                                className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
+                                                className={`${round.is_enabled ? "results-primary-button" : "results-secondary-button"} min-w-0 w-full px-4`}
                                               >
                                                 {round.is_enabled ? "Enabled" : "Disabled"}
                                               </button>
