@@ -702,13 +702,15 @@ export default function StaffDashboard({
       return SETUP_WIZARD_STEPS.map(() => false);
     }
 
+    const draftRounds = draft.rounds ?? [];
+
     return [
       Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()),
       draft.qualifier_eligible_age_groups.length > 0,
-      (draft.rounds?.length ?? 0) > 0,
+      draftRounds.length > 0,
       draft.schedule_blocks.length > 0,
-      (draft.rounds?.length ?? 0) > 0 &&
-        draft.rounds.every((round) => round.name.trim().length > 0 && round.problem_count > 0),
+      draftRounds.length > 0 &&
+        draftRounds.every((round) => round.name.trim().length > 0 && round.problem_count > 0),
     ];
   }, [draft]);
   const setupProgressCount = setupStepCompletion.filter(Boolean).length;
