@@ -128,6 +128,7 @@ type GuidedSetupPreset = {
   title: string;
   summary: string;
   description: string;
+  details: string;
 };
 
 type DemoFlowStep = {
@@ -385,18 +386,21 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
     title: "Simple local comp",
     summary: "Qualifier only",
     description: "Best for a straightforward local event with one qualifier stage and a simple day schedule.",
+    details: "1 qualifier stage · guided local-day schedule",
   },
   {
     id: "qualifier_finals",
     title: "Qualifier + Finals",
     summary: "Most common format",
     description: "Use qualifiers during the day, then move the top climbers into finals with isolation and observation.",
+    details: "Qualifier rankings · finals field · isolation + observation",
   },
   {
     id: "qualifier_semifinal_finals",
     title: "Qualifier + Semifinal + Finals",
     summary: "Large event structure",
     description: "Use this when you need a scored semifinal between qualifiers and finals.",
+    details: "3 scoring stages · semifinal cutoff · finals workflow",
   },
 ];
 
@@ -580,6 +584,7 @@ export default function StaffDashboard({
   const [showAdvancedStageSettings, setShowAdvancedStageSettings] = useState(false);
   const [expandedRoundId, setExpandedRoundId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
+  const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<GuidedSetupPreset["id"] | null>(null);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -695,6 +700,7 @@ export default function StaffDashboard({
   );
   useEffect(() => {
     setCurrentSetupStep(0);
+    setSelectedGuidedSetupPresetId(null);
   }, [draft?.id]);
 
   const setupStepCompletion = useMemo(() => {
@@ -718,6 +724,8 @@ export default function StaffDashboard({
   const activeSetupStep = SETUP_WIZARD_STEPS[currentSetupStep] ?? SETUP_WIZARD_STEPS[0];
   const isFirstSetupStep = currentSetupStep === 0;
   const isLastSetupStep = currentSetupStep === SETUP_WIZARD_STEPS.length - 1;
+  const selectedGuidedSetupPreset =
+    GUIDED_SETUP_PRESETS.find((preset) => preset.id === selectedGuidedSetupPresetId) ?? null;
 
   useEffect(() => {
     if (!selectedSummary) {
@@ -1450,6 +1458,7 @@ export default function StaffDashboard({
       schedule_blocks: scheduleBlocks,
       has_finals: presetId !== "simple_local",
     });
+    setSelectedGuidedSetupPresetId(presetId);
     setRoundPlanNeedsReset(false);
     setMessage(`Guided setup applied: ${GUIDED_SETUP_PRESETS.find((preset) => preset.id === presetId)?.title}.`);
   };
@@ -2606,22 +2615,76 @@ export default function StaffDashboard({
                         and you can fine-tune everything below afterward.
                       </div>
                     </div>
+                    {selectedGuidedSetupPreset ? (
+                      <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900">
+                        Selected: {selectedGuidedSetupPreset.title}
+                      </div>
+                    ) : (
+                      <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+                        Choose a template to apply it
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                  <div className="mt-5 grid gap-4 xl:grid-cols-3">
                     {GUIDED_SETUP_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => applyGuidedSetupPreset(preset.id)}
-                        className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4 text-left transition hover:border-sky-300 hover:bg-sky-50/50"
-                      >
-                        <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{preset.summary}</div>
-                        <div className="mt-2 text-xl font-semibold text-slate-950">{preset.title}</div>
-                        <div className="mt-3 text-sm leading-6 text-slate-600">{preset.description}</div>
-                        <div className="mt-4 text-sm font-medium text-sky-700">Use this setup</div>
-                      </button>
+                      (() => {
+                        const isSelected = selectedGuidedSetupPresetId === preset.id;
+
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => applyGuidedSetupPreset(preset.id)}
+                            className={`group flex h-full flex-col rounded-[1.6rem] border px-5 py-5 text-left transition ${
+                              isSelected
+                                ? "border-slate-950 bg-slate-950 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
+                                : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/50"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className={`text-sm font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
+                                {preset.summary}
+                              </div>
+                              <div
+                                className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
+                                  isSelected
+                                    ? "bg-white/12 text-white"
+                                    : "border border-slate-200 bg-slate-50 text-slate-600"
+                                }`}
+                              >
+                                {isSelected ? "Selected" : "Template"}
+                              </div>
+                            </div>
+                            <div className={`mt-4 text-3xl font-semibold leading-tight ${isSelected ? "text-white" : "text-slate-950"}`}>
+                              {preset.title}
+                            </div>
+                            <div className={`mt-4 text-base leading-7 ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
+                              {preset.description}
+                            </div>
+                            <div
+                              className={`mt-5 rounded-[1rem] border px-4 py-3 text-sm leading-6 ${
+                                isSelected
+                                  ? "border-white/12 bg-white/8 text-slate-100"
+                                  : "border-slate-200 bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              {preset.details}
+                            </div>
+                            <div className={`mt-5 text-sm font-semibold ${isSelected ? "text-emerald-300" : "text-sky-700"}`}>
+                              {isSelected ? "Applied to this event" : "Click to apply this setup"}
+                            </div>
+                          </button>
+                        );
+                      })()
                     ))}
                   </div>
+                  {selectedGuidedSetupPreset ? (
+                    <div className="mt-4 rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-950">
+                      <span className="font-semibold">{selectedGuidedSetupPreset.title}</span> is currently applied.
+                      Continue to <span className="font-semibold">Day schedule</span> to adjust generated blocks, then review <span className="font-semibold">Competition stages</span>.
+                    </div>
+                  ) : null}
                   <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                     Next: review the generated <span className="font-semibold text-slate-900">Day schedule</span> and{" "}
                     <span className="font-semibold text-slate-900">Competition stages</span> sections below. They are now pre-linked so
