@@ -1260,6 +1260,25 @@ body::after {
   opacity: 0.9;
 }
 
+.motion-aurora-panel {
+  position: relative;
+  overflow: hidden;
+  transform-origin: center top;
+  will-change: transform, opacity, filter;
+}
+
+.motion-aurora-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 16% 22%, rgba(255, 255, 255, 0.22), transparent 18%),
+    radial-gradient(circle at 78% 18%, rgba(52, 152, 219, 0.08), transparent 22%),
+    radial-gradient(circle at 42% 86%, rgba(230, 57, 70, 0.06), transparent 18%);
+  opacity: 0.82;
+}
+
 @keyframes shine {
   to {
     background-position: 200% center;

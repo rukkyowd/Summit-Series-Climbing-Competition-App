@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
@@ -163,6 +164,8 @@ const DEMO_TRUST_POINTS = [
   "Judging, standings, and finals progression follow the same event model.",
   "Public pages look polished for climbers, parents, and spectators.",
 ];
+
+const MOTION_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
@@ -554,6 +557,28 @@ export default function StaffDashboard({
     action: () => Promise<void>;
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
+  const reduceMotion = useReducedMotion();
+  const stageCardTransition = reduceMotion
+    ? { duration: 0.16 }
+    : ({ type: "spring", stiffness: 320, damping: 30, mass: 0.82 } as const);
+  const sectionPresenceTransition = reduceMotion
+    ? { duration: 0.14 }
+    : { duration: 0.24, ease: MOTION_EASE };
+
+  const selectCompetitionWithTransition = useCallback((competitionId: string) => {
+    const transitionDocument = document as Document & {
+      startViewTransition?: (callback: () => void) => void;
+    };
+
+    if (transitionDocument.startViewTransition && !reduceMotion) {
+      transitionDocument.startViewTransition(() => {
+        setSelectedCompetitionId(competitionId);
+      });
+      return;
+    }
+
+    setSelectedCompetitionId(competitionId);
+  }, [reduceMotion]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1932,8 +1957,13 @@ export default function StaffDashboard({
                 <button
                   key={summary.competition.id}
                   type="button"
-                  onClick={() => setSelectedCompetitionId(summary.competition.id)}
+                  onClick={() => selectCompetitionWithTransition(summary.competition.id)}
                   className={`results-admin-list-item ${selectedCompetitionId === summary.competition.id ? "results-admin-list-item-active" : ""}`}
+                  style={
+                    demoMode
+                      ? { viewTransitionName: selectedCompetitionId === summary.competition.id ? "selected-demo-event-card" : "none" }
+                      : undefined
+                  }
                 >
                   <div>
                     <div className="text-lg font-semibold text-slate-950">{summary.competition.name}</div>
@@ -1950,7 +1980,10 @@ export default function StaffDashboard({
           <section className="results-card">
             {draft ? (
               <div id="demo-organizer-setup" className="space-y-6">
-                <div className="results-workspace-hero">
+                <div
+                  className="results-workspace-hero"
+                  style={demoMode ? { viewTransitionName: "selected-demo-event-card" } : undefined}
+                >
                   <div>
                     <div className="results-kicker">{demoMode ? "Organizer setup" : "Event setup"}</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
@@ -2841,33 +2874,57 @@ export default function StaffDashboard({
                         <button type="button" onClick={() => addRound("finals")} className="results-secondary-button">Add finals</button>
                       </div>
                     </div>
-                    <div className="mt-4 space-y-4">
-                      {draft.rounds.map((round, index) => {
-                        const planningOnly = round.scoring_bucket === "none";
-                        const scoreBearingLabel =
-                          round.scoring_bucket === "qualifier"
-                            ? "Records real scores"
-                            : round.scoring_bucket === "finals"
-                              ? "Records finals scores"
-                              : "Schedule only";
-                        return (
-                          <div key={round.id} className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <div className="text-lg font-semibold text-slate-950">{round.name}</div>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  <span className={planningOnly ? "results-chip" : "results-chip border-emerald-200 bg-emerald-50 text-emerald-800"}>
-                                    {scoreBearingLabel}
-                                  </span>
-                                  <span className="results-chip">{round.status}</span>
-                                  {round.is_active ? <span className="results-chip border-sky-200 bg-sky-50 text-sky-800">Live stage</span> : null}
+                    <LayoutGroup id="round-designer">
+                      <motion.div layout className="mt-4 space-y-4">
+                        <AnimatePresence initial={false} mode="popLayout">
+                          {draft.rounds.map((round, index) => {
+                            const planningOnly = round.scoring_bucket === "none";
+                            const scoreBearingLabel =
+                              round.scoring_bucket === "qualifier"
+                                ? "Records real scores"
+                                : round.scoring_bucket === "finals"
+                                  ? "Records finals scores"
+                                  : "Schedule only";
+                            return (
+                              <motion.div
+                                key={round.id}
+                                layout
+                                transition={stageCardTransition}
+                                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.985, filter: "blur(6px)" }}
+                                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.985, filter: "blur(4px)" }}
+                                className="motion-aurora-panel rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div>
+                                    <div className="text-lg font-semibold text-slate-950">{round.name}</div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <span className={planningOnly ? "results-chip" : "results-chip border-emerald-200 bg-emerald-50 text-emerald-800"}>
+                                        {scoreBearingLabel}
+                                      </span>
+                                      <span className="results-chip">{round.status}</span>
+                                      {round.is_active ? (
+                                        <motion.span
+                                          layoutId="live-stage-pill"
+                                          transition={stageCardTransition}
+                                          className="results-chip border-sky-200 bg-sky-50 text-sky-800"
+                                        >
+                                          Live stage
+                                        </motion.span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <motion.button
+                                    type="button"
+                                    onClick={() => removeRound(round.id)}
+                                    disabled={(draft.rounds?.length ?? 0) <= 1}
+                                    className="results-danger-button"
+                                    whileTap={reduceMotion ? undefined : { scale: 0.985 }}
+                                  >
+                                    Remove
+                                  </motion.button>
                                 </div>
-                              </div>
-                              <button type="button" onClick={() => removeRound(round.id)} disabled={(draft.rounds?.length ?? 0) <= 1} className="results-danger-button">
-                                Remove
-                              </button>
-                            </div>
-                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                               <label className="space-y-2">
                                 <span className="text-sm font-medium text-slate-700">Name</span>
                                 <input value={round.name} onChange={(event) => updateRound(round.id, (current) => ({ ...current, name: event.target.value }))} className="results-input" />
@@ -2946,8 +3003,14 @@ export default function StaffDashboard({
                                   className="results-input"
                                 />
                               </label>
-                            </div>
-                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                </div>
+                                <AnimatePresence initial={false}>
+                                  <motion.div
+                                    key={showAdvancedStageSettings ? "advanced-open" : "advanced-closed"}
+                                    layout
+                                    transition={stageCardTransition}
+                                    className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                                  >
                               {round.round_type !== "finals" ? (
                                 <label className="space-y-2">
                                   <span className="text-sm font-medium text-slate-700">Top climbs counted</span>
@@ -2987,24 +3050,37 @@ export default function StaffDashboard({
                                   </span>
                                 </label>
                               ) : null}
-                              {showAdvancedStageSettings ? (
-                                <label className="space-y-2">
-                                  <span className="text-sm font-medium text-slate-700">Enabled</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
-                                    className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
-                                  >
-                                    {round.is_enabled ? "Enabled" : "Disabled"}
-                                  </button>
-                                </label>
-                              ) : null}
-                            </div>
-                            {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
-                          </div>
-                        );
-                      })}
-                    </div>
+                                    <AnimatePresence initial={false}>
+                                      {showAdvancedStageSettings ? (
+                                        <motion.label
+                                          key="advanced-enabled"
+                                          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: 8 }}
+                                          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, height: "auto", y: 0 }}
+                                          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -6 }}
+                                          transition={sectionPresenceTransition}
+                                          style={{ overflow: "hidden" }}
+                                          className="space-y-2"
+                                        >
+                                          <span className="text-sm font-medium text-slate-700">Enabled</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
+                                            className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
+                                          >
+                                            {round.is_enabled ? "Enabled" : "Disabled"}
+                                          </button>
+                                        </motion.label>
+                                      ) : null}
+                                    </AnimatePresence>
+                                  </motion.div>
+                                </AnimatePresence>
+                                {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
+                      </motion.div>
+                    </LayoutGroup>
                   </div>
                 ) : null}
 
@@ -3043,9 +3119,9 @@ export default function StaffDashboard({
                 ) : null}
 
                 <div className="flex flex-wrap gap-3">
-                  <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button">
+                  <motion.button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button" whileTap={reduceMotion ? undefined : { scale: 0.985 }}>
                     {isPending ? "Saving..." : "Save competition"}
-                  </button>
+                  </motion.button>
                   {snapshot ? (
                     <>
                       <button type="button" onClick={() => window.open(buildDisplayPath(draft.slug), "_blank", "noopener,noreferrer")} className="results-secondary-button">
@@ -3054,17 +3130,38 @@ export default function StaffDashboard({
                     </>
                   ) : null}
                   {draftHasFinals ? (
-                    <button type="button" onClick={() => setConfirming({
-                    title: "Advance to finals",
-                    description: finalsAdvanceBlock
-                      ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
-                      : `This will create the finals field from the current standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
-                    confirmLabel: "Advance",
-                    expectedValue: draft.name,
-                    action: async () => {
-                      await advanceToFinals();
-                    },
-                  })} className="results-secondary-button" disabled={!canAdvanceToFinals || isPending || isPhasePending}>Advance to finals</button>
+                    <motion.button
+                      type="button"
+                      onClick={() => setConfirming({
+                        title: "Advance to finals",
+                        description: finalsAdvanceBlock
+                          ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
+                          : `This will create the finals field from the current standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
+                        confirmLabel: "Advance",
+                        expectedValue: draft.name,
+                        action: async () => {
+                          await advanceToFinals();
+                        },
+                      })}
+                      className="results-secondary-button"
+                      disabled={!canAdvanceToFinals || isPending || isPhasePending}
+                      whileHover={reduceMotion || !canAdvanceToFinals ? undefined : { y: -2 }}
+                      whileTap={reduceMotion || !canAdvanceToFinals ? undefined : { scale: 0.985 }}
+                      animate={
+                        canAdvanceToFinals && !isPending && !isPhasePending && !reduceMotion
+                          ? {
+                              boxShadow: [
+                                "inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px rgba(15, 23, 42, 0.05)",
+                                "inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 16px 32px rgba(14, 116, 215, 0.14)",
+                                "inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px rgba(15, 23, 42, 0.05)",
+                              ],
+                            }
+                          : { boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px rgba(15, 23, 42, 0.05)" }
+                      }
+                      transition={reduceMotion ? { duration: 0.12 } : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      Advance to finals
+                    </motion.button>
                   ) : null}
                   <button type="button" onClick={() => setConfirming({
                     title: "Delete event",
