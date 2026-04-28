@@ -603,7 +603,7 @@ export default function StaffJudgePage() {
       }
 
       if (refreshed) {
-        return refreshed;
+        return fallbackUpdater ? fallbackUpdater(refreshed) : refreshed;
       }
 
       return fallbackUpdater ? fallbackUpdater(entry) : entry;
