@@ -2095,7 +2095,7 @@ export default function StaffDashboard({
                   <div className="h-2 overflow-hidden rounded-full bg-slate-200">
                     <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${setupProgressPercent}%` }} />
                   </div>
-                  <div className="grid gap-3 lg:grid-cols-5">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     {SETUP_WIZARD_STEPS.map((step, index) => {
                       const isActive = index === currentSetupStep;
                       const isComplete = setupStepCompletion[index];
@@ -2117,8 +2117,8 @@ export default function StaffDashboard({
                           <div className={`text-xs font-semibold uppercase tracking-[0.22em] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-700" : "text-slate-500"}`}>
                             Step {index + 1}
                           </div>
-                          <div className="mt-2 text-lg font-semibold">{step.shortLabel}</div>
-                          <div className={`mt-2 text-sm leading-6 ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
+                          <div className="mt-2 text-xl font-semibold leading-tight">{step.shortLabel}</div>
+                          <div className={`mt-2 text-sm leading-7 ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
                             {step.description}
                           </div>
                         </button>
