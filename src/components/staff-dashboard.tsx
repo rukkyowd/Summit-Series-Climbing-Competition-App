@@ -1473,6 +1473,8 @@ export default function StaffDashboard({
     : "";
   const demoDataExportAllowed = demoMode && isDemoDataSlug(draft?.slug);
   const currentCompetitionStages = draft?.rounds ?? [];
+  const qualifierStage = currentCompetitionStages.find((round) => round.scoring_bucket === "qualifier") ?? null;
+  const finalsStage = currentCompetitionStages.find((round) => round.scoring_bucket === "finals") ?? null;
   const demoTourCards: DemoTourCard[] = draft
     ? [
         {
@@ -2406,48 +2408,36 @@ export default function StaffDashboard({
                     ) : null}
                   </label>
                 ) : null}
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-700">Qualifying boulders</span>
-                    <input type="number" min={1} value={draft.total_climbs} onChange={(event) => setDraft({ ...draft, total_climbs: Number(event.target.value) || DEFAULT_TOTAL_CLIMBS })} className="results-input" />
-                    <span className="text-xs leading-5 text-slate-500">Total qualifying climbs available to each athlete.</span>
-                  </label>
+                <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-slate-700">Max athletes</span>
                     <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} className="results-input" />
                     <span className="text-xs leading-5 text-slate-500">Maximum number of climbers this event is set up to handle.</span>
                   </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium text-slate-700">Top climbs counted</span>
-                    <input type="number" min={1} value={draft.qualifier_counting_climbs} onChange={(event) => setDraft({ ...draft, qualifier_counting_climbs: Number(event.target.value) || DEFAULT_QUALIFIER_COUNTING_CLIMBS })} className="results-input" />
-                    <span className="text-xs leading-5 text-slate-500">Only each climber&apos;s best X qualifying climbs count toward rank.</span>
-                  </label>
-                  {draftHasFinals ? (
-                    <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Finalists</span>
-                      <select value={draft.finals_cutoff} onChange={(event) => setDraft({ ...draft, finals_cutoff: Number(event.target.value) === 8 ? 8 : DEFAULT_FINALS_CUTOFF })} className="results-input">
-                        <option value={6}>Top 6</option>
-                        <option value={8}>Top 8</option>
-                      </select>
-                      <span className="text-xs leading-5 text-slate-500">How many climbers advance from qualifiers into finals.</span>
-                    </label>
-                  ) : null}
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {draftHasFinals ? (
-                    <label className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Finals problems</span>
-                      <input type="number" min={1} max={8} value={draft.finals_problem_count} onChange={(event) => setDraft({ ...draft, finals_problem_count: Math.max(1, Math.min(8, Number(event.target.value) || 4)) })} className="results-input" />
-                      <span className="text-xs leading-5 text-slate-500">Number of climbs each finalist will attempt in the finals round.</span>
-                    </label>
-                  ) : (
-                    <div className="results-workspace-card">
-                      <div className="results-kicker">Finals disabled</div>
-                      <div className="mt-2 text-sm text-slate-600">
-                        This scramble will end after qualifier results, so finals cutoff, order, and finals scoring stay out of the workflow.
+                  <div className="results-workspace-card">
+                    <div className="results-kicker">Stage settings</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      Edit stage scoring, qualifying climbs, advancing climbers, and finals boulders in Step 5 - Competition stages.
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-[1rem] border border-slate-200/80 bg-white/80 px-4 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Qualifier</div>
+                        <div className="mt-2 text-sm text-slate-700">
+                          {qualifierStage
+                            ? `${qualifierStage.problem_count} boulders, best ${qualifierStage.counting_climbs ?? draft.qualifier_counting_climbs} count`
+                            : "Set this up in Competition stages."}
+                        </div>
+                      </div>
+                      <div className="rounded-[1rem] border border-slate-200/80 bg-white/80 px-4 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Finals</div>
+                        <div className="mt-2 text-sm text-slate-700">
+                          {finalsStage
+                            ? `Top ${finalsStage.advancement_cutoff ?? finalsStage.finals_cutoff ?? draft.finals_cutoff} advance, ${finalsStage.problem_count} boulders`
+                            : "No finals stage in this event."}
+                        </div>
                       </div>
                     </div>
-                  )}
+                  </div>
                   <div className="results-workspace-card">
                     <div className="results-kicker">After setup - Visibility</div>
                     <div className="mt-2 text-sm text-slate-600">Archiving hides this event from public browsing without deleting registrations or scoring data.</div>
