@@ -2106,7 +2106,7 @@ export default function StaffDashboard({
                           type="button"
                           onClick={() => setCurrentSetupStep(index)}
                           aria-current={isActive ? "step" : undefined}
-                          className={`rounded-[1.3rem] border px-4 py-4 text-left transition ${
+                          className={`min-w-0 rounded-[1.3rem] border px-3 py-4 text-left transition sm:px-4 ${
                             isActive
                               ? "border-slate-950 bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
                               : isComplete
@@ -2117,8 +2117,10 @@ export default function StaffDashboard({
                           <div className={`text-xs font-semibold uppercase tracking-[0.22em] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-700" : "text-slate-500"}`}>
                             Step {index + 1}
                           </div>
-                          <div className="mt-2 text-xl font-semibold leading-tight">{step.shortLabel}</div>
-                          <div className={`mt-2 text-sm leading-7 ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
+                          <div className="mt-2 max-w-full [overflow-wrap:anywhere] text-[clamp(1.2rem,1.15rem+0.35vw,1.5rem)] font-semibold leading-[1.15] [hyphens:auto]">
+                            {step.shortLabel}
+                          </div>
+                          <div className={`mt-2 max-w-full [overflow-wrap:anywhere] text-sm leading-[1.55] [hyphens:auto] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
                             {step.description}
                           </div>
                         </button>
