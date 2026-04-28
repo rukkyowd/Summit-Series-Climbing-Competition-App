@@ -2924,7 +2924,7 @@ export default function StaffDashboard({
                                     Remove
                                   </motion.button>
                                 </div>
-                                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4">
                               <label className="space-y-2">
                                 <span className="text-sm font-medium text-slate-700">Name</span>
                                 <input value={round.name} onChange={(event) => updateRound(round.id, (current) => ({ ...current, name: event.target.value }))} className="results-input" />
@@ -2983,9 +2983,6 @@ export default function StaffDashboard({
                                   {round.round_type !== "finals" ? <option value="qualifier">Records real scores</option> : null}
                                   {round.round_type === "finals" ? <option value="finals">Records finals scores</option> : null}
                                 </select>
-                                <span className="text-xs leading-5 text-slate-500">
-                                  Choose whether this stage is just part of the plan or actually stores competition scores.
-                                </span>
                               </label>
                               <label className="space-y-2">
                                 <span className="text-sm font-medium text-slate-700">Boulders in this stage</span>
@@ -3007,7 +3004,7 @@ export default function StaffDashboard({
                                 <motion.div
                                   layout="position"
                                   transition={stageCardTransition}
-                                  className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                                  className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
                                 >
                               {round.round_type !== "finals" ? (
                                 <label className="space-y-2">
@@ -3043,9 +3040,6 @@ export default function StaffDashboard({
                                     <option value={6}>Top 6</option>
                                     <option value={8}>Top 8</option>
                                   </select>
-                                  <span className="text-xs leading-5 text-slate-500">
-                                    This controls how many climbers advance from this stage into the next one.
-                                  </span>
                                 </label>
                               ) : null}
                                   <AnimatePresence initial={false}>
@@ -3056,7 +3050,7 @@ export default function StaffDashboard({
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
                                         transition={sectionPresenceTransition}
-                                        className="space-y-2"
+                                        className="flex flex-col gap-2"
                                       >
                                         <span className="text-sm font-medium text-slate-700">Enabled</span>
                                         <button
@@ -3070,7 +3064,22 @@ export default function StaffDashboard({
                                     ) : null}
                                   </AnimatePresence>
                                 </motion.div>
-                                {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
+                                <div className="mt-4 flex flex-wrap gap-2 text-xs leading-5 text-slate-500">
+                                  <span className="results-chip border-slate-200 bg-slate-50 text-slate-600 shadow-none">
+                                    {planningOnly ? "Schedule only" : "Live scoring enabled"}
+                                  </span>
+                                  {round.round_type !== "finals" ? (
+                                    <span>
+                                      Best {round.counting_climbs ?? draft.qualifier_counting_climbs} climbs count toward ranking.
+                                    </span>
+                                  ) : null}
+                                  {round.round_type !== "semifinal" ? (
+                                    <span>
+                                      Top {round.finals_cutoff ?? draft.finals_cutoff} advance into the next stage.
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
                               </motion.div>
                             );
                           })}
