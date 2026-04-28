@@ -38,12 +38,12 @@ export default function ConfirmationModal({
 
   const requiresMatch = Boolean(expectedValue?.trim());
   const canConfirm = !requiresMatch || typedValue.trim() === expectedValue?.trim();
-  const overlayTransition = reduceMotion ? { duration: 0.12 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
+  const overlayTransition = reduceMotion ? { duration: 0.1 } : { duration: 0.16, ease: [0.22, 1, 0.36, 1] as const };
   const panelTransition = reduceMotion
-    ? { duration: 0.16 }
-    : { type: "spring", stiffness: 280, damping: 26, mass: 0.9 } as const;
+    ? { duration: 0.12 }
+    : { duration: 0.18, ease: [0.22, 1, 0.36, 1] as const };
   const contentVariants = {
-    closed: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
+    closed: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 },
     open: { opacity: 1, y: 0 },
   };
 
@@ -70,18 +70,18 @@ export default function ConfirmationModal({
             variants={{
               open: reduceMotion
                 ? { opacity: 1 }
-                : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
+                : { opacity: 1, y: 0, scale: 1 },
               closed: reduceMotion
                 ? { opacity: 0 }
-                : { opacity: 0, y: 18, scale: 0.97, filter: "blur(6px)" },
+                : { opacity: 0, y: 10, scale: 0.985 },
             }}
             transition={panelTransition}
           >
             <motion.div
               className="space-y-4"
               variants={{
-                open: { transition: { staggerChildren: 0.06, delayChildren: 0.03 } },
-                closed: { transition: { staggerChildren: 0.03, staggerDirection: -1 } },
+                open: { transition: { staggerChildren: 0.035, delayChildren: 0.015 } },
+                closed: { transition: { staggerChildren: 0.02, staggerDirection: -1 } },
               }}
               initial="closed"
               animate="open"

@@ -559,11 +559,11 @@ export default function StaffDashboard({
   const [shareOrigin, setShareOrigin] = useState("");
   const reduceMotion = useReducedMotion();
   const stageCardTransition = reduceMotion
-    ? { duration: 0.16 }
-    : ({ type: "spring", stiffness: 320, damping: 30, mass: 0.82 } as const);
+    ? { duration: 0.12 }
+    : { duration: 0.18, ease: MOTION_EASE };
   const sectionPresenceTransition = reduceMotion
-    ? { duration: 0.14 }
-    : { duration: 0.24, ease: MOTION_EASE };
+    ? { duration: 0.1 }
+    : { duration: 0.16, ease: MOTION_EASE };
 
   const selectCompetitionWithTransition = useCallback((competitionId: string) => {
     const transitionDocument = document as Document & {
@@ -2888,11 +2888,11 @@ export default function StaffDashboard({
                             return (
                               <motion.div
                                 key={round.id}
-                                layout
+                                layout="position"
                                 transition={stageCardTransition}
-                                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.985, filter: "blur(6px)" }}
-                                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.985, filter: "blur(4px)" }}
+                                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
                                 className="motion-aurora-panel rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4"
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3004,13 +3004,11 @@ export default function StaffDashboard({
                                 />
                               </label>
                                 </div>
-                                <AnimatePresence initial={false}>
-                                  <motion.div
-                                    key={showAdvancedStageSettings ? "advanced-open" : "advanced-closed"}
-                                    layout
-                                    transition={stageCardTransition}
-                                    className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-                                  >
+                                <motion.div
+                                  layout="position"
+                                  transition={stageCardTransition}
+                                  className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                                >
                               {round.round_type !== "finals" ? (
                                 <label className="space-y-2">
                                   <span className="text-sm font-medium text-slate-700">Top climbs counted</span>
@@ -3050,30 +3048,28 @@ export default function StaffDashboard({
                                   </span>
                                 </label>
                               ) : null}
-                                    <AnimatePresence initial={false}>
-                                      {showAdvancedStageSettings ? (
-                                        <motion.label
-                                          key="advanced-enabled"
-                                          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: 8 }}
-                                          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, height: "auto", y: 0 }}
-                                          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -6 }}
-                                          transition={sectionPresenceTransition}
-                                          style={{ overflow: "hidden" }}
-                                          className="space-y-2"
+                                  <AnimatePresence initial={false}>
+                                    {showAdvancedStageSettings ? (
+                                      <motion.label
+                                        key="advanced-enabled"
+                                        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                                        transition={sectionPresenceTransition}
+                                        className="space-y-2"
+                                      >
+                                        <span className="text-sm font-medium text-slate-700">Enabled</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
+                                          className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
                                         >
-                                          <span className="text-sm font-medium text-slate-700">Enabled</span>
-                                          <button
-                                            type="button"
-                                            onClick={() => updateRound(round.id, (current) => ({ ...current, is_enabled: !current.is_enabled }))}
-                                            className={round.is_enabled ? "results-primary-button" : "results-secondary-button"}
-                                          >
-                                            {round.is_enabled ? "Enabled" : "Disabled"}
-                                          </button>
-                                        </motion.label>
-                                      ) : null}
-                                    </AnimatePresence>
-                                  </motion.div>
-                                </AnimatePresence>
+                                          {round.is_enabled ? "Enabled" : "Disabled"}
+                                        </button>
+                                      </motion.label>
+                                    ) : null}
+                                  </AnimatePresence>
+                                </motion.div>
                                 {index < (draft.rounds?.length ?? 0) - 1 ? <div className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">Athletes advance into the next stage below</div> : null}
                               </motion.div>
                             );
@@ -3147,18 +3143,6 @@ export default function StaffDashboard({
                       disabled={!canAdvanceToFinals || isPending || isPhasePending}
                       whileHover={reduceMotion || !canAdvanceToFinals ? undefined : { y: -2 }}
                       whileTap={reduceMotion || !canAdvanceToFinals ? undefined : { scale: 0.985 }}
-                      animate={
-                        canAdvanceToFinals && !isPending && !isPhasePending && !reduceMotion
-                          ? {
-                              boxShadow: [
-                                "inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px rgba(15, 23, 42, 0.05)",
-                                "inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 16px 32px rgba(14, 116, 215, 0.14)",
-                                "inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px rgba(15, 23, 42, 0.05)",
-                              ],
-                            }
-                          : { boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px rgba(15, 23, 42, 0.05)" }
-                      }
-                      transition={reduceMotion ? { duration: 0.12 } : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
                     >
                       Advance to finals
                     </motion.button>
