@@ -129,12 +129,6 @@ type GuidedSetupPreset = {
   summary: string;
   description: string;
   details: string;
-  bestFor: string;
-  complexity: string;
-  athleteScale: string;
-  progression: string;
-  recommendation: string;
-  schedulePreview: string[];
 };
 
 type DemoFlowStep = {
@@ -392,12 +386,6 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
     title: "Simple local comp",
     summary: "Qualifier only",
     description: "Best for a straightforward local event with one qualifier stage and a simple day schedule.",
-    bestFor: "One main scoring round with a clean awards finish.",
-    complexity: "Lean",
-    athleteScale: "Up to 60 climbers",
-    progression: "Qualifier standings only",
-    recommendation: "Best for local youth series events, club comps, and small gym showcases.",
-    schedulePreview: ["Check-in", "Qualifier session", "Results + awards"],
     details: "1 qualifier stage · guided local-day schedule",
   },
   {
@@ -405,12 +393,6 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
     title: "Qualifier + Finals",
     summary: "Most common format",
     description: "Use qualifiers during the day, then move the top climbers into finals with isolation and observation.",
-    bestFor: "A full event day with one advancement cut and a spectator-friendly finish.",
-    complexity: "Balanced",
-    athleteScale: "40 to 120 climbers",
-    progression: "Top qualifiers advance to finals",
-    recommendation: "Best for most gyms that want a polished end-of-day finals experience without running a semifinal.",
-    schedulePreview: ["Qualifier waves", "Results review", "Isolation + observation", "Finals"],
     details: "Qualifier rankings · finals field · isolation + observation",
   },
   {
@@ -418,12 +400,6 @@ const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
     title: "Qualifier + Semifinal + Finals",
     summary: "Large event structure",
     description: "Use this when you need a scored semifinal between qualifiers and finals.",
-    bestFor: "Bigger fields where one extra scored cut keeps finals compact and more competitive.",
-    complexity: "Advanced",
-    athleteScale: "100+ climbers",
-    progression: "Qualifier -> semifinal -> finals",
-    recommendation: "Best for marquee events with enough athletes, judges, and schedule depth to support three scored stages.",
-    schedulePreview: ["Qualifier waves", "Semifinal isolation", "Semifinal round", "Finals"],
     details: "3 scoring stages · semifinal cutoff · finals workflow",
   },
 ];
@@ -1568,59 +1544,6 @@ export default function StaffDashboard({
   const currentCompetitionStages = draft?.rounds ?? [];
   const qualifierStage = currentCompetitionStages.find((round) => round.scoring_bucket === "qualifier") ?? null;
   const finalsStage = currentCompetitionStages.find((round) => round.scoring_bucket === "finals") ?? null;
-  const selectedQualifierGroups = draft ? sortAgeGroups(draft.qualifier_eligible_age_groups) : [];
-  const selectedFinalsGroups = draft ? sortAgeGroups(draft.finals_eligible_age_groups) : [];
-  const linkedScheduleBlockCount = orderedDraftScheduleBlocks.filter((block) => Boolean(block.round_id)).length;
-  const activeWizardPreset = (() => {
-    if (selectedGuidedSetupPreset) {
-      return selectedGuidedSetupPreset;
-    }
-
-    if (!draft) {
-      return null;
-    }
-
-    if (!draftHasFinals) {
-      return GUIDED_SETUP_PRESETS.find((preset) => preset.id === "simple_local") ?? null;
-    }
-
-    if (currentCompetitionStages.some((round) => round.round_type === "semifinal")) {
-      return GUIDED_SETUP_PRESETS.find((preset) => preset.id === "qualifier_semifinal_finals") ?? null;
-    }
-
-    return GUIDED_SETUP_PRESETS.find((preset) => preset.id === "qualifier_finals") ?? null;
-  })();
-  const wizardReviewItems = [
-    {
-      label: "Event shell",
-      detail: draft?.name && draft.location_name ? `${draft.name} in ${draft.location_name}` : "Name, slug, and location still need attention.",
-      complete: setupStepCompletion[0] ?? false,
-    },
-    {
-      label: "Registration categories",
-      detail: selectedQualifierGroups.length ? selectedQualifierGroups.join(" / ") : "No qualifying categories selected yet.",
-      complete: setupStepCompletion[1] ?? false,
-    },
-    {
-      label: "Structure preset",
-      detail: activeWizardPreset ? activeWizardPreset.title : "Choose the event structure that fits this comp.",
-      complete: setupStepCompletion[2] ?? false,
-    },
-    {
-      label: "Day schedule",
-      detail: orderedDraftScheduleBlocks.length
-        ? `${orderedDraftScheduleBlocks.length} blocks planned, ${linkedScheduleBlockCount} linked to scoring stages.`
-        : "No day schedule blocks mapped yet.",
-      complete: setupStepCompletion[3] ?? false,
-    },
-    {
-      label: "Competition stages",
-      detail: currentCompetitionStages.length
-        ? currentCompetitionStages.map((round) => round.name).join(" -> ")
-        : "No scoring stages configured yet.",
-      complete: setupStepCompletion[4] ?? false,
-    },
-  ] as const;
   const demoTourCards: DemoTourCard[] = draft
     ? [
         {
@@ -2204,8 +2127,6 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.24fr)_minmax(18rem,21rem)] xl:items-start">
-                <div className="space-y-6">
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2741,18 +2662,6 @@ export default function StaffDashboard({
                             <div className={`mt-4 text-base leading-relaxed ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
                               {preset.description}
                             </div>
-                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                              <div className={`rounded-[1rem] border px-4 py-3 text-sm ${isSelected ? "border-white/12 bg-white/6 text-slate-100" : "border-slate-200 bg-slate-50/80 text-slate-700"}`}>
-                                <div className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>Complexity</div>
-                                <div className="mt-2 font-semibold">{preset.complexity}</div>
-                                <div className={`mt-1 leading-relaxed ${isSelected ? "text-slate-300" : "text-slate-500"}`}>{preset.athleteScale}</div>
-                              </div>
-                              <div className={`rounded-[1rem] border px-4 py-3 text-sm ${isSelected ? "border-white/12 bg-white/6 text-slate-100" : "border-slate-200 bg-slate-50/80 text-slate-700"}`}>
-                                <div className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>Progression</div>
-                                <div className="mt-2 font-semibold">{preset.progression}</div>
-                                <div className={`mt-1 leading-relaxed ${isSelected ? "text-slate-300" : "text-slate-500"}`}>{preset.bestFor}</div>
-                              </div>
-                            </div>
                             <div
                               className={`mt-5 rounded-[1rem] border px-4 py-3 text-sm leading-relaxed ${
                                 isSelected
@@ -2761,25 +2670,6 @@ export default function StaffDashboard({
                               }`}
                             >
                               {preset.details}
-                            </div>
-                            <div className="mt-5">
-                              <div className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
-                                What this creates
-                              </div>
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {preset.schedulePreview.map((item) => (
-                                  <span
-                                    key={`${preset.id}-${item}`}
-                                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold tracking-[0.16em] ${
-                                      isSelected
-                                        ? "border-white/12 bg-white/8 text-slate-100"
-                                        : "border-slate-200 bg-white text-slate-600"
-                                    }`}
-                                  >
-                                    {item}
-                                  </span>
-                                ))}
-                              </div>
                             </div>
                             <div className={`mt-5 break-words text-sm font-semibold leading-relaxed ${isSelected ? "text-emerald-300" : "text-sky-700"}`}>
                               {isSelected ? "Applied to this event" : "Click to apply this setup"}
@@ -2790,33 +2680,9 @@ export default function StaffDashboard({
                     ))}
                   </div>
                   {selectedGuidedSetupPreset ? (
-                    <div className="mt-4 rounded-[1.4rem] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(220,252,231,0.9))] px-5 py-5 text-sm text-emerald-950 shadow-[0_12px_28px_rgba(16,185,129,0.08)]">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="results-kicker text-emerald-700">Recommended next move</div>
-                          <div className="mt-2 text-xl font-semibold tracking-tight">{selectedGuidedSetupPreset.title} is currently applied</div>
-                          <div className="mt-2 max-w-2xl leading-relaxed text-emerald-900">
-                            {selectedGuidedSetupPreset.recommendation}
-                          </div>
-                        </div>
-                        <div className="results-chip border-emerald-200 bg-white/80 text-emerald-700 shadow-none">
-                          {selectedGuidedSetupPreset.complexity} setup
-                        </div>
-                      </div>
-                      <div className="mt-4 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-[1rem] border border-emerald-200/80 bg-white/70 px-4 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Athlete scale</div>
-                          <div className="mt-2 font-semibold text-emerald-950">{selectedGuidedSetupPreset.athleteScale}</div>
-                        </div>
-                        <div className="rounded-[1rem] border border-emerald-200/80 bg-white/70 px-4 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Progression</div>
-                          <div className="mt-2 font-semibold text-emerald-950">{selectedGuidedSetupPreset.progression}</div>
-                        </div>
-                        <div className="rounded-[1rem] border border-emerald-200/80 bg-white/70 px-4 py-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Continue with</div>
-                          <div className="mt-2 font-semibold text-emerald-950">Day schedule, then stages</div>
-                        </div>
-                      </div>
+                    <div className="mt-4 rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-950">
+                      <span className="font-semibold">{selectedGuidedSetupPreset.title}</span> is currently applied.
+                      Continue to <span className="font-semibold">Day schedule</span> to adjust generated blocks, then review <span className="font-semibold">Competition stages</span>.
                     </div>
                   ) : null}
                   <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -3111,46 +2977,6 @@ export default function StaffDashboard({
                 ) : null}
 
                 </fieldset>
-
-                <div className="results-workspace-card">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="results-kicker">Review before save</div>
-                      <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Make sure the event tells a complete story</div>
-                      <div className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
-                        This review should make it obvious what the event is, who can register, how the day flows, and which stages will score live.
-                      </div>
-                    </div>
-                    <div className={setupProgressCount === SETUP_WIZARD_STEPS.length ? "results-chip border-emerald-200 bg-emerald-50 text-emerald-700" : "results-chip border-amber-200 bg-amber-50 text-amber-700"}>
-                      {setupProgressCount} of {SETUP_WIZARD_STEPS.length} ready
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {wizardReviewItems.map((item) => (
-                      <div
-                        key={item.label}
-                        className={`rounded-[1.2rem] border px-4 py-4 ${
-                          item.complete
-                            ? "border-emerald-200 bg-emerald-50/70 text-emerald-950"
-                            : "border-slate-200 bg-slate-50/80 text-slate-800"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold uppercase tracking-[0.2em]">
-                            {item.label}
-                          </div>
-                          <span className={item.complete ? "results-chip border-emerald-200 bg-white/80 text-emerald-700 shadow-none" : "results-chip border-slate-200 bg-white/80 text-slate-600 shadow-none"}>
-                            {item.complete ? "Ready" : "Needs work"}
-                          </span>
-                        </div>
-                        <div className={`mt-3 text-sm leading-relaxed ${item.complete ? "text-emerald-900" : "text-slate-600"}`}>
-                          {item.detail}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -3509,102 +3335,6 @@ export default function StaffDashboard({
                 </div>
                 </fieldset>
                 ) : null}
-                </div>
-
-                <aside className="space-y-4 xl:sticky xl:top-24">
-                  <div className="results-workspace-card">
-                    <div className="results-kicker">Event snapshot</div>
-                    <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                      {setupProgressPercent}% configured
-                    </div>
-                    <div className="mt-2 text-sm leading-relaxed text-slate-600">
-                      Keep this rail in view while you edit so each decision still supports the same event shape.
-                    </div>
-                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200/80">
-                      <div
-                        className="h-full rounded-full bg-slate-950 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
-                        style={{ width: `${setupProgressPercent}%` }}
-                      />
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {wizardReviewItems.map((item) => (
-                        <div key={`summary-${item.label}`} className="rounded-[1.1rem] border border-slate-200/80 bg-white/80 px-4 py-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-slate-900">{item.label}</div>
-                            <span className={item.complete ? "results-chip border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none" : "results-chip border-slate-200 bg-slate-50 text-slate-600 shadow-none"}>
-                              {item.complete ? "Ready" : "Pending"}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-sm leading-relaxed text-slate-600">
-                            {item.detail}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="results-workspace-card">
-                    <div className="results-kicker">Setup selections</div>
-                    <div className="mt-4 space-y-4">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Format</div>
-                        <div className="mt-2 text-sm font-semibold text-slate-950">{FORMAT_TEMPLATES.find((template) => template.value === draft.format)?.label ?? draft.format}</div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Categories</div>
-                        <div className="mt-2 text-sm leading-relaxed text-slate-600">
-                          {selectedQualifierGroups.length ? selectedQualifierGroups.join(" / ") : "No qualifier categories selected yet."}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Finals plan</div>
-                        <div className="mt-2 text-sm leading-relaxed text-slate-600">
-                          {draftHasFinals
-                            ? selectedFinalsGroups.length
-                              ? `Finals enabled for ${selectedFinalsGroups.join(" / ")}`
-                              : "Finals enabled and can be narrowed to specific categories."
-                            : "Qualifier-only event right now."}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Schedule + stages</div>
-                        <div className="mt-2 text-sm leading-relaxed text-slate-600">
-                          {orderedDraftScheduleBlocks.length} blocks planned and {currentCompetitionStages.length} stages configured.
-                        </div>
-                        <div className="mt-2 text-sm leading-relaxed text-slate-500">
-                          {linkedScheduleBlockCount
-                            ? `${linkedScheduleBlockCount} blocks are already linked to a scoring round.`
-                            : "No schedule blocks are linked to scoring rounds yet."}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {activeWizardPreset ? (
-                    <div className="results-workspace-card">
-                      <div className="results-kicker">Recommended structure</div>
-                      <div className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{activeWizardPreset.title}</div>
-                      <div className="mt-2 text-sm leading-relaxed text-slate-600">
-                        {activeWizardPreset.recommendation}
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <span className="results-chip border-slate-200 bg-slate-50 text-slate-700 shadow-none">{activeWizardPreset.complexity}</span>
-                        <span className="results-chip border-slate-200 bg-slate-50 text-slate-700 shadow-none">{activeWizardPreset.athleteScale}</span>
-                      </div>
-                      <div className="mt-4">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Expected flow</div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {activeWizardPreset.schedulePreview.map((item) => (
-                            <span key={`rail-${activeWizardPreset.id}-${item}`} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold tracking-[0.16em] text-slate-600">
-                              {item}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </aside>
-                </div>
 
                 {snapshot && (!demoMode || demoDataExportAllowed) ? (
                   <div className="results-workspace-card">
