@@ -7,6 +7,7 @@ import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
+import { isDemoCompetitionRecord } from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   createCompetitionFromTemplate,
@@ -72,8 +73,7 @@ import { sanitizeExternalUrl } from "@/lib/security";
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
 
 function isDemoDataSlug(slug: string | null | undefined) {
-  const normalized = slug?.trim().toLowerCase() ?? "";
-  return normalized.startsWith("mock-") || normalized.startsWith("spring-send-");
+  return isDemoCompetitionRecord({ slug: slug ?? "", is_demo: false });
 }
 
 function cloneCompetition(competition: Competition): Competition {
@@ -815,8 +815,10 @@ export default function StaffDashboard({
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
-  const canEditPhase = profile?.role === "admin";
-  const canEditSetup = profile?.role === "admin";
+  const selectedCompetitionIsDemo = draft ? isDemoCompetitionRecord(draft) : false;
+  const canEditPhase = profile?.role === "admin" && !selectedCompetitionIsDemo;
+  const canEditSetup = profile?.role === "admin" && !selectedCompetitionIsDemo;
+  const canRestoreDemo = profile?.role === "admin" && selectedCompetitionIsDemo && !demoMode;
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
     ? getCompetitionPhaseForSchedulePhase(liveScheduleBlock.phase_type)
@@ -1190,6 +1192,35 @@ export default function StaffDashboard({
         }
       })();
     });
+  };
+
+  const restoreDemoCompetition = async () => {
+    setError("");
+    setMessage("");
+
+    const response = await fetch("/api/demo/reset", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          error?: string;
+          demo?: {
+            competitionId: string;
+          };
+        }
+      | null;
+
+    if (!response.ok || !payload?.demo?.competitionId) {
+      throw new Error(payload?.error || "Unable to restore the seeded demo competition.");
+    }
+
+    await load();
+    setSelectedCompetitionId(payload.demo.competitionId);
+    await refreshSelectedSnapshot(payload.demo.competitionId);
+    setMessage("Demo competition restored to the seeded walkthrough state.");
   };
 
   const updateRounds = (updater: (rounds: CompetitionRound[]) => CompetitionRound[]) => {
@@ -1607,6 +1638,8 @@ export default function StaffDashboard({
     : false;
   const demoBanner = demoMode
     ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
+    : selectedCompetitionIsDemo
+      ? "This shared demo event allows score submission only. Restore it anytime to return to the seeded walkthrough state."
     : "";
   const demoDataExportAllowed = demoMode && isDemoDataSlug(draft?.slug);
   const currentCompetitionStages = useMemo(() => draft?.rounds ?? [], [draft?.rounds]);
@@ -3624,6 +3657,27 @@ export default function StaffDashboard({
                     <div className="results-chip">{stageFlowSummary}</div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-3">
+                    {canRestoreDemo ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirming({
+                            title: "Restore demo",
+                            description:
+                              "This rebuilds the seeded demo competition and clears any temporary changes from prior walkthroughs or test scoring.",
+                            confirmLabel: "Restore",
+                            expectedValue: draft.name,
+                            action: async () => {
+                              await restoreDemoCompetition();
+                            },
+                          })
+                        }
+                        className="results-secondary-button"
+                      >
+                        Restore demo
+                      </button>
+                    ) : null}
+                    {!selectedCompetitionIsDemo ? (
                     <button type="button" onClick={() => setConfirming({
                       title: "Delete event",
                       description: "This permanently deletes the event and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
@@ -3639,6 +3693,7 @@ export default function StaffDashboard({
                         setMessage("Competition deleted.");
                       },
                     })} disabled={!canEditSetup} className="results-danger-button">Delete event</button>
+                    ) : null}
                   </div>
                 </div>
                 </fieldset>

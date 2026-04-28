@@ -1,4 +1,5 @@
 import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
+import { isDemoCompetitionRecord } from "./demo";
 import { sanitizeExternalUrl } from "./security";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "./attempts";
 import {
@@ -617,7 +618,20 @@ async function fetchBoulderQueueRows(competitionId: string, scheduleBlockId: str
 }
 
 function isDemoCompetitionSlug(slug: string) {
-  return slug.startsWith("mock-") || slug.startsWith("spring-send-");
+  return isDemoCompetitionRecord({ slug, is_demo: false });
+}
+
+function assertDemoCompetitionWritableActionAllowed(
+  competition: Pick<Competition, "slug" | "name" | "is_demo">,
+  actionLabel: string
+) {
+  if (!isDemoCompetitionRecord(competition)) {
+    return;
+  }
+
+  throw new Error(
+    `${competition.name} is a protected demo competition. ${actionLabel} is disabled here, and you can use Restore demo to reset the sample state instead.`
+  );
 }
 
 async function fetchBoulderQueueRowsForCompetition(competition: Competition, scheduleBlockId: string | null) {
@@ -1310,6 +1324,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     id: competition.id,
     slug: competition.slug,
     name: competition.name,
+    is_demo: competition.is_demo,
     status: competition.status,
     format: legacyProjection.format,
     current_phase: competition.current_phase,
@@ -1375,6 +1390,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
   if (!existingCompetition) {
     throw new Error("Competition not found.");
   }
+  assertDemoCompetitionWritableActionAllowed(existingCompetition, "Saving event structure");
 
   const payload = normalizeCompetition(
     {
@@ -1397,6 +1413,7 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
     id: payload.id,
     slug: payload.slug,
     name: payload.name,
+    is_demo: payload.is_demo,
     status: payload.status,
     format: legacyProjection.format,
     current_phase: payload.current_phase,
@@ -1467,6 +1484,11 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
 
 export async function setCompetitionLiveScheduleBlock(competitionId: string, blockId: string) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Changing the live schedule block");
 
   const { error: clearError } = await supabase
     .from("competition_schedule_blocks")
@@ -1492,6 +1514,11 @@ export async function setCompetitionLiveScheduleBlock(competitionId: string, blo
 
 export async function setCompetitionStatus(competitionId: string, status: CompetitionStatus) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Changing event status");
 
   const { error } = await supabase.from("competitions").update({ status }).eq("id", competitionId);
   if (error) {
@@ -1501,6 +1528,11 @@ export async function setCompetitionStatus(competitionId: string, status: Compet
 
 export async function setCompetitionPhase(competitionId: string, nextPhase: CompetitionPhase, note?: string) {
   ensureConfigured();
+  const existingCompetition = await getCompetitionById(competitionId);
+  if (!existingCompetition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(existingCompetition, "Changing event phase");
 
   const payload: {
     p_competition_id: string;
@@ -1572,6 +1604,11 @@ export async function setCompetitionPhase(competitionId: string, nextPhase: Comp
 
 export async function undoCompetitionOperation(competitionId: string) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Undoing event operations");
 
   const { error } = await supabase.rpc("undo_last_competition_operation", {
     p_competition_id: competitionId,
@@ -1588,6 +1625,11 @@ export async function undoCompetitionOperation(competitionId: string) {
 
 export async function deleteCompetition(competitionId: string) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Deleting the event");
 
   const { error } = await supabase.from("competitions").delete().eq("id", competitionId);
   if (error) {
@@ -1597,6 +1639,11 @@ export async function deleteCompetition(competitionId: string) {
 
 export async function advanceCompetitionToFinals(competitionId: string) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Advancing the event to finals");
 
   const { error } = await supabase.rpc("advance_competition_to_finals", {
     p_competition_id: competitionId,
@@ -1613,6 +1660,11 @@ export async function advanceCompetitionToFinals(competitionId: string) {
 
 export async function updateFinalistClimbingOrder(competitionId: string, orderedClimberIds: string[]) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Updating finals climbing order");
 
   const { count, error: countError } = await supabase
     .from("competition_finalists")
@@ -1648,6 +1700,11 @@ export async function saveFinalistField(
   orderedFinalists: FinalistSelection[]
 ) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Saving the finals field");
 
   const { error: deleteError } = await supabase
     .from("competition_finalists")
@@ -1688,6 +1745,11 @@ export async function saveFinalistField(
 
 export async function resetCompetition(competitionId: string) {
   ensureConfigured();
+  const competition = await getCompetitionById(competitionId);
+  if (!competition) {
+    throw new Error("Competition not found.");
+  }
+  assertDemoCompetitionWritableActionAllowed(competition, "Resetting the event");
 
   const { error } = await supabase.rpc("reset_competition", {
     p_competition_id: competitionId,
@@ -1786,6 +1848,7 @@ export async function registerClimber(input: RegisterClimberInput) {
   ensureConfigured();
 
   const snapshot = await getCompetitionSnapshot(input.competitionId);
+  assertDemoCompetitionWritableActionAllowed(snapshot.competition, "Registration");
   assertRegistrationWindowOpen(snapshot.competition);
 
   const existing = snapshot.climbers.find(

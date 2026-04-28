@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
+import { isDemoCompetitionRecord } from "@/lib/demo";
 import {
   getClimberWithAttempts,
   getCompetitionSnapshot,
@@ -39,6 +40,48 @@ type FinalsDraftState = Record<string, FinalsDraft>;
 
 const EMPTY_QUALIFIER_DRAFT: QualifierDraft = { attemptCount: 0, topped: false, zone: false };
 const EMPTY_FINALS_DRAFT: FinalsDraft = { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
+
+async function saveDemoQualifierAttempt(
+  competitionId: string,
+  climberId: string,
+  climbNumber: number,
+  attemptCount: number,
+  topped: boolean,
+  options?: {
+    zone?: boolean;
+    attemptsToTop?: number | null;
+    attemptsToZone?: number | null;
+  }
+) {
+  const response = await fetch("/api/demo/qualifier-attempt", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      competitionId,
+      climberId,
+      climbNumber,
+      attemptCount,
+      topped,
+      zone: options?.zone,
+      attemptsToTop: options?.attemptsToTop,
+      attemptsToZone: options?.attemptsToZone,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        error?: string;
+        attempt?: QualifierAttempt;
+      }
+    | null;
+
+  if (!response.ok || !payload?.attempt) {
+    throw new Error(payload?.error || "Unable to save the demo qualifier score.");
+  }
+
+  return payload.attempt;
+}
 
 function mergeQualifierAttempt(attempts: QualifierAttempt[], nextAttempt: QualifierAttempt) {
   const remaining = attempts.filter(
@@ -359,11 +402,19 @@ export default function StaffJudgePage() {
       for (const item of queue) {
         try {
           if (item.type === "qualifier") {
-            await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
-              zone: item.zone,
-              attemptsToTop: item.attemptsToTop,
-              attemptsToZone: item.attemptsToZone,
-            });
+            if (snapshot?.competition.id === item.competitionId && isDemoCompetitionRecord(snapshot.competition)) {
+              await saveDemoQualifierAttempt(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
+                zone: item.zone,
+                attemptsToTop: item.attemptsToTop,
+                attemptsToZone: item.attemptsToZone,
+              });
+            } else {
+              await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
+                zone: item.zone,
+                attemptsToTop: item.attemptsToTop,
+                attemptsToZone: item.attemptsToZone,
+              });
+            }
           } else {
             await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
           }
@@ -387,12 +438,21 @@ export default function StaffJudgePage() {
     setLoading(true);
     void Promise.all([getCompetitionSnapshot(slug), getAuthState()])
       .then(([nextSnapshot, authState]) => {
-        if (!isStaffRole(authState.profile?.role)) {
+        const allowPublicDemoJudge = isDemoCompetitionRecord(nextSnapshot.competition);
+        if (!isStaffRole(authState.profile?.role) && !allowPublicDemoJudge) {
           window.location.href = `/staff/login?redirect=${encodeURIComponent(`/staff/c/${slug}/judge`)}`;
           return;
         }
 
-        setProfile(authState.profile);
+        setProfile(
+          isStaffRole(authState.profile?.role)
+            ? authState.profile
+            : {
+                id: "demo-judge",
+                role: "judge",
+                display_name: "Demo judge",
+              }
+        );
         setSnapshot(nextSnapshot);
         const qualifierNext: QualifierDraftState = {};
         const finalsNext: FinalsDraftState = {};
@@ -648,18 +708,31 @@ export default function StaffJudgePage() {
     setError("");
     setMessage("");
     try {
-      const savedAttempt = await updateQualifierAttemptByStaff(
-        snapshot.competition.id,
-        climberId,
-        selectedBoulder,
-        normalized.attemptCount,
-        normalized.topped,
-        {
-          zone: normalized.zone,
-          attemptsToTop: normalized.attemptsToTop,
-          attemptsToZone: normalized.attemptsToZone,
-        }
-      );
+      const savedAttempt = isDemoCompetitionRecord(snapshot.competition)
+        ? await saveDemoQualifierAttempt(
+            snapshot.competition.id,
+            climberId,
+            selectedBoulder,
+            normalized.attemptCount,
+            normalized.topped,
+            {
+              zone: normalized.zone,
+              attemptsToTop: normalized.attemptsToTop,
+              attemptsToZone: normalized.attemptsToZone,
+            }
+          )
+        : await updateQualifierAttemptByStaff(
+            snapshot.competition.id,
+            climberId,
+            selectedBoulder,
+            normalized.attemptCount,
+            normalized.topped,
+            {
+              zone: normalized.zone,
+              attemptsToTop: normalized.attemptsToTop,
+              attemptsToZone: normalized.attemptsToZone,
+            }
+          );
       await updateClimberInSnapshot(
         climberId,
         (nextClimbers) => ({

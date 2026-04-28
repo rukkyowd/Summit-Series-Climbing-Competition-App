@@ -132,6 +132,7 @@ export interface Competition {
   id: string;
   slug: string;
   name: string;
+  is_demo: boolean;
   status: CompetitionStatus;
   format: EventFormat;
   current_phase: CompetitionPhase;
@@ -546,6 +547,7 @@ export const DEFAULT_COMPETITION: Competition = {
   id: "placeholder-competition",
   slug: "competition",
   name: "Current Competition",
+  is_demo: false,
   status: "active",
   format: "scramble",
   current_phase: "qualifier_open",
@@ -1223,6 +1225,7 @@ export function normalizeCompetition(
     id,
     slug: slugifyCompetitionName(competition?.slug?.trim() || name),
     name,
+    is_demo: competition?.is_demo ?? DEFAULT_COMPETITION.is_demo,
     status: (competition?.status ?? "active") as CompetitionStatus,
     format: nextFormat,
     current_phase: (competition?.current_phase ?? (competition?.stage_mode === "finals" ? "finals_open" : "qualifier_open")) as CompetitionPhase,
