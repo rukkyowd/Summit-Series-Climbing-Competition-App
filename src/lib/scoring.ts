@@ -1291,6 +1291,11 @@ export function normalizeCompetition(
   };
 
   normalized.rounds = normalizeCompetitionRounds(rounds, normalized);
+  const validRoundIds = new Set(normalized.rounds.map((round) => round.id));
+  normalized.schedule_blocks = normalized.schedule_blocks.map((block) => ({
+    ...block,
+    round_id: block.round_id && validRoundIds.has(block.round_id) ? block.round_id : null,
+  }));
 
   return realignDemoCompetitionTimeline(normalized);
 }

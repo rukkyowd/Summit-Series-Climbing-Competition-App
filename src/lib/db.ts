@@ -1437,6 +1437,8 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
 
   await supabase.from("competition_schedule_blocks").delete().eq("competition_id", competitionId);
 
+  await persistCompetitionRounds(payload, payload.rounds ?? []);
+
   if (payload.schedule_blocks.length) {
     const { error: scheduleError } = await supabase.from("competition_schedule_blocks").insert(
       payload.schedule_blocks.map((block, index) => ({
@@ -1459,8 +1461,6 @@ export async function saveCompetitionConfig(competitionId: string, input: SaveCo
       throw new Error(scheduleError.message);
     }
   }
-
-  await persistCompetitionRounds(payload, payload.rounds ?? []);
 
   return getCompetitionById(competitionId);
 }
