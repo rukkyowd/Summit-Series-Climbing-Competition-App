@@ -133,7 +133,7 @@ export default function CompetitionDisplayPage() {
 
         {snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results" ? (
           <>
-            <section className="results-card">
+            <section className="results-card" data-demo-anchor="display-queue">
               <div className="finals-category-picker">
                 {finalsCategories.map((category) => (
                   <button key={category} type="button" onClick={() => setSelectedFinalsCategory(category)} className={category === selectedFinalsCategory ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
@@ -192,7 +192,7 @@ export default function CompetitionDisplayPage() {
               )}
             </section>
           ) : null}
-          <section className="results-card">
+          <section className="results-card" data-demo-anchor="display-standings">
             <div className="results-kicker">{activeQualifierRoundName} standings</div>
             <div className="finals-category-picker">
               <button type="button" onClick={() => setSelectedCategory("all")} className={selectedCategory === "all" ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>

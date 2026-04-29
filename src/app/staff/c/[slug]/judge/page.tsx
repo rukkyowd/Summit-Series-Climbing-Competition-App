@@ -918,7 +918,7 @@ export default function StaffJudgePage() {
                   : "Finals mode appears here once the competition reaches observation."}
               </div>
             </div>
-            <div className="results-workspace-callout">
+            <div className="results-workspace-callout" data-demo-anchor="judge-status">
               <div className="results-kicker">Desk status</div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <div className="results-chip">{profile?.display_name || profile?.role || "staff"}</div>
@@ -935,7 +935,7 @@ export default function StaffJudgePage() {
             <div className="text-sm text-slate-600">
               Judges and admins can score the active qualifier-style round and the active finals round from this page. Use qualifier mode for qualifier or semifinal entry, and finals mode for the full finals grid.
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2" data-demo-anchor="judge-mode-toggle">
               <button
                 type="button"
                 onClick={() => setStage("qualifier")}
@@ -1008,7 +1008,7 @@ export default function StaffJudgePage() {
                   </div>
                 ) : null}
 
-                <div className="space-y-3">
+                <div className="space-y-3" data-demo-anchor="judge-entry-cards">
                   {qualifierClimbers.map((climber) => {
                     const key = `${climber.id}:${selectedBoulder}`;
                     const existingAttempt = filterAttemptsForRound(climber.qualifier_attempts, activeQualifierRoundId).find((attempt) => attempt.climb_number === selectedBoulder);

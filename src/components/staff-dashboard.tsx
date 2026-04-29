@@ -2224,7 +2224,7 @@ export default function StaffDashboard({
                       </div>
                     ) : null}
                   </div>
-                    <div className="results-workspace-callout">
+                    <div className="results-workspace-callout" data-demo-anchor="organizer-links">
                       <div className="results-kicker">Quick links</div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         <Link href={publicPath} className="results-secondary-button w-full">Public page</Link>
@@ -2277,7 +2277,7 @@ export default function StaffDashboard({
                   })}
                 </div>
 
-                <div id="demo-run-event" className="results-workspace-card space-y-6">
+                <div id="demo-run-event" className="results-workspace-card space-y-6" data-demo-anchor="organizer-progress">
                   <div className="space-y-4">
                     <div className="min-w-0">
                       <div className="results-kicker">Setup progress</div>
