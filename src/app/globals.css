@@ -1379,12 +1379,10 @@ body::after {
 
 .demo-tour-backdrop {
   background: rgba(15, 23, 42, 0.22);
-  transition: opacity var(--demo-tour-fade-duration) var(--demo-tour-ease);
 }
 
 .demo-tour-overlay-svg {
   opacity: 1;
-  transition: opacity var(--demo-tour-fade-duration) var(--demo-tour-ease);
 }
 
 .demo-tour-spotlight {
@@ -1394,13 +1392,6 @@ body::after {
     0 0 0 1px rgba(255, 255, 255, 0.76),
     0 18px 44px rgba(14, 116, 144, 0.1),
     0 0 20px rgba(186, 230, 253, 0.08);
-  transition:
-    top var(--demo-tour-move-duration) var(--demo-tour-ease),
-    left var(--demo-tour-move-duration) var(--demo-tour-ease),
-    width var(--demo-tour-move-duration) var(--demo-tour-ease),
-    height var(--demo-tour-move-duration) var(--demo-tour-ease),
-    border-radius var(--demo-tour-move-duration) var(--demo-tour-ease),
-    box-shadow var(--demo-tour-fade-duration) var(--demo-tour-ease);
 }
 
 .demo-tour-spotlight__glow {
@@ -1441,13 +1432,6 @@ body::after {
     0 30px 80px rgba(15, 23, 42, 0.18),
     0 10px 24px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(22px);
-  transition:
-    top var(--demo-tour-move-duration) var(--demo-tour-ease),
-    left var(--demo-tour-move-duration) var(--demo-tour-ease),
-    bottom var(--demo-tour-move-duration) var(--demo-tour-ease),
-    opacity var(--demo-tour-fade-duration) var(--demo-tour-ease),
-    transform var(--demo-tour-move-duration) var(--demo-tour-ease),
-    width var(--demo-tour-move-duration) var(--demo-tour-ease);
 }
 
 .demo-tour-callout-floating {

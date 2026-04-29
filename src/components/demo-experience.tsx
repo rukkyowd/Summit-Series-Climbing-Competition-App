@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { buttonStyles } from "@/components/ui/button";
@@ -44,6 +45,11 @@ type SpotlightBox = {
 const STORAGE_STEP_KEY = "scorecard_demo_tour_step";
 const STORAGE_DISMISSED_KEY = "scorecard_demo_tour_dismissed";
 const TRANSITION_MIN_MS = 600;
+const FALLBACK_CALLOUT_STYLE: CSSProperties = {
+  left: 16,
+  bottom: 16,
+  width: 344,
+};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -300,11 +306,11 @@ export default function DemoExperience({
         setSpotlight(null);
         setCalloutMode("sheet");
         setCalloutSide("bottom");
+        const fallbackWidth = Math.min(360, window.innerWidth - 24);
         setCalloutStyle({
-          left: "50%",
+          left: Math.max(12, (window.innerWidth - fallbackWidth) / 2),
           bottom: 16,
-          width: Math.min(360, window.innerWidth - 24),
-          transform: "translateX(-50%)",
+          width: fallbackWidth,
         });
         return;
       }
@@ -346,10 +352,9 @@ export default function DemoExperience({
               setCalloutMode("sheet");
               setCalloutSide("bottom");
               setCalloutStyle({
-                left: "50%",
+                left: Math.max(12, (window.innerWidth - sheetWidth) / 2),
                 bottom: 16,
                 width: sheetWidth,
-                transform: "translateX(-50%)",
               });
               return;
             }
@@ -468,6 +473,29 @@ export default function DemoExperience({
   const maskId = `demo-tour-mask-${activeIndex}`;
   const showTransitionOverlay = !dismissed && !complete && (transitioning || activeStep.routeId !== routeId);
   const showTourOverlay = !dismissed && !complete && activeStep.routeId === routeId;
+  const animatedCalloutStyle = calloutStyle ?? FALLBACK_CALLOUT_STYLE;
+  const animatedCalloutTarget = {
+    top: typeof animatedCalloutStyle.top === "number" ? animatedCalloutStyle.top : undefined,
+    left: typeof animatedCalloutStyle.left === "number" ? animatedCalloutStyle.left : undefined,
+    right: typeof animatedCalloutStyle.right === "number" ? animatedCalloutStyle.right : undefined,
+    bottom: typeof animatedCalloutStyle.bottom === "number" ? animatedCalloutStyle.bottom : undefined,
+    width:
+      typeof animatedCalloutStyle.width === "number" || typeof animatedCalloutStyle.width === "string"
+        ? animatedCalloutStyle.width
+        : undefined,
+    opacity: 1,
+    scale: 1,
+    y: 0,
+  };
+  const spotlightTransition = prefersReducedMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 62, damping: 28, mass: 1.3 };
+  const calloutTransition = prefersReducedMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 72, damping: 26, mass: 1.18 };
+  const fadeTransition = prefersReducedMotion
+    ? { duration: 0 }
+    : { duration: 0.72, ease: [0.22, 1, 0.36, 1] as const };
 
   return (
     <>
@@ -504,88 +532,128 @@ export default function DemoExperience({
         </div>
       </section>
 
-      {showTransitionOverlay ? (
-        <div className="pointer-events-none fixed inset-0 z-50">
-          <div className="demo-tour-transition-shell absolute inset-0" />
-          <div className="demo-tour-transition-card absolute left-1/2 top-1/2 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-[1.4rem] border border-white/75 bg-white/92 px-6 py-6 text-center shadow-[0_30px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
-            <div className="mx-auto h-2 w-16 overflow-hidden rounded-full bg-slate-200/90">
-              <div className="demo-tour-transition-bar h-full w-1/2 rounded-full bg-[linear-gradient(90deg,#185fa5,#0c447c)]" />
-            </div>
-            <div className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Guided handoff
-            </div>
-            <div className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
-              {`Traveling to ${getRouteLabel(activeStep.routeId)}...`}
-            </div>
-            <p className="mt-3 text-sm leading-7 text-slate-600">Bringing the next tour step into view.</p>
-          </div>
-        </div>
-      ) : null}
-
-      {showTourOverlay ? (
-        <div className="fixed inset-0 z-50 pointer-events-none">
-          {spotlight ? (
-            <svg className="demo-tour-overlay-svg absolute inset-0 h-full w-full pointer-events-none" aria-hidden="true">
-              <defs>
-                <mask id={maskId}>
-                  <rect width="100%" height="100%" fill="white" />
-                  <rect
-                    x={spotlight.left}
-                    y={spotlight.top}
-                    width={spotlight.width}
-                    height={spotlight.height}
-                    rx={spotlight.radius}
-                    ry={spotlight.radius}
-                    fill="black"
-                  />
-                </mask>
-              </defs>
-              <rect width="100%" height="100%" fill="rgba(15,23,42,0.32)" mask={`url(#${maskId})`} />
-            </svg>
-          ) : (
-            <div className="demo-tour-backdrop absolute inset-0 pointer-events-none" />
-          )}
-
-          {spotlight ? (
-            <div
-              className="demo-tour-spotlight absolute pointer-events-none"
-              style={{
-                top: `${spotlight.top}px`,
-                left: `${spotlight.left}px`,
-                width: `${spotlight.width}px`,
-                height: `${spotlight.height}px`,
-                borderRadius: `${spotlight.radius}px`,
-              }}
-            >
-              <div className="demo-tour-spotlight__glow absolute -inset-6 rounded-[calc(inherit+1.5rem)]" />
-              <div className="demo-tour-spotlight__wash absolute inset-0 rounded-[inherit]" />
-              <div className="demo-tour-spotlight__edge absolute inset-0 rounded-[inherit]" />
-            </div>
-          ) : null}
-
-          {spotlight
-            ? buildInteractionPanels(spotlight).map((panelStyle, index) => (
-                <div key={`demo-tour-blocker-${index}`} className="absolute pointer-events-auto" style={panelStyle} />
-              ))
-            : null}
-
-          {spotlight && !activeStep.allowInteraction ? (
-            <div
-              className="absolute pointer-events-auto"
-              style={{
-                top: spotlight.top,
-                left: spotlight.left,
-                width: spotlight.width,
-                height: spotlight.height,
-                borderRadius: spotlight.radius,
-              }}
-            />
-          ) : null}
-
-          <aside
-            className={`demo-tour-callout pointer-events-auto absolute ${calloutMode === "sheet" ? "demo-tour-callout-sheet" : "demo-tour-callout-floating"}`}
-            style={calloutStyle ?? { right: "16px", bottom: "16px", width: "min(344px, calc(100vw - 24px))" }}
+      <AnimatePresence mode="wait">
+        {showTransitionOverlay ? (
+          <motion.div
+            key="demo-tour-transition"
+            className="pointer-events-none fixed inset-0 z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fadeTransition}
           >
+            <motion.div className="demo-tour-transition-shell absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fadeTransition} />
+            <motion.div
+              className="demo-tour-transition-card absolute left-1/2 top-1/2 w-[min(24rem,calc(100vw-2rem))] rounded-[1.4rem] border border-white/75 bg-white/92 px-6 py-6 text-center shadow-[0_30px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl"
+              initial={{ x: "-50%", y: "-46%", opacity: 0, scale: 0.97 }}
+              animate={{ x: "-50%", y: "-50%", opacity: 1, scale: 1 }}
+              exit={{ x: "-50%", y: "-48%", opacity: 0, scale: 0.98 }}
+              transition={calloutTransition}
+            >
+              <div className="mx-auto h-2 w-16 overflow-hidden rounded-full bg-slate-200/90">
+                <div className="demo-tour-transition-bar h-full w-1/2 rounded-full bg-[linear-gradient(90deg,#185fa5,#0c447c)]" />
+              </div>
+              <div className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Guided handoff
+              </div>
+              <div className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
+                {`Traveling to ${getRouteLabel(activeStep.routeId)}...`}
+              </div>
+              <p className="mt-3 text-sm leading-7 text-slate-600">Bringing the next tour step into view.</p>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showTourOverlay ? (
+          <motion.div
+            key={`demo-tour-overlay-${activeIndex}-${routeId}`}
+            className="fixed inset-0 z-50 pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fadeTransition}
+          >
+            {spotlight ? (
+              <div className="absolute inset-0 pointer-events-none">
+                <svg className="demo-tour-overlay-svg absolute inset-0 h-full w-full" aria-hidden="true">
+                  <defs>
+                    <mask id={maskId}>
+                      <rect width="100%" height="100%" fill="white" />
+                      <motion.rect
+                        initial={false}
+                        animate={{
+                          x: spotlight.left,
+                          y: spotlight.top,
+                          width: spotlight.width,
+                          height: spotlight.height,
+                          rx: spotlight.radius,
+                          ry: spotlight.radius,
+                        }}
+                        transition={spotlightTransition}
+                        fill="black"
+                      />
+                    </mask>
+                    <radialGradient id={`${maskId}-gradient`} cx="50%" cy="45%" r="82%">
+                      <stop offset="0%" stopColor="rgba(15,23,42,0.18)" />
+                      <stop offset="55%" stopColor="rgba(15,23,42,0.28)" />
+                      <stop offset="100%" stopColor="rgba(15,23,42,0.4)" />
+                    </radialGradient>
+                  </defs>
+                  <rect width="100%" height="100%" fill={`url(#${maskId}-gradient)`} mask={`url(#${maskId})`} />
+                </svg>
+
+                <motion.div
+                  className="demo-tour-spotlight absolute pointer-events-none"
+                  initial={false}
+                  animate={{
+                    top: spotlight.top,
+                    left: spotlight.left,
+                    width: spotlight.width,
+                    height: spotlight.height,
+                    borderRadius: spotlight.radius,
+                  }}
+                  transition={spotlightTransition}
+                >
+                  <div className="demo-tour-spotlight__glow absolute -inset-6 rounded-[calc(inherit+1.5rem)]" />
+                  <div className="demo-tour-spotlight__wash absolute inset-0 rounded-[inherit]" />
+                  <div className="demo-tour-spotlight__edge absolute inset-0 rounded-[inherit]" />
+                </motion.div>
+              </div>
+            ) : (
+              <motion.div className="demo-tour-backdrop absolute inset-0 pointer-events-none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fadeTransition} />
+            )}
+
+            {spotlight
+              ? buildInteractionPanels(spotlight).map((panelStyle, index) => (
+                  <div key={`demo-tour-blocker-${index}`} className="absolute pointer-events-auto" style={panelStyle} />
+                ))
+              : null}
+
+            {spotlight && !activeStep.allowInteraction ? (
+              <motion.div
+                className="absolute pointer-events-auto"
+                initial={false}
+                animate={{
+                  top: spotlight.top,
+                  left: spotlight.left,
+                  width: spotlight.width,
+                  height: spotlight.height,
+                  borderRadius: spotlight.radius,
+                }}
+                transition={spotlightTransition}
+              />
+            ) : null}
+
+            <motion.aside
+              layout
+              className={`demo-tour-callout pointer-events-auto absolute ${calloutMode === "sheet" ? "demo-tour-callout-sheet" : "demo-tour-callout-floating"}`}
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={animatedCalloutTarget}
+              exit={{ opacity: 0, scale: 0.98, y: 12 }}
+              transition={calloutTransition}
+            >
             {calloutMode === "floating" && !complete ? (
               <div className={`demo-tour-callout__arrow demo-tour-callout__arrow-${calloutSide}`} aria-hidden="true" />
             ) : null}
@@ -688,26 +756,34 @@ export default function DemoExperience({
                 </div>
               </>
             )}
-          </aside>
-        </div>
-      ) : null}
+            </motion.aside>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
-      {enabled && dismissed ? (
-        <button
-          type="button"
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              window.localStorage.removeItem(STORAGE_DISMISSED_KEY);
-            }
-            setDismissed(false);
-            setComplete(false);
-          }}
-          className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:bg-white"
-        >
-          <span aria-hidden="true">{"\u25B6"}</span>
-          Resume tour
-        </button>
-      ) : null}
+      <AnimatePresence>
+        {enabled && dismissed ? (
+          <motion.button
+            key="demo-tour-resume"
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.localStorage.removeItem(STORAGE_DISMISSED_KEY);
+              }
+              setDismissed(false);
+              setComplete(false);
+            }}
+            className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:bg-white"
+            initial={{ opacity: 0, y: 14, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            transition={calloutTransition}
+          >
+            <span aria-hidden="true">{"\u25B6"}</span>
+            Resume tour
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }
