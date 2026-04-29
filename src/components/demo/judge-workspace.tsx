@@ -242,7 +242,7 @@ export function JudgeWorkspace({
   };
 
   return (
-    <Surface variant="card" className={embedded ? "flex h-full min-h-0 flex-col" : undefined}>
+    <Surface variant="card" className={embedded ? "flex h-full min-h-0 min-w-0 flex-col" : undefined}>
       <div className="flex flex-wrap items-start justify-between gap-4" data-demo-anchor="interactive-judge">
         <div className="space-y-2">
           <div className="results-kicker">{activeQualifierRoundName} scoring workspace</div>
@@ -271,7 +271,7 @@ export function JudgeWorkspace({
         </Alert>
       ) : null}
 
-      <div className={`mt-6 grid gap-4 ${embedded ? "lg:grid-cols-[19rem_minmax(0,1fr)]" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
+      <div className={`mt-6 grid gap-4 ${embedded ? "2xl:grid-cols-[17rem_minmax(0,1fr)]" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
         <div className="results-control-stack">
           <div>
             <div className="results-kicker">{activeQualifierRoundName} controls</div>
@@ -310,7 +310,7 @@ export function JudgeWorkspace({
           </div>
         </div>
 
-        <div className="min-h-0 space-y-3 overflow-y-auto pr-1" data-demo-anchor="interactive-judge-card">
+        <div className="min-h-0 min-w-0 space-y-3 overflow-y-auto pr-1" data-demo-anchor="interactive-judge-card">
           {qualifierClimbers.map((climber, climberIndex) => {
             const key = `${climber.id}:${selectedBoulder}`;
             const existingAttempt = filterAttemptsForRound(
@@ -340,7 +340,7 @@ export function JudgeWorkspace({
                   </div>
                 </div>
 
-                <div className="route-judge-live-row">
+                <div className={`route-judge-live-row ${embedded ? "lg:grid-cols-1 2xl:grid-cols-[14rem_minmax(0,1fr)]" : ""}`}>
                   <div className="route-judge-counter-card">
                     <div className="results-kicker">Live attempt counter</div>
                     <div className="route-judge-counter-row">
@@ -378,7 +378,7 @@ export function JudgeWorkspace({
                     </div>
                   </div>
 
-                  <div className="judge-live-summary">
+                  <div className="judge-live-summary min-w-0">
                     <div>
                       <div className="results-kicker">Judge call</div>
                       <div className="mt-2 text-xl font-semibold text-slate-950">{presentation.liveLabel}</div>
@@ -387,7 +387,11 @@ export function JudgeWorkspace({
                   </div>
                 </div>
 
-                <div className="route-judge-action-grid route-judge-action-grid-qualifier">
+                <div
+                  className={`route-judge-action-grid route-judge-action-grid-qualifier ${
+                    embedded ? "lg:grid-cols-2 2xl:grid-cols-3" : ""
+                  }`}
+                >
                   <button
                     type="button"
                     onClick={() =>

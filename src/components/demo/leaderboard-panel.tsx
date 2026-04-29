@@ -152,7 +152,7 @@ export function LeaderboardPanel({
       ) : (
         <Surface
           variant="card"
-          className={embedded ? "flex h-full min-h-0 flex-col" : undefined}
+          className={embedded ? "flex h-full min-h-0 min-w-0 flex-col" : undefined}
           data-demo-anchor={embedded ? "interactive-leaderboard" : "leaderboard-overview"}
         >
           <div className="results-kicker">{activeQualifierRoundName} standings</div>
@@ -225,14 +225,14 @@ export function LeaderboardPanel({
               </div>
 
               <div
-                className={`results-data-scroll mt-6 hidden md:block ${embedded ? "flex-1 overflow-hidden" : ""}`}
+                className={`results-data-scroll mt-6 hidden md:block ${embedded ? "min-w-0 flex-1 overflow-x-auto overflow-y-hidden" : ""}`}
                 data-demo-anchor={embedded ? "interactive-leaderboard-table" : "leaderboard-table"}
               >
                 <div className="results-table-scroll-hint">
                   <span>{qualifierScoreContextLabel}</span>
                   <span>Scroll sideways for the full standings table.</span>
                 </div>
-                <div className={`min-w-[920px] ${embedded ? "overflow-x-auto" : ""}`}>
+                <div className="min-w-[920px]">
                   <div className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     <div>Rank</div>
                     <div>Name</div>

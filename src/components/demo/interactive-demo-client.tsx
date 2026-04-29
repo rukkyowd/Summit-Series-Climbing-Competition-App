@@ -560,10 +560,10 @@ export function InteractiveDemoClient() {
               </p>
             </div>
             <div className="flex flex-wrap justify-start gap-3 lg:justify-end">
-              <Button variant="secondary" onClick={() => setMobileTab("judge")} className="lg:hidden">
+              <Button variant="secondary" onClick={() => setMobileTab("judge")} className="xl:hidden">
                 Judge
               </Button>
-              <Button variant="secondary" onClick={() => setMobileTab("leaderboard")} className="lg:hidden">
+              <Button variant="secondary" onClick={() => setMobileTab("leaderboard")} className="xl:hidden">
                 Leaderboard
               </Button>
               <Link href="/staff/demo" className="results-secondary-button">
@@ -576,8 +576,8 @@ export function InteractiveDemoClient() {
         {message ? <Alert variant="success">{message}</Alert> : null}
         {error ? <Alert variant="error">{error}</Alert> : null}
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-          <div className={mobileTab === "leaderboard" ? "hidden lg:block" : ""}>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+          <div className={`min-w-0 ${mobileTab === "leaderboard" ? "hidden xl:block" : ""}`}>
             <JudgeWorkspace
               snapshot={snapshot}
               embedded
@@ -590,7 +590,7 @@ export function InteractiveDemoClient() {
               onSaveQualifier={handleSaveQualifier}
             />
           </div>
-          <div className={mobileTab === "judge" ? "hidden lg:block" : ""}>
+          <div className={`min-w-0 ${mobileTab === "judge" ? "hidden xl:block" : ""}`}>
             <LeaderboardPanel
               snapshot={leaderboardSnapshot}
               embedded
