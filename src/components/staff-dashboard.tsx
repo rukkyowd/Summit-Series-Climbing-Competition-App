@@ -8,7 +8,7 @@ import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
 import DemoExperience from "@/components/demo-experience";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
-import { isDemoCompetitionRecord } from "@/lib/demo";
+import { isCanonicalDemoCompetitionSlug, isDemoCompetitionRecord } from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   createCompetitionFromTemplate,
@@ -74,7 +74,7 @@ import { sanitizeExternalUrl } from "@/lib/security";
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
 
 function isDemoDataSlug(slug: string | null | undefined) {
-  return isDemoCompetitionRecord({ slug: slug ?? "", is_demo: false });
+  return isCanonicalDemoCompetitionSlug(slug);
 }
 
 function cloneCompetition(competition: Competition): Competition {
