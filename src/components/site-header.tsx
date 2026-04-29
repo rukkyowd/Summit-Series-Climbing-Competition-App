@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { buildCompetitionPath, buildDisplayPath } from "@/lib/scoring";
 import { readScorecardAccess } from "@/lib/scorecard-access";
+import { buttonStyles } from "@/components/ui/button";
 
 interface NavItem {
   href: string;
@@ -123,7 +124,7 @@ export default function SiteHeader({
                 Jump back into your saved scorecard for this event.
               </div>
             </div>
-            <Link href={scorecardHref} className="results-primary-button w-full">
+            <Link href={scorecardHref} className={buttonStyles({ variant: "primary", fullWidth: true })}>
               Open My Scorecard
             </Link>
           </div>

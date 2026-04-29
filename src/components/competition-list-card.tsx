@@ -10,6 +10,9 @@ import {
   getFormatTemplate,
   type CompetitionSummary,
 } from "@/lib/scoring";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/cn";
+import { surfaceStyles } from "@/components/ui/surface";
 
 export default function CompetitionListCard({
   summary,
@@ -24,14 +27,14 @@ export default function CompetitionListCard({
   return (
     <Link
       href={buildCompetitionPath(competition.slug)}
-      className={`results-list-row ${liveNow ? "results-list-row-live" : ""}`}
+      className={cn(surfaceStyles("row"), "results-list-row", liveNow && "results-list-row-live")}
     >
       <div className="min-w-0">
         <div className="break-words text-xl font-semibold text-slate-950 sm:text-2xl">{competition.name}</div>
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600">
           <span>{competition.discipline_label}</span>
           <span>{getFormatTemplate(competition.format).label}</span>
-          <span className={liveNow ? "results-chip results-chip-live" : "results-chip"}>
+          <Badge variant={liveNow ? "live" : "default"}>
             {liveNow ? (
               <>
                 <span className="results-live-dot" aria-hidden="true" />
@@ -40,7 +43,7 @@ export default function CompetitionListCard({
             ) : (
               lifecycleLabel
             )}
-          </span>
+          </Badge>
           {summary.active_schedule_block ? <span>{summary.active_schedule_block.label}</span> : null}
         </div>
       </div>

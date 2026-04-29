@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
 import CompetitionListCard from "@/components/competition-list-card";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { buttonStyles } from "@/components/ui/button";
+import { SectionHeader } from "@/components/ui/section-header";
+import { Surface } from "@/components/ui/surface";
+import { TextInput } from "@/components/ui/text-input";
 import { getAuthState, isStaffRole, type Profile } from "@/lib/auth";
 import { listCompetitionSummaries, type CompetitionSummary } from "@/lib/db";
 import { sanitizeExternalUrl } from "@/lib/security";
@@ -142,26 +148,23 @@ export default function HomePage() {
           }
         />
 
-        {error ? <div className="results-alert results-alert-error">{error}</div> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
 
         <section className="results-editorial-panel">
           <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
-            <div className="min-w-0">
-              <div className="results-kicker">Climbing competitions</div>
-              <h1 className="results-editorial-title mt-3 max-w-4xl break-words text-4xl font-semibold text-slate-950 sm:text-6xl">
-                Everything you need for comp day, all in one place.
-              </h1>
-              <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg sm:leading-8">
-                Set up the event, share registration, track scores, and keep climbers, parents, and spectators up to date without juggling a bunch of separate tools.
-              </p>
-            </div>
+            <SectionHeader
+              kicker="Climbing competitions"
+              align="wide"
+              title="Everything you need for comp day, all in one place."
+              description="Set up the event, share registration, track scores, and keep climbers, parents, and spectators up to date without juggling a bunch of separate tools."
+            />
             <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-1">
               {featured ? (
-                <Link href={buildCompetitionPath(featured.competition.slug)} className="results-primary-button w-full">
+                <Link href={buildCompetitionPath(featured.competition.slug)} className={buttonStyles({ variant: "primary", fullWidth: true })}>
                   Open live competition
                 </Link>
               ) : null}
-              <Link href="/staff/demo" className="results-secondary-button w-full">
+              <Link href="/staff/demo" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
                 Preview organizer workflow
               </Link>
             </div>
@@ -176,18 +179,12 @@ export default function HomePage() {
                     {featured.competition.name}
                   </h2>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <span className="results-chip border-white/30 bg-white/15 text-white shadow-none">
-                      {featured.competition.discipline_label}
-                    </span>
-                    <span className="results-chip border-white/30 bg-white/15 text-white shadow-none">
-                      {formatDateRange(featured.competition.start_date, featured.competition.end_date)}
-                    </span>
-                    <span className="results-chip border-white/30 bg-white/15 text-white shadow-none">
-                      {featured.competition.location_name || "Location TBD"}
-                    </span>
+                    <Badge variant="contrast">{featured.competition.discipline_label}</Badge>
+                    <Badge variant="contrast">{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</Badge>
+                    <Badge variant="contrast">{featured.competition.location_name || "Location TBD"}</Badge>
                   </div>
                 </div>
-                <div className="results-feature-card min-w-0">
+                <Surface variant="feature" className="min-w-0">
                   {featuredLiveNow ? (
                     <>
                       <span className="results-live-indicator results-live-indicator--featured" aria-hidden="true">
@@ -203,18 +200,18 @@ export default function HomePage() {
                     <div className="break-words">{featured.competition.location_name || "Location TBD"}</div>
                     <div className="break-words">{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
                   </div>
-                  <Link href={buildCompetitionPath(featured.competition.slug)} className="results-secondary-button mt-5 w-full">
+                  <Link href={buildCompetitionPath(featured.competition.slug)} className={`${buttonStyles({ variant: "secondary", fullWidth: true })} mt-5`}>
                     Enter event
                   </Link>
-                </div>
+                </Surface>
               </div>
             </div>
           ) : null}
 
-          <input
+          <TextInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="results-input mt-6"
+            className="mt-6"
             placeholder="Search by competition name or location"
           />
 
@@ -229,35 +226,32 @@ export default function HomePage() {
               <CompetitionListCard key={summary.competition.id} summary={summary} />
             ))}
             {!filtered.length && !loading ? (
-              <div className="results-card text-center text-slate-600">No active competitions match that search yet.</div>
+              <Surface variant="card" className="text-center text-slate-600">No active competitions match that search yet.</Surface>
             ) : null}
           </div>
         </section>
 
-        <section className="results-card">
+        <Surface variant="card">
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-            <div className="min-w-0">
-              <div className="results-kicker">Official calendar</div>
-              <h2 className="results-editorial-title mt-3 max-w-4xl break-words text-4xl font-semibold text-slate-950 sm:text-5xl">
-                Official bouldering calendar.
-              </h2>
-              <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg sm:leading-8">
-                Read-only events pulled from official World Climbing and Climbing Escalade Canada calendars. These are source-linked references, not in-app scoring competitions.
-              </p>
-            </div>
+            <SectionHeader
+              kicker="Official calendar"
+              align="wide"
+              title="Official bouldering calendar."
+              description="Read-only events pulled from official World Climbing and Climbing Escalade Canada calendars. These are source-linked references, not in-app scoring competitions."
+            />
             <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-1">
-              <div className="results-meta-card">
+              <Surface variant="meta">
                 <div className="results-kicker">Sources</div>
                 <div className="mt-3 text-lg font-semibold text-slate-950">World Climbing + CEC</div>
                 <div className="mt-2 text-sm leading-6 text-slate-600">
                   Imported as reference data so staff can spin up local competition drafts without retyping basics.
                 </div>
-              </div>
-              <div className="results-chip w-fit">{officialEvents.length} official events</div>
+              </Surface>
+              <Badge className="w-fit">{officialEvents.length} official events</Badge>
             </div>
           </div>
 
-          {officialEventsError ? <div className="results-alert results-alert-error mt-6">{officialEventsError}</div> : null}
+          {officialEventsError ? <Alert variant="error" className="mt-6">{officialEventsError}</Alert> : null}
 
           <div className="mt-8 space-y-4">
             {officialEvents.map((event) => {
@@ -300,7 +294,7 @@ export default function HomePage() {
                           {formatDateRange(event.start_date, event.end_date)}
                         </div>
                         {isStaffRole(profile?.role) ? (
-                          <Link href={buildOfficialImportHref(event)} className="results-secondary-button">
+                          <Link href={buildOfficialImportHref(event)} className={buttonStyles({ variant: "secondary" })}>
                             Import to dashboard
                           </Link>
                         ) : null}
@@ -311,12 +305,12 @@ export default function HomePage() {
               );
             })}
             {!officialEvents.length && !loading && !officialEventsError ? (
-              <div className="results-card text-center text-slate-600">
+              <Surface variant="card" className="text-center text-slate-600">
                 No official bouldering events were available from the configured source feeds.
-              </div>
+              </Surface>
             ) : null}
           </div>
-        </section>
+        </Surface>
       </div>
     </main>
   );

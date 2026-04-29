@@ -6,6 +6,10 @@ import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
 import FinalsResultsTable from "@/components/finals-results-table";
+import { Alert } from "@/components/ui/alert";
+import { buttonStyles } from "@/components/ui/button";
+import { SectionHeader } from "@/components/ui/section-header";
+import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
@@ -227,7 +231,7 @@ export default function CompetitionOverviewPage() {
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} navItems={overviewNavItems} />
 
-        {error ? <div className="results-alert results-alert-error">{error}</div> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
 
         {snapshot ? (
           <>
@@ -235,26 +239,22 @@ export default function CompetitionOverviewPage() {
 
             <section className="results-editorial-panel">
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-                <div className="min-w-0">
-                  <div className="results-kicker">What should I do now?</div>
-                  <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                    {activeBlock ? `${activeBlock.label} is the current focus.` : "The event page is ready even before the first live block starts."}
-                  </h2>
-                  <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600">
-                    Open the action you need first, then use the schedule and start list below for the deeper event details.
-                  </p>
-                </div>
+                <SectionHeader
+                  kicker="What should I do now?"
+                  title={activeBlock ? `${activeBlock.label} is the current focus.` : "The event page is ready even before the first live block starts."}
+                  description="Open the action you need first, then use the schedule and start list below for the deeper event details."
+                />
                 <div className="results-link-list">
-                  <Link href={buildCompetitionPath(slug, "register")} className="results-primary-button w-full">
+                  <Link href={buildCompetitionPath(slug, "register")} className={buttonStyles({ variant: "primary", fullWidth: true })}>
                     Register
                   </Link>
-                  <Link href={buildCompetitionPath(slug, "scorecard")} className="results-secondary-button w-full">
+                  <Link href={buildCompetitionPath(slug, "scorecard")} className={buttonStyles({ variant: "secondary", fullWidth: true })}>
                     Open scorecard
                   </Link>
-                  <Link href={buildCompetitionPath(slug, "leaderboard")} className="results-secondary-button w-full">
+                  <Link href={buildCompetitionPath(slug, "leaderboard")} className={buttonStyles({ variant: "secondary", fullWidth: true })}>
                     View rankings
                   </Link>
-                  <Link href={buildDisplayPath(slug)} className="results-secondary-button w-full">
+                  <Link href={buildDisplayPath(slug)} className={buttonStyles({ variant: "secondary", fullWidth: true })}>
                     Open display
                   </Link>
                 </div>
@@ -290,9 +290,9 @@ export default function CompetitionOverviewPage() {
                   <FinalsResultsTable title={selectedFinalsCategory} rows={finalsRows} />
                 </>
               ) : (
-                <section className="results-card text-slate-600">
+                <Surface variant="card" className="text-slate-600">
                   Finals are active, but no finals scores have been entered yet.
-                </section>
+                </Surface>
               )
             ) : null}
 

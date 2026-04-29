@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import DemoExperience from "@/components/demo-experience";
 import FinalsResultsTable from "@/components/finals-results-table";
+import { Badge } from "@/components/ui/badge";
+import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { getAuthState, isStaffRole } from "@/lib/auth";
 import { isDemoCompetitionRecord } from "@/lib/demo";
@@ -102,7 +104,7 @@ export default function CompetitionDisplayPage() {
     return (
       <main className="results-page min-h-screen">
         <div className="content-frame space-y-6">
-          <section className="results-card text-slate-600">Checking display access...</section>
+          <Surface variant="card" className="text-slate-600">Checking display access...</Surface>
         </div>
       </main>
     );
@@ -133,7 +135,7 @@ export default function CompetitionDisplayPage() {
 
         {snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results" ? (
           <>
-            <section className="results-card" data-demo-anchor="display-queue">
+            <Surface variant="card" data-demo-anchor="display-queue">
               <div className="finals-category-picker">
                 {finalsCategories.map((category) => (
                   <button key={category} type="button" onClick={() => setSelectedFinalsCategory(category)} className={category === selectedFinalsCategory ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}>
@@ -141,7 +143,7 @@ export default function CompetitionDisplayPage() {
                   </button>
                 ))}
               </div>
-            </section>
+            </Surface>
             <FinalsResultsTable title={selectedFinalsCategory} rows={finalsGroups.get(selectedFinalsCategory) ?? []} />
           </>
         ) : (
@@ -158,10 +160,10 @@ export default function CompetitionDisplayPage() {
                   {Array.from(queueByClimb.entries())
                     .sort(([left], [right]) => left - right)
                     .map(([climbNumber, entries]) => (
-                      <div key={climbNumber} className="results-meta-card">
+                      <Surface key={climbNumber} variant="meta">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-xl font-semibold text-slate-950">Boulder {climbNumber}</div>
-                          <div className="results-chip">{entries.length} checked in</div>
+                          <Badge>{entries.length} checked in</Badge>
                         </div>
                         <div className="mt-3 text-sm text-slate-600">
                           {entries.length <= 1
@@ -182,13 +184,13 @@ export default function CompetitionDisplayPage() {
                             </div>
                           ))}
                         </div>
-                      </div>
+                      </Surface>
                     ))}
                 </div>
               ) : (
-                <div className="results-meta-card mt-6 text-slate-600">
+                <Surface variant="meta" className="mt-6 text-slate-600">
                   No climbers are checked into a boulder yet for this live session.
-                </div>
+                </Surface>
               )}
             </section>
           ) : null}

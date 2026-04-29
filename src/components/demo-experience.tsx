@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { buttonStyles } from "@/components/ui/button";
 
 export type DemoTourRouteId = "organizer" | "judge" | "leaderboard" | "display";
 
@@ -398,15 +399,15 @@ export default function DemoExperience({
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={restartTour} className="results-secondary-button">
+            <button type="button" onClick={restartTour} className={buttonStyles({ variant: "secondary" })}>
               Restart tour
             </button>
             {nextStep ? (
-              <button type="button" onClick={() => goToStep(activeIndex + 1)} className="results-primary-button">
+              <button type="button" onClick={() => goToStep(activeIndex + 1)} className={buttonStyles({ variant: "primary" })}>
                 Next: {nextStep.title}
               </button>
             ) : (
-              <button type="button" onClick={restartTour} className="results-primary-button">
+              <button type="button" onClick={restartTour} className={buttonStyles({ variant: "primary" })}>
                 Back to organizer demo
               </button>
             )}
@@ -469,16 +470,16 @@ export default function DemoExperience({
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {previousStep ? (
-                <button type="button" onClick={() => goToStep(activeIndex - 1)} className="results-secondary-button">
+                <button type="button" onClick={() => goToStep(activeIndex - 1)} className={buttonStyles({ variant: "secondary" })}>
                   Back
                 </button>
               ) : null}
               {nextStep ? (
-                <button type="button" onClick={() => goToStep(activeIndex + 1)} className="results-primary-button">
+                <button type="button" onClick={() => goToStep(activeIndex + 1)} className={buttonStyles({ variant: "primary" })}>
                   Continue
                 </button>
               ) : (
-                <button type="button" onClick={restartTour} className="results-primary-button">
+                <button type="button" onClick={restartTour} className={buttonStyles({ variant: "primary" })}>
                   Restart walkthrough
                 </button>
               )}

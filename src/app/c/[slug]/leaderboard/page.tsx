@@ -5,6 +5,9 @@ import { useParams } from "next/navigation";
 import DemoExperience from "@/components/demo-experience";
 import SiteHeader from "@/components/site-header";
 import FinalsResultsTable from "@/components/finals-results-table";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { isDemoCompetitionRecord } from "@/lib/demo";
 import {
@@ -116,7 +119,7 @@ export default function CompetitionLeaderboardPage() {
       <div className="content-frame space-y-6">
         <SiteHeader light competitionSlug={slug} />
 
-        {error ? <div className="results-alert results-alert-error">{error}</div> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
         {snapshot && isDemoCompetitionRecord(snapshot.competition) ? (
           <DemoExperience
             enabled
@@ -158,9 +161,9 @@ export default function CompetitionLeaderboardPage() {
               </h1>
               <div className="mt-3 text-sm text-slate-600">{qualifierScoreContextLabel}</div>
               {scrambleFormat ? (
-                <div className="results-alert results-alert-success mt-4">
+                <Alert variant="success" className="mt-4">
                   Rankings update as climbers submit scores during the shared scramble session window.
-                </div>
+                </Alert>
               ) : null}
 
               <div
@@ -177,16 +180,16 @@ export default function CompetitionLeaderboardPage() {
               </div>
 
               {!qualifierRows.length ? (
-                <div className="results-meta-card mt-5 text-slate-600">
+                <Surface variant="meta" className="mt-5 text-slate-600">
                   {scrambleFormat
                     ? "This session has not recorded any scores yet. Check back once climbers start logging attempts."
                     : `Scoring has not started yet. Check back during the ${activeQualifierRoundName.toLowerCase()} round.`}
-                </div>
+                </Surface>
               ) : (
                 <>
                     <div className="mt-6 space-y-3 md:hidden">
                       {qualifierRows.map((entry) => (
-                        <div key={entry.climber_id} className="results-meta-card min-w-0">
+                        <Surface key={entry.climber_id} variant="meta" className="min-w-0">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="results-kicker">Rank #{entry.category_rank}</div>
@@ -203,11 +206,11 @@ export default function CompetitionLeaderboardPage() {
                           </div>
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <span className="results-chip">{entry.display_category}</span>
-                          <span className="results-chip">{entry.topped_count} tops</span>
-                          <span className="results-chip">{entry.zone_count} zones</span>
+                          <Badge>{entry.display_category}</Badge>
+                          <Badge>{entry.topped_count} tops</Badge>
+                          <Badge>{entry.zone_count} zones</Badge>
                         </div>
-                      </div>
+                      </Surface>
                     ))}
                   </div>
 
@@ -245,7 +248,7 @@ export default function CompetitionLeaderboardPage() {
             </section>
           )
         ) : (
-          <section className="results-card text-slate-600">Loading rankings...</section>
+          <Surface variant="card" className="text-slate-600">Loading rankings...</Surface>
         )}
       </div>
     </main>

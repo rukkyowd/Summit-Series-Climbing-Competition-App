@@ -7,6 +7,9 @@ import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
 import DemoExperience from "@/components/demo-experience";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { isCanonicalDemoCompetitionSlug, isDemoCompetitionRecord } from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
@@ -1855,8 +1858,8 @@ export default function StaffDashboard({
         />
         {draft?.slug && !demoMode ? <StaffCompetitionSubnav competitionSlug={draft.slug} /> : null}
 
-        {error ? <div className="results-alert results-alert-error">{error}</div> : null}
-        {message ? <div className="results-alert results-alert-success">{message}</div> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
+        {message ? <Alert variant="success">{message}</Alert> : null}
         {demoMode && draft ? (
           <DemoExperience
             enabled
@@ -1867,11 +1870,11 @@ export default function StaffDashboard({
             bannerTip="Start your walkthrough here, then open the judge panel to show the live scoring workflow."
           />
         ) : null}
-        {demoMode ? <div className="results-alert">{demoBanner}</div> : null}
+        {demoMode ? <Alert>{demoBanner}</Alert> : null}
         {!demoMode && profile?.role === "judge" ? (
-          <div className="results-alert">
+          <Alert>
             You can review event setup here, but only admins can create events or edit round and schedule configuration.
-          </div>
+          </Alert>
         ) : null}
 
         {demoMode ? (
@@ -1901,7 +1904,7 @@ export default function StaffDashboard({
                   ) : null}
                 </div>
               </div>
-              <div className="results-feature-card">
+              <Surface variant="feature">
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Sample event
                 </div>
@@ -1909,10 +1912,10 @@ export default function StaffDashboard({
                   {draft?.name ?? "Loading sample event"}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="results-chip">{selectedSummary?.climber_count ?? 0} climbers</span>
-                  <span className="results-chip">{draft?.categories.length ?? 0} categories</span>
-                  <span className="results-chip">{draft?.schedule_blocks.length ?? 0} schedule blocks</span>
-                  <span className="results-chip">{currentCompetitionStages.length} stages</span>
+                  <Badge>{selectedSummary?.climber_count ?? 0} climbers</Badge>
+                  <Badge>{draft?.categories.length ?? 0} categories</Badge>
+                  <Badge>{draft?.schedule_blocks.length ?? 0} schedule blocks</Badge>
+                  <Badge>{currentCompetitionStages.length} stages</Badge>
                 </div>
                 <div className="mt-4 space-y-2 text-sm text-slate-600">
                   <div>{draft?.location_name || "Location TBD"}</div>
@@ -1923,7 +1926,7 @@ export default function StaffDashboard({
                       : "Sample flow loading."}
                   </div>
                 </div>
-              </div>
+              </Surface>
             </div>
           </section>
         ) : null}

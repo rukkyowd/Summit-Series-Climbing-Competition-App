@@ -1358,20 +1358,13 @@ body::after {
 }
 
 .demo-tour-backdrop {
-  background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.1), transparent 28%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.1), rgba(15, 23, 42, 0.18));
+  background: rgba(15, 23, 42, 0.22);
   transition: opacity var(--demo-tour-fade-duration) var(--demo-tour-ease);
 }
 
 .demo-tour-mask {
-  background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.1), transparent 28%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.26));
-  backdrop-filter: blur(4px);
-  transition:
-    opacity var(--demo-tour-fade-duration) var(--demo-tour-ease),
-    backdrop-filter var(--demo-tour-fade-duration) var(--demo-tour-ease);
+  background: rgba(15, 23, 42, 0.28);
+  transition: opacity var(--demo-tour-fade-duration) var(--demo-tour-ease);
 }
 
 .demo-tour-spotlight {

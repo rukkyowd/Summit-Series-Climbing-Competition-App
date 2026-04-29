@@ -12,6 +12,9 @@ import {
   type Competition,
 } from "@/lib/scoring";
 import { sanitizeExternalUrl } from "@/lib/security";
+import { Badge } from "@/components/ui/badge";
+import { buttonStyles } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 
 function sanitizeDisplayText(value: string | null | undefined) {
   const trimmed = value?.trim() ?? "";
@@ -71,12 +74,12 @@ export default function CompetitionHero({
             {competition.name}
           </h1>
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className="results-chip">{competition.discipline_label}</span>
-            <span className="results-chip">{summary.label}</span>
-            <span className={`results-chip ${liveNow ? "results-chip-live" : ""}`}>
+            <Badge>{competition.discipline_label}</Badge>
+            <Badge>{summary.label}</Badge>
+            <Badge variant={liveNow ? "live" : "default"}>
               {liveNow ? <span className="results-live-dot" aria-hidden="true" /> : null}
               {lifecycleLabel}
-            </span>
+            </Badge>
           </div>
           <div className="mt-5 max-w-3xl text-sm font-medium leading-relaxed text-slate-700">
             Venue, dates, registration details, and official links in one place.
@@ -92,10 +95,10 @@ export default function CompetitionHero({
           </p>
 
           <div className="results-button-row mt-6">
-            <Link href={buildCompetitionPath(competition.slug, "register")} className="results-primary-button w-full sm:w-auto">
+            <Link href={buildCompetitionPath(competition.slug, "register")} className={buttonStyles({ variant: "primary" })}>
               Register for competition
             </Link>
-            <Link href={buildCompetitionPath(competition.slug, "leaderboard")} className="results-secondary-button w-full sm:w-auto">
+            <Link href={buildCompetitionPath(competition.slug, "leaderboard")} className={buttonStyles({ variant: "secondary" })}>
               View standings
             </Link>
             <button
@@ -112,7 +115,7 @@ export default function CompetitionHero({
 
                 void navigator.clipboard?.writeText(window.location.href);
               }}
-              className="results-secondary-button w-full sm:w-auto"
+              className={buttonStyles({ variant: "secondary" })}
             >
               Share competition
             </button>
@@ -121,7 +124,7 @@ export default function CompetitionHero({
                 href={officialEventUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="results-secondary-button w-full sm:w-auto"
+                className={buttonStyles({ variant: "secondary" })}
               >
                 Official event page
               </a>
@@ -131,7 +134,7 @@ export default function CompetitionHero({
                 href={officialScheduleUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="results-secondary-button w-full sm:w-auto"
+                className={buttonStyles({ variant: "secondary" })}
               >
                 Official schedule
               </a>
@@ -140,15 +143,15 @@ export default function CompetitionHero({
         </div>
 
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-          <div className="results-meta-card">
+          <Surface variant="meta">
             <div className="results-kicker">Location</div>
             <div className="mt-2 break-words text-lg font-semibold text-slate-950">{competition.location_name || "Location TBD"}</div>
-          </div>
-          <div className="results-meta-card">
+          </Surface>
+          <Surface variant="meta">
             <div className="results-kicker">Date</div>
             <div className="mt-2 break-words text-lg font-semibold text-slate-950">{formatDateRange(competition.start_date, competition.end_date)}</div>
-          </div>
-          <div className="results-meta-card">
+          </Surface>
+          <Surface variant="meta">
             <div className="results-kicker">Registration opens</div>
             <div className="mt-2 break-words text-lg font-semibold text-slate-950">
               {registrationOpensLabel || registrationFallbackUrl ? (
@@ -168,8 +171,8 @@ export default function CompetitionHero({
                 "Not scheduled"
               )}
             </div>
-          </div>
-          <div className="results-meta-card">
+          </Surface>
+          <Surface variant="meta">
             <div className="results-kicker">Registration deadline</div>
             <div className="mt-2 break-words text-lg font-semibold text-slate-950">
               {registrationDeadlineLabel || registrationFallbackUrl ? (
@@ -189,7 +192,7 @@ export default function CompetitionHero({
                 "Not scheduled"
               )}
             </div>
-          </div>
+          </Surface>
         </div>
       </div>
     </section>
