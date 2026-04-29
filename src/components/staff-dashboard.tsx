@@ -1929,7 +1929,7 @@ export default function StaffDashboard({
         ) : null}
 
         {demoMode ? (
-          <section className="results-card">
+          <section className="results-card" data-demo-anchor="demo-story">
             <div className="results-kicker">How comp day works</div>
             <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               This is the lifecycle gyms care about: plan the event once, run the day confidently, and keep climbers informed live.
@@ -1946,7 +1946,7 @@ export default function StaffDashboard({
         ) : null}
 
         {demoMode && demoTourCards.length ? (
-          <section className="results-card">
+          <section className="results-card" data-demo-anchor="demo-explore">
             <div className="results-kicker">Explore the product</div>
             <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               Start with the organizer workflow, then jump into the live and public surfaces that make comp day easier for staff and climbers.
@@ -1972,7 +1972,7 @@ export default function StaffDashboard({
         ) : null}
 
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <section className="results-card">
+          <section className="results-card" data-demo-anchor="organizer-overview">
             {demoMode ? (
               <>
                 <div className="results-kicker">Demo walkthrough</div>

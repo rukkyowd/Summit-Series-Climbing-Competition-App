@@ -132,7 +132,7 @@ export default function CompetitionLeaderboardPage() {
           finalsActive ? (
             finalsRows.length ? (
               <>
-                <section className="results-card">
+                <section className="results-card" data-demo-anchor="leaderboard-overview">
                   <div className="results-kicker">Finals</div>
                   <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Finals standings</h1>
                   <div className="mt-3 text-sm text-slate-600">Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}</div>
@@ -148,10 +148,10 @@ export default function CompetitionLeaderboardPage() {
                 <FinalsResultsTable title={selectedFinalsCategory} rows={finalsRows} />
               </>
             ) : (
-              <section className="results-card text-slate-600">Finals are active, but no finals scores have been entered yet.</section>
+              <section className="results-card text-slate-600" data-demo-anchor="leaderboard-overview">Finals are active, but no finals scores have been entered yet.</section>
             )
           ) : (
-            <section className="results-card">
+            <section className="results-card" data-demo-anchor="leaderboard-overview">
               <div className="results-kicker">{activeQualifierRoundName} standings</div>
               <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
                 {scrambleFormat ? "Live scramble standings" : `Live ${activeQualifierRoundName.toLowerCase()} rankings`}

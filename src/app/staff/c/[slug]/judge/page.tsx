@@ -904,7 +904,7 @@ export default function StaffJudgePage() {
           />
         ) : null}
 
-        <section className="results-card">
+        <section className="results-card" data-demo-anchor="judge-hero">
           <div className="results-workspace-hero">
             <div>
               <div className="results-kicker">Staff scoring</div>

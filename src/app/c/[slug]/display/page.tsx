@@ -125,7 +125,7 @@ export default function CompetitionDisplayPage() {
             bannerTip="Use this as the final stop in the demo to show the polished public event-day experience."
           />
         ) : null}
-        <section className="results-card">
+        <section className="results-card" data-demo-anchor="display-overview">
           <div className="results-kicker">Live display</div>
           <h1 className="mt-2 text-5xl font-semibold text-slate-950">{snapshot?.competition.name ?? "Loading competition..."}</h1>
           <p className="mt-3 text-lg text-slate-600">Projector view for public rankings and finals results.</p>
