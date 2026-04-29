@@ -172,6 +172,21 @@ function shouldQueueFailedSave(error: unknown) {
 
 type ConfirmationTone = "pending" | "confirmed" | "dirty";
 
+function formatQualifierSavedState(attempt?: { attempt_count: number; topped: boolean; zone?: boolean | null } | null) {
+  if (!attempt) {
+    return "No official entry yet";
+  }
+
+  const countLabel = `${attempt.attempt_count} ${attempt.attempt_count === 1 ? "attempt" : "attempts"}`;
+  if (attempt.topped) {
+    return `${countLabel}, zone + top`;
+  }
+  if (attempt.zone) {
+    return `${countLabel}, zone`;
+  }
+  return `${countLabel}, no hold`;
+}
+
 function getQualifierPresentation(
   draft: QualifierDraft,
   attempt?: { attempt_count: number; topped: boolean; zone?: boolean | null } | null
@@ -182,23 +197,25 @@ function getQualifierPresentation(
   liveDetail: string;
   confirmationLabel: string;
   confirmationTone: ConfirmationTone;
+  savedSummary: string;
 } {
   const normalized = normalizeQualifierAttemptInput(draft);
   const dirty = !qualifierDraftMatchesSaved(draft, attempt);
   const hasSavedAttempt = Boolean(attempt);
+  const hasSavedResult = Boolean(attempt?.topped || attempt?.zone);
 
   let liveLabel = "Waiting for first attempt";
-  let liveDetail = "Tap Attempt each time the climber leaves the floor, then call Zone or Top when control is clear.";
+  let liveDetail = "Count the first attempt, then mark zone or top once control is clear.";
 
   if (normalized.topped) {
     liveLabel = `Top called on attempt ${normalized.attemptsToTop ?? normalized.attemptCount}`;
-    liveDetail = "Top automatically keeps the zone on and will save as the official result for this boulder.";
+    liveDetail = "Zone stays on automatically. This will save as the official result for this boulder.";
   } else if (normalized.zone) {
     liveLabel = `Zone called on attempt ${normalized.attemptsToZone ?? normalized.attemptCount}`;
-    liveDetail = "Zone stands on its own until a top is called. Keep counting attempts live while the climber works.";
+    liveDetail = "Zone is marked. Add top later only if the climber finishes.";
   } else if (normalized.attemptCount > 0) {
-    liveLabel = `${normalized.attemptCount} live ${normalized.attemptCount === 1 ? "attempt" : "attempts"}`;
-    liveDetail = "No scoring hold called yet. Judges can keep counting attempts or mark Zone / Top when control is clear.";
+    liveLabel = `Attempt ${normalized.attemptCount} - no hold called`;
+    liveDetail = "No scoring hold is marked yet.";
   }
 
   return {
@@ -206,8 +223,9 @@ function getQualifierPresentation(
     dirty,
     liveLabel,
     liveDetail,
-    confirmationLabel: dirty ? "Unsaved judge edits" : hasSavedAttempt ? "Official score saved" : "No saved score yet",
-    confirmationTone: dirty ? "dirty" : hasSavedAttempt ? "confirmed" : "pending",
+    confirmationLabel: dirty ? "Unsaved judge edits" : hasSavedAttempt ? (hasSavedResult ? "Score confirmed" : "Draft saved") : "No saved score yet",
+    confirmationTone: dirty ? "dirty" : hasSavedResult ? "confirmed" : "pending",
+    savedSummary: formatQualifierSavedState(attempt),
   };
 }
 
@@ -1008,14 +1026,14 @@ export default function StaffJudgePage() {
                   </div>
                 ) : null}
 
-                <div className="space-y-3" data-demo-anchor="judge-entry-cards">
-                  {qualifierClimbers.map((climber) => {
+                <div className="space-y-3">
+                  {qualifierClimbers.map((climber, climberIndex) => {
                     const key = `${climber.id}:${selectedBoulder}`;
                     const existingAttempt = filterAttemptsForRound(climber.qualifier_attempts, activeQualifierRoundId).find((attempt) => attempt.climb_number === selectedBoulder);
                     const draft = qualifierDrafts[key] ?? getQualifierDraftFromAttempt(existingAttempt);
                     const presentation = getQualifierPresentation(draft, existingAttempt);
                     return (
-                      <div key={climber.id} className="results-workspace-card route-judge-card">
+                      <div key={climber.id} className="results-workspace-card route-judge-card" data-demo-anchor={climberIndex === 0 ? "judge-entry-cards" : undefined}>
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <div className="text-lg font-semibold text-slate-950">{climber.name}</div>
@@ -1124,10 +1142,10 @@ export default function StaffJudgePage() {
                         </div>
                         <div className="route-judge-footer">
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="judge-status-chip judge-status-chip-pending">
+                            <div className={`judge-status-chip ${presentation.normalized.zone ? "judge-status-chip-zone-active" : "judge-status-chip-zone-idle"}`}>
                               {presentation.normalized.zone ? "Zone on" : "Zone off"}
                             </div>
-                            <div className={`judge-status-chip ${presentation.normalized.topped ? "judge-status-chip-confirmed" : "judge-status-chip-pending"}`}>
+                            <div className={`judge-status-chip ${presentation.normalized.topped ? "judge-status-chip-top-active" : "judge-status-chip-top-idle"}`}>
                               {presentation.normalized.topped ? "Top on" : "Top off"}
                             </div>
                           </div>
@@ -1135,7 +1153,7 @@ export default function StaffJudgePage() {
                             <button
                               type="button"
                               onClick={() => setQualifierDraft(key, () => EMPTY_QUALIFIER_DRAFT)}
-                              className="results-secondary-button"
+                              className="judge-clear-button"
                             >
                               Clear
                             </button>
@@ -1150,7 +1168,7 @@ export default function StaffJudgePage() {
                           </div>
                         </div>
                         <div className="mt-3 text-sm text-slate-500">
-                          Saved state: {existingAttempt ? `Attempt ${existingAttempt.attempt_count}${existingAttempt.topped ? ", top" : existingAttempt.zone ? ", zone" : ""}` : "No official entry yet"}.
+                          Last saved: {presentation.savedSummary}.
                         </div>
                       </div>
                     );

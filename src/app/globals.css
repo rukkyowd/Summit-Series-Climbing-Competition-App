@@ -1061,6 +1061,22 @@ body::after {
     @apply border-amber-200 bg-amber-50 text-amber-700;
   }
 
+  .judge-status-chip-zone-idle {
+    @apply border-amber-200/80 bg-amber-50 text-amber-700;
+  }
+
+  .judge-status-chip-zone-active {
+    @apply border-amber-300 bg-amber-200/90 text-amber-950;
+  }
+
+  .judge-status-chip-top-idle {
+    @apply border-emerald-200/80 bg-emerald-50 text-emerald-700;
+  }
+
+  .judge-status-chip-top-active {
+    @apply border-emerald-300 bg-emerald-200/90 text-emerald-950;
+  }
+
   .judge-live-summary {
     @apply rounded-[1.35rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)];
   }
@@ -1079,6 +1095,10 @@ body::after {
 
   .judge-confirmation-card-dirty {
     @apply border-amber-200 bg-amber-50;
+  }
+
+  .judge-clear-button {
+    @apply inline-flex items-center justify-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:text-slate-800;
   }
 
   .results-brand-lockup {
@@ -1426,8 +1446,8 @@ body::after {
 .demo-tour-callout {
   border: 1px solid rgba(255, 255, 255, 0.78);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
-  padding: 1.35rem;
-  border-radius: 2rem;
+  padding: 1.25rem;
+  border-radius: 1.4rem;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
     0 30px 80px rgba(15, 23, 42, 0.18),
@@ -1447,40 +1467,86 @@ body::after {
 }
 
 .demo-tour-callout-sheet {
-  border-radius: 1.7rem;
+  border-radius: 1.2rem;
   transform: translateY(0);
-  padding: 0.85rem;
+  padding: 1rem;
 }
 
 .demo-tour-callout__badge {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  border-radius: 9999px;
+  border-radius: 0.7rem;
   border: 1px solid rgba(226, 232, 240, 0.92);
-  background: rgba(255, 255, 255, 0.82);
-  padding: 0.4rem 0.75rem;
-  font-size: 0.68rem;
+  background: rgba(248, 250, 252, 0.92);
+  padding: 0.35rem 0.62rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #475569;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.04);
+}
+
+.demo-tour-callout__arrow {
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.78);
+  border-top: 1px solid rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: -8px -8px 20px rgba(15, 23, 42, 0.04);
+  transform: rotate(45deg);
+}
+
+.demo-tour-callout__arrow-right {
+  left: -0.45rem;
+  top: 2rem;
+}
+
+.demo-tour-callout__arrow-left {
+  right: -0.45rem;
+  top: 2rem;
+  transform: rotate(225deg);
+}
+
+.demo-tour-callout__arrow-bottom {
+  left: 50%;
+  top: -0.45rem;
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .demo-tour-progress {
-  height: 0.36rem;
-  flex: 1 1 0%;
+  height: 0.42rem;
+  width: 0.42rem;
+  flex: 0 0 auto;
   border-radius: 9999px;
   background: rgba(226, 232, 240, 0.9);
   transition:
     background-color var(--demo-tour-fade-duration) var(--demo-tour-ease),
-    transform var(--demo-tour-fade-duration) var(--demo-tour-ease);
+    transform var(--demo-tour-fade-duration) var(--demo-tour-ease),
+    box-shadow var(--demo-tour-fade-duration) var(--demo-tour-ease);
 }
 
 .demo-tour-progress-active {
-  background: linear-gradient(90deg, #0f172a, #2563eb);
-  transform: scaleY(1.05);
+  width: 1rem;
+  border-radius: 9999px;
+  background: #185fa5;
+  transform: scale(1.2);
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.12);
+}
+
+.demo-tour-progress-done {
+  background: rgba(24, 95, 165, 0.38);
+}
+
+.demo-tour-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #185fa5, #0c447c);
+  transition:
+    width var(--demo-tour-move-duration) var(--demo-tour-ease),
+    background-color var(--demo-tour-fade-duration) var(--demo-tour-ease);
 }
 
 body[data-demo-tour-active="true"] .results-chip-live,
