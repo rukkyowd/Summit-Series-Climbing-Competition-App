@@ -1840,7 +1840,7 @@ export default function StaffDashboard({
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader
-          light={!demoMode}
+          light
           status={
             <div className="flex flex-wrap items-center gap-2">
               <div className="results-chip">{demoMode ? "demo" : profile?.role ?? "staff"}</div>

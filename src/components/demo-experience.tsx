@@ -423,14 +423,10 @@ export default function DemoExperience({
       return;
     }
 
-    if (enabled) {
-      document.body.dataset.demoTheme = "linear";
-    }
     const isActive = enabled && !dismissed && !complete && activeStep?.routeId === routeId;
     document.body.dataset.demoTourActive = isActive ? "true" : "false";
 
     return () => {
-      delete document.body.dataset.demoTheme;
       delete document.body.dataset.demoTourActive;
     };
   }, [activeStep, complete, dismissed, enabled, routeId]);
@@ -503,32 +499,32 @@ export default function DemoExperience({
 
   return (
     <>
-      <section className="results-alert demo-tour-banner border border-[rgba(94,106,210,0.24)] bg-[linear-gradient(180deg,rgba(13,13,17,0.92),rgba(8,8,11,0.9))] text-[#dfe3ff] shadow-[0_0_0_1px_rgba(94,106,210,0.08),0_18px_44px_rgba(0,0,0,0.4),0_0_60px_rgba(94,106,210,0.1)]">
+      <section className="results-alert border border-sky-200/70 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(239,246,255,0.88))] text-sky-900 shadow-[0_16px_44px_rgba(14,116,144,0.1)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 self-start rounded-full border border-[rgba(94,106,210,0.3)] bg-[rgba(94,106,210,0.12)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#cfd5ff] shadow-[0_0_0_1px_rgba(94,106,210,0.12),0_10px_28px_rgba(38,46,102,0.18)]">
-              <span className="h-2 w-2 rounded-full bg-[#6872D9] shadow-[0_0_0_6px_rgba(94,106,210,0.14)]" />
+            <div className="inline-flex items-center gap-2 self-start rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-700 shadow-[0_10px_24px_rgba(14,116,144,0.08)]">
+              <span className="h-2 w-2 rounded-full bg-sky-500 shadow-[0_0_0_6px_rgba(14,165,233,0.12)]" />
               {`Step ${activeIndex + 1} of ${steps.length} - Demo mode`}
             </div>
-            <div className="bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-xl font-semibold tracking-tight text-transparent">{bannerTitle}</div>
-            <p className="max-w-3xl text-sm leading-relaxed text-[#b7bcc8]">{bannerDescription}</p>
-            <p className="max-w-3xl text-sm leading-relaxed text-[#cfd5ff]">{bannerTip}</p>
+            <div className="text-xl font-semibold tracking-tight text-slate-950">{bannerTitle}</div>
+            <p className="max-w-3xl text-sm leading-relaxed text-slate-700">{bannerDescription}</p>
+            <p className="max-w-3xl text-sm leading-relaxed text-sky-800">{bannerTip}</p>
             {routeNextStep ? (
-              <p className="max-w-3xl text-sm leading-relaxed text-[#8a8f98]">
-                On this page next: <span className="font-semibold text-[#edecef]">{routeNextStep.title}</span>
+              <p className="max-w-3xl text-sm leading-relaxed text-slate-600">
+                On this page next: <span className="font-semibold text-slate-900">{routeNextStep.title}</span>
               </p>
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={restartTour} className={buttonStyles({ variant: "linearSecondary" })}>
+            <button type="button" onClick={restartTour} className={buttonStyles({ variant: "secondary" })}>
               Restart tour
             </button>
             {nextStep ? (
-              <button type="button" onClick={() => goToStep(activeIndex + 1)} className={buttonStyles({ variant: "linearPrimary" })}>
+              <button type="button" onClick={() => goToStep(activeIndex + 1)} className={buttonStyles({ variant: "primary" })}>
                 Next: {nextStep.title}
               </button>
             ) : (
-              <button type="button" onClick={restartTour} className={buttonStyles({ variant: "linearPrimary" })}>
+              <button type="button" onClick={restartTour} className={buttonStyles({ variant: "primary" })}>
                 Back to organizer demo
               </button>
             )}
@@ -548,7 +544,7 @@ export default function DemoExperience({
           >
             <motion.div className="demo-tour-transition-shell absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fadeTransition} />
             <motion.div
-              className="demo-tour-transition-card absolute left-1/2 top-1/2 w-[min(24rem,calc(100vw-2rem))] rounded-[1.4rem] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(12,12,15,0.94),rgba(7,7,9,0.92))] px-6 py-6 text-center shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_30px_80px_rgba(0,0,0,0.5),0_0_60px_rgba(94,106,210,0.12)] backdrop-blur-xl"
+              className="demo-tour-transition-card absolute left-1/2 top-1/2 w-[min(24rem,calc(100vw-2rem))] rounded-[1.4rem] border border-white/75 bg-white/92 px-6 py-6 text-center shadow-[0_30px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl"
               initial={{ x: "-50%", y: "-46%", opacity: 0, scale: 0.97 }}
               animate={{ x: "-50%", y: "-50%", opacity: 1, scale: 1 }}
               exit={{ x: "-50%", y: "-48%", opacity: 0, scale: 0.98 }}
@@ -557,13 +553,13 @@ export default function DemoExperience({
               <div className="mx-auto h-2 w-16 overflow-hidden rounded-full bg-slate-200/90">
                 <div className="demo-tour-transition-bar h-full w-1/2 rounded-full bg-[linear-gradient(90deg,#185fa5,#0c447c)]" />
               </div>
-              <div className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8f98]">
+              <div className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Guided handoff
               </div>
-              <div className="mt-3 bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-2xl font-semibold tracking-tight text-transparent">
+              <div className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
                 {`Traveling to ${getRouteLabel(activeStep.routeId)}...`}
               </div>
-              <p className="mt-3 text-sm leading-7 text-[#b7bcc8]">Bringing the next tour step into view.</p>
+              <p className="mt-3 text-sm leading-7 text-slate-600">Bringing the next tour step into view.</p>
             </motion.div>
           </motion.div>
         ) : null}
@@ -664,18 +660,18 @@ export default function DemoExperience({
 
             {complete ? (
               <div className="text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(94,106,210,0.24)] bg-[rgba(94,106,210,0.14)] text-xl text-[#d7ddff] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_26px_rgba(34,40,92,0.2)]">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-xl text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
                   {"\u2713"}
                 </div>
-                <h2 className="mt-4 bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-[1.7rem] font-semibold tracking-tight text-transparent">Tour complete</h2>
-                <p className="mt-3 text-[15px] leading-7 text-[#b7bcc8]">
+                <h2 className="mt-4 text-[1.7rem] font-semibold tracking-tight text-slate-950">Tour complete</h2>
+                <p className="mt-3 text-[15px] leading-7 text-slate-700">
                   You&apos;ve seen the full event workflow. The demo is still live, so you can keep exploring freely.
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  <button type="button" onClick={restartTour} className={buttonStyles({ variant: "linearPrimary" })}>
+                  <button type="button" onClick={restartTour} className={buttonStyles({ variant: "primary" })}>
                     Restart tour
                   </button>
-                  <button type="button" onClick={dismissTour} className={buttonStyles({ variant: "linearSecondary" })}>
+                  <button type="button" onClick={dismissTour} className={buttonStyles({ variant: "secondary" })}>
                     Explore on my own
                   </button>
                 </div>
@@ -685,12 +681,12 @@ export default function DemoExperience({
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="demo-tour-callout__badge">{`Stop ${activeIndex + 1} of ${steps.length}`}</div>
-                    <h2 className="mt-3 bg-gradient-to-b from-white via-white/95 to-white/72 bg-clip-text text-[1.55rem] font-semibold tracking-tight text-transparent sm:text-[1.75rem]">{activeStep.title}</h2>
+                    <h2 className="mt-3 text-[1.55rem] font-semibold tracking-tight text-slate-950 sm:text-[1.75rem]">{activeStep.title}</h2>
                   </div>
                   <button
                     type="button"
                     onClick={dismissTour}
-                    className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8f98] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-white/[0.12] hover:bg-white/[0.08] hover:text-[#edecef]"
+                    className="rounded-full border border-slate-200/90 bg-white/75 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-slate-300 hover:bg-white hover:text-slate-700"
                   >
                     Hide
                   </button>
@@ -711,23 +707,23 @@ export default function DemoExperience({
                       />
                     ))}
                   </div>
-                  <div className="mt-3 h-[2px] overflow-hidden rounded-full bg-white/[0.08]">
+                  <div className="mt-3 h-[2px] overflow-hidden rounded-full bg-slate-200/90">
                     <div className="demo-tour-progress-bar" style={{ width: `${((activeIndex + 1) / steps.length) * 100}%` }} />
                   </div>
                 </div>
 
-                <p className="mt-4 text-[14px] leading-7 text-[#b7bcc8]">{activeStep.description}</p>
-                <div className="mt-4 rounded-[1.15rem] border border-[rgba(94,106,210,0.24)] bg-[linear-gradient(180deg,rgba(94,106,210,0.14),rgba(94,106,210,0.08))] px-4 py-4 text-sm leading-7 text-[#dfe3ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <p className="mt-4 text-[14px] leading-7 text-slate-600">{activeStep.description}</p>
+                <div className="mt-4 rounded-[1.15rem] border border-sky-200/90 bg-sky-50/95 px-4 py-4 text-sm leading-7 text-sky-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]">
                   {activeStep.action}
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[#8a8f98]">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
                     {activeIndex + 1} / {steps.length}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {previousStep ? (
-                      <button type="button" onClick={() => goToStep(activeIndex - 1)} className={buttonStyles({ variant: "linearSecondary" })}>
+                      <button type="button" onClick={() => goToStep(activeIndex - 1)} className={buttonStyles({ variant: "secondary" })}>
                         Back
                       </button>
                     ) : (
@@ -735,13 +731,13 @@ export default function DemoExperience({
                         type="button"
                         disabled
                         aria-hidden="true"
-                        className={cn(buttonStyles({ variant: "linearSecondary" }), "pointer-events-none opacity-0")}
+                        className={cn(buttonStyles({ variant: "secondary" }), "pointer-events-none opacity-0")}
                       >
                         Back
                       </button>
                     )}
                     {nextStep ? (
-                      <button type="button" onClick={() => goToStep(activeIndex + 1)} className={buttonStyles({ variant: "linearPrimary" })}>
+                      <button type="button" onClick={() => goToStep(activeIndex + 1)} className={buttonStyles({ variant: "primary" })}>
                         {activeStep.continueLabel ?? "Continue ->"}
                       </button>
                     ) : (
@@ -749,8 +745,8 @@ export default function DemoExperience({
                         type="button"
                         onClick={() => setComplete(true)}
                         className={cn(
-                          buttonStyles({ variant: "linearPrimary" }),
-                          "border-[rgba(48,184,124,0.38)] bg-[linear-gradient(180deg,#1d8f68,#177155)] hover:shadow-[0_0_0_1px_rgba(48,184,124,0.18),0_18px_38px_rgba(24,113,85,0.34),0_0_68px_rgba(48,184,124,0.18)]"
+                          buttonStyles({ variant: "primary" }),
+                          "bg-[linear-gradient(135deg,#15966d,#13845f)] hover:shadow-[0_18px_36px_rgba(21,150,109,0.22)]"
                         )}
                       >
                         {activeStep.continueLabel ?? "Finish tour"}
@@ -777,7 +773,7 @@ export default function DemoExperience({
               setDismissed(false);
               setComplete(false);
             }}
-            className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-[rgba(10,10,12,0.92)] px-3 py-2 text-xs font-semibold text-[#d8dcef] shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_12px_28px_rgba(0,0,0,0.34),0_0_40px_rgba(94,106,210,0.12)] backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[rgba(14,14,18,0.96)]"
+            className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:bg-white"
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
