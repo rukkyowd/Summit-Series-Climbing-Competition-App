@@ -1,11 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
 export type DemoTourRouteId = "organizer" | "judge" | "leaderboard" | "display";
+
+type CalloutMode = "floating" | "sheet";
+type CalloutSide = "left" | "right" | "bottom";
 
 type DemoTourStep = {
   routeId: DemoTourRouteId;
@@ -18,6 +21,7 @@ type DemoTourStep = {
   preferredSide?: Exclude<CalloutSide, "bottom">;
   verticalBias?: "top" | "center" | "bottom";
   calloutWidth?: number;
+  allowInteraction?: boolean;
 };
 
 type DemoExperienceProps = {
@@ -37,15 +41,19 @@ type SpotlightBox = {
   radius: number;
 };
 
-type MaskPanel = CSSProperties;
-type CalloutMode = "floating" | "sheet";
-type CalloutSide = "left" | "right" | "bottom";
-
 const STORAGE_STEP_KEY = "scorecard_demo_tour_step";
 const STORAGE_DISMISSED_KEY = "scorecard_demo_tour_dismissed";
+const TRANSITION_MIN_MS = 600;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getRouteLabel(routeId: DemoTourRouteId) {
+  if (routeId === "organizer") return "Organizer demo";
+  if (routeId === "judge") return "Judge scoring";
+  if (routeId === "leaderboard") return "Live leaderboard";
+  return "Spectator display";
 }
 
 function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
@@ -89,6 +97,7 @@ function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
       preferredSide: "right",
       verticalBias: "center",
       calloutWidth: 344,
+      allowInteraction: true,
     },
     {
       routeId: "leaderboard",
@@ -132,30 +141,12 @@ function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
   ];
 }
 
-function buildMaskPanels(spotlight: SpotlightBox): MaskPanel[] {
-  const overlap = 18;
-  const right = spotlight.left + spotlight.width;
-  const bottom = spotlight.top + spotlight.height;
-
+function buildInteractionPanels(spotlight: SpotlightBox): CSSProperties[] {
   return [
-    { left: 0, top: 0, width: "100%", height: spotlight.top + overlap },
-    { left: 0, top: spotlight.top, width: spotlight.left + overlap, height: spotlight.height },
-    { left: right - overlap, top: spotlight.top, right: 0, height: spotlight.height },
-    { left: 0, top: bottom - overlap, width: "100%", bottom: 0 },
-  ];
-}
-
-function buildCornerMasks(spotlight: SpotlightBox): Array<MaskPanel & { key: string; className: string }> {
-  const radius = Math.max(spotlight.radius, 24);
-  const size = radius + 18;
-  const right = spotlight.left + spotlight.width;
-  const bottom = spotlight.top + spotlight.height;
-
-  return [
-    { key: "top-left", className: "demo-tour-corner-mask demo-tour-corner-mask-tl", left: spotlight.left, top: spotlight.top, width: size, height: size },
-    { key: "top-right", className: "demo-tour-corner-mask demo-tour-corner-mask-tr", left: right - size, top: spotlight.top, width: size, height: size },
-    { key: "bottom-left", className: "demo-tour-corner-mask demo-tour-corner-mask-bl", left: spotlight.left, top: bottom - size, width: size, height: size },
-    { key: "bottom-right", className: "demo-tour-corner-mask demo-tour-corner-mask-br", left: right - size, top: bottom - size, width: size, height: size },
+    { left: 0, top: 0, width: "100%", height: spotlight.top },
+    { left: 0, top: spotlight.top, width: spotlight.left, height: spotlight.height },
+    { left: spotlight.left + spotlight.width, top: spotlight.top, right: 0, height: spotlight.height },
+    { left: 0, top: spotlight.top + spotlight.height, width: "100%", bottom: 0 },
   ];
 }
 
@@ -174,35 +165,22 @@ function resolveFloatingSide(
   calloutWidth: number,
   preferredSide: DemoTourStep["preferredSide"]
 ): Exclude<CalloutSide, "bottom"> | null {
-  const rightFits = rect.right + 26 + calloutWidth <= window.innerWidth - 16;
-  const leftFits = rect.left - 26 - calloutWidth >= 12;
+  const isRightHalf = rect.left + rect.width / 2 > window.innerWidth / 2;
+  const rightFits = rect.right + 24 + calloutWidth <= window.innerWidth - 16;
+  const leftFits = rect.left - 24 - calloutWidth >= 16;
 
-  if (preferredSide === "left") {
-    if (leftFits) {
+  const fallbackSides: Array<Exclude<CalloutSide, "bottom">> = isRightHalf ? ["left", "right"] : ["right", "left"];
+  const sidesToTry = preferredSide ? [preferredSide, ...fallbackSides.filter((side) => side !== preferredSide)] : fallbackSides;
+
+  for (const side of sidesToTry) {
+    if (side === "left" && leftFits) {
       return "left";
     }
-    if (rightFits) {
+    if (side === "right" && rightFits) {
       return "right";
     }
-    return null;
   }
 
-  if (preferredSide === "right") {
-    if (rightFits) {
-      return "right";
-    }
-    if (leftFits) {
-      return "left";
-    }
-    return null;
-  }
-
-  if (rightFits) {
-    return "right";
-  }
-  if (leftFits) {
-    return "left";
-  }
   return null;
 }
 
@@ -224,6 +202,7 @@ export default function DemoExperience({
         .map((entry) => entry.index),
     [routeId, steps]
   );
+
   const firstRouteStepIndex = routeStepIndexes[0] ?? 0;
   const [activeIndex, setActiveIndex] = useState(firstRouteStepIndex);
   const [dismissed, setDismissed] = useState(true);
@@ -233,6 +212,10 @@ export default function DemoExperience({
   const [calloutMode, setCalloutMode] = useState<CalloutMode>("floating");
   const [calloutSide, setCalloutSide] = useState<CalloutSide>("right");
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+
+  const transitionStartedAtRef = useRef(0);
+  const transitionTimerRef = useRef<number | null>(null);
 
   const activeStep = steps[activeIndex] ?? null;
   const previousStep = activeIndex > 0 ? steps[activeIndex - 1] : null;
@@ -243,6 +226,25 @@ export default function DemoExperience({
       ? steps[routeStepIndexes[routeCurrentStepPosition + 1]]
       : null;
 
+  const finishTransition = () => {
+    if (typeof window === "undefined") {
+      setTransitioning(false);
+      return;
+    }
+
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    }
+
+    const elapsed = Date.now() - transitionStartedAtRef.current;
+    const remaining = Math.max(0, TRANSITION_MIN_MS - elapsed);
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitioning(false);
+      transitionTimerRef.current = null;
+    }, remaining);
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -252,6 +254,7 @@ export default function DemoExperience({
     const applyPreference = () => setPrefersReducedMotion(mediaQuery.matches);
     applyPreference();
     mediaQuery.addEventListener("change", applyPreference);
+
     return () => mediaQuery.removeEventListener("change", applyPreference);
   }, []);
 
@@ -268,7 +271,14 @@ export default function DemoExperience({
     setDismissed(storedDismissed);
     setComplete(false);
     setActiveIndex(resolvedIndex);
-  }, [enabled, firstRouteStepIndex, steps.length]);
+
+    if (!storedDismissed && steps[resolvedIndex]?.routeId !== routeId) {
+      transitionStartedAtRef.current = Date.now();
+      setTransitioning(true);
+    } else {
+      setTransitioning(false);
+    }
+  }, [enabled, firstRouteStepIndex, routeId, steps]);
 
   useEffect(() => {
     if (!enabled || dismissed || complete || !activeStep || activeStep.routeId !== routeId || typeof window === "undefined") {
@@ -281,21 +291,30 @@ export default function DemoExperience({
 
     let frame = 0;
     let settleTimer = 0;
+    let resizeObserver: ResizeObserver | null = null;
 
     const updatePosition = (scrollTarget: boolean) => {
       const target = document.querySelector(activeStep.selector);
       if (!(target instanceof HTMLElement)) {
+        setTransitioning(true);
         setSpotlight(null);
         setCalloutMode("sheet");
         setCalloutSide("bottom");
-        setCalloutStyle({ left: "50%", bottom: 16, width: Math.min(360, window.innerWidth - 24), transform: "translateX(-50%)" });
+        setCalloutStyle({
+          left: "50%",
+          bottom: 16,
+          width: Math.min(360, window.innerWidth - 24),
+          transform: "translateX(-50%)",
+        });
         return;
       }
+
+      finishTransition();
 
       if (scrollTarget) {
         target.scrollIntoView({
           behavior: prefersReducedMotion ? "auto" : "smooth",
-          block: "center",
+          block: activeStep.verticalBias === "top" ? "start" : activeStep.verticalBias === "bottom" ? "end" : "center",
           inline: "nearest",
         });
       }
@@ -306,22 +325,23 @@ export default function DemoExperience({
           (frame = window.requestAnimationFrame(() => {
             const rect = target.getBoundingClientRect();
             const padding = window.innerWidth < 768 ? 12 : 18;
+            const requestedWidth = activeStep.calloutWidth ?? 344;
+            const calloutWidth = Math.min(requestedWidth, window.innerWidth - 24);
+            const preferredSide = resolveFloatingSide(rect, calloutWidth, activeStep.preferredSide);
+            const useFloating = window.innerWidth >= 980 && rect.width < window.innerWidth * 0.68 && preferredSide !== null;
+            const verticalPadding = useFloating ? padding + 12 : padding + 44;
+
             const nextSpotlight: SpotlightBox = {
-              top: clamp(rect.top - padding, 12, Math.max(12, window.innerHeight - rect.height - padding * 2 - 12)),
+              top: clamp(rect.top - padding, 12, Math.max(12, window.innerHeight - rect.height - verticalPadding * 2 - 12)),
               left: clamp(rect.left - padding, 12, Math.max(12, window.innerWidth - rect.width - padding * 2 - 12)),
               width: Math.max(rect.width + padding * 2, 240),
               height: Math.max(rect.height + padding * 2, 120),
               radius: window.innerWidth < 768 ? 24 : 30,
             };
 
-            const requestedWidth = activeStep.calloutWidth ?? 344;
-            const calloutWidth = Math.min(requestedWidth, window.innerWidth - 24);
-            const preferredSide = resolveFloatingSide(rect, calloutWidth, activeStep.preferredSide);
-            const useFloating = window.innerWidth >= 980 && rect.width < window.innerWidth * 0.68 && preferredSide !== null;
-
             setSpotlight(nextSpotlight);
 
-            if (!useFloating) {
+            if (!useFloating || !preferredSide) {
               const sheetWidth = Math.min(window.innerWidth >= 1024 ? 320 : 360, window.innerWidth - 24);
               setCalloutMode("sheet");
               setCalloutSide("bottom");
@@ -335,9 +355,15 @@ export default function DemoExperience({
             }
 
             const resolvedLeft =
-              preferredSide === "right" ? rect.right + 26 : rect.left - calloutWidth - 26;
+              preferredSide === "right" ? rect.right + 24 : rect.left - calloutWidth - 24;
             const estimatedHeight = 308;
-            const preferredTop = resolvePreferredTop(rect, estimatedHeight, activeStep.verticalBias);
+            const smartBias =
+              activeStep.verticalBias === "center" && rect.top > window.innerHeight / 2
+                ? "bottom"
+                : activeStep.verticalBias === "center"
+                  ? "top"
+                  : activeStep.verticalBias;
+            const preferredTop = resolvePreferredTop(rect, estimatedHeight, smartBias);
             const resolvedTop = clamp(preferredTop, 16, Math.max(16, window.innerHeight - estimatedHeight - 16));
 
             setCalloutMode("floating");
@@ -352,6 +378,15 @@ export default function DemoExperience({
       );
     };
 
+    const targetElement = document.querySelector(activeStep.selector);
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => updatePosition(false));
+      if (targetElement instanceof HTMLElement) {
+        resizeObserver.observe(targetElement);
+      }
+      resizeObserver.observe(document.body);
+    }
+
     const handleResize = () => updatePosition(false);
     const handleScroll = () => updatePosition(false);
 
@@ -364,10 +399,19 @@ export default function DemoExperience({
       window.clearTimeout(settleTimer);
       window.clearTimeout(settleTimeout);
       window.cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("scroll", handleScroll, true);
     };
   }, [activeStep, complete, dismissed, enabled, prefersReducedMotion, routeId]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -397,12 +441,15 @@ export default function DemoExperience({
     window.localStorage.removeItem(STORAGE_DISMISSED_KEY);
     setDismissed(false);
 
-    if (targetStep.routeId === routeId) {
-      setActiveIndex(targetIndex);
+    if (targetStep.routeId !== routeId) {
+      transitionStartedAtRef.current = Date.now();
+      setTransitioning(true);
+      router.push(targetStep.href);
       return;
     }
 
-    router.push(targetStep.href);
+    setTransitioning(false);
+    setActiveIndex(targetIndex);
   };
 
   const restartTour = () => {
@@ -417,6 +464,10 @@ export default function DemoExperience({
     }
     setDismissed(true);
   };
+
+  const maskId = `demo-tour-mask-${activeIndex}`;
+  const showTransitionOverlay = !dismissed && !complete && (transitioning || activeStep.routeId !== routeId);
+  const showTourOverlay = !dismissed && !complete && activeStep.routeId === routeId;
 
   return (
     <>
@@ -453,27 +504,51 @@ export default function DemoExperience({
         </div>
       </section>
 
-      {!dismissed && activeStep.routeId === routeId ? (
+      {showTransitionOverlay ? (
         <div className="pointer-events-none fixed inset-0 z-50">
+          <div className="demo-tour-transition-shell absolute inset-0" />
+          <div className="demo-tour-transition-card absolute left-1/2 top-1/2 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-[1.4rem] border border-white/75 bg-white/92 px-6 py-6 text-center shadow-[0_30px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+            <div className="mx-auto h-2 w-16 overflow-hidden rounded-full bg-slate-200/90">
+              <div className="demo-tour-transition-bar h-full w-1/2 rounded-full bg-[linear-gradient(90deg,#185fa5,#0c447c)]" />
+            </div>
+            <div className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Guided handoff
+            </div>
+            <div className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
+              {`Traveling to ${getRouteLabel(activeStep.routeId)}...`}
+            </div>
+            <p className="mt-3 text-sm leading-7 text-slate-600">Bringing the next tour step into view.</p>
+          </div>
+        </div>
+      ) : null}
+
+      {showTourOverlay ? (
+        <div className="fixed inset-0 z-50 pointer-events-none">
           {spotlight ? (
-            buildMaskPanels(spotlight).map((panelStyle, index) => (
-              <div key={`demo-tour-mask-${index}`} className="demo-tour-mask absolute" style={panelStyle} />
-            ))
+            <svg className="demo-tour-overlay-svg absolute inset-0 h-full w-full pointer-events-none" aria-hidden="true">
+              <defs>
+                <mask id={maskId}>
+                  <rect width="100%" height="100%" fill="white" />
+                  <rect
+                    x={spotlight.left}
+                    y={spotlight.top}
+                    width={spotlight.width}
+                    height={spotlight.height}
+                    rx={spotlight.radius}
+                    ry={spotlight.radius}
+                    fill="black"
+                  />
+                </mask>
+              </defs>
+              <rect width="100%" height="100%" fill="rgba(15,23,42,0.32)" mask={`url(#${maskId})`} />
+            </svg>
           ) : (
-            <div className="demo-tour-backdrop absolute inset-0" />
+            <div className="demo-tour-backdrop absolute inset-0 pointer-events-none" />
           )}
-          {spotlight
-            ? buildCornerMasks(spotlight).map((corner) => (
-                <div
-                  key={corner.key}
-                  className={corner.className}
-                  style={{ left: corner.left, top: corner.top, width: corner.width, height: corner.height }}
-                />
-              ))
-            : null}
+
           {spotlight ? (
             <div
-              className="demo-tour-spotlight absolute"
+              className="demo-tour-spotlight absolute pointer-events-none"
               style={{
                 top: `${spotlight.top}px`,
                 left: `${spotlight.left}px`,
@@ -482,9 +557,29 @@ export default function DemoExperience({
                 borderRadius: `${spotlight.radius}px`,
               }}
             >
+              <div className="demo-tour-spotlight__glow absolute -inset-6 rounded-[calc(inherit+1.5rem)]" />
               <div className="demo-tour-spotlight__wash absolute inset-0 rounded-[inherit]" />
               <div className="demo-tour-spotlight__edge absolute inset-0 rounded-[inherit]" />
             </div>
+          ) : null}
+
+          {spotlight
+            ? buildInteractionPanels(spotlight).map((panelStyle, index) => (
+                <div key={`demo-tour-blocker-${index}`} className="absolute pointer-events-auto" style={panelStyle} />
+              ))
+            : null}
+
+          {spotlight && !activeStep.allowInteraction ? (
+            <div
+              className="absolute pointer-events-auto"
+              style={{
+                top: spotlight.top,
+                left: spotlight.left,
+                width: spotlight.width,
+                height: spotlight.height,
+                borderRadius: spotlight.radius,
+              }}
+            />
           ) : null}
 
           <aside
@@ -564,7 +659,12 @@ export default function DemoExperience({
                         Back
                       </button>
                     ) : (
-                      <button type="button" disabled aria-hidden="true" className={cn(buttonStyles({ variant: "secondary" }), "pointer-events-none opacity-0")}>
+                      <button
+                        type="button"
+                        disabled
+                        aria-hidden="true"
+                        className={cn(buttonStyles({ variant: "secondary" }), "pointer-events-none opacity-0")}
+                      >
                         Back
                       </button>
                     )}
@@ -590,6 +690,23 @@ export default function DemoExperience({
             )}
           </aside>
         </div>
+      ) : null}
+
+      {enabled && dismissed ? (
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              window.localStorage.removeItem(STORAGE_DISMISSED_KEY);
+            }
+            setDismissed(false);
+            setComplete(false);
+          }}
+          className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-md transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:bg-white"
+        >
+          <span aria-hidden="true">{"\u25B6"}</span>
+          Resume tour
+        </button>
       ) : null}
     </>
   );
