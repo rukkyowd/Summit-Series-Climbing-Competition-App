@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
+import type { LeaderboardImpact } from "@/components/demo/types";
 import type { CompetitionSnapshot } from "@/lib/db";
 import {
   compareQualifierEntries,
@@ -18,12 +19,16 @@ type LeaderboardPanelProps = {
   snapshot: CompetitionSnapshot;
   embedded?: boolean;
   highlightedClimberId?: string | null;
+  targetClimberId?: string | null;
+  impact?: LeaderboardImpact | null;
 };
 
 export function LeaderboardPanel({
   snapshot,
   embedded = false,
   highlightedClimberId = null,
+  targetClimberId = null,
+  impact = null,
 }: LeaderboardPanelProps) {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
@@ -102,6 +107,26 @@ export function LeaderboardPanel({
       : "Score column shows official qualifier points.";
 
   const wrapperClass = embedded ? "h-full space-y-4" : "space-y-6";
+
+  const getImpactLabel = (climberId: string) => {
+    if (!impact || impact.climberId !== climberId) {
+      return null;
+    }
+
+    if (impact.beforeRank !== null && impact.afterRank !== null && impact.delta > 0) {
+      return `Moved up ${impact.delta}`;
+    }
+
+    if (impact.beforeRank !== null && impact.afterRank !== null && impact.delta < 0) {
+      return `Dropped ${Math.abs(impact.delta)}`;
+    }
+
+    if (impact.beforeRank !== null && impact.afterRank !== null) {
+      return "Rank updated";
+    }
+
+    return "New score";
+  };
 
   return (
     <div className={wrapperClass}>
@@ -192,11 +217,14 @@ export function LeaderboardPanel({
           ) : (
             <>
               <div className="mt-6 space-y-3 md:hidden">
-                {qualifierRows.map((entry) => (
+                {qualifierRows.map((entry) => {
+                  const impactLabel = getImpactLabel(entry.climber_id);
+                  const impacted = Boolean(impactLabel);
+                  return (
                   <Surface
                     key={entry.climber_id}
                     variant="meta"
-                    className={`min-w-0 ${highlightedClimberId === entry.climber_id ? "ring-2 ring-sky-400/50" : ""}`}
+                    className={`min-w-0 ${highlightedClimberId === entry.climber_id ? "ring-2 ring-sky-400/50" : ""} ${impacted ? "demo-rank-impact-card" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -217,11 +245,14 @@ export function LeaderboardPanel({
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Badge>{entry.display_category}</Badge>
+                      {targetClimberId === entry.climber_id ? <Badge>Demo target</Badge> : null}
+                      {impactLabel ? <Badge variant="live">{impactLabel}</Badge> : null}
                       <Badge>{entry.topped_count} tops</Badge>
                       <Badge>{entry.zone_count} zones</Badge>
                     </div>
                   </Surface>
-                ))}
+                  );
+                })}
               </div>
 
               <div
@@ -241,19 +272,24 @@ export function LeaderboardPanel({
                     <div>Score</div>
                     <div>Summary</div>
                   </div>
-                  {qualifierRows.map((entry) => (
+                  {qualifierRows.map((entry) => {
+                    const impactLabel = getImpactLabel(entry.climber_id);
+                    const impacted = Boolean(impactLabel);
+                    return (
                     <div
                       key={entry.climber_id}
                       className={`grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700 transition-colors ${
                         highlightedClimberId === entry.climber_id ? "bg-sky-50/80" : ""
-                      }`}
+                      } ${impacted ? "demo-rank-impact-row" : ""}`}
                     >
                       <div className="text-xl font-semibold text-slate-950">{entry.category_rank}</div>
                       <div className="min-w-0">
-                        <div className="break-words text-lg font-semibold text-slate-950">{entry.name}</div>
-                        <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
-                          #{entry.climber_number}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="break-words text-lg font-semibold text-slate-950">{entry.name}</div>
+                          {targetClimberId === entry.climber_id ? <Badge>Demo target</Badge> : null}
+                          {impactLabel ? <Badge variant="live">{impactLabel}</Badge> : null}
                         </div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
                       </div>
                       <div>{entry.province}</div>
                       <div>{entry.display_category}</div>
@@ -266,7 +302,8 @@ export function LeaderboardPanel({
                         {entry.topped_count} tops / {entry.zone_count} zones
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </>

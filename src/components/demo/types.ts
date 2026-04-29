@@ -32,3 +32,17 @@ export type DemoSimulationResponse = {
   climberId: string;
   climbNumber: number;
 };
+
+export type DemoScenarioAthlete = {
+  id: string;
+  name: string;
+  climberNumber: string;
+  categoryLabel: string;
+};
+
+export type LeaderboardImpact = {
+  climberId: string;
+  beforeRank: number | null;
+  afterRank: number | null;
+  delta: number;
+};

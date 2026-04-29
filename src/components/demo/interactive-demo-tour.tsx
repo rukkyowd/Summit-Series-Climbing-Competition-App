@@ -9,32 +9,33 @@ const TOUR_STATE_KEY = "interactive_demo_tour_state_v1";
 
 type InteractiveDemoTourProps = {
   pendingQueueCount: number;
+  climberName: string;
 };
 
 const baseSteps = [
   {
     id: "judge",
-    title: "Start with the judge workspace",
-    body: "The left side is the exact operational surface staff uses to record one climber's result on one boulder.",
+    title: "Find the demo athlete",
+    body: "__ATHLETE__ is highlighted as the first scoring example. This is the one row to act on first.",
   },
   {
     id: "save",
-    title: "Record one scoring decision",
-    body: "Use the attempt, zone, and top controls, then save. This is the fastest way to demonstrate the app's value loop.",
+    title: "Save one judge call",
+    body: "Add the result on Boulder 1, then hit Save judge call. The point is to make one official scoring decision, not explore every control.",
   },
   {
     id: "leaderboard",
-    title: "Watch the ranking move live",
-    body: "The right side consumes the same competition snapshot, so the rank change appears immediately without leaving the screen.",
+    title: "Watch the ranking react",
+    body: "The leaderboard on the right should move as soon as the save lands. That instant cause and effect is the product story.",
   },
   {
     id: "sync",
-    title: "Call out sync trust",
-    body: "If the gym loses signal, queued scores stay visible here until they sync. That resilience is part of the pitch, not a hidden implementation detail.",
+    title: "Prove the offline safety net",
+    body: "Now simulate a gym Wi-Fi drop, save again, and point out that the score queues locally until you reconnect.",
   },
 ] as const;
 
-export function InteractiveDemoTour({ pendingQueueCount }: InteractiveDemoTourProps) {
+export function InteractiveDemoTour({ pendingQueueCount, climberName }: InteractiveDemoTourProps) {
   const reduceMotion = useReducedMotion();
   const [hidden, setHidden] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
@@ -76,9 +77,12 @@ export function InteractiveDemoTour({ pendingQueueCount }: InteractiveDemoTourPr
                 pendingQueueCount === 1 ? "score is" : "scores are"
               } waiting right now, which is perfect for showing how the app survives bad gym Wi-Fi.`,
             }
-          : step
+          : {
+              ...step,
+              body: step.body.replace("__ATHLETE__", climberName),
+            }
       ),
-    [pendingQueueCount]
+    [climberName, pendingQueueCount]
   );
 
   const activeStep = steps[stepIndex];

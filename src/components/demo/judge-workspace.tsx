@@ -130,6 +130,9 @@ type JudgeWorkspaceProps = {
   error?: string;
   syncStatus?: string;
   initialClimberId?: string | null;
+  targetClimberId?: string | null;
+  targetClimberName?: string | null;
+  offlineMode?: boolean;
   onSaveQualifier: (input: JudgeQualifierSaveInput) => Promise<void>;
 };
 
@@ -142,6 +145,9 @@ export function JudgeWorkspace({
   error = "",
   syncStatus = "Synced",
   initialClimberId = null,
+  targetClimberId = null,
+  targetClimberName = null,
+  offlineMode = false,
   onSaveQualifier,
 }: JudgeWorkspaceProps) {
   const [query, setQuery] = useState("");
@@ -250,8 +256,7 @@ export function JudgeWorkspace({
             Boulder-by-boulder judging
           </h2>
           <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
-            Save one judge call on the left and watch the leaderboard move on the right. This uses the
-            same seeded demo competition the public pages read from.
+            You are judging Youth D qualifiers. Save one score on Boulder 1, then watch the public leaderboard react on the right.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -270,6 +275,11 @@ export function JudgeWorkspace({
           queue.
         </Alert>
       ) : null}
+      {offlineMode ? (
+        <Alert variant="warning" className="mt-4" data-demo-anchor="interactive-offline-banner">
+          Gym Wi-Fi dropped. Save normally and this judge station will queue the score locally until you reconnect.
+        </Alert>
+      ) : null}
 
       <div className={`mt-6 grid gap-4 ${embedded ? "2xl:grid-cols-[17rem_minmax(0,1fr)]" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
         <div className="results-control-stack">
@@ -282,6 +292,11 @@ export function JudgeWorkspace({
               {qualifierSavedCount} of {snapshot.climbers.length} climbers already have an entry on this
               boulder.
             </div>
+            {targetClimberName ? (
+              <div className="mt-3 rounded-[1rem] border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm text-sky-800">
+                Demo target: save {targetClimberName} on Boulder 1, then watch the leaderboard jump.
+              </div>
+            ) : null}
           </div>
           <input
             value={query}
@@ -322,7 +337,9 @@ export function JudgeWorkspace({
             return (
               <div
                 key={climber.id}
-                className="results-workspace-card route-judge-card"
+                className={`results-workspace-card route-judge-card ${
+                  targetClimberId === climber.id ? "ring-2 ring-sky-300/80 shadow-[0_18px_42px_rgba(14,116,215,0.12)]" : ""
+                }`}
                 data-demo-anchor={climberIndex === 0 ? "interactive-first-athlete" : undefined}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -331,8 +348,11 @@ export function JudgeWorkspace({
                     <div className="mt-1 text-sm text-slate-600">
                       #{climber.climber_number} | {climber.display_category}
                     </div>
-                    <div className={`judge-status-chip judge-status-chip-${presentation.confirmationTone}`}>
-                      {presentation.confirmationLabel}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <div className={`judge-status-chip judge-status-chip-${presentation.confirmationTone}`}>
+                        {presentation.confirmationLabel}
+                      </div>
+                      {targetClimberId === climber.id ? <Badge>Demo target</Badge> : null}
                     </div>
                   </div>
                   <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -340,7 +360,16 @@ export function JudgeWorkspace({
                   </div>
                 </div>
 
-                <div className={`route-judge-live-row ${embedded ? "lg:grid-cols-1 2xl:grid-cols-[14rem_minmax(0,1fr)]" : ""}`}>
+                <div
+                  className="route-judge-live-row"
+                  style={
+                    embedded
+                      ? {
+                          gridTemplateColumns: "minmax(0,1fr)",
+                        }
+                      : undefined
+                  }
+                >
                   <div className="route-judge-counter-card">
                     <div className="results-kicker">Live attempt counter</div>
                     <div className="route-judge-counter-row">
@@ -388,9 +417,14 @@ export function JudgeWorkspace({
                 </div>
 
                 <div
-                  className={`route-judge-action-grid route-judge-action-grid-qualifier ${
-                    embedded ? "lg:grid-cols-2 2xl:grid-cols-3" : ""
-                  }`}
+                  className="route-judge-action-grid route-judge-action-grid-qualifier"
+                  style={
+                    embedded
+                      ? {
+                          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+                        }
+                      : undefined
+                  }
                 >
                   <button
                     type="button"

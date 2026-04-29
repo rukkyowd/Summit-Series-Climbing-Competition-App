@@ -26,7 +26,7 @@ export function DemoToolkit({
       <summary className="cursor-pointer list-none">
         <Surface variant="meta" className="flex items-center justify-between gap-3 rounded-[1.4rem] px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
           <div>
-            <div className="results-kicker">Demo toolkit</div>
+            <div className="results-kicker">Demo control panel</div>
             <div className="mt-1 text-sm font-medium text-slate-800">
               {state.lastSyncStatus === "synced"
                 ? "Synced"
@@ -37,26 +37,26 @@ export function DemoToolkit({
                     : `Pending sync (${state.pendingQueueCount})`}
             </div>
           </div>
-          <div className="results-chip">{state.simulateOffline ? "Offline demo" : "Live demo"}</div>
+          <div className="results-chip">{state.simulateOffline ? "Wi-Fi dropped" : "Live sync"}</div>
         </Surface>
       </summary>
       <Surface variant="card" className="mt-3 space-y-4 rounded-[1.8rem] p-5 shadow-[0_22px_54px_rgba(15,23,42,0.18)]">
         <div>
           <div className="results-kicker">Controls</div>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Use this panel to prove the real-time loop, the offline queue, and the one-click demo reset.
+            Use this panel to prove the live scoring loop, simulate a gym Wi-Fi drop, and reset the seeded event.
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           <Button variant="secondary" onClick={onSimulateOneScore}>
-            Simulate one score
+            Trigger live score
           </Button>
           <Button variant="secondary" onClick={onRunLiveBurst} disabled={state.simulationRunning}>
-            {state.simulationRunning ? "Burst running..." : "Run 60-second burst"}
+            {state.simulationRunning ? "Live burst running..." : "Run live burst"}
           </Button>
         </div>
         <label className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-700">
-          <span>Simulate offline mode</span>
+          <span>Simulate Wi-Fi drop</span>
           <input
             type="checkbox"
             checked={state.simulateOffline}
@@ -70,10 +70,10 @@ export function DemoToolkit({
             onClick={onSyncNow}
             disabled={state.pendingQueueCount === 0 && state.lastSyncStatus !== "failed"}
           >
-            Sync now
+            Reconnect and sync
           </Button>
           <Button variant="danger" onClick={onRestoreDemo}>
-            Restore demo
+            Restore demo state
           </Button>
         </div>
       </Surface>

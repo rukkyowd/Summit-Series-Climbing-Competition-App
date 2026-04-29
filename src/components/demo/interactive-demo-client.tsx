@@ -8,11 +8,12 @@ import { InteractiveDemoTour } from "@/components/demo/interactive-demo-tour";
 import { JudgeWorkspace } from "@/components/demo/judge-workspace";
 import { LeaderboardPanel } from "@/components/demo/leaderboard-panel";
 import type {
+  DemoScenarioAthlete,
   DemoSimulationMode,
   DemoSimulationResponse,
-  DemoSyncStatus,
   DemoToolkitState,
   JudgeQualifierSaveInput,
+  LeaderboardImpact,
 } from "@/components/demo/types";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,48 @@ function shouldQueueFailedSave(error: unknown) {
   return /failed to fetch|networkerror|network request failed|load failed|fetch/i.test(message);
 }
 
+function getQualifierRank(snapshot: CompetitionSnapshot, climberId: string) {
+  return snapshot.qualifierLeaderboard.find((entry) => entry.climber_id === climberId)?.category_rank ?? null;
+}
+
+function buildRankMessage(
+  beforeSnapshot: CompetitionSnapshot,
+  afterSnapshot: CompetitionSnapshot,
+  athlete: DemoScenarioAthlete
+) {
+  const beforeRank = getQualifierRank(beforeSnapshot, athlete.id);
+  const afterRank = getQualifierRank(afterSnapshot, athlete.id);
+
+  if (beforeRank === null || afterRank === null) {
+    return `Saved. ${athlete.name} is now visible on the public leaderboard.`;
+  }
+
+  if (afterRank < beforeRank) {
+    return `Saved. ${athlete.name} moved from ${beforeRank}${ordinalSuffix(beforeRank)} to ${afterRank}${ordinalSuffix(afterRank)} in ${athlete.categoryLabel}.`;
+  }
+
+  if (afterRank > beforeRank) {
+    return `Saved. ${athlete.name} now sits ${afterRank}${ordinalSuffix(afterRank)} in ${athlete.categoryLabel}.`;
+  }
+
+  return `Saved. ${athlete.name} stayed ${afterRank}${ordinalSuffix(afterRank)} in ${athlete.categoryLabel}, and the public leaderboard updated instantly.`;
+}
+
+function ordinalSuffix(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) {
+    return "st";
+  }
+  if (mod10 === 2 && mod100 !== 12) {
+    return "nd";
+  }
+  if (mod10 === 3 && mod100 !== 13) {
+    return "rd";
+  }
+  return "th";
+}
+
 export function InteractiveDemoClient() {
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [leaderboardSnapshot, setLeaderboardSnapshot] = useState<CompetitionSnapshot | null>(null);
@@ -146,6 +189,7 @@ export function InteractiveDemoClient() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [highlightedClimberId, setHighlightedClimberId] = useState<string | null>(null);
+  const [leaderboardImpact, setLeaderboardImpact] = useState<LeaderboardImpact | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("judge");
   const [toolkitState, setToolkitState] = useState<DemoToolkitState>({
     simulateOffline: false,
@@ -205,8 +249,33 @@ export function InteractiveDemoClient() {
       window.clearTimeout(refreshTimerRef.current);
     }
 
-    refreshTimerRef.current = window.setTimeout(() => setHighlightedClimberId(null), 2200);
+    refreshTimerRef.current = window.setTimeout(() => {
+      setHighlightedClimberId(null);
+      setLeaderboardImpact(null);
+    }, 2600);
   };
+
+  const scenarioAthlete = useMemo<DemoScenarioAthlete | null>(() => {
+    if (!snapshot) {
+      return null;
+    }
+
+    const preferred =
+      snapshot.climbers.find((climber) => climber.name.toLowerCase().includes("maya foster")) ??
+      snapshot.climbers[0] ??
+      null;
+
+    if (!preferred) {
+      return null;
+    }
+
+    return {
+      id: preferred.id,
+      name: preferred.name,
+      climberNumber: preferred.climber_number,
+      categoryLabel: preferred.display_category,
+    };
+  }, [snapshot]);
 
   const handleSaveQualifier = useCallback(
     async (input: JudgeQualifierSaveInput) => {
@@ -216,15 +285,22 @@ export function InteractiveDemoClient() {
 
       const previousSnapshot = snapshot;
       const optimisticAttempt = buildLocalAttempt(snapshot, input);
+      const optimisticSnapshot = applyQualifierAttemptToSnapshot(snapshot, optimisticAttempt);
       setSaving(true);
       setError("");
       setMessage("");
       setHighlightedClimberId(input.climberId);
-      setSnapshot((current) => (current ? applyQualifierAttemptToSnapshot(current, optimisticAttempt) : current));
+      const beforeRank = getQualifierRank(previousSnapshot, input.climberId);
+      const optimisticAfterRank = getQualifierRank(optimisticSnapshot, input.climberId);
+      setLeaderboardImpact({
+        climberId: input.climberId,
+        beforeRank,
+        afterRank: optimisticAfterRank,
+        delta: (beforeRank ?? 0) - (optimisticAfterRank ?? 0),
+      });
+      setSnapshot(optimisticSnapshot);
       if (!toolkitState.simulateOffline) {
-        setLeaderboardSnapshot((current) =>
-          current ? applyQualifierAttemptToSnapshot(current, optimisticAttempt) : current
-        );
+        setLeaderboardSnapshot(optimisticSnapshot);
       }
       clearHighlightLater();
 
@@ -247,7 +323,9 @@ export function InteractiveDemoClient() {
           pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
           lastSyncStatus: "pending",
         }));
-        setMessage("Saved locally in demo offline mode. Turn sync back on to publish it.");
+        setMessage(
+          `Saved locally for ${scenarioAthlete?.name ?? "the demo athlete"}. The public leaderboard stays unchanged until you reconnect and sync.`
+        );
         setSaving(false);
         return;
       }
@@ -264,15 +342,25 @@ export function InteractiveDemoClient() {
           attemptsToZone: input.attemptsToZone,
         });
 
-        setSnapshot((current) => (current ? applyQualifierAttemptToSnapshot(current, savedAttempt) : current));
-        setLeaderboardSnapshot((current) =>
-          current ? applyQualifierAttemptToSnapshot(current, savedAttempt) : current
-        );
+        const savedSnapshot = applyQualifierAttemptToSnapshot(snapshot, savedAttempt);
+        const savedAfterRank = getQualifierRank(savedSnapshot, input.climberId);
+        setSnapshot(savedSnapshot);
+        setLeaderboardSnapshot(savedSnapshot);
+        setLeaderboardImpact({
+          climberId: input.climberId,
+          beforeRank,
+          afterRank: savedAfterRank,
+          delta: (beforeRank ?? 0) - (savedAfterRank ?? 0),
+        });
         setToolkitState((current) => ({
           ...current,
           lastSyncStatus: "synced",
         }));
-        setMessage("Saved judge call. The leaderboard updated from the same competition snapshot.");
+        setMessage(
+          scenarioAthlete && input.climberId === scenarioAthlete.id
+            ? buildRankMessage(previousSnapshot, savedSnapshot, scenarioAthlete)
+            : "Saved judge call. The leaderboard updated from the same competition snapshot."
+        );
         void refreshSnapshot().catch(() => {
           // The optimistic state already shows the result; silent failure is okay here.
         });
@@ -296,7 +384,7 @@ export function InteractiveDemoClient() {
             pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
             lastSyncStatus: "pending",
           }));
-          setMessage("Network failed, so the demo queued the score locally for retry.");
+          setMessage("Network failed, so the score queued locally for retry. Reconnect to publish it.");
         } else {
           setSnapshot(previousSnapshot);
           setLeaderboardSnapshot(previousSnapshot);
@@ -310,7 +398,7 @@ export function InteractiveDemoClient() {
         setSaving(false);
       }
     },
-    [refreshSnapshot, snapshot, toolkitState.simulateOffline]
+    [refreshSnapshot, scenarioAthlete, snapshot, toolkitState.simulateOffline]
   );
 
   const flushOfflineQueue = useCallback(async () => {
@@ -356,7 +444,7 @@ export function InteractiveDemoClient() {
         pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
         lastSyncStatus: "synced",
       }));
-      setMessage("Queued demo scores synced successfully.");
+      setMessage("Queued score synced. Public leaderboard is live again.");
     } catch (nextError) {
       setToolkitState((current) => ({
         ...current,
@@ -400,13 +488,23 @@ export function InteractiveDemoClient() {
         throw new Error(payload?.error || "Unable to run the demo simulation.");
       }
 
-      setHighlightedClimberId(payload.climberId ?? payload.attempt.climber_id);
-      setSnapshot((current) =>
-        current ? applyQualifierAttemptToSnapshot(current, payload.attempt as QualifierAttempt) : current
+      const impactedClimberId = payload.climberId ?? payload.attempt.climber_id;
+      const beforeRank = getQualifierRank(snapshot, impactedClimberId);
+      const simulatedSnapshot = applyQualifierAttemptToSnapshot(
+        snapshot,
+        payload.attempt as QualifierAttempt
       );
-      setLeaderboardSnapshot((current) =>
-        current ? applyQualifierAttemptToSnapshot(current, payload.attempt as QualifierAttempt) : current
-      );
+      setHighlightedClimberId(impactedClimberId);
+      setSnapshot(simulatedSnapshot);
+      setLeaderboardSnapshot(simulatedSnapshot);
+      setLeaderboardImpact({
+        climberId: impactedClimberId,
+        beforeRank,
+        afterRank: getQualifierRank(simulatedSnapshot, impactedClimberId),
+        delta:
+          (beforeRank ?? 0) -
+          (getQualifierRank(simulatedSnapshot, impactedClimberId) ?? 0),
+      });
       clearHighlightLater();
       await refreshSnapshot();
     },
@@ -418,7 +516,7 @@ export function InteractiveDemoClient() {
     setMessage("");
     try {
       await runSimulationStep("single_score");
-      setMessage("Simulated one live score to demonstrate rank movement.");
+      setMessage("Triggered one live score so you can point out the real-time ranking jump.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to simulate a score.");
     }
@@ -433,7 +531,7 @@ export function InteractiveDemoClient() {
       ...current,
       simulationRunning: true,
     }));
-    setMessage("Live burst started. Watch the leaderboard keep moving.");
+    setMessage("Live burst started. Watch the public rankings keep moving without leaving the page.");
     setError("");
 
     try {
@@ -549,15 +647,22 @@ export function InteractiveDemoClient() {
         <Surface variant="card" className="overflow-hidden">
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
             <div className="space-y-3">
-              <div className="results-kicker">Interactive demo</div>
+              <div className="results-kicker">Experience as a judge</div>
               <h1 className="results-editorial-title text-4xl font-semibold text-slate-950 sm:text-5xl">
-                Score on the left, rank on the right.
+                Save one score. Watch the rank change live.
               </h1>
               <p className="max-w-3xl text-base leading-relaxed text-slate-600">
-                This is the clearest proof loop in the product: one judge action changes what athletes,
-                coaches, and spectators see immediately. You do not have to explain real-time sync here.
-                The demo shows it.
+                You are judging {scenarioAthlete?.categoryLabel ?? "Youth D qualifiers"}. Start with{" "}
+                {scenarioAthlete?.name ?? "the highlighted athlete"} on Boulder 1. The moment you save,
+                the right side shows exactly what climbers, coaches, and spectators see.
               </p>
+              {scenarioAthlete ? (
+                <div className="inline-flex max-w-3xl flex-wrap items-center gap-2 rounded-full border border-sky-200 bg-sky-50/90 px-4 py-2 text-sm font-medium text-sky-800">
+                  <span>You are judging {scenarioAthlete.categoryLabel} qualifiers.</span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>Save {scenarioAthlete.name} on Boulder 1 first.</span>
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap justify-start gap-3 lg:justify-end">
               <Button variant="secondary" onClick={() => setMobileTab("judge")} className="xl:hidden">
@@ -586,7 +691,10 @@ export function InteractiveDemoClient() {
               message=""
               error=""
               syncStatus={statusLabel}
-              initialClimberId={snapshot.climbers[0]?.id ?? null}
+              initialClimberId={scenarioAthlete?.id ?? snapshot.climbers[0]?.id ?? null}
+              targetClimberId={scenarioAthlete?.id ?? null}
+              targetClimberName={scenarioAthlete?.name ?? null}
+              offlineMode={toolkitState.simulateOffline}
               onSaveQualifier={handleSaveQualifier}
             />
           </div>
@@ -595,6 +703,8 @@ export function InteractiveDemoClient() {
               snapshot={leaderboardSnapshot}
               embedded
               highlightedClimberId={highlightedClimberId}
+              targetClimberId={scenarioAthlete?.id ?? null}
+              impact={leaderboardImpact}
             />
           </div>
         </div>
@@ -608,7 +718,10 @@ export function InteractiveDemoClient() {
         onSyncNow={() => void flushOfflineQueue()}
         onRestoreDemo={() => void handleRestoreDemo()}
       />
-      <InteractiveDemoTour pendingQueueCount={toolkitState.pendingQueueCount} />
+      <InteractiveDemoTour
+        pendingQueueCount={toolkitState.pendingQueueCount}
+        climberName={scenarioAthlete?.name ?? "the demo athlete"}
+      />
     </main>
   );
 }

@@ -5,25 +5,25 @@ import { Surface } from "@/components/ui/surface";
 
 const demoRoles = [
   {
-    title: "Live scoring demo",
+    title: "Experience as a Judge",
     description:
-      "See the fastest proof loop in the product: a judge saves one score and the public leaderboard reacts immediately.",
+      "Judge one climber on one boulder and watch the public leaderboard update instantly from the same event state.",
     href: "/demo/interactive",
-    badge: "Judge + leaderboard",
+    badge: "Start here",
   },
   {
-    title: "Competitor experience",
+    title: "Experience as a Competitor",
     description:
-      "Open a seeded climber's private scorecard and see the event from the athlete's point of view.",
+      "Open a seeded athlete scorecard halfway through qualifiers and see exactly what a climber would see on comp day.",
     href: "/demo/competitor",
     badge: "Private scorecard",
   },
   {
-    title: "Organizer workflow",
+    title: "Experience as an Organizer",
     description:
-      "Step through event setup, schedule planning, stages, and the operational dashboard used before comp day.",
+      "Step through setup, schedule planning, rounds, and the staff controls that shape the whole event before it goes live.",
     href: "/staff/demo",
-    badge: "Staff demo",
+    badge: "Organizer workflow",
   },
 ];
 
@@ -37,12 +37,12 @@ export default function DemoLandingPage() {
           <div className="space-y-4">
             <div className="results-kicker">Demo roles</div>
             <h1 className="results-editorial-title text-4xl font-semibold text-slate-950 sm:text-5xl">
-              Choose the story you want to tell first.
+              Start with the role that makes the product click.
             </h1>
             <p className="max-w-3xl text-base leading-relaxed text-slate-600">
-              Start with the live scoring loop if you want the fastest aha moment. Use the competitor
-              path to show the climber-facing experience, or jump into the organizer workflow to frame
-              how the whole event gets built.
+              The judge path is the clearest first demo because it shows one action changing everyone
+              else’s view in real time. The competitor and organizer paths are here when you want to
+              widen the story.
             </p>
           </div>
         </Surface>
