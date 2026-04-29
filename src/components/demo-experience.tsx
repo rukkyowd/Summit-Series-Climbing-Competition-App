@@ -32,6 +32,8 @@ type SpotlightBox = {
   radius: number;
 };
 
+type MaskPanel = CSSProperties;
+
 type CalloutMode = "floating" | "sheet";
 
 const STORAGE_STEP_KEY = "scorecard_demo_tour_step";
@@ -141,6 +143,38 @@ function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
       title: "Crowd-facing results",
       description: "The final stop shows how standings stay polished and legible when they are projected to the whole room.",
       helper: "End here to reinforce that the same event data powers both the staff workflow and the public event experience.",
+    },
+  ];
+}
+
+function buildMaskPanels(spotlight: SpotlightBox): MaskPanel[] {
+  const right = spotlight.left + spotlight.width;
+  const bottom = spotlight.top + spotlight.height;
+
+  return [
+    {
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: spotlight.top,
+    },
+    {
+      left: 0,
+      top: spotlight.top,
+      width: spotlight.left,
+      height: spotlight.height,
+    },
+    {
+      left: right,
+      top: spotlight.top,
+      right: 0,
+      height: spotlight.height,
+    },
+    {
+      left: 0,
+      top: bottom,
+      width: "100%",
+      bottom: 0,
     },
   ];
 }
@@ -255,12 +289,13 @@ export default function DemoExperience({
             setSpotlight(nextSpotlight);
 
             if (!useFloating) {
+              const sheetWidth = Math.min(window.innerWidth >= 1024 ? 280 : 360, window.innerWidth - 24);
               setCalloutMode("sheet");
               setCalloutStyle({
-                left: 12,
-                right: 12,
-                bottom: 12,
-                width: "auto",
+                left: "50%",
+                bottom: 16,
+                width: sheetWidth,
+                transform: "translateX(-50%)",
               });
               return;
             }
@@ -380,7 +415,13 @@ export default function DemoExperience({
 
       {!dismissed && activeStep.routeId === routeId ? (
         <div className="pointer-events-none fixed inset-0 z-50">
-          <div className="demo-tour-backdrop absolute inset-0" />
+          {spotlight ? (
+            buildMaskPanels(spotlight).map((panelStyle, index) => (
+              <div key={`demo-tour-mask-${index}`} className="demo-tour-mask absolute" style={panelStyle} />
+            ))
+          ) : (
+            <div className="demo-tour-backdrop absolute inset-0" />
+          )}
           {spotlight ? (
             <div
               className="demo-tour-spotlight absolute"

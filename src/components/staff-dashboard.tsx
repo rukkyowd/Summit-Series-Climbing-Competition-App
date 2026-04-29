@@ -1972,9 +1972,9 @@ export default function StaffDashboard({
         ) : null}
 
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <section className="results-card" data-demo-anchor="organizer-overview">
+          <section className="results-card">
             {demoMode ? (
-              <>
+              <div data-demo-anchor="organizer-overview">
                 <div className="results-kicker">Demo walkthrough</div>
                 <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
                   Explore a sample gym event.
@@ -1993,7 +1993,7 @@ export default function StaffDashboard({
                     ))}
                   </div>
                 </div>
-              </>
+              </div>
             ) : (
               <>
                 <div className="results-kicker">Create event</div>

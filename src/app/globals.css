@@ -30,6 +30,7 @@ html {
 }
 
 body {
+  margin: 0;
   min-height: 100vh;
   color: var(--chalk);
   background-color: var(--rock);
@@ -1358,22 +1359,28 @@ body::after {
 
 .demo-tour-backdrop {
   background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.16), transparent 30%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.26), rgba(15, 23, 42, 0.42));
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.1), rgba(15, 23, 42, 0.18));
+  transition: opacity var(--demo-tour-fade-duration) var(--demo-tour-ease);
+}
+
+.demo-tour-mask {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.26));
+  backdrop-filter: blur(4px);
   transition:
     opacity var(--demo-tour-fade-duration) var(--demo-tour-ease),
     backdrop-filter var(--demo-tour-fade-duration) var(--demo-tour-ease);
-  backdrop-filter: blur(3px);
 }
 
 .demo-tour-spotlight {
   border: 1px solid rgba(125, 211, 252, 0.72);
   background: transparent;
   box-shadow:
-    0 0 0 9999px rgba(15, 23, 42, 0.46),
     0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 30px 100px rgba(14, 116, 144, 0.18),
-    0 0 44px rgba(186, 230, 253, 0.16);
+    0 24px 70px rgba(14, 116, 144, 0.14),
+    0 0 34px rgba(186, 230, 253, 0.12);
   transition:
     top var(--demo-tour-move-duration) var(--demo-tour-ease),
     left var(--demo-tour-move-duration) var(--demo-tour-ease),
@@ -1385,8 +1392,8 @@ body::after {
 
 .demo-tour-spotlight__wash {
   background:
-    radial-gradient(circle at top right, rgba(186, 230, 253, 0.22), transparent 50%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    radial-gradient(circle at top right, rgba(186, 230, 253, 0.14), transparent 50%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
 }
 
 .demo-tour-spotlight__edge {
@@ -1421,6 +1428,7 @@ body::after {
 .demo-tour-callout-sheet {
   border-radius: 1.7rem;
   transform: translateY(0);
+  padding: 0.85rem;
 }
 
 .demo-tour-callout__badge {
@@ -1498,6 +1506,7 @@ body[data-demo-tour-active="true"] .results-kicker {
   }
 
   .demo-tour-backdrop,
+  .demo-tour-mask,
   .demo-tour-spotlight,
   .demo-tour-callout,
   .demo-tour-progress {
