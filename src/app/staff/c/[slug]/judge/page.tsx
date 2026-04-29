@@ -409,6 +409,7 @@ export default function StaffJudgePage() {
   const activeFinalsRoundName = snapshot?.activeFinalsRound?.name ?? getActiveFinalsRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.name ?? "Finals";
   const activeQualifierProblemCount = snapshot?.activeQualifierRound?.problem_count ?? snapshot?.competition.total_climbs ?? 0;
   const activeFinalsProblemCount = snapshot?.activeFinalsRound?.problem_count ?? snapshot?.competition.finals_problem_count ?? 0;
+  const demoMode = snapshot ? isDemoCompetitionRecord(snapshot.competition) : false;
 
   const flushOfflineQueue = useCallback(async () => {
     if (flushingQueueRef.current) {
@@ -904,14 +905,14 @@ export default function StaffJudgePage() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader
-          light
+          light={!demoMode}
           status={<div className="results-chip">Judge panel</div>}
         />
         <StaffCompetitionSubnav competitionSlug={slug} />
 
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
-        {isDemoCompetitionRecord(snapshot.competition) ? (
+        {demoMode ? (
           <DemoExperience
             enabled
             routeId="judge"

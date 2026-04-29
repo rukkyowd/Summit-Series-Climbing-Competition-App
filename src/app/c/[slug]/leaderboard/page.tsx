@@ -105,6 +105,7 @@ export default function CompetitionLeaderboardPage() {
 
   const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
   const finalsActive = snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results";
+  const demoMode = snapshot ? isDemoCompetitionRecord(snapshot.competition) : false;
   const activeQualifierFormat = snapshot?.activeQualifierRound?.format ?? snapshot?.competition.format ?? "scramble";
   const scrambleFormat = snapshot ? formatUsesSelfScoredQualifiers(activeQualifierFormat) : false;
   const activeQualifierRoundName = snapshot?.activeQualifierRound?.name ?? "Qualifier";
@@ -117,10 +118,10 @@ export default function CompetitionLeaderboardPage() {
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
-        <SiteHeader light competitionSlug={slug} />
+        <SiteHeader light={!demoMode} competitionSlug={slug} />
 
         {error ? <Alert variant="error">{error}</Alert> : null}
-        {snapshot && isDemoCompetitionRecord(snapshot.competition) ? (
+        {snapshot && demoMode ? (
           <DemoExperience
             enabled
             routeId="leaderboard"

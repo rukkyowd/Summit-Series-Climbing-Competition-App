@@ -1,7 +1,14 @@
 import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 import { cn } from "@/lib/cn";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "danger"
+  | "linearPrimary"
+  | "linearSecondary"
+  | "linearGhost";
 type ButtonSize = "default" | "compact";
 
 type ButtonStyleOptions = {
@@ -29,7 +36,13 @@ export function buttonStyles({
     variant === "ghost" &&
       "border border-slate-200/70 bg-slate-50/70 text-slate-600 hover:border-slate-300 hover:bg-white hover:text-slate-900",
     variant === "danger" &&
-      "border border-red-200 bg-[linear-gradient(180deg,#fff5f5,#ffe3e3)] text-red-700 shadow-[0_10px_24px_rgba(220,38,38,0.08)] hover:border-red-300"
+      "border border-red-200 bg-[linear-gradient(180deg,#fff5f5,#ffe3e3)] text-red-700 shadow-[0_10px_24px_rgba(220,38,38,0.08)] hover:border-red-300",
+    variant === "linearPrimary" &&
+      "border border-[rgba(94,106,210,0.55)] bg-[linear-gradient(180deg,#6872d9,#5e6ad2_55%,#5360c7)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_0_0_1px_rgba(94,106,210,0.3),0_12px_30px_rgba(94,106,210,0.28),0_0_48px_rgba(94,106,210,0.18)] hover:border-[rgba(104,114,217,0.72)] hover:bg-[linear-gradient(180deg,#727ce0,#6872d9_55%,#5a66cf)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_0_0_1px_rgba(104,114,217,0.34),0_18px_38px_rgba(94,106,210,0.34),0_0_72px_rgba(94,106,210,0.24)] focus-visible:ring-[rgba(94,106,210,0.45)] focus-visible:ring-offset-[#050506]",
+    variant === "linearSecondary" &&
+      "border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] text-[#edecef] shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_30px_rgba(0,0,0,0.28)] hover:border-[rgba(255,255,255,0.12)] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_34px_rgba(0,0,0,0.34)] focus-visible:ring-[rgba(94,106,210,0.38)] focus-visible:ring-offset-[#050506]",
+    variant === "linearGhost" &&
+      "border border-transparent bg-transparent text-[#8a8f98] hover:border-[rgba(255,255,255,0.08)] hover:bg-white/[0.05] hover:text-[#edecef] focus-visible:ring-[rgba(94,106,210,0.38)] focus-visible:ring-offset-[#050506]"
   );
 }
 
