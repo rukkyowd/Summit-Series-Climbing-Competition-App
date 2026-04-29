@@ -1364,7 +1364,35 @@ body::after {
 
 .demo-tour-mask {
   background: rgba(15, 23, 42, 0.28);
-  transition: opacity var(--demo-tour-fade-duration) var(--demo-tour-ease);
+  backdrop-filter: blur(5px);
+  transition:
+    opacity var(--demo-tour-fade-duration) var(--demo-tour-ease),
+    backdrop-filter var(--demo-tour-fade-duration) var(--demo-tour-ease);
+}
+
+.demo-tour-corner-mask {
+  position: absolute;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(5px);
+  transition:
+    opacity var(--demo-tour-fade-duration) var(--demo-tour-ease),
+    backdrop-filter var(--demo-tour-fade-duration) var(--demo-tour-ease);
+}
+
+.demo-tour-corner-mask-tl {
+  border-bottom-right-radius: 9999px;
+}
+
+.demo-tour-corner-mask-tr {
+  border-bottom-left-radius: 9999px;
+}
+
+.demo-tour-corner-mask-bl {
+  border-top-right-radius: 9999px;
+}
+
+.demo-tour-corner-mask-br {
+  border-top-left-radius: 9999px;
 }
 
 .demo-tour-spotlight {
@@ -1500,6 +1528,7 @@ body[data-demo-tour-active="true"] .results-kicker {
 
   .demo-tour-backdrop,
   .demo-tour-mask,
+  .demo-tour-corner-mask,
   .demo-tour-spotlight,
   .demo-tour-callout,
   .demo-tour-progress {

@@ -149,7 +149,7 @@ function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
 }
 
 function buildMaskPanels(spotlight: SpotlightBox): MaskPanel[] {
-  const overlap = 6;
+  const overlap = 18;
   const right = spotlight.left + spotlight.width;
   const bottom = spotlight.top + spotlight.height;
 
@@ -177,6 +177,48 @@ function buildMaskPanels(spotlight: SpotlightBox): MaskPanel[] {
       top: bottom - overlap,
       width: "100%",
       bottom: 0,
+    },
+  ];
+}
+
+function buildCornerMasks(spotlight: SpotlightBox): Array<MaskPanel & { key: string; className: string }> {
+  const radius = Math.max(spotlight.radius, 24);
+  const size = radius + 18;
+  const right = spotlight.left + spotlight.width;
+  const bottom = spotlight.top + spotlight.height;
+
+  return [
+    {
+      key: "top-left",
+      className: "demo-tour-corner-mask demo-tour-corner-mask-tl",
+      left: spotlight.left,
+      top: spotlight.top,
+      width: size,
+      height: size,
+    },
+    {
+      key: "top-right",
+      className: "demo-tour-corner-mask demo-tour-corner-mask-tr",
+      left: right - size,
+      top: spotlight.top,
+      width: size,
+      height: size,
+    },
+    {
+      key: "bottom-left",
+      className: "demo-tour-corner-mask demo-tour-corner-mask-bl",
+      left: spotlight.left,
+      top: bottom - size,
+      width: size,
+      height: size,
+    },
+    {
+      key: "bottom-right",
+      className: "demo-tour-corner-mask demo-tour-corner-mask-br",
+      left: right - size,
+      top: bottom - size,
+      width: size,
+      height: size,
     },
   ];
 }
@@ -424,6 +466,20 @@ export default function DemoExperience({
           ) : (
             <div className="demo-tour-backdrop absolute inset-0" />
           )}
+          {spotlight
+            ? buildCornerMasks(spotlight).map((corner) => (
+                <div
+                  key={corner.key}
+                  className={corner.className}
+                  style={{
+                    left: corner.left,
+                    top: corner.top,
+                    width: corner.width,
+                    height: corner.height,
+                  }}
+                />
+              ))
+            : null}
           {spotlight ? (
             <div
               className="demo-tour-spotlight absolute"
