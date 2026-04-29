@@ -678,9 +678,6 @@ export function InteractiveDemoClient() {
           </div>
         </Surface>
 
-        {message ? <Alert variant="success">{message}</Alert> : null}
-        {error ? <Alert variant="error">{error}</Alert> : null}
-
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
           <div className={`min-w-0 ${mobileTab === "leaderboard" ? "hidden xl:block" : ""}`}>
             <JudgeWorkspace
@@ -688,9 +685,10 @@ export function InteractiveDemoClient() {
               embedded
               saving={saving}
               queuedCount={toolkitState.pendingQueueCount}
-              message=""
-              error=""
+              message={message}
+              error={error}
               syncStatus={statusLabel}
+              syncState={toolkitState.lastSyncStatus}
               initialClimberId={scenarioAthlete?.id ?? snapshot.climbers[0]?.id ?? null}
               targetClimberId={scenarioAthlete?.id ?? null}
               targetClimberName={scenarioAthlete?.name ?? null}

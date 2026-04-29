@@ -15,7 +15,7 @@ import {
   getClimbs,
   type QualifierAttempt,
 } from "@/lib/scoring";
-import type { JudgeQualifierSaveInput } from "@/components/demo/types";
+import type { DemoSyncStatus, JudgeQualifierSaveInput } from "@/components/demo/types";
 
 type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
 type QualifierDraftState = Record<string, QualifierDraft>;
@@ -129,6 +129,7 @@ type JudgeWorkspaceProps = {
   message?: string;
   error?: string;
   syncStatus?: string;
+  syncState?: DemoSyncStatus;
   initialClimberId?: string | null;
   targetClimberId?: string | null;
   targetClimberName?: string | null;
@@ -144,6 +145,7 @@ export function JudgeWorkspace({
   message = "",
   error = "",
   syncStatus = "Synced",
+  syncState = "synced",
   initialClimberId = null,
   targetClimberId = null,
   targetClimberName = null,
@@ -164,6 +166,23 @@ export function JudgeWorkspace({
   const activeQualifierProblemCount =
     snapshot.activeQualifierRound?.problem_count ?? snapshot.competition.total_climbs ?? 0;
   const qualifierScoringOpen = canStaffScoreQualifier(snapshot.competition);
+  const syncToneClass =
+    syncState === "failed"
+      ? "demo-judge-sync-row-failed"
+      : syncState === "syncing"
+        ? "demo-judge-sync-row-syncing"
+        : syncState === "pending" || offlineMode
+          ? "demo-judge-sync-row-pending"
+          : "demo-judge-sync-row-synced";
+  const syncHelperCopy = offlineMode
+    ? "New scores stay on this judge station until you reconnect."
+    : syncState === "pending"
+      ? `${queuedCount} ${queuedCount === 1 ? "score is" : "scores are"} waiting to publish.`
+      : syncState === "syncing"
+        ? "Queued scores are syncing back to the public leaderboard."
+        : syncState === "failed"
+          ? "Sync needs attention before the public view catches up."
+          : "Every save is publishing live to the public leaderboard.";
 
   useEffect(() => {
     const nextDrafts: QualifierDraftState = {};
@@ -267,20 +286,6 @@ export function JudgeWorkspace({
         </div>
       </div>
 
-      {message ? <Alert variant="success" className="mt-4">{message}</Alert> : null}
-      {error ? <Alert variant="error" className="mt-4">{error}</Alert> : null}
-      {queuedCount > 0 ? (
-        <Alert variant="warning" className="mt-4">
-          {queuedCount} score {queuedCount === 1 ? "is" : "are"} waiting to sync from the local demo
-          queue.
-        </Alert>
-      ) : null}
-      {offlineMode ? (
-        <Alert variant="warning" className="mt-4" data-demo-anchor="interactive-offline-banner">
-          Gym Wi-Fi dropped. Save normally and this judge station will queue the score locally until you reconnect.
-        </Alert>
-      ) : null}
-
       <div className={`mt-6 grid gap-4 ${embedded ? "2xl:grid-cols-[17rem_minmax(0,1fr)]" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
         <div className="results-control-stack">
           <div>
@@ -338,7 +343,9 @@ export function JudgeWorkspace({
               <div
                 key={climber.id}
                 className={`results-workspace-card route-judge-card ${
-                  targetClimberId === climber.id ? "ring-2 ring-sky-300/80 shadow-[0_18px_42px_rgba(14,116,215,0.12)]" : ""
+                  embedded ? "demo-judge-card-embedded" : ""
+                } ${
+                  targetClimberId === climber.id ? "demo-judge-card-target ring-2 ring-sky-300/80 shadow-[0_18px_42px_rgba(14,116,215,0.12)]" : ""
                 }`}
                 data-demo-anchor={climberIndex === 0 ? "interactive-first-athlete" : undefined}
               >
@@ -360,19 +367,16 @@ export function JudgeWorkspace({
                   </div>
                 </div>
 
-                <div
-                  className="route-judge-live-row"
-                  style={
-                    embedded
-                      ? {
-                          gridTemplateColumns: "minmax(0,1fr)",
-                        }
-                      : undefined
-                  }
-                >
+                {targetClimberId === climber.id ? (
+                  <div className="demo-judge-target-callout">
+                    Save this climber first so the rank jump is obvious on the leaderboard.
+                  </div>
+                ) : null}
+
+                <div className={`demo-judge-live-stack ${embedded ? "demo-judge-live-stack-embedded" : "route-judge-live-row"}`}>
                   <div className="route-judge-counter-card">
                     <div className="results-kicker">Live attempt counter</div>
-                    <div className="route-judge-counter-row">
+                    <div className={`route-judge-counter-row ${embedded ? "demo-judge-counter-row-embedded" : ""}`}>
                       <button
                         type="button"
                         onClick={() =>
@@ -407,25 +411,22 @@ export function JudgeWorkspace({
                     </div>
                   </div>
 
-                  <div className="judge-live-summary min-w-0">
-                    <div>
+                  <div className={`judge-live-summary min-w-0 ${embedded ? "demo-judge-live-summary-embedded" : ""}`}>
+                    <div className="space-y-2">
                       <div className="results-kicker">Judge call</div>
                       <div className="mt-2 text-xl font-semibold text-slate-950">{presentation.liveLabel}</div>
+                      <div className={`demo-judge-sync-row ${syncToneClass}`} data-demo-anchor={climberIndex === 0 ? "interactive-offline-banner" : undefined}>
+                        <span className="demo-judge-sync-dot" />
+                        <span>{syncStatus}</span>
+                        <span className="hidden text-slate-400 sm:inline">·</span>
+                        <span className="demo-judge-sync-helper">{syncHelperCopy}</span>
+                      </div>
                     </div>
                     <div className="text-sm text-slate-600">{presentation.liveDetail}</div>
                   </div>
                 </div>
 
-                <div
-                  className="route-judge-action-grid route-judge-action-grid-qualifier"
-                  style={
-                    embedded
-                      ? {
-                          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-                        }
-                      : undefined
-                  }
-                >
+                <div className={`route-judge-action-grid route-judge-action-grid-qualifier ${embedded ? "demo-judge-action-grid-embedded" : ""}`}>
                   <button
                     type="button"
                     onClick={() =>
@@ -481,12 +482,23 @@ export function JudgeWorkspace({
                   </button>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm text-slate-500">Last saved: {presentation.savedSummary}</div>
-                  <div className="flex flex-wrap items-center gap-2" data-demo-anchor={climberIndex === 0 ? "interactive-save" : undefined}>
+                <div className={`route-judge-footer ${embedded ? "demo-judge-footer-embedded" : ""}`}>
+                  <div className="space-y-1 text-sm text-slate-500">
+                    <div>Last saved: {presentation.savedSummary}</div>
+                    {message && targetClimberId === climber.id ? (
+                      <div className="text-sm font-medium text-emerald-700">{message}</div>
+                    ) : null}
+                    {error && targetClimberId === climber.id ? (
+                      <div className="text-sm font-medium text-red-700">{error}</div>
+                    ) : null}
+                  </div>
+                  <div
+                    className={`flex flex-wrap items-center gap-2 ${embedded ? "w-full sm:w-auto" : ""}`}
+                    data-demo-anchor={climberIndex === 0 ? "interactive-save" : undefined}
+                  >
                     <Button
                       variant="ghost"
-                      className="min-h-11 rounded-full px-4 text-slate-500"
+                      className={`text-slate-500 ${embedded ? "min-h-12 px-5 text-sm" : "min-h-11 rounded-full px-4"}`}
                       onClick={() => setQualifierDraft(key, () => EMPTY_QUALIFIER_DRAFT)}
                       disabled={saving}
                     >
@@ -494,7 +506,7 @@ export function JudgeWorkspace({
                     </Button>
                     <Button
                       variant="primary"
-                      className="min-h-11 rounded-full px-5"
+                      className={`${embedded ? "min-h-14 min-w-[13rem] flex-1 rounded-[1.1rem] px-6 text-base sm:flex-none" : "min-h-11 rounded-full px-5"}`}
                       onClick={() => void handleSave(climber.id, selectedBoulder)}
                       disabled={saving || !qualifierScoringOpen}
                     >

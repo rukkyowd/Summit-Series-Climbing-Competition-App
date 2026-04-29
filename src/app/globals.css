@@ -1001,6 +1001,35 @@ body::after {
       0 18px 38px rgba(15, 23, 42, 0.06);
   }
 
+  .demo-judge-card-embedded {
+    @apply p-5 sm:p-6;
+    border-color: rgba(226, 232, 240, 0.92);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 18px 34px rgba(15, 23, 42, 0.055);
+  }
+
+  .demo-judge-card-target {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(240, 249, 255, 0.95)),
+      linear-gradient(135deg, rgba(14, 165, 233, 0.03), transparent);
+  }
+
+  .demo-judge-target-callout {
+    @apply mt-4 rounded-[1.2rem] border border-sky-200 bg-sky-50/90 px-4 py-3 text-sm font-medium text-sky-800;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      0 10px 24px rgba(14, 116, 215, 0.06);
+  }
+
+  .demo-judge-live-stack {
+    @apply mt-4 grid gap-3;
+  }
+
+  .demo-judge-live-stack-embedded {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .route-judge-live-row {
     @apply mt-4 grid gap-3 lg:grid-cols-[15rem_minmax(0,1fr)];
   }
@@ -1016,6 +1045,10 @@ body::after {
   .route-judge-counter-row {
     @apply mt-3 grid items-center gap-2;
     grid-template-columns: 3rem 4rem minmax(0, 1fr);
+  }
+
+  .demo-judge-counter-row-embedded {
+    grid-template-columns: 3.5rem 5rem minmax(0, 1fr);
   }
 
   .route-judge-counter-button {
@@ -1039,6 +1072,20 @@ body::after {
 
   .route-judge-action-grid-qualifier {
     @apply lg:grid-cols-3;
+  }
+
+  .demo-judge-action-grid-embedded {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .demo-judge-action-grid-embedded .route-judge-action {
+    min-height: 6.75rem;
+    border-radius: 1.45rem;
+    padding: 1rem 1rem 1.1rem;
+  }
+
+  .demo-judge-action-grid-embedded .route-judge-action-top {
+    grid-column: 1 / -1;
   }
 
   .route-judge-action {
@@ -1077,6 +1124,10 @@ body::after {
     @apply mt-4 flex flex-wrap items-center justify-between gap-3;
   }
 
+  .demo-judge-footer-embedded {
+    align-items: flex-end;
+  }
+
   .judge-status-chip {
     @apply mt-2 inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em];
   }
@@ -1113,6 +1164,45 @@ body::after {
     @apply rounded-[1.35rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)];
   }
 
+  .demo-judge-live-summary-embedded {
+    @apply space-y-3 px-4 py-4;
+    min-width: 0;
+  }
+
+  .demo-judge-sync-row {
+    @apply flex flex-wrap items-center gap-2 rounded-[1rem] border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em];
+  }
+
+  .demo-judge-sync-row-synced {
+    @apply border-emerald-200 bg-emerald-50/90 text-emerald-800;
+  }
+
+  .demo-judge-sync-row-pending {
+    @apply border-amber-200 bg-amber-50/90 text-amber-800;
+  }
+
+  .demo-judge-sync-row-syncing {
+    @apply border-sky-200 bg-sky-50/90 text-sky-800;
+  }
+
+  .demo-judge-sync-row-failed {
+    @apply border-red-200 bg-red-50/90 text-red-800;
+  }
+
+  .demo-judge-sync-dot {
+    width: 0.58rem;
+    height: 0.58rem;
+    border-radius: 9999px;
+    background: currentColor;
+    flex: 0 0 auto;
+    opacity: 0.9;
+  }
+
+  .demo-judge-sync-helper {
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
   .judge-confirmation-card {
     @apply rounded-[1.35rem] border px-4 py-4;
   }
@@ -1131,6 +1221,20 @@ body::after {
 
   .judge-clear-button {
     @apply inline-flex items-center justify-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:text-slate-800;
+  }
+
+  @media (min-width: 1400px) {
+    .demo-judge-live-stack-embedded {
+      grid-template-columns: 15.5rem minmax(0, 1fr);
+    }
+
+    .demo-judge-action-grid-embedded {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .demo-judge-action-grid-embedded .route-judge-action-top {
+      grid-column: auto;
+    }
   }
 
   .results-brand-lockup {
