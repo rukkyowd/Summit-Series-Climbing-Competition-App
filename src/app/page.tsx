@@ -132,8 +132,8 @@ export default function HomePage() {
           light
           status={
             <div className="flex flex-wrap items-center gap-2">
-              <Link href="/staff/demo" className="results-secondary-button">
-                View demo dashboard
+              <Link href="/demo" className="results-secondary-button">
+                Open interactive demo
               </Link>
               {isStaffRole(profile?.role) ? (
                 <Link href="/staff/dashboard" className="results-secondary-button">
@@ -164,8 +164,8 @@ export default function HomePage() {
                   Open live competition
                 </Link>
               ) : null}
-              <Link href="/staff/demo" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
-                Preview organizer workflow
+              <Link href="/demo" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
+                Start guided demo
               </Link>
             </div>
           </div>
