@@ -16,8 +16,8 @@
   --border-soft: rgba(255, 255, 255, 0.1);
   --panel: rgba(22, 25, 31, 0.82);
   --results-ease: cubic-bezier(0.23, 1, 0.32, 1);
-  --demo-tour-move-duration: 480ms;
-  --demo-tour-fade-duration: 240ms;
+  --demo-tour-move-duration: 820ms;
+  --demo-tour-fade-duration: 420ms;
   --demo-tour-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
