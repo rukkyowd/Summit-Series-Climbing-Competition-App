@@ -6,6 +6,7 @@ import Image from "next/image";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
+import DemoExperience from "@/components/demo-experience";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { isDemoCompetitionRecord } from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
@@ -649,6 +650,11 @@ export default function StaffDashboard({
     void load();
   }, [load]);
 
+  const visibleSummaries = useMemo(
+    () => (demoMode ? allSummaries.filter((entry) => isDemoDataSlug(entry.competition.slug)) : allSummaries),
+    [allSummaries, demoMode]
+  );
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       setShareOrigin(window.location.origin);
@@ -709,8 +715,8 @@ export default function StaffDashboard({
   }, [initialCreateDraft]);
 
   const selectedSummary = useMemo(
-    () => allSummaries.find((entry) => entry.competition.id === selectedCompetitionId) ?? null,
-    [allSummaries, selectedCompetitionId]
+    () => visibleSummaries.find((entry) => entry.competition.id === selectedCompetitionId) ?? null,
+    [selectedCompetitionId, visibleSummaries]
   );
   useEffect(() => {
     setCurrentSetupStep(0);
@@ -1851,6 +1857,16 @@ export default function StaffDashboard({
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
+        {demoMode && draft ? (
+          <DemoExperience
+            enabled
+            routeId="organizer"
+            competitionSlug={draft.slug}
+            bannerTitle="Organizer demo dashboard"
+            bannerDescription="This is the control room for the sample event. It shows how staff configure the competition, publish public links, and keep event-day operations tied to one shared event model."
+            bannerTip="Start your walkthrough here, then open the judge panel to show the live scoring workflow."
+          />
+        ) : null}
         {demoMode ? <div className="results-alert">{demoBanner}</div> : null}
         {!demoMode && profile?.role === "judge" ? (
           <div className="results-alert">
@@ -2166,11 +2182,11 @@ export default function StaffDashboard({
                     : "Choose an event to review its setup, links, and live workflow."}
                 </div>
               </div>
-              <div className="results-chip">{allSummaries.length} loaded</div>
+              <div className="results-chip">{visibleSummaries.length} loaded</div>
             </div>
 
             <div className="mt-4 space-y-3">
-              {allSummaries.map((summary) => (
+              {visibleSummaries.map((summary) => (
                 <button
                   key={summary.competition.id}
                   type="button"

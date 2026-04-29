@@ -5,6 +5,11 @@ import { createServiceRoleSupabaseClient } from "./server-supabase";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEMO_LOCATION = "North Summit Climbing";
 const DEMO_ACTIVE_BLOCK_LABEL = "Youth B qualifier rotation";
+const OPTIONAL_COMPETITION_LINK_COLUMNS = [
+  "official_event_url",
+  "official_registration_url",
+  "official_schedule_url",
+] as const;
 
 type DemoCategorySeed = {
   ageGroup: string;
@@ -45,6 +50,14 @@ type DemoClimberRow = {
   time_slot_id: string | null;
   access_token: string;
 };
+
+const OPTIONAL_QUEUE_COLUMNS = [
+  "climber_name",
+  "climber_number",
+  "display_category",
+  "province",
+  "time_slot_id",
+] as const;
 
 const DEMO_CATEGORY_SEEDS: DemoCategorySeed[] = [
   {
@@ -134,6 +147,32 @@ async function requireNoSupabaseError<T extends { error: { message: string } | n
   }
 }
 
+function stripOptionalCompetitionLinkColumns<T extends Record<string, unknown>>(payload: T) {
+  const next = { ...payload };
+  OPTIONAL_COMPETITION_LINK_COLUMNS.forEach((column) => {
+    delete next[column];
+  });
+  return next;
+}
+
+function isMissingCompetitionLinkColumnError(error: { message?: string } | null | undefined) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return OPTIONAL_COMPETITION_LINK_COLUMNS.some((column) => message.includes(column));
+}
+
+function stripOptionalQueueColumns<T extends Record<string, unknown>>(payload: T) {
+  const next = { ...payload };
+  OPTIONAL_QUEUE_COLUMNS.forEach((column) => {
+    delete next[column];
+  });
+  return next;
+}
+
+function isMissingQueueColumnError(error: { message?: string } | null | undefined) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return OPTIONAL_QUEUE_COLUMNS.some((column) => message.includes(column));
+}
+
 export async function resetDemoCompetition() {
   const supabase = createServiceRoleSupabaseClient();
   const now = new Date();
@@ -156,7 +195,7 @@ export async function resetDemoCompetition() {
     await requireNoSupabaseError(deleteResult, "Unable to clear the existing demo competition.");
   }
 
-  const competitionInsert = await supabase.from("competitions").insert({
+  const competitionPayload = {
     id: competitionId,
     slug: DEMO_COMPETITION_SLUG,
     name: DEMO_COMPETITION_NAME,
@@ -188,7 +227,11 @@ export async function resetDemoCompetition() {
     qualifier_locked_at: null,
     finals_started_at: null,
     finals_problem_count: 4,
-  });
+  };
+  let competitionInsert = await supabase.from("competitions").insert(competitionPayload);
+  if (competitionInsert.error && isMissingCompetitionLinkColumnError(competitionInsert.error)) {
+    competitionInsert = await supabase.from("competitions").insert(stripOptionalCompetitionLinkColumns(competitionPayload));
+  }
   await requireNoSupabaseError(competitionInsert, "Unable to create the demo competition.");
 
   const categories = DEMO_CATEGORY_SEEDS.map((entry, index) => ({
@@ -382,21 +425,25 @@ export async function resetDemoCompetition() {
     scheduleBlocks.find((entry) => entry.label === DEMO_ACTIVE_BLOCK_LABEL)?.id ?? null;
   const youthBClimbers = climbers.filter((entry) => entry.age_group === "Youth B").slice(0, 3);
   if (activeYouthBBlockId && youthBClimbers.length) {
-    const queueInsert = await supabase.from("competition_boulder_queue").insert(
-      youthBClimbers.map((climber, index) => ({
-        id: createId(),
-        competition_id: competitionId,
-        climber_id: climber.id,
-        schedule_block_id: activeYouthBBlockId,
-        climb_number: index + 2,
-        checked_in_at: new Date(now.getTime() - (index + 1) * 45 * 1000).toISOString(),
-        climber_name: climber.name,
-        climber_number: climber.climber_number,
-        display_category: climber.display_category,
-        province: climber.province,
-        time_slot_id: climber.time_slot_id,
-      }))
-    );
+    const queuePayload = youthBClimbers.map((climber, index) => ({
+      id: createId(),
+      competition_id: competitionId,
+      climber_id: climber.id,
+      schedule_block_id: activeYouthBBlockId,
+      climb_number: index + 2,
+      checked_in_at: new Date(now.getTime() - (index + 1) * 45 * 1000).toISOString(),
+      climber_name: climber.name,
+      climber_number: climber.climber_number,
+      display_category: climber.display_category,
+      province: climber.province,
+      time_slot_id: climber.time_slot_id,
+    }));
+    let queueInsert = await supabase.from("competition_boulder_queue").insert(queuePayload);
+    if (queueInsert.error && isMissingQueueColumnError(queueInsert.error)) {
+      queueInsert = await supabase
+        .from("competition_boulder_queue")
+        .insert(queuePayload.map((entry) => stripOptionalQueueColumns(entry)));
+    }
     await requireNoSupabaseError(queueInsert, "Unable to create the demo boulder queue.");
   }
 

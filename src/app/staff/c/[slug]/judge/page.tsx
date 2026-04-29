@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import DemoExperience from "@/components/demo-experience";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import { isDemoCompetitionRecord } from "@/lib/demo";
@@ -892,6 +893,16 @@ export default function StaffJudgePage() {
 
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
+        {isDemoCompetitionRecord(snapshot.competition) ? (
+          <DemoExperience
+            enabled
+            routeId="judge"
+            competitionSlug={snapshot.competition.slug}
+            bannerTitle="Judge scoring demo"
+            bannerDescription="This is the live scoring surface a judge would use on a phone or tablet. Every save here updates the official qualifier result for that climber and boulder."
+            bannerTip="Record one boulder score, then switch to the public leaderboard to show the live standings response."
+          />
+        ) : null}
 
         <section className="results-card">
           <div className="results-workspace-hero">

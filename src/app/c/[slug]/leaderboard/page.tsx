@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import DemoExperience from "@/components/demo-experience";
 import SiteHeader from "@/components/site-header";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import { isDemoCompetitionRecord } from "@/lib/demo";
 import {
   compareQualifierEntries,
   formatCompetitionPhaseLabel,
@@ -115,6 +117,16 @@ export default function CompetitionLeaderboardPage() {
         <SiteHeader light competitionSlug={slug} />
 
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
+        {snapshot && isDemoCompetitionRecord(snapshot.competition) ? (
+          <DemoExperience
+            enabled
+            routeId="leaderboard"
+            competitionSlug={snapshot.competition.slug}
+            bannerTitle="Public leaderboard demo"
+            bannerDescription="This is the page climbers, parents, and spectators can open during the event. It updates from the same competition model the judge panel writes to."
+            bannerTip="Change categories or refresh after a saved judge call to show how public results stay in sync."
+          />
+        ) : null}
 
         {snapshot ? (
           finalsActive ? (
