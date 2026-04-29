@@ -148,6 +148,7 @@ function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
 }
 
 function buildMaskPanels(spotlight: SpotlightBox): MaskPanel[] {
+  const overlap = 6;
   const right = spotlight.left + spotlight.width;
   const bottom = spotlight.top + spotlight.height;
 
@@ -156,23 +157,23 @@ function buildMaskPanels(spotlight: SpotlightBox): MaskPanel[] {
       left: 0,
       top: 0,
       width: "100%",
-      height: spotlight.top,
+      height: spotlight.top + overlap,
     },
     {
       left: 0,
       top: spotlight.top,
-      width: spotlight.left,
+      width: spotlight.left + overlap,
       height: spotlight.height,
     },
     {
-      left: right,
+      left: right - overlap,
       top: spotlight.top,
       right: 0,
       height: spotlight.height,
     },
     {
       left: 0,
-      top: bottom,
+      top: bottom - overlap,
       width: "100%",
       bottom: 0,
     },
@@ -279,7 +280,7 @@ export default function DemoExperience({
               radius: window.innerWidth < 768 ? 24 : 30,
             };
 
-            const calloutWidth = Math.min(410, window.innerWidth - 24);
+            const calloutWidth = Math.min(380, window.innerWidth - 24);
             const preferredRight = rect.left + rect.width + 28;
             const preferredLeft = rect.left - calloutWidth - 28;
             const useRightSide = preferredRight + calloutWidth <= window.innerWidth - 16;
@@ -301,7 +302,7 @@ export default function DemoExperience({
             }
 
             const resolvedLeft = useRightSide ? preferredRight : canUseLeftSide ? preferredLeft : Math.max(12, preferredLeft);
-            const resolvedTop = clamp(rect.top + rect.height / 2 - 194, 16, Math.max(16, window.innerHeight - 344));
+            const resolvedTop = clamp(rect.top + rect.height / 2 - 170, 16, Math.max(16, window.innerHeight - 320));
 
             setCalloutMode("floating");
             setCalloutStyle({
