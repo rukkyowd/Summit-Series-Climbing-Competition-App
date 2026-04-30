@@ -20,6 +20,16 @@ export default function PwaProvider() {
       return;
     }
 
+    const hostname = window.location.hostname;
+    if (
+      process.env.NODE_ENV !== "production" ||
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1"
+    ) {
+      return;
+    }
+
     navigator.serviceWorker.register("/sw.js").catch((error) => {
       console.error("Service worker registration failed:", error);
     });

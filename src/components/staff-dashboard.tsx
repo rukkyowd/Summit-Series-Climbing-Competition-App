@@ -705,6 +705,7 @@ export default function StaffDashboard({
     label: null,
   });
   const organizerAutoplayStartedRef = useRef(false);
+  const demoBootstrapRestoredRef = useRef(false);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -1372,6 +1373,22 @@ export default function StaffDashboard({
     await refreshSelectedSnapshot(payload.demo.competitionId);
     setMessage("Demo competition restored to the seeded walkthrough state.");
   }, [load, refreshSelectedSnapshot]);
+
+  useEffect(() => {
+    if (!demoMode || loading || visibleSummaries.length > 0 || demoBootstrapRestoredRef.current) {
+      return;
+    }
+
+    demoBootstrapRestoredRef.current = true;
+    void restoreDemoCompetition().catch((nextError) => {
+      demoBootstrapRestoredRef.current = false;
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Unable to restore the seeded demo competition."
+      );
+    });
+  }, [demoMode, loading, restoreDemoCompetition, visibleSummaries.length]);
 
   const updateRounds = (updater: (rounds: CompetitionRound[]) => CompetitionRound[]) => {
     if (!draft) {

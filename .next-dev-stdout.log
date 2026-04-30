@@ -1,0 +1,24 @@
+
+> climbing-comp@1.0.0 dev
+> next dev
+
+  ▲ Next.js 14.2.3
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.7s
+ ✓ Compiled /src/middleware in 190ms
+ ✓ Compiled (466 modules)
+ ○ Compiling / ...
+ ✓ Compiled / in 8.3s (1393 modules)
+ GET / 200 in 106ms
+ ○ Compiling /staff/demo ...
+ ✓ Compiled /staff/demo in 5.7s (2183 modules)
+ GET /staff/demo?fresh=1777574992371 200 in 6055ms
+ GET /staff/demo?clean=1777575883646 200 in 78ms
+ ○ Compiling /api/qr ...
+ ✓ Compiled /api/qr in 624ms (1107 modules)
+ GET /api/qr?size=180&data=http%3A%2F%2F127.0.0.1%3A3000%2Fc%2Ffbc-wall-summer-scramble%2Fregister 200 in 1421ms
+ GET /staff/demo?servercheck=1 200 in 283ms
+ ✓ Compiled in 1515ms (2176 modules)
