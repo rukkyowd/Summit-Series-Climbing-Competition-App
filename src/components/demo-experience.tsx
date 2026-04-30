@@ -271,19 +271,16 @@ export default function DemoExperience({
 
     const storedDismissed = window.localStorage.getItem(STORAGE_DISMISSED_KEY) === "true";
     const parsedIndex = Number(window.localStorage.getItem(STORAGE_STEP_KEY));
-    const resolvedIndex =
+    const storedIndex =
       Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < steps.length ? parsedIndex : firstRouteStepIndex;
+    const resolvedIndex =
+      steps[storedIndex]?.routeId === routeId ? storedIndex : firstRouteStepIndex;
 
     setDismissed(storedDismissed);
     setComplete(false);
     setActiveIndex(resolvedIndex);
 
-    if (!storedDismissed && steps[resolvedIndex]?.routeId !== routeId) {
-      transitionStartedAtRef.current = Date.now();
-      setTransitioning(true);
-    } else {
-      setTransitioning(false);
-    }
+    setTransitioning(false);
   }, [enabled, firstRouteStepIndex, routeId, steps]);
 
   useEffect(() => {
