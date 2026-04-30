@@ -35,6 +35,7 @@ import {
 } from "@/lib/scoring";
 
 type MobileTab = "judge" | "leaderboard";
+type TourStepId = "judge" | "save" | "leaderboard" | "offline" | "sync";
 
 function buildLocalAttempt(
   snapshot: CompetitionSnapshot,
@@ -197,6 +198,7 @@ export function InteractiveDemoClient() {
   const [offlineQueuedSaveCompleted, setOfflineQueuedSaveCompleted] = useState(false);
   const [syncRecovered, setSyncRecovered] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("judge");
+  const [activeTourStep, setActiveTourStep] = useState<TourStepId>("judge");
   const [toolkitState, setToolkitState] = useState<DemoToolkitState>({
     simulateOffline: false,
     pendingQueueCount: 0,
@@ -204,6 +206,7 @@ export function InteractiveDemoClient() {
     lastSyncStatus: "synced",
   });
   const refreshTimerRef = useRef<number | null>(null);
+  const leaderboardBurstTriggeredRef = useRef(false);
 
   const refreshSnapshot = useCallback(async () => {
     const nextSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
@@ -578,6 +581,61 @@ export function InteractiveDemoClient() {
     }
   };
 
+  const handleGuidedLeaderboardBurst = useCallback(async () => {
+    if (toolkitState.simulationRunning || toolkitState.simulateOffline) {
+      return;
+    }
+
+    setToolkitState((current) => ({
+      ...current,
+      simulationRunning: true,
+    }));
+    setMessage("Other judges are entering fresh scores now. Watch the live standings reshuffle on the right.");
+    setError("");
+
+    try {
+      const burstCount = 4;
+      for (let index = 0; index < burstCount; index += 1) {
+        if (index > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        }
+        await runSimulationStep("live_burst");
+      }
+      setMessage("Live event burst complete. The right side just showed what a busy qualifier window feels like.");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to run the guided live event burst.");
+    } finally {
+      setToolkitState((current) => ({
+        ...current,
+        simulationRunning: false,
+      }));
+    }
+  }, [runSimulationStep, toolkitState.simulateOffline, toolkitState.simulationRunning]);
+
+  useEffect(() => {
+    if (activeTourStep !== "leaderboard") {
+      leaderboardBurstTriggeredRef.current = false;
+      return;
+    }
+
+    if (!liveSaveCompleted || leaderboardObserved || toolkitState.simulateOffline) {
+      return;
+    }
+
+    if (leaderboardBurstTriggeredRef.current) {
+      return;
+    }
+
+    leaderboardBurstTriggeredRef.current = true;
+    void handleGuidedLeaderboardBurst();
+  }, [
+    activeTourStep,
+    handleGuidedLeaderboardBurst,
+    leaderboardObserved,
+    liveSaveCompleted,
+    toolkitState.simulateOffline,
+  ]);
+
   const handleRestoreDemo = async () => {
     setError("");
     setMessage("");
@@ -607,6 +665,7 @@ export function InteractiveDemoClient() {
       setSyncRecovered(false);
       setLeaderboardImpact(null);
       setHighlightedClimberId(null);
+      leaderboardBurstTriggeredRef.current = false;
       setMessage("Demo restored to the seeded qualifier-in-progress state.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to restore the demo.");
@@ -757,6 +816,7 @@ export function InteractiveDemoClient() {
         offlineQueuedSaveCompleted={offlineQueuedSaveCompleted}
         syncRecovered={syncRecovered}
         syncStatus={toolkitState.lastSyncStatus}
+        onActiveStepChange={setActiveTourStep}
       />
     </main>
   );

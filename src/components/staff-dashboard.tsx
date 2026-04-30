@@ -1973,7 +1973,6 @@ export default function StaffDashboard({
         {demoMode && draft ? (
           <OrganizerDemoTour
             competitionName={draft.name}
-            setupOpened={organizerDemoState.setupOpened}
             categoriesViewed={organizerDemoState.categoriesViewed}
             presetSelectedTitle={organizerDemoState.presetSelected ? selectedGuidedSetupPreset?.title ?? "Selected preset" : null}
             scheduleViewed={organizerDemoState.scheduleViewed}
@@ -1985,6 +1984,7 @@ export default function StaffDashboard({
             onActiveStepChange={setActiveOrganizerDemoStep}
             onRestart={resetOrganizerDemoWalkthrough}
             onHandoffClick={handleOrganizerHandoff}
+            onJumpToSetupStep={goToSetupStep}
           />
         ) : null}
         {demoMode ? <Alert>{demoBanner}</Alert> : null}
@@ -2466,6 +2466,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
+                <fieldset disabled={!canEditSetup} className={!canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 <div id="setup-operations" className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2703,6 +2704,7 @@ export default function StaffDashboard({
                     </div>
                   ) : null}
                 </div>
+                </fieldset>
 
                 {currentSetupStep === 0 ? (
                   <>

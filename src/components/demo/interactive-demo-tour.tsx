@@ -17,6 +17,7 @@ type InteractiveDemoTourProps = {
   offlineQueuedSaveCompleted: boolean;
   syncRecovered: boolean;
   syncStatus: DemoSyncStatus;
+  onActiveStepChange?: (stepId: "judge" | "save" | "leaderboard" | "offline" | "sync") => void;
 };
 
 const baseSteps = [
@@ -28,12 +29,12 @@ const baseSteps = [
   {
     id: "save",
     title: "Save one judge call",
-    body: "Add the result on Boulder 1, then hit Save judge call. Continue unlocks after the official score is saved.",
+    body: "For __ATHLETE__ on Boulder 1, tap Zone or Top, then press Save judge call. Continue unlocks after that score is officially saved.",
   },
   {
     id: "leaderboard",
     title: "Watch the ranking react",
-    body: "The leaderboard on the right should move as soon as the save lands. Continue unlocks once the rank impact is visible.",
+    body: "As soon as your save lands, the demo starts simulating other judges entering fresh scores too. Watch the leaderboard on the right keep reshuffling like a real comp floor.",
   },
   {
     id: "offline",
@@ -56,6 +57,7 @@ export function InteractiveDemoTour({
   offlineQueuedSaveCompleted,
   syncRecovered,
   syncStatus,
+  onActiveStepChange,
 }: InteractiveDemoTourProps) {
   const reduceMotion = useReducedMotion();
   const [hidden, setHidden] = useState(false);
@@ -107,6 +109,10 @@ export function InteractiveDemoTour({
   );
 
   const activeStep = steps[stepIndex];
+
+  useEffect(() => {
+    onActiveStepChange?.(activeStep.id);
+  }, [activeStep.id, onActiveStepChange]);
   const stepRequirement = useMemo(() => {
     if (activeStep.id === "judge") {
       return {
@@ -120,7 +126,7 @@ export function InteractiveDemoTour({
         complete: liveSaveCompleted,
         label: liveSaveCompleted
           ? "Live score saved."
-          : `Save ${climberName} on Boulder 1 to unlock Continue.`,
+          : `Tap Zone or Top for ${climberName} on Boulder 1, then press Save judge call.`,
       };
     }
 
@@ -129,7 +135,7 @@ export function InteractiveDemoTour({
         complete: leaderboardObserved,
         label: leaderboardObserved
           ? "Leaderboard impact confirmed."
-          : "Wait for the leaderboard row to highlight and show the rank change.",
+          : "Watch the leaderboard react as new scores keep landing across the field.",
       };
     }
 

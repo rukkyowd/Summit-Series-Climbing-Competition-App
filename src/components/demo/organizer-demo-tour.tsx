@@ -20,7 +20,6 @@ export type OrganizerDemoHandoffTarget = "judge" | "leaderboard" | "display";
 
 type OrganizerDemoTourProps = {
   competitionName: string;
-  setupOpened: boolean;
   categoriesViewed: boolean;
   presetSelectedTitle: string | null;
   scheduleViewed: boolean;
@@ -32,6 +31,7 @@ type OrganizerDemoTourProps = {
   onActiveStepChange: (stepId: OrganizerDemoStepId) => void;
   onRestart: () => void;
   onHandoffClick: (target: OrganizerDemoHandoffTarget) => void;
+  onJumpToSetupStep: (stepIndex: number) => void;
 };
 
 const baseSteps: Array<{
@@ -41,8 +41,8 @@ const baseSteps: Array<{
 }> = [
   {
     id: "overview",
-    title: "Start the setup walkthrough",
-    body: "Open the organizer setup spine first. This is the control flow a gym would follow before comp day starts.",
+    title: "You are in the organizer control room",
+    body: "This page is the event setup spine. You will step through categories, structure, schedule, and stages in the same order a gym would use before comp day starts.",
   },
   {
     id: "categories",
@@ -73,7 +73,6 @@ const baseSteps: Array<{
 
 export function OrganizerDemoTour({
   competitionName,
-  setupOpened,
   categoriesViewed,
   presetSelectedTitle,
   scheduleViewed,
@@ -85,6 +84,7 @@ export function OrganizerDemoTour({
   onActiveStepChange,
   onRestart,
   onHandoffClick,
+  onJumpToSetupStep,
 }: OrganizerDemoTourProps) {
   const reduceMotion = useReducedMotion();
   const [hidden, setHidden] = useState(false);
@@ -126,10 +126,8 @@ export function OrganizerDemoTour({
   const stepRequirement = useMemo(() => {
     if (activeStep.id === "overview") {
       return {
-        complete: setupOpened,
-        label: setupOpened
-          ? "Organizer setup is open."
-          : "Use the Start here button to open the organizer setup section.",
+        complete: true,
+        label: "Hit Continue to start the guided setup flow.",
       };
     }
 
@@ -182,7 +180,6 @@ export function OrganizerDemoTour({
     handoffTarget,
     presetSelectedTitle,
     scheduleViewed,
-    setupOpened,
     stagesViewed,
   ]);
 
@@ -235,6 +232,34 @@ export function OrganizerDemoTour({
             {stepRequirement.complete ? "Ready to continue: " : "Do this next: "}
             {stepRequirement.label}
           </div>
+          {activeStep.id === "categories" ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => onJumpToSetupStep(1)} className="results-primary-button">
+                Open categories
+              </button>
+            </div>
+          ) : null}
+          {activeStep.id === "preset" ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => onJumpToSetupStep(2)} className="results-primary-button">
+                Open structure templates
+              </button>
+            </div>
+          ) : null}
+          {activeStep.id === "schedule" ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => onJumpToSetupStep(3)} className="results-primary-button">
+                Open schedule
+              </button>
+            </div>
+          ) : null}
+          {activeStep.id === "stages" ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => onJumpToSetupStep(4)} className="results-primary-button">
+                Open stages
+              </button>
+            </div>
+          ) : null}
           {activeStep.id === "handoff" ? (
             <div className="flex flex-wrap gap-2">
               <Link href={judgeHref} onClick={() => onHandoffClick("judge")} className="results-primary-button">
