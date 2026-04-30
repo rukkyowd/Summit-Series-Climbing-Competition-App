@@ -80,6 +80,7 @@ export function DemoToolkit({
             className="min-h-14 rounded-[1.15rem] text-base"
             onClick={onRunDemo}
             disabled={state.scriptRunning || state.simulationRunning}
+            data-demo-anchor="interactive-run-demo"
           >
             {state.scriptRunning ? "Running sales demo..." : "Run demo"}
           </Button>
@@ -127,6 +128,7 @@ export function DemoToolkit({
             onChange={(event) => onToggleOffline(event.target.checked)}
             className="h-5 w-5 rounded border-white/20 bg-transparent text-sky-400"
             disabled={state.scriptRunning && playbackStep !== "offline" && playbackStep !== "sync"}
+            data-demo-anchor="interactive-offline-toggle"
           />
         </label>
 
@@ -136,6 +138,7 @@ export function DemoToolkit({
             className="min-h-11 rounded-[1rem] border border-white/10 bg-white/[0.04]"
             onClick={onSyncNow}
             disabled={(state.pendingQueueCount === 0 && state.lastSyncStatus !== "failed") || state.scriptRunning}
+            data-demo-anchor="interactive-sync-now"
           >
             Reconnect and sync
           </Button>

@@ -488,6 +488,7 @@ export function JudgeWorkspace({
                         ? "route-judge-action-active"
                         : ""
                     }`}
+                    data-demo-anchor={climberIndex === 0 ? "interactive-zone-button" : undefined}
                     disabled={interactionLocked}
                   >
                     <span className="route-judge-action-label">Zone</span>
@@ -509,6 +510,7 @@ export function JudgeWorkspace({
                     className={`route-judge-action route-judge-action-top ${
                       presentation.normalized.topped ? "route-judge-action-active" : ""
                     }`}
+                    data-demo-anchor={climberIndex === 0 ? "interactive-top-button" : undefined}
                     disabled={interactionLocked}
                   >
                     <span className="route-judge-action-label">Top</span>
@@ -545,6 +547,7 @@ export function JudgeWorkspace({
                       className={`${embedded ? "min-h-14 min-w-[13rem] flex-1 rounded-[1.1rem] px-6 text-base sm:flex-none" : "min-h-11 rounded-full px-5"}`}
                       onClick={() => void handleSave(climber.id, selectedBoulder)}
                       disabled={saving || !qualifierScoringOpen || interactionLocked}
+                      data-demo-anchor={climberIndex === 0 ? "interactive-save-button" : undefined}
                     >
                       Save judge call
                     </Button>

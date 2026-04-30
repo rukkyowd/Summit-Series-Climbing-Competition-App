@@ -47,6 +47,14 @@ type PlaybackNarration = {
   body: string;
 };
 
+type DemoCursorState = {
+  visible: boolean;
+  x: number;
+  y: number;
+  clicking: boolean;
+  label: string | null;
+};
+
 function buildLocalAttempt(
   snapshot: CompetitionSnapshot,
   input: JudgeQualifierSaveInput
@@ -280,6 +288,13 @@ export function InteractiveDemoClient() {
   const [playbackStep, setPlaybackStep] = useState<DemoPlaybackStep | null>(null);
   const [presentationFocus, setPresentationFocus] = useState<DemoPlaybackStep | "judge" | null>("judge");
   const [playbackNarration, setPlaybackNarration] = useState<PlaybackNarration | null>(null);
+  const [demoCursor, setDemoCursor] = useState<DemoCursorState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    clicking: false,
+    label: null,
+  });
   const [toolkitState, setToolkitState] = useState<DemoToolkitState>({
     simulateOffline: false,
     pendingQueueCount: 0,
@@ -773,6 +788,61 @@ export function InteractiveDemoClient() {
 
   const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+  const moveDemoCursorTo = useCallback(
+    async (
+      anchor: string,
+      options?: {
+        click?: boolean;
+        label?: string | null;
+        settleMs?: number;
+      }
+    ) => {
+      const element = document.querySelector<HTMLElement>(`[data-demo-anchor="${anchor}"]`);
+      if (!element) {
+        return;
+      }
+
+      if (anchor.startsWith("interactive-offline") || anchor.startsWith("interactive-sync")) {
+        element.closest("details")?.setAttribute("open", "open");
+      }
+
+      element.scrollIntoView({
+        block: "center",
+        inline: "center",
+        behavior: "smooth",
+      });
+
+      await wait(options?.settleMs ?? 700);
+
+      const rect = element.getBoundingClientRect();
+      const x = rect.left + rect.width * 0.5;
+      const y = rect.top + rect.height * 0.5;
+
+      setDemoCursor({
+        visible: true,
+        x,
+        y,
+        clicking: false,
+        label: options?.label ?? null,
+      });
+
+      await wait(420);
+
+      if (options?.click) {
+        setDemoCursor((current) => ({
+          ...current,
+          clicking: true,
+        }));
+        await wait(260);
+        setDemoCursor((current) => ({
+          ...current,
+          clicking: false,
+        }));
+      }
+    },
+    []
+  );
+
   async function handleRunDemo() {
     if (toolkitState.scriptRunning || toolkitState.simulationRunning) {
       return;
@@ -811,7 +881,16 @@ export function InteractiveDemoClient() {
         title: "Step 1: Judge logs a flash",
         body: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
       });
-      await wait(2800);
+      await moveDemoCursorTo("interactive-top-button", {
+        click: true,
+        label: "Top",
+      });
+      await wait(900);
+      await moveDemoCursorTo("interactive-save-button", {
+        click: true,
+        label: "Save judge call",
+      });
+      await wait(1200);
 
       await handleSaveQualifier({
         climberId: athlete.id,
@@ -831,6 +910,10 @@ export function InteractiveDemoClient() {
         title: "Step 2: The leaderboard moves live",
         body: "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
       });
+      setDemoCursor((current) => ({
+        ...current,
+        label: "Leaderboard reacts live",
+      }));
       await wait(2600);
       await runSimulationStep("live_burst");
       setLeaderboardObserved(true);
@@ -851,7 +934,21 @@ export function InteractiveDemoClient() {
         simulateOffline: true,
         lastSyncStatus: current.pendingQueueCount > 0 ? "pending" : current.lastSyncStatus,
       }));
-      await wait(2600);
+      await moveDemoCursorTo("interactive-offline-toggle", {
+        click: true,
+        label: "Simulate Wi-Fi drop",
+      });
+      await wait(1800);
+      await moveDemoCursorTo("interactive-zone-button", {
+        click: true,
+        label: "Zone",
+      });
+      await wait(700);
+      await moveDemoCursorTo("interactive-save-button", {
+        click: true,
+        label: "Save locally",
+      });
+      await wait(1200);
       await handleSaveQualifier({
         climberId: athlete.id,
         climbNumber: 2,
@@ -873,7 +970,16 @@ export function InteractiveDemoClient() {
         ...current,
         simulateOffline: false,
       }));
-      await wait(2200);
+      await moveDemoCursorTo("interactive-offline-toggle", {
+        click: true,
+        label: "Reconnect Wi-Fi",
+      });
+      await wait(1100);
+      await moveDemoCursorTo("interactive-sync-now", {
+        click: true,
+        label: "Reconnect and sync",
+      });
+      await wait(1100);
       await flushOfflineQueue();
       setMobileTab("leaderboard");
       await wait(2600);
@@ -888,6 +994,12 @@ export function InteractiveDemoClient() {
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to run the scripted sales demo.");
     } finally {
+      setDemoCursor((current) => ({
+        ...current,
+        visible: false,
+        clicking: false,
+        label: null,
+      }));
       setToolkitState((current) => ({
         ...current,
         scriptRunning: false,
@@ -995,6 +1107,13 @@ export function InteractiveDemoClient() {
       setPresentationFocus("judge");
       setPlaybackNarration(null);
       setMobileTab("judge");
+      setDemoCursor({
+        visible: false,
+        x: 0,
+        y: 0,
+        clicking: false,
+        label: null,
+      });
       setToolkitState((current) => ({
         ...current,
         scriptRunning: false,
@@ -1171,6 +1290,19 @@ export function InteractiveDemoClient() {
         onSyncNow={() => void flushOfflineQueue()}
         onRestoreDemo={() => void handleRestoreDemo()}
       />
+      {demoCursor.visible ? (
+        <div
+          className={`demo-pointer ${demoCursor.clicking ? "demo-pointer-clicking" : ""}`}
+          style={{
+            left: demoCursor.x,
+            top: demoCursor.y,
+          }}
+          aria-hidden="true"
+        >
+          <div className="demo-pointer-dot" />
+          {demoCursor.label ? <div className="demo-pointer-label">{demoCursor.label}</div> : null}
+        </div>
+      ) : null}
       <InteractiveDemoTour
         pendingQueueCount={toolkitState.pendingQueueCount}
         climberName={scenarioAthlete?.name ?? "the demo athlete"}
