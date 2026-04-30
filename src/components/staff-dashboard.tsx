@@ -6,7 +6,11 @@ import Image from "next/image";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
-import DemoExperience from "@/components/demo-experience";
+import {
+  OrganizerDemoTour,
+  type OrganizerDemoHandoffTarget,
+  type OrganizerDemoStepId,
+} from "@/components/demo/organizer-demo-tour";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
@@ -602,6 +606,22 @@ export default function StaffDashboard({
   const [expandedScheduleBlockId, setExpandedScheduleBlockId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<GuidedSetupPreset["id"] | null>(null);
+  const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
+  const [organizerDemoState, setOrganizerDemoState] = useState<{
+    setupOpened: boolean;
+    categoriesViewed: boolean;
+    presetSelected: boolean;
+    scheduleViewed: boolean;
+    stagesViewed: boolean;
+    handoffTarget: OrganizerDemoHandoffTarget | null;
+  }>({
+    setupOpened: false,
+    categoriesViewed: false,
+    presetSelected: false,
+    scheduleViewed: false,
+    stagesViewed: false,
+    handoffTarget: null,
+  });
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -724,6 +744,15 @@ export default function StaffDashboard({
   useEffect(() => {
     setCurrentSetupStep(0);
     setSelectedGuidedSetupPresetId(null);
+    setOrganizerDemoState({
+      setupOpened: false,
+      categoriesViewed: false,
+      presetSelected: false,
+      scheduleViewed: false,
+      stagesViewed: false,
+      handoffTarget: null,
+    });
+    setActiveOrganizerDemoStep("overview");
   }, [draft?.id]);
 
   const setupStepCompletion = useMemo(() => {
@@ -818,6 +847,7 @@ export default function StaffDashboard({
   const registerPath = draft ? buildCompetitionPath(draft.slug, "register") : "";
   const leaderboardPath = draft ? buildCompetitionPath(draft.slug, "leaderboard") : "";
   const judgeUrl = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "";
+  const demoJudgePath = "/demo/interactive";
   const displayPath = draft ? buildDisplayPath(draft.slug) : "";
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
   const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
@@ -1711,13 +1741,13 @@ export default function StaffDashboard({
           title: "Organizer setup",
           description: "Review how staff configure categories, day schedule, and competition stages.",
           href: "#demo-organizer-setup",
-          actionLabel: "See organizer setup",
+          actionLabel: "Start setup walkthrough",
         },
         {
-          title: "Judge scoring",
-          description: "Scoring stays protected on staff-only routes, ready for a live event walkthrough after sign-in.",
-          href: "/staff/login",
-          actionLabel: "Open staff sign-in",
+          title: "Judge live flow",
+          description: "See the same event move into live scoring and watch one save update the public rankings.",
+          href: demoJudgePath,
+          actionLabel: "Open live scoring demo",
         },
         {
           title: "Public leaderboard",
@@ -1727,6 +1757,86 @@ export default function StaffDashboard({
         },
       ]
     : [];
+  const updateOrganizerDemoState = useCallback(
+    (patch: Partial<typeof organizerDemoState>) => {
+      if (!demoMode) {
+        return;
+      }
+
+      setOrganizerDemoState((current) => ({
+        ...current,
+        ...patch,
+      }));
+    },
+    [demoMode]
+  );
+  const goToSetupStep = useCallback(
+    (stepIndex: number) => {
+      const nextIndex = Math.max(0, Math.min(SETUP_WIZARD_STEPS.length - 1, stepIndex));
+      setCurrentSetupStep(nextIndex);
+
+      if (!demoMode) {
+        return;
+      }
+
+      setOrganizerDemoState((current) => ({
+        ...current,
+        setupOpened: true,
+        categoriesViewed: current.categoriesViewed || nextIndex === 1,
+        scheduleViewed: current.scheduleViewed || nextIndex === 3,
+        stagesViewed: current.stagesViewed || nextIndex === 4,
+      }));
+    },
+    [demoMode]
+  );
+  const handleOrganizerPresetSelection = (presetId: GuidedSetupPreset["id"]) => {
+    applyGuidedSetupPreset(presetId);
+    updateOrganizerDemoState({ presetSelected: true });
+  };
+  const handleOrganizerSetupStart = useCallback(() => {
+    updateOrganizerDemoState({ setupOpened: true });
+    goToSetupStep(0);
+  }, [goToSetupStep, updateOrganizerDemoState]);
+  const handleOrganizerHandoff = useCallback(
+    (target: OrganizerDemoHandoffTarget) => {
+      updateOrganizerDemoState({ handoffTarget: target });
+    },
+    [updateOrganizerDemoState]
+  );
+  const resetOrganizerDemoWalkthrough = useCallback(() => {
+    if (!selectedSummary) {
+      return;
+    }
+
+    setDraft(cloneCompetition(selectedSummary.competition));
+    void getCompetitionSnapshot(selectedSummary.competition.id)
+      .then((nextSnapshot) => setSnapshot(nextSnapshot))
+      .catch(() => setSnapshot(null));
+    setCurrentSetupStep(0);
+    setSelectedGuidedSetupPresetId(null);
+    setOrganizerDemoState({
+      setupOpened: false,
+      categoriesViewed: false,
+      presetSelected: false,
+      scheduleViewed: false,
+      stagesViewed: false,
+      handoffTarget: null,
+    });
+    setActiveOrganizerDemoStep("overview");
+    setError("");
+    setMessage("");
+  }, [selectedSummary]);
+  const organizerDemoSectionClass = useCallback(
+    (stepIds: OrganizerDemoStepId | OrganizerDemoStepId[]) => {
+      if (!demoMode) {
+        return "";
+      }
+
+      const targets = Array.isArray(stepIds) ? stepIds : [stepIds];
+      return targets.includes(activeOrganizerDemoStep) ? "demo-organizer-focus" : "demo-organizer-dim";
+    },
+    [activeOrganizerDemoStep, demoMode]
+  );
   const downloadRegistrationQr = async () => {
     if (!draft) {
       return;
@@ -1861,13 +1971,20 @@ export default function StaffDashboard({
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
         {demoMode && draft ? (
-          <DemoExperience
-            enabled
-            routeId="organizer"
-            competitionSlug={draft.slug}
-            bannerTitle="Organizer demo dashboard"
-            bannerDescription="This is the control room for the sample event. It shows how staff configure the competition, publish public links, and keep event-day operations tied to one shared event model."
-            bannerTip="Start your walkthrough here, then open the judge panel to show the live scoring workflow."
+          <OrganizerDemoTour
+            competitionName={draft.name}
+            setupOpened={organizerDemoState.setupOpened}
+            categoriesViewed={organizerDemoState.categoriesViewed}
+            presetSelectedTitle={organizerDemoState.presetSelected ? selectedGuidedSetupPreset?.title ?? "Selected preset" : null}
+            scheduleViewed={organizerDemoState.scheduleViewed}
+            stagesViewed={organizerDemoState.stagesViewed}
+            handoffTarget={organizerDemoState.handoffTarget}
+            judgeHref={demoJudgePath}
+            leaderboardHref={leaderboardPath}
+            displayHref={displayPath}
+            onActiveStepChange={setActiveOrganizerDemoStep}
+            onRestart={resetOrganizerDemoWalkthrough}
+            onHandoffClick={handleOrganizerHandoff}
           />
         ) : null}
         {demoMode ? <Alert>{demoBanner}</Alert> : null}
@@ -1881,24 +1998,24 @@ export default function StaffDashboard({
           <section className="results-card overflow-hidden">
             <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
               <div>
-                <div className="results-kicker">Demo dashboard</div>
+                <div className="results-kicker">Experience as an organizer</div>
                 <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
-                  Run a climbing competition from setup to live results in one place.
+                  Build the event once. Hand off the same model everywhere else.
                 </h1>
                 <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-                  Explore a sample event to see how staff set up sessions, judges record scores, and climbers follow live rankings and finals from public pages.
+                  You are setting up a gym comp. Start with the organizer workflow below, then open the live judging and public views that the same event powers.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <a href="#demo-organizer-setup" className="results-primary-button">
-                    See organizer setup
+                  <a href="#demo-organizer-setup" onClick={handleOrganizerSetupStart} className="results-primary-button">
+                    Start here
                   </a>
                   {leaderboardPath ? (
-                    <Link href={leaderboardPath} className="results-secondary-button">
+                    <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button">
                       See public leaderboard
                     </Link>
                   ) : null}
                   {displayPath ? (
-                    <Link href={displayPath} className="results-secondary-button">
+                    <Link href={displayPath} onClick={() => handleOrganizerHandoff("display")} className="results-secondary-button">
                       See public display
                     </Link>
                   ) : null}
@@ -1949,7 +2066,7 @@ export default function StaffDashboard({
         ) : null}
 
         {demoMode && demoTourCards.length ? (
-          <section className="results-card" data-demo-anchor="demo-explore">
+          <section className={`results-card ${organizerDemoSectionClass("handoff")}`} data-demo-anchor="demo-explore">
             <div className="results-kicker">Explore the product</div>
             <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               Start with the organizer workflow, then jump into the live and public surfaces that make comp day easier for staff and climbers.
@@ -1977,13 +2094,13 @@ export default function StaffDashboard({
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="results-card">
             {demoMode ? (
-              <div data-demo-anchor="organizer-overview">
-                <div className="results-kicker">Demo walkthrough</div>
+              <div data-demo-anchor="organizer-overview" className={organizerDemoSectionClass("overview")}>
+                <div className="results-kicker">Organizer walkthrough</div>
                 <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
-                  Explore a sample gym event.
+                  Set up a gym comp without getting lost.
                 </h1>
                 <div className="results-hero-subline">
-                  The real dashboard stays underneath, but this demo focuses on how organizers plan the event, how staff run the day, and how climbers see results.
+                  You are setting up a sample event. Start here, move through the setup spine, and then hand the same event off into live judging and public results.
                 </div>
                 <div className="mt-5 rounded-[1.6rem] border border-slate-200 bg-slate-50 px-5 py-5">
                   <div className="results-kicker">What this replaces</div>
@@ -2227,19 +2344,28 @@ export default function StaffDashboard({
                       </div>
                     ) : null}
                   </div>
-                    <div className="results-workspace-callout" data-demo-anchor="organizer-links">
+                    <div className={`results-workspace-callout ${organizerDemoSectionClass("handoff")}`} data-demo-anchor="organizer-links">
                       <div className="results-kicker">Quick links</div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         <Link href={publicPath} className="results-secondary-button w-full">Public page</Link>
-                        {!demoMode ? <Link href={judgeUrl} className="results-secondary-button w-full">Judge scoring</Link> : null}
-                        <Link href={displayPath} className="results-secondary-button w-full">Public display</Link>
+                        <Link
+                          href={demoMode ? demoJudgePath : judgeUrl}
+                          onClick={() => handleOrganizerHandoff("judge")}
+                          className="results-secondary-button w-full"
+                        >
+                          {demoMode ? "Judge live flow" : "Judge scoring"}
+                        </Link>
+                        <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button w-full">
+                          Public leaderboard
+                        </Link>
+                        <Link href={displayPath} onClick={() => handleOrganizerHandoff("display")} className="results-secondary-button w-full">Public display</Link>
                         {!demoMode ? (
                           <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button w-full">Event checklist</Link>
                         ) : null}
                       </div>
                       {demoMode ? (
                         <div className="mt-3 text-sm text-slate-600">
-                          Judge scoring and staff-only checklists stay protected, but you can still preview the public experience from this sample event.
+                          Open the public views directly, or jump into the guided live judging demo to show how this same event powers scoring.
                         </div>
                       ) : null}
                     </div>
@@ -2269,7 +2395,7 @@ export default function StaffDashboard({
                         href={`#${item.id}`}
                         onClick={() => {
                           if (item.stepIndex !== null) {
-                            setCurrentSetupStep(item.stepIndex);
+                            goToSetupStep(item.stepIndex);
                           }
                         }}
                         className={`results-section-nav__pill ${isActive ? "results-section-nav__pill-active" : ""}`}
@@ -2280,7 +2406,11 @@ export default function StaffDashboard({
                   })}
                 </div>
 
-                <div id="demo-run-event" className="results-workspace-card space-y-6" data-demo-anchor="organizer-progress">
+                <div
+                  id="demo-run-event"
+                  className={`results-workspace-card space-y-6 ${organizerDemoSectionClass(["categories", "preset", "schedule", "stages"])}`}
+                  data-demo-anchor="organizer-progress"
+                >
                   <div className="space-y-4">
                     <div className="min-w-0">
                       <div className="results-kicker">Setup progress</div>
@@ -2307,7 +2437,7 @@ export default function StaffDashboard({
                         <button
                           key={step.id}
                           type="button"
-                          onClick={() => setCurrentSetupStep(index)}
+                          onClick={() => goToSetupStep(index)}
                           aria-current={isActive ? "step" : undefined}
                           className={`group min-w-0 rounded-[2rem] border px-5 py-6 text-left transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-1 sm:px-6 sm:py-7 ${
                             isActive
@@ -2815,7 +2945,7 @@ export default function StaffDashboard({
                 ) : null}
 
                 {currentSetupStep === 2 ? (
-                <div id="setup-structure" className="results-workspace-card">
+                <div id="setup-structure" className={`results-workspace-card ${organizerDemoSectionClass("preset")}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Step 3 - Pick an event setup</div>
@@ -2844,7 +2974,7 @@ export default function StaffDashboard({
                             key={preset.id}
                             type="button"
                             aria-pressed={isSelected}
-                            onClick={() => applyGuidedSetupPreset(preset.id)}
+                            onClick={() => handleOrganizerPresetSelection(preset.id)}
                             className={`group flex min-w-0 h-full min-h-[21rem] flex-col rounded-[1.6rem] border px-5 py-5 text-left transition ${
                               isSelected
                                 ? "border-slate-950 bg-slate-950 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
@@ -2917,7 +3047,7 @@ export default function StaffDashboard({
                 ) : null}
 
                 {currentSetupStep === 3 ? (
-                <div id="setup-schedule" className="results-workspace-card">
+                <div id="setup-schedule" className={`results-workspace-card ${organizerDemoSectionClass("schedule")}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Step 4 - Build the day</div>
@@ -3275,7 +3405,7 @@ export default function StaffDashboard({
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => setCurrentSetupStep((current) => Math.max(0, current - 1))}
+                        onClick={() => goToSetupStep(Math.max(0, currentSetupStep - 1))}
                         disabled={isFirstSetupStep}
                         className="results-secondary-button"
                       >
@@ -3283,7 +3413,7 @@ export default function StaffDashboard({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCurrentSetupStep((current) => Math.min(SETUP_WIZARD_STEPS.length - 1, current + 1))}
+                        onClick={() => goToSetupStep(Math.min(SETUP_WIZARD_STEPS.length - 1, currentSetupStep + 1))}
                         disabled={isLastSetupStep}
                         className="results-primary-button"
                       >
@@ -3320,7 +3450,7 @@ export default function StaffDashboard({
                 {currentSetupStep === 4 ? (
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {draft.rounds?.length ? (
-                  <div id="setup-stages" className="results-workspace-card">
+                  <div id="setup-stages" className={`results-workspace-card ${organizerDemoSectionClass("stages")}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="results-kicker">Step 5 - Competition stages</div>

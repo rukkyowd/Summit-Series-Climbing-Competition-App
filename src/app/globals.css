@@ -1072,6 +1072,45 @@ body::after {
       0 0 28px rgba(125, 211, 252, 0.08);
   }
 
+  .demo-organizer-focus {
+    position: relative;
+    border-color: rgba(125, 211, 252, 0.82) !important;
+    background:
+      radial-gradient(circle at top right, rgba(125, 211, 252, 0.15), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(240, 249, 255, 0.96));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.92),
+      0 0 0 1px rgba(125, 211, 252, 0.2),
+      0 18px 40px rgba(14, 116, 215, 0.1),
+      0 0 44px rgba(56, 189, 248, 0.1);
+    transition:
+      opacity 220ms ease,
+      box-shadow 220ms ease,
+      border-color 220ms ease,
+      transform 220ms ease;
+  }
+
+  .demo-organizer-focus::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.58),
+      inset 0 0 0 2px rgba(125, 211, 252, 0.14);
+    pointer-events: none;
+  }
+
+  .demo-organizer-focus > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .demo-organizer-dim {
+    opacity: 0.72;
+    transition: opacity 220ms ease;
+  }
+
   .demo-judge-live-stack {
     @apply mt-4 grid gap-3;
   }
