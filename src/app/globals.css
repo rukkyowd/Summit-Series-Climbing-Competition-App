@@ -1106,10 +1106,38 @@ body::after {
     z-index: 1;
   }
 
-  .demo-organizer-dim {
-    opacity: 0.72;
-    transition: opacity 220ms ease;
-  }
+.demo-organizer-dim {
+  opacity: 0.72;
+  transition: opacity 220ms ease;
+}
+
+.demo-organizer-autoplay-active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(56, 189, 248, 0.2),
+    0 22px 46px rgba(14, 116, 215, 0.12),
+    0 0 64px rgba(56, 189, 248, 0.12) !important;
+}
+
+.demo-organizer-autoplay-dim {
+  opacity: 0.48;
+  filter: saturate(0.82);
+}
+
+.demo-organizer-preset-selected {
+  position: relative;
+  overflow: hidden;
+}
+
+.demo-organizer-preset-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, 0.12) 42%, rgba(255, 255, 255, 0) 70%);
+  transform: translateX(-26%);
+  animation: demo-target-sheen 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
 
   .demo-judge-live-stack {
     @apply mt-4 grid gap-3;

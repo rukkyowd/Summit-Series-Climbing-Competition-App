@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
@@ -153,6 +154,27 @@ type DemoTourCard = {
   description: string;
   href: string;
   actionLabel: string;
+};
+
+type OrganizerPlaybackStep =
+  | "intro"
+  | "categories"
+  | "preset"
+  | "schedule"
+  | "stages"
+  | "handoff";
+
+type OrganizerNarration = {
+  title: string;
+  body: string;
+};
+
+type OrganizerDemoCursorState = {
+  visible: boolean;
+  x: number;
+  y: number;
+  clicking: boolean;
+  label: string | null;
 };
 
 const DEMO_FLOW_STEPS: DemoFlowStep[] = [
@@ -574,6 +596,7 @@ export default function StaffDashboard({
   initialCreateDraft?: StaffDashboardCreateDraft;
   demoMode?: boolean;
 }) {
+  const router = useRouter();
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
   const [draft, setDraft] = useState<Competition | null>(null);
@@ -622,6 +645,16 @@ export default function StaffDashboard({
     scheduleViewed: false,
     stagesViewed: false,
     handoffTarget: null,
+  });
+  const [organizerAutoplayRunning, setOrganizerAutoplayRunning] = useState(false);
+  const [organizerPlaybackStep, setOrganizerPlaybackStep] = useState<OrganizerPlaybackStep | null>(null);
+  const [organizerNarration, setOrganizerNarration] = useState<OrganizerNarration | null>(null);
+  const [organizerDemoCursor, setOrganizerDemoCursor] = useState<OrganizerDemoCursorState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    clicking: false,
+    label: null,
   });
   const [confirming, setConfirming] = useState<null | {
     title: string;
@@ -754,6 +787,16 @@ export default function StaffDashboard({
       handoffTarget: null,
     });
     setActiveOrganizerDemoStep("overview");
+    setOrganizerAutoplayRunning(false);
+    setOrganizerPlaybackStep(null);
+    setOrganizerNarration(null);
+    setOrganizerDemoCursor({
+      visible: false,
+      x: 0,
+      y: 0,
+      clicking: false,
+      label: null,
+    });
   }, [draft?.id]);
 
   const setupStepCompletion = useMemo(() => {
@@ -1498,7 +1541,7 @@ export default function StaffDashboard({
     return block.phase_type === "qualifier_round" && block.eligible_category_ids.length > 0;
   }, []);
 
-  const applyGuidedSetupPreset = (presetId: GuidedSetupPreset["id"]) => {
+  const applyGuidedSetupPreset = useCallback((presetId: GuidedSetupPreset["id"]) => {
     if (!draft) {
       return;
     }
@@ -1612,7 +1655,7 @@ export default function StaffDashboard({
     setSelectedGuidedSetupPresetId(presetId);
     setRoundPlanNeedsReset(false);
     setMessage(`Guided setup applied: ${GUIDED_SETUP_PRESETS.find((preset) => preset.id === presetId)?.title}.`);
-  };
+  }, [draft, qualifierCategories]);
 
   const mergeScheduleBlocks = (sourceBlockId: string, targetBlockId: string) => {
     if (!draft || sourceBlockId === targetBlockId) {
@@ -1855,6 +1898,16 @@ export default function StaffDashboard({
       handoffTarget: null,
     });
     setActiveOrganizerDemoStep("overview");
+    setOrganizerAutoplayRunning(false);
+    setOrganizerPlaybackStep(null);
+    setOrganizerNarration(null);
+    setOrganizerDemoCursor({
+      visible: false,
+      x: 0,
+      y: 0,
+      clicking: false,
+      label: null,
+    });
     setError("");
     setMessage("");
   }, [selectedSummary]);
@@ -1865,10 +1918,181 @@ export default function StaffDashboard({
       }
 
       const targets = Array.isArray(stepIds) ? stepIds : [stepIds];
+      if (organizerAutoplayRunning) {
+        return targets.includes(activeOrganizerDemoStep)
+          ? "demo-organizer-focus demo-organizer-autoplay-active"
+          : "demo-organizer-dim demo-organizer-autoplay-dim";
+      }
+
       return targets.includes(activeOrganizerDemoStep) ? "demo-organizer-focus" : "demo-organizer-dim";
     },
-    [activeOrganizerDemoStep, demoMode]
+    [activeOrganizerDemoStep, demoMode, organizerAutoplayRunning]
   );
+  const waitForOrganizerPlayback = useCallback(
+    (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+    []
+  );
+  const moveOrganizerDemoCursor = useCallback(
+    async (
+      anchor: string,
+      options?: {
+        click?: boolean;
+        label?: string | null;
+        settleMs?: number;
+      }
+    ) => {
+      const element = document.querySelector<HTMLElement>(`[data-demo-anchor="${anchor}"]`);
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        block: "center",
+        inline: "center",
+        behavior: "smooth",
+      });
+
+      await waitForOrganizerPlayback(options?.settleMs ?? 700);
+
+      const rect = element.getBoundingClientRect();
+      setOrganizerDemoCursor({
+        visible: true,
+        x: rect.left + rect.width * 0.5,
+        y: rect.top + rect.height * 0.5,
+        clicking: false,
+        label: options?.label ?? null,
+      });
+
+      await waitForOrganizerPlayback(420);
+
+      if (options?.click) {
+        setOrganizerDemoCursor((current) => ({
+          ...current,
+          clicking: true,
+        }));
+        await waitForOrganizerPlayback(260);
+        setOrganizerDemoCursor((current) => ({
+          ...current,
+          clicking: false,
+        }));
+      }
+    },
+    [waitForOrganizerPlayback]
+  );
+  const runOrganizerDemo = useCallback(async () => {
+    if (!demoMode || organizerAutoplayRunning || !draft) {
+      return;
+    }
+
+    resetOrganizerDemoWalkthrough();
+    setOrganizerAutoplayRunning(true);
+    setError("");
+    setMessage("Organizer pitch started. Watch the event build itself, then hand off into live judging.");
+
+    try {
+      setOrganizerPlaybackStep("intro");
+      setOrganizerNarration({
+        title: "Start with a comp format, not a blank admin tool",
+        body: "This organizer demo shows the setup path a gym owner actually cares about: choose the event shape, generate the day, then hand the same event into live scoring.",
+      });
+      await moveOrganizerDemoCursor("organizer-run-demo", {
+        click: true,
+        label: "Run organizer demo",
+      });
+      await waitForOrganizerPlayback(2200);
+
+      setOrganizerPlaybackStep("categories");
+      goToSetupStep(1);
+      setOrganizerNarration({
+        title: "Choose who can register",
+        body: "First, confirm the age groups this event serves so the rest of the structure is built around the right field.",
+      });
+      await moveOrganizerDemoCursor("organizer-step-categories", {
+        click: true,
+        label: "Categories",
+      });
+      await waitForOrganizerPlayback(2200);
+
+      setOrganizerPlaybackStep("preset");
+      goToSetupStep(2);
+      setOrganizerNarration({
+        title: "Apply a proven comp format",
+        body: "Instead of building every round by hand, the organizer chooses a tested setup that creates the competition stages and day plan automatically.",
+      });
+      await moveOrganizerDemoCursor("organizer-step-structure", {
+        click: true,
+        label: "Structure",
+      });
+      await waitForOrganizerPlayback(1200);
+      await moveOrganizerDemoCursor("organizer-preset-qualifier-finals", {
+        click: true,
+        label: "Qualifier + Finals",
+      });
+      applyGuidedSetupPreset("qualifier_finals");
+      updateOrganizerDemoState({ presetSelected: true });
+      await waitForOrganizerPlayback(2400);
+
+      setOrganizerPlaybackStep("schedule");
+      goToSetupStep(3);
+      setOrganizerNarration({
+        title: "Review the day schedule",
+        body: "The schedule blocks are generated from that format, so the event timeline is already linked to the right competition moments.",
+      });
+      await moveOrganizerDemoCursor("organizer-step-schedule", {
+        click: true,
+        label: "Schedule",
+      });
+      await waitForOrganizerPlayback(2300);
+
+      setOrganizerPlaybackStep("stages");
+      goToSetupStep(4);
+      setOrganizerNarration({
+        title: "Confirm the competition stages",
+        body: "Now the organizer can see exactly how qualifiers and finals connect before anyone ever walks onto the mats.",
+      });
+      await moveOrganizerDemoCursor("organizer-step-stages", {
+        click: true,
+        label: "Stages",
+      });
+      await waitForOrganizerPlayback(2400);
+
+      setOrganizerPlaybackStep("handoff");
+      setOrganizerNarration({
+        title: "This same event now powers live judging",
+        body: "The organizer setup is done. Next, the judge station opens on the exact event model you just configured.",
+      });
+      await moveOrganizerDemoCursor("organizer-handoff-judge", {
+        click: true,
+        label: "Judge live flow",
+      });
+      handleOrganizerHandoff("judge");
+      await waitForOrganizerPlayback(2200);
+      router.push(demoJudgePath);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to run the organizer demo.");
+    } finally {
+      setOrganizerAutoplayRunning(false);
+      setOrganizerDemoCursor((current) => ({
+        ...current,
+        visible: false,
+        clicking: false,
+        label: null,
+      }));
+    }
+  }, [
+    demoJudgePath,
+    demoMode,
+    draft,
+    goToSetupStep,
+    applyGuidedSetupPreset,
+    handleOrganizerHandoff,
+    organizerAutoplayRunning,
+    resetOrganizerDemoWalkthrough,
+    router,
+    updateOrganizerDemoState,
+    waitForOrganizerPlayback,
+    moveOrganizerDemoCursor,
+  ]);
   const downloadRegistrationQr = async () => {
     if (!draft) {
       return;
@@ -2013,6 +2237,7 @@ export default function StaffDashboard({
             judgeHref={demoJudgePath}
             leaderboardHref={leaderboardPath}
             displayHref={displayPath}
+            suppressed={organizerAutoplayRunning || organizerPlaybackStep !== null}
             onActiveStepChange={setActiveOrganizerDemoStep}
             onRestart={resetOrganizerDemoWalkthrough}
             onHandoffClick={handleOrganizerHandoff}
@@ -2032,14 +2257,23 @@ export default function StaffDashboard({
               <div>
                 <div className="results-kicker">Experience as an organizer</div>
                 <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
-                  Build the event once. Hand off the same model everywhere else.
+                  Choose a comp format. Generate the day. Hand it straight into live judging.
                 </h1>
                 <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-                  You are setting up a gym comp. Start with the organizer workflow below, then open the live judging and public views that the same event powers.
+                  You are setting up a gym comp. Watch the event structure appear in the organizer workflow, then follow the same event into the live judge station and public results.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <a href="#demo-organizer-setup" onClick={handleOrganizerSetupStart} className="results-primary-button">
-                    Start here
+                  <button
+                    type="button"
+                    onClick={() => void runOrganizerDemo()}
+                    className="results-primary-button"
+                    data-demo-anchor="organizer-run-demo"
+                    disabled={organizerAutoplayRunning}
+                  >
+                    {organizerAutoplayRunning ? "Running organizer demo..." : "Run organizer demo"}
+                  </button>
+                  <a href="#demo-organizer-setup" onClick={handleOrganizerSetupStart} className="results-secondary-button">
+                    Explore setup manually
                   </a>
                   {leaderboardPath ? (
                     <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button">
@@ -2075,9 +2309,60 @@ export default function StaffDashboard({
                       : "Sample flow loading."}
                   </div>
                 </div>
+                {demoMode ? (
+                  <div className="mt-5 rounded-[1.2rem] border border-slate-200 bg-white/85 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      What this builds
+                    </div>
+                    <div className="mt-3 grid gap-2 text-sm text-slate-700">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Categories configured</span>
+                        <span className="results-chip">{draft?.qualifier_eligible_age_groups.length ?? 0}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Format selected</span>
+                        <span className="results-chip">{selectedGuidedSetupPreset?.title ?? "Choose one"}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Schedule generated</span>
+                        <span className="results-chip">{draft?.schedule_blocks.length ?? 0} blocks</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Stages ready</span>
+                        <span className="results-chip">{currentCompetitionStages.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Next surface</span>
+                        <span className="results-chip">Judge station</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </Surface>
             </div>
           </section>
+        ) : null}
+
+        {demoMode && organizerNarration ? (
+          <Surface variant="row" className="border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.94))]">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <div className="results-kicker text-sky-700">
+                  {organizerAutoplayRunning ? "Organizer autoplay" : "Organizer walkthrough"}
+                </div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  {organizerNarration.title}
+                </h2>
+                <p className="max-w-4xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                  {organizerNarration.body}
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/90 px-4 py-2 text-sm font-semibold text-sky-800 shadow-[0_10px_24px_rgba(14,116,215,0.08)]">
+                <span className="demo-live-dot" aria-hidden="true" />
+                <span>{organizerAutoplayRunning ? "Follow the cursor and narration" : "Ready to replay"}</span>
+              </div>
+            </div>
+          </Surface>
         ) : null}
 
         {demoMode ? (
@@ -2384,6 +2669,7 @@ export default function StaffDashboard({
                           href={demoMode ? demoJudgePath : judgeUrl}
                           onClick={() => handleOrganizerHandoff("judge")}
                           className="results-secondary-button w-full"
+                          data-demo-anchor="organizer-handoff-judge"
                         >
                           {demoMode ? "Judge live flow" : "Judge scoring"}
                         </Link>
@@ -2471,6 +2757,18 @@ export default function StaffDashboard({
                           type="button"
                           onClick={() => goToSetupStep(index)}
                           aria-current={isActive ? "step" : undefined}
+                          disabled={organizerAutoplayRunning}
+                          data-demo-anchor={
+                            step.id === "categories"
+                              ? "organizer-step-categories"
+                              : step.id === "presets"
+                                ? "organizer-step-structure"
+                                : step.id === "schedule"
+                                  ? "organizer-step-schedule"
+                                  : step.id === "stages"
+                                    ? "organizer-step-stages"
+                                    : undefined
+                          }
                           className={`group min-w-0 rounded-[2rem] border px-5 py-6 text-left transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-1 sm:px-6 sm:py-7 ${
                             isActive
                               ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_54px_rgba(15,23,42,0.18)]"
@@ -3009,9 +3307,11 @@ export default function StaffDashboard({
                             type="button"
                             aria-pressed={isSelected}
                             onClick={() => handleOrganizerPresetSelection(preset.id)}
+                            disabled={organizerAutoplayRunning}
+                            data-demo-anchor={preset.id === "qualifier_finals" ? "organizer-preset-qualifier-finals" : undefined}
                             className={`group flex min-w-0 h-full min-h-[21rem] flex-col rounded-[1.6rem] border px-5 py-5 text-left transition ${
                               isSelected
-                                ? "border-slate-950 bg-slate-950 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
+                                ? "border-slate-950 bg-slate-950 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)] demo-organizer-preset-selected"
                                 : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/50"
                             }`}
                           >
@@ -3933,9 +4233,9 @@ export default function StaffDashboard({
                 Show buyers the organizer setup first, then open the public leaderboard and display to demonstrate the event-day experience end to end.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <a href="#demo-organizer-setup" className="results-primary-button">
-                  Start the walkthrough
-                </a>
+                <button type="button" onClick={() => void runOrganizerDemo()} className="results-primary-button" disabled={organizerAutoplayRunning}>
+                  {organizerAutoplayRunning ? "Running organizer demo..." : "Run organizer demo"}
+                </button>
                 {leaderboardPath ? (
                   <Link href={leaderboardPath} className="results-secondary-button">
                     Open sample leaderboard
@@ -3944,6 +4244,20 @@ export default function StaffDashboard({
               </div>
             </section>
           </section>
+        ) : null}
+
+        {organizerDemoCursor.visible ? (
+          <div
+            className={`demo-pointer ${organizerDemoCursor.clicking ? "demo-pointer-clicking" : ""}`}
+            style={{
+              left: organizerDemoCursor.x,
+              top: organizerDemoCursor.y,
+            }}
+            aria-hidden="true"
+          >
+            <div className="demo-pointer-dot" />
+            {organizerDemoCursor.label ? <div className="demo-pointer-label">{organizerDemoCursor.label}</div> : null}
+          </div>
         ) : null}
 
         <ConfirmationModal

@@ -28,6 +28,7 @@ type OrganizerDemoTourProps = {
   judgeHref: string;
   leaderboardHref: string;
   displayHref: string;
+  suppressed?: boolean;
   onActiveStepChange: (stepId: OrganizerDemoStepId) => void;
   onRestart: () => void;
   onHandoffClick: (target: OrganizerDemoHandoffTarget) => void;
@@ -81,6 +82,7 @@ export function OrganizerDemoTour({
   judgeHref,
   leaderboardHref,
   displayHref,
+  suppressed = false,
   onActiveStepChange,
   onRestart,
   onHandoffClick,
@@ -120,8 +122,12 @@ export function OrganizerDemoTour({
   const activeStep = baseSteps[stepIndex];
 
   useEffect(() => {
+    if (suppressed) {
+      return;
+    }
+
     onActiveStepChange(activeStep.id);
-  }, [activeStep.id, onActiveStepChange]);
+  }, [activeStep.id, onActiveStepChange, suppressed]);
 
   const stepRequirement = useMemo(() => {
     if (activeStep.id === "overview") {
@@ -182,6 +188,10 @@ export function OrganizerDemoTour({
     scheduleViewed,
     stagesViewed,
   ]);
+
+  if (suppressed) {
+    return null;
+  }
 
   if (hidden) {
     return (
