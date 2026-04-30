@@ -124,6 +124,16 @@ export interface CompetitionUndoAvailability {
   operation_type: "advance" | "reset" | null;
 }
 
+export type ScoreWriteStatus = "accepted" | "projected" | "conflicted" | "ignored_as_stale";
+
+export interface ScoreWriteResult<TAttempt> {
+  attempt: TAttempt;
+  status: ScoreWriteStatus;
+  conflictReason: string | null;
+  clientEventId: string;
+  scoredAt: string;
+}
+
 type RegisteredClimberResult = Climber & {
   competition_slug: string;
   scorecard_path: string;
@@ -159,6 +169,11 @@ function ensureConfigured() {
 
 function cleanString(value: string) {
   return value.trim();
+}
+
+function cleanOptionalString(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }
 
 function cleanOptionalExternalUrl(value: string | null | undefined) {
@@ -215,6 +230,32 @@ function arrayifyIds(value: unknown) {
   }
 
   return [] as string[];
+}
+
+function parseScoreWriteResult<TAttempt>(payload: unknown) {
+  const normalizedPayload =
+    Array.isArray(payload) ? payload[0] : payload;
+
+  if (!normalizedPayload || typeof normalizedPayload !== "object") {
+    throw new Error("Score save completed without a valid payload.");
+  }
+
+  const record = normalizedPayload as Record<string, unknown>;
+  const attempt = record.attempt;
+  if (!attempt || typeof attempt !== "object") {
+    throw new Error("Score save completed without a projected attempt row.");
+  }
+
+  return {
+    attempt: attempt as TAttempt,
+    status: (record.status as ScoreWriteStatus | undefined) ?? "accepted",
+    conflictReason:
+      typeof record.conflict_reason === "string" ? record.conflict_reason : null,
+    clientEventId:
+      typeof record.client_event_id === "string" ? record.client_event_id : "",
+    scoredAt:
+      typeof record.scored_at === "string" ? record.scored_at : new Date().toISOString(),
+  } satisfies ScoreWriteResult<TAttempt>;
 }
 
 function assertQualifierOpen(competition: Competition, message: string) {
@@ -1947,6 +1988,11 @@ export async function updateQualifierAttemptByStaff(
     zone?: boolean;
     attemptsToTop?: number | null;
     attemptsToZone?: number | null;
+    clientEventId?: string;
+    scoredAt?: string;
+    judgeDeviceId?: string | null;
+    judgeSessionId?: string | null;
+    replayedFromOffline?: boolean;
   }
 ) {
   ensureConfigured();
@@ -1973,7 +2019,7 @@ export async function updateQualifierAttemptByStaff(
     attemptsToZone: options?.attemptsToZone,
   });
 
-  const { data, error } = await supabase.rpc("submit_staff_qualifier_attempt", {
+  const { data, error } = await supabase.rpc("append_qualifier_score_event", {
     p_competition_id: competitionId,
     p_climber_id: climberId,
     p_round_id: linkedRound.id,
@@ -1983,13 +2029,19 @@ export async function updateQualifierAttemptByStaff(
     p_zone: normalized.zone,
     p_attempts_to_top: normalized.attemptsToTop,
     p_attempts_to_zone: normalized.attemptsToZone,
+    p_entered_by: "staff",
+    p_client_event_id: options?.clientEventId,
+    p_scored_at: options?.scoredAt,
+    p_judge_device_id: cleanOptionalString(options?.judgeDeviceId),
+    p_judge_session_id: cleanOptionalString(options?.judgeSessionId),
+    p_replayed_from_offline: options?.replayedFromOffline ?? false,
   });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (Array.isArray(data) ? data[0] : data) as QualifierAttempt;
+  return parseScoreWriteResult<QualifierAttempt>(data);
 }
 
 export async function updateQualifierAttemptByToken(
@@ -2070,7 +2122,14 @@ export async function updateFinalAttempt(
   top: boolean,
   zone: boolean,
   attemptsToTop: number | null,
-  attemptsToZone: number | null
+  attemptsToZone: number | null,
+  options?: {
+    clientEventId?: string;
+    scoredAt?: string;
+    judgeDeviceId?: string | null;
+    judgeSessionId?: string | null;
+    replayedFromOffline?: boolean;
+  }
 ) {
   ensureConfigured();
 
@@ -2088,28 +2147,25 @@ export async function updateFinalAttempt(
     throw new Error("Only finalists can receive finals scores.");
   }
 
-  const { data, error } = await supabase
-    .from("final_attempts")
-    .upsert(
-      {
-        competition_id: competitionId,
-        round_id: activeRound.id,
-        climber_id: climberId,
-        climb_number: climbNumber,
-        top: normalized.top,
-        zone: normalized.zone,
-        attempts_to_top: normalized.attemptsToTop,
-        attempts_to_zone: normalized.attemptsToZone,
-        entered_by: "staff",
-      },
-      { onConflict: "competition_id,round_id,climber_id,climb_number" }
-    )
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc("append_final_score_event", {
+    p_competition_id: competitionId,
+    p_round_id: activeRound.id,
+    p_climber_id: climberId,
+    p_climb_number: climbNumber,
+    p_top: normalized.top,
+    p_zone: normalized.zone,
+    p_attempts_to_top: normalized.attemptsToTop,
+    p_attempts_to_zone: normalized.attemptsToZone,
+    p_client_event_id: options?.clientEventId,
+    p_scored_at: options?.scoredAt,
+    p_judge_device_id: cleanOptionalString(options?.judgeDeviceId),
+    p_judge_session_id: cleanOptionalString(options?.judgeSessionId),
+    p_replayed_from_offline: options?.replayedFromOffline ?? false,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data as FinalAttempt;
+  return parseScoreWriteResult<FinalAttempt>(data);
 }

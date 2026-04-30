@@ -4,7 +4,7 @@ import { createServiceRoleSupabaseClient } from "./server-supabase";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEMO_LOCATION = "North Summit Climbing";
-const DEMO_ACTIVE_BLOCK_LABEL = "Youth B qualifier rotation";
+const DEMO_ACTIVE_BLOCK_LABEL = "Open qualifier rotation";
 const OPTIONAL_COMPETITION_LINK_COLUMNS = [
   "official_event_url",
   "official_registration_url",
@@ -19,6 +19,14 @@ type DemoCategorySeed = {
     number: string;
     province: string;
     scoredBoulders: number;
+    seededAttempts?: Array<{
+      climbNumber: number;
+      attemptCount: number;
+      zone: boolean;
+      topped: boolean;
+      attemptsToTop: number | null;
+      attemptsToZone: number | null;
+    }>;
   }>;
 };
 
@@ -61,45 +69,81 @@ const OPTIONAL_QUEUE_COLUMNS = [
 
 const DEMO_CATEGORY_SEEDS: DemoCategorySeed[] = [
   {
-    ageGroup: "Youth D",
+    ageGroup: "Open",
     division: "Mixed",
     climbers: [
-      { name: "Avery Chen", number: "101", province: "NS", scoredBoulders: 5 },
-      { name: "Milo Fraser", number: "102", province: "NB", scoredBoulders: 5 },
-      { name: "Sofia Turner", number: "103", province: "PE", scoredBoulders: 5 },
-      { name: "Noah Patel", number: "104", province: "NS", scoredBoulders: 5 },
-      { name: "Emma Brooks", number: "105", province: "NB", scoredBoulders: 5 },
-      { name: "Lucas Martin", number: "106", province: "NS", scoredBoulders: 5 },
-      { name: "Chloe Adams", number: "107", province: "NL", scoredBoulders: 5 },
-      { name: "Ethan Ross", number: "108", province: "PE", scoredBoulders: 0 },
+      {
+        name: "Maya Foster",
+        number: "301",
+        province: "NS",
+        scoredBoulders: 2,
+        seededAttempts: [
+          {
+            climbNumber: 3,
+            attemptCount: 1,
+            zone: true,
+            topped: true,
+            attemptsToTop: 1,
+            attemptsToZone: 1,
+          },
+          {
+            climbNumber: 4,
+            attemptCount: 3,
+            zone: true,
+            topped: false,
+            attemptsToTop: null,
+            attemptsToZone: 3,
+          },
+        ],
+      },
+      {
+        name: "Declan White",
+        number: "302",
+        province: "NB",
+        scoredBoulders: 2,
+        seededAttempts: [
+          {
+            climbNumber: 3,
+            attemptCount: 1,
+            zone: true,
+            topped: true,
+            attemptsToTop: 1,
+            attemptsToZone: 1,
+          },
+          {
+            climbNumber: 4,
+            attemptCount: 2,
+            zone: true,
+            topped: false,
+            attemptsToTop: null,
+            attemptsToZone: 2,
+          },
+        ],
+      },
+      { name: "Zoe Gagnon", number: "303", province: "QC", scoredBoulders: 3 },
+      { name: "Caleb King", number: "304", province: "NS", scoredBoulders: 2 },
+      { name: "Nora Walsh", number: "305", province: "NL", scoredBoulders: 2 },
+      { name: "Isaac Green", number: "306", province: "NB", scoredBoulders: 1 },
+      { name: "Sadie Bell", number: "307", province: "NS", scoredBoulders: 1 },
+      { name: "Theo Young", number: "308", province: "PE", scoredBoulders: 0 },
+      { name: "Camille Bouchard", number: "309", province: "QC", scoredBoulders: 0 },
+      { name: "Julian Mercer", number: "310", province: "ON", scoredBoulders: 0 },
     ],
   },
   {
     ageGroup: "Youth B",
     division: "Mixed",
     climbers: [
-      { name: "Harper Singh", number: "201", province: "NS", scoredBoulders: 5 },
-      { name: "Owen Murphy", number: "202", province: "NB", scoredBoulders: 5 },
-      { name: "Lily Cooper", number: "203", province: "PE", scoredBoulders: 5 },
-      { name: "Jackson Lee", number: "204", province: "NS", scoredBoulders: 5 },
-      { name: "Aria Campbell", number: "205", province: "NL", scoredBoulders: 2 },
-      { name: "Levi Bennett", number: "206", province: "NS", scoredBoulders: 0 },
-      { name: "Ella Reid", number: "207", province: "NB", scoredBoulders: 0 },
-      { name: "Hudson Price", number: "208", province: "PE", scoredBoulders: 0 },
-    ],
-  },
-  {
-    ageGroup: "Open",
-    division: "Mixed",
-    climbers: [
-      { name: "Maya Foster", number: "301", province: "NS", scoredBoulders: 5 },
-      { name: "Declan White", number: "302", province: "NB", scoredBoulders: 5 },
-      { name: "Zoe Hughes", number: "303", province: "PE", scoredBoulders: 1 },
-      { name: "Caleb King", number: "304", province: "NS", scoredBoulders: 0 },
-      { name: "Nora Walsh", number: "305", province: "NL", scoredBoulders: 0 },
-      { name: "Isaac Green", number: "306", province: "NB", scoredBoulders: 0 },
-      { name: "Sadie Bell", number: "307", province: "NS", scoredBoulders: 0 },
-      { name: "Theo Young", number: "308", province: "PE", scoredBoulders: 0 },
+      { name: "Avery Chen", number: "201", province: "NS", scoredBoulders: 3 },
+      { name: "Milo Fraser", number: "202", province: "NB", scoredBoulders: 3 },
+      { name: "Sofia Turner", number: "203", province: "PE", scoredBoulders: 2 },
+      { name: "Noah Patel", number: "204", province: "NS", scoredBoulders: 2 },
+      { name: "Emma Brooks", number: "205", province: "NB", scoredBoulders: 2 },
+      { name: "Lucas Martin", number: "206", province: "NS", scoredBoulders: 1 },
+      { name: "Chloe Adams", number: "207", province: "NL", scoredBoulders: 1 },
+      { name: "Ethan Ross", number: "208", province: "PE", scoredBoulders: 0 },
+      { name: "Laurence Cote", number: "209", province: "QC", scoredBoulders: 0 },
+      { name: "Owen Murphy", number: "210", province: "NB", scoredBoulders: 0 },
     ],
   },
 ];
@@ -216,9 +260,9 @@ export async function resetDemoCompetition() {
     official_event_url: "",
     official_registration_url: "",
     official_schedule_url: "",
-    total_climbs: 5,
-    max_climbers: 48,
-    qualifier_counting_climbs: 5,
+    total_climbs: 4,
+    max_climbers: 24,
+    qualifier_counting_climbs: 4,
     has_finals: true,
     finals_cutoff: 6,
     finals_tie_advances: true,
@@ -259,8 +303,8 @@ export async function resetDemoCompetition() {
       is_enabled: true,
       is_active: true,
       activated_at: now.toISOString(),
-      problem_count: 5,
-      counting_climbs: 5,
+      problem_count: 4,
+      counting_climbs: 4,
       finals_cutoff: 6,
       eligible_category_ids: categories.map((entry) => entry.id),
       advancement_source_round_id: null,
@@ -327,7 +371,7 @@ export async function resetDemoCompetition() {
         label: `${entry.ageGroup} qualifier rotation`,
         phase_type: "qualifier_round",
         audience_label: buildDisplayCategory(entry.division, entry.ageGroup),
-        is_active: index === 1,
+        is_active: index === 0,
         start_time: minutesToLabel(qualifierStart),
         end_time: minutesToLabel(qualifierEnd),
         capacity: 12,
@@ -401,7 +445,23 @@ export async function resetDemoCompetition() {
         return [];
       }
 
-      return Array.from({ length: seededClimber.scoredBoulders }, (_, attemptIndex) => {
+      if (seededClimber.seededAttempts?.length) {
+        return seededClimber.seededAttempts.map((attempt) => ({
+          id: createId(),
+          competition_id: competitionId,
+          round_id: qualifierRoundId,
+          climber_id: climber.id,
+          climb_number: attempt.climbNumber,
+          entered_by: "staff",
+          attempt_count: attempt.attemptCount,
+          zone: attempt.zone,
+          topped: attempt.topped,
+          attempts_to_top: attempt.attemptsToTop,
+          attempts_to_zone: attempt.attemptsToZone,
+        }));
+      }
+
+      return Array.from({ length: Math.min(seededClimber.scoredBoulders, 4) }, (_, attemptIndex) => {
         const climbNumber = attemptIndex + 1;
         const template = buildAttemptTemplate(climberIndex, climbNumber);
         return {
@@ -419,17 +479,43 @@ export async function resetDemoCompetition() {
   if (attempts.length) {
     const attemptInsert = await supabase.from("qualifier_attempts").insert(attempts);
     await requireNoSupabaseError(attemptInsert, "Unable to create demo qualifier attempts.");
+
+    const qualifierEventInsert = await supabase.from("qualifier_score_events").insert(
+      attempts.map((attempt, index) => ({
+        id: createId(),
+        competition_id: attempt.competition_id,
+        round_id: attempt.round_id,
+        climber_id: attempt.climber_id,
+        climb_number: attempt.climb_number,
+        attempt_count: attempt.attempt_count,
+        zone: attempt.zone,
+        topped: attempt.topped,
+        attempts_to_top: attempt.attempts_to_top,
+        attempts_to_zone: attempt.attempts_to_zone,
+        entered_by: attempt.entered_by,
+        judge_device_id: "demo-seed",
+        judge_session_id: "seeded-demo",
+        scored_at: new Date(now.getTime() - (attempts.length - index) * 60_000).toISOString(),
+        received_at: new Date(now.getTime() - (attempts.length - index) * 60_000).toISOString(),
+        client_event_id: `demo-seed-${attempt.id}`,
+        replayed_from_offline: false,
+        conflict_flag: false,
+        conflict_reason: null,
+        supersedes_event_id: null,
+      }))
+    );
+    await requireNoSupabaseError(qualifierEventInsert, "Unable to create demo qualifier score events.");
   }
 
-  const activeYouthBBlockId =
+  const activeOpenBlockId =
     scheduleBlocks.find((entry) => entry.label === DEMO_ACTIVE_BLOCK_LABEL)?.id ?? null;
-  const youthBClimbers = climbers.filter((entry) => entry.age_group === "Youth B").slice(0, 3);
-  if (activeYouthBBlockId && youthBClimbers.length) {
-    const queuePayload = youthBClimbers.map((climber, index) => ({
+  const openQueueClimbers = climbers.filter((entry) => entry.age_group === "Open").slice(0, 3);
+  if (activeOpenBlockId && openQueueClimbers.length) {
+    const queuePayload = openQueueClimbers.map((climber, index) => ({
       id: createId(),
       competition_id: competitionId,
       climber_id: climber.id,
-      schedule_block_id: activeYouthBBlockId,
+      schedule_block_id: activeOpenBlockId,
       climb_number: index + 2,
       checked_in_at: new Date(now.getTime() - (index + 1) * 45 * 1000).toISOString(),
       climber_name: climber.name,

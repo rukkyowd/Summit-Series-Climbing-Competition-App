@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
-import type { LeaderboardImpact } from "@/components/demo/types";
+import type { LeaderboardImpact, LeaderboardToast } from "@/components/demo/types";
 import type { CompetitionSnapshot } from "@/lib/db";
 import {
   compareQualifierEntries,
@@ -21,6 +22,9 @@ type LeaderboardPanelProps = {
   highlightedClimberId?: string | null;
   targetClimberId?: string | null;
   impact?: LeaderboardImpact | null;
+  lastUpdatedAt?: string | null;
+  toast?: LeaderboardToast | null;
+  presentationFocus?: "judge" | "save" | "leaderboard" | "offline" | "sync" | "complete" | null;
 };
 
 export function LeaderboardPanel({
@@ -29,9 +33,14 @@ export function LeaderboardPanel({
   highlightedClimberId = null,
   targetClimberId = null,
   impact = null,
+  lastUpdatedAt = null,
+  toast = null,
+  presentationFocus = null,
 }: LeaderboardPanelProps) {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
+  const [relativeNow, setRelativeNow] = useState(() => Date.now());
+  const reduceMotion = useReducedMotion();
 
   const categories = useMemo(() => {
     const offeredCategories = snapshot.registrationChoices.map((choice) => choice.category);
@@ -92,6 +101,11 @@ export function LeaderboardPanel({
     }
   }, [finalsCategories, selectedFinalsCategory]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setRelativeNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
   const finalsActive =
     snapshot.competition.current_phase === "finals_open" ||
@@ -107,6 +121,28 @@ export function LeaderboardPanel({
       : "Score column shows official qualifier points.";
 
   const wrapperClass = embedded ? "h-full space-y-4" : "space-y-6";
+
+  const lastUpdatedLabel = useMemo(() => {
+    if (!lastUpdatedAt) {
+      return "Updated just now";
+    }
+
+    const timestamp = new Date(lastUpdatedAt).getTime();
+    if (Number.isNaN(timestamp)) {
+      return "Updated live";
+    }
+
+    const seconds = Math.max(0, Math.round((relativeNow - timestamp) / 1000));
+    if (seconds <= 1) {
+      return "Updated just now";
+    }
+    if (seconds < 60) {
+      return `Updated ${seconds}s ago`;
+    }
+
+    const minutes = Math.round(seconds / 60);
+    return `Updated ${minutes}m ago`;
+  }, [lastUpdatedAt, relativeNow]);
 
   const getImpactLabel = (climberId: string) => {
     if (!impact || impact.climberId !== climberId) {
@@ -177,14 +213,25 @@ export function LeaderboardPanel({
       ) : (
         <Surface
           variant="card"
-          className={embedded ? "flex h-full min-h-0 min-w-0 flex-col" : undefined}
+          className={`${embedded ? "flex h-full min-h-0 min-w-0 flex-col" : ""} ${
+            presentationFocus === "leaderboard" || presentationFocus === "sync"
+              ? "demo-pitch-focus-surface"
+              : ""
+          }`}
           data-demo-anchor={embedded ? "interactive-leaderboard" : "leaderboard-overview"}
         >
           <div className="results-kicker">{activeQualifierRoundName} standings</div>
           <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">
             {scrambleFormat ? "Live scramble standings" : `Live ${activeQualifierRoundName.toLowerCase()} rankings`}
           </h2>
-          <div className="mt-3 text-sm text-slate-600">{qualifierScoreContextLabel}</div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
+            <div className="demo-live-badge">
+              <span className="demo-live-dot" aria-hidden="true" />
+              <span>LIVE</span>
+            </div>
+            <div>{lastUpdatedLabel}</div>
+            <div>{qualifierScoreContextLabel}</div>
+          </div>
 
           <div
             className={`mt-5 w-full overflow-x-auto rounded-[1.3rem] border border-slate-200/80 bg-white/72 px-2 py-2 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl ${embedded ? "" : "sticky top-20 z-20 sm:top-24"}`}
@@ -216,54 +263,62 @@ export function LeaderboardPanel({
             </Surface>
           ) : (
             <>
-              <div className="mt-6 space-y-3 md:hidden">
+              <motion.div layout className="mt-6 space-y-3 md:hidden">
                 {qualifierRows.map((entry) => {
                   const impactLabel = getImpactLabel(entry.climber_id);
                   const impacted = Boolean(impactLabel);
                   return (
-                  <Surface
-                    key={entry.climber_id}
-                    variant="meta"
-                    className={`min-w-0 ${highlightedClimberId === entry.climber_id ? "ring-2 ring-sky-400/50" : ""} ${impacted ? "demo-rank-impact-card" : ""}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="results-kicker">Rank #{entry.category_rank}</div>
-                        <div className="mt-2 break-words text-lg font-semibold text-slate-950">{entry.name}</div>
-                        <div className="mt-1 break-words text-sm leading-relaxed text-slate-600">
-                          #{entry.climber_number} | {entry.province}
+                    <motion.div
+                      key={entry.climber_id}
+                      layout
+                      transition={{ duration: reduceMotion ? 0.18 : 0.55, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <Surface
+                        variant="meta"
+                        className={`min-w-0 ${highlightedClimberId === entry.climber_id ? "ring-2 ring-sky-400/50" : ""} ${impacted ? "demo-rank-impact-card" : ""}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="results-kicker">Rank #{entry.category_rank}</div>
+                            <div className="mt-2 break-words text-lg font-semibold text-slate-950">{entry.name}</div>
+                            <div className="mt-1 break-words text-sm leading-relaxed text-slate-600">
+                              #{entry.climber_number} | {entry.province}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="results-kicker">Score</div>
+                            <div className="font-semibold text-slate-950">
+                              {Number.isInteger(entry.total_score)
+                                ? entry.total_score.toLocaleString()
+                                : formatFinalPoints(entry.total_score)}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="results-kicker">Score</div>
-                        <div className="font-semibold text-slate-950">
-                          {Number.isInteger(entry.total_score)
-                            ? entry.total_score.toLocaleString()
-                            : formatFinalPoints(entry.total_score)}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Badge>{entry.display_category}</Badge>
+                          {targetClimberId === entry.climber_id ? <Badge>Demo target</Badge> : null}
+                          {impactLabel ? <Badge variant="live">{impactLabel}</Badge> : null}
+                          {impact?.climberId === entry.climber_id && impact.reason ? (
+                            <Badge variant="live">{impact.reason}</Badge>
+                          ) : null}
+                          <Badge>{entry.topped_count} tops</Badge>
+                          <Badge>{entry.zone_count} zones</Badge>
                         </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Badge>{entry.display_category}</Badge>
-                      {targetClimberId === entry.climber_id ? <Badge>Demo target</Badge> : null}
-                      {impactLabel ? <Badge variant="live">{impactLabel}</Badge> : null}
-                      <Badge>{entry.topped_count} tops</Badge>
-                      <Badge>{entry.zone_count} zones</Badge>
-                    </div>
-                  </Surface>
+                      </Surface>
+                    </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
 
               <div
-                className={`results-data-scroll mt-6 hidden md:block ${embedded ? "min-w-0 flex-1 overflow-x-auto overflow-y-hidden" : ""}`}
+                className={`results-data-scroll mt-6 hidden md:block ${embedded ? "relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden" : ""}`}
                 data-demo-anchor={embedded ? "interactive-leaderboard-table" : "leaderboard-table"}
               >
                 <div className="results-table-scroll-hint">
                   <span>{qualifierScoreContextLabel}</span>
                   <span>Scroll sideways for the full standings table.</span>
                 </div>
-                <div className="min-w-[920px]">
+                <motion.div layout className="min-w-[920px]">
                   <div className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     <div>Rank</div>
                     <div>Name</div>
@@ -276,35 +331,59 @@ export function LeaderboardPanel({
                     const impactLabel = getImpactLabel(entry.climber_id);
                     const impacted = Boolean(impactLabel);
                     return (
-                    <div
-                      key={entry.climber_id}
-                      className={`grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700 transition-colors ${
-                        highlightedClimberId === entry.climber_id ? "bg-sky-50/80" : ""
-                      } ${impacted ? "demo-rank-impact-row" : ""}`}
-                    >
-                      <div className="text-xl font-semibold text-slate-950">{entry.category_rank}</div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="break-words text-lg font-semibold text-slate-950">{entry.name}</div>
-                          {targetClimberId === entry.climber_id ? <Badge>Demo target</Badge> : null}
-                          {impactLabel ? <Badge variant="live">{impactLabel}</Badge> : null}
+                      <motion.div
+                        key={entry.climber_id}
+                        layout
+                        transition={{ duration: reduceMotion ? 0.18 : 0.55, ease: [0.16, 1, 0.3, 1] }}
+                        className={`grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700 transition-colors ${
+                          highlightedClimberId === entry.climber_id ? "bg-sky-50/80" : ""
+                        } ${impacted ? "demo-rank-impact-row" : ""}`}
+                      >
+                        <div className="demo-rank-number text-slate-950">{entry.category_rank}</div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="break-words text-lg font-semibold text-slate-950">{entry.name}</div>
+                            {targetClimberId === entry.climber_id ? <Badge>Demo target</Badge> : null}
+                            {impactLabel ? <Badge variant="live">{impactLabel}</Badge> : null}
+                            {impact?.climberId === entry.climber_id && impact.reason ? (
+                              <Badge variant="live">{impact.reason}</Badge>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
                         </div>
-                        <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
-                      </div>
-                      <div>{entry.province}</div>
-                      <div>{entry.display_category}</div>
-                      <div className="font-semibold text-slate-950">
-                        {Number.isInteger(entry.total_score)
-                          ? entry.total_score.toLocaleString()
-                          : formatFinalPoints(entry.total_score)}
-                      </div>
-                      <div>
-                        {entry.topped_count} tops / {entry.zone_count} zones
-                      </div>
-                    </div>
+                        <div>{entry.province}</div>
+                        <div>{entry.display_category}</div>
+                        <div className="font-semibold text-slate-950">
+                          {Number.isInteger(entry.total_score)
+                            ? entry.total_score.toLocaleString()
+                            : formatFinalPoints(entry.total_score)}
+                        </div>
+                        <div>
+                          {entry.topped_count} tops / {entry.zone_count} zones
+                        </div>
+                      </motion.div>
                     );
                   })}
-                </div>
+                </motion.div>
+                <AnimatePresence>
+                  {toast ? (
+                    <motion.div
+                      key={toast.id}
+                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
+                      animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 }}
+                      transition={{ duration: reduceMotion ? 0.18 : 0.3, ease: [0.16, 1, 0.3, 1] }}
+                      className="demo-leaderboard-toast"
+                    >
+                      <div className="results-kicker text-emerald-200">Last score logged</div>
+                      <div className="mt-2 text-base font-semibold text-white">
+                        {toast.climberName} - {toast.climbLabel}
+                      </div>
+                      <div className="mt-1 text-sm text-emerald-100">{toast.resultLabel}</div>
+                      {toast.detail ? <div className="mt-2 text-xs text-slate-300">{toast.detail}</div> : null}
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
               </div>
             </>
           )}

@@ -15,7 +15,13 @@ import {
 } from "@/lib/db";
 import { getAuthState, isStaffRole, type Profile } from "@/lib/auth";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "@/lib/attempts";
-import { enqueueOfflineItem, readOfflineQueue, removeOfflineItem } from "@/lib/staff-offline-queue";
+import {
+  buildQueueMetadata,
+  enqueueOfflineItem,
+  markOfflineItemRetried,
+  readOfflineQueue,
+  removeOfflineItem,
+} from "@/lib/staff-offline-queue";
 import {
   buildFinalsLeaderboard,
   buildQualifierLeaderboard,
@@ -52,6 +58,11 @@ async function saveDemoQualifierAttempt(
     zone?: boolean;
     attemptsToTop?: number | null;
     attemptsToZone?: number | null;
+    clientEventId?: string;
+    scoredAt?: string;
+    judgeDeviceId?: string | null;
+    judgeSessionId?: string | null;
+    replayedFromOffline?: boolean;
   }
 ) {
   const response = await fetch("/api/demo/qualifier-attempt", {
@@ -68,12 +79,21 @@ async function saveDemoQualifierAttempt(
       zone: options?.zone,
       attemptsToTop: options?.attemptsToTop,
       attemptsToZone: options?.attemptsToZone,
+      clientEventId: options?.clientEventId,
+      scoredAt: options?.scoredAt,
+      judgeDeviceId: options?.judgeDeviceId,
+      judgeSessionId: options?.judgeSessionId,
+      replayedFromOffline: options?.replayedFromOffline,
     }),
   });
   const payload = (await response.json().catch(() => null)) as
     | {
         error?: string;
         attempt?: QualifierAttempt;
+        status?: "accepted" | "projected" | "conflicted" | "ignored_as_stale";
+        conflictReason?: string | null;
+        clientEventId?: string | null;
+        scoredAt?: string | null;
       }
     | null;
 
@@ -81,7 +101,13 @@ async function saveDemoQualifierAttempt(
     throw new Error(payload?.error || "Unable to save the demo qualifier score.");
   }
 
-  return payload.attempt;
+  return {
+    attempt: payload.attempt,
+    status: payload.status ?? "accepted",
+    conflictReason: payload.conflictReason ?? null,
+    clientEventId: payload.clientEventId ?? null,
+    scoredAt: payload.scoredAt ?? null,
+  };
 }
 
 function mergeQualifierAttempt(attempts: QualifierAttempt[], nextAttempt: QualifierAttempt) {
@@ -416,7 +442,7 @@ export default function StaffJudgePage() {
     }
 
     flushingQueueRef.current = true;
-    const queue = readOfflineQueue();
+    const queue = await readOfflineQueue();
     try {
       for (const item of queue) {
         try {
@@ -426,24 +452,41 @@ export default function StaffJudgePage() {
                 zone: item.zone,
                 attemptsToTop: item.attemptsToTop,
                 attemptsToZone: item.attemptsToZone,
+                clientEventId: item.clientEventId,
+                scoredAt: item.scoredAt,
+                judgeDeviceId: item.judgeDeviceId,
+                judgeSessionId: item.judgeSessionId,
+                replayedFromOffline: true,
               });
             } else {
               await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
                 zone: item.zone,
                 attemptsToTop: item.attemptsToTop,
                 attemptsToZone: item.attemptsToZone,
+                clientEventId: item.clientEventId,
+                scoredAt: item.scoredAt,
+                judgeDeviceId: item.judgeDeviceId,
+                judgeSessionId: item.judgeSessionId,
+                replayedFromOffline: true,
               });
             }
           } else {
-            await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone);
+            await updateFinalAttempt(item.competitionId, item.climberId, item.climbNumber, item.top, item.zone, item.attemptsToTop, item.attemptsToZone, {
+              clientEventId: item.clientEventId,
+              scoredAt: item.scoredAt,
+              judgeDeviceId: item.judgeDeviceId,
+              judgeSessionId: item.judgeSessionId,
+              replayedFromOffline: true,
+            });
           }
-          removeOfflineItem(item.id);
+          await removeOfflineItem(item.id);
         } catch {
+          await markOfflineItemRetried(item.id);
           break;
         }
       }
 
-      setQueuedCount(readOfflineQueue().length);
+      setQueuedCount((await readOfflineQueue()).length);
       if (snapshot) {
         const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
         setSnapshot(refreshed);
@@ -497,18 +540,22 @@ export default function StaffJudgePage() {
   }, [initialClimberId, slug]);
 
   useEffect(() => {
-    const syncQueuedCount = () => setQueuedCount(readOfflineQueue().length);
-    syncQueuedCount();
-    if (typeof navigator !== "undefined" && navigator.onLine && readOfflineQueue().length > 0) {
-      void flushOfflineQueue();
-    }
+    const syncQueuedCount = async () => setQueuedCount((await readOfflineQueue()).length);
+    void syncQueuedCount();
+    void (async () => {
+      const queue = await readOfflineQueue();
+      if (typeof navigator !== "undefined" && navigator.onLine && queue.length > 0) {
+        await flushOfflineQueue();
+      }
+    })();
     const onOnline = () => {
-      syncQueuedCount();
+      void syncQueuedCount();
       void flushOfflineQueue();
     };
-    const retryTimer = window.setInterval(() => {
-      if (typeof navigator !== "undefined" && navigator.onLine && readOfflineQueue().length > 0) {
-        void flushOfflineQueue();
+    const retryTimer = window.setInterval(async () => {
+      const queue = await readOfflineQueue();
+      if (typeof navigator !== "undefined" && navigator.onLine && queue.length > 0) {
+        await flushOfflineQueue();
       }
     }, 15000);
     window.addEventListener("online", onOnline);
@@ -727,6 +774,7 @@ export default function StaffJudgePage() {
     setError("");
     setMessage("");
     try {
+      const metadata = await buildQueueMetadata();
       const savedAttempt = isDemoCompetitionRecord(snapshot.competition)
         ? await saveDemoQualifierAttempt(
             snapshot.competition.id,
@@ -738,6 +786,10 @@ export default function StaffJudgePage() {
               zone: normalized.zone,
               attemptsToTop: normalized.attemptsToTop,
               attemptsToZone: normalized.attemptsToZone,
+              clientEventId: metadata.clientEventId,
+              scoredAt: metadata.scoredAt,
+              judgeDeviceId: metadata.judgeDeviceId,
+              judgeSessionId: metadata.judgeSessionId,
             }
           )
         : await updateQualifierAttemptByStaff(
@@ -750,6 +802,10 @@ export default function StaffJudgePage() {
               zone: normalized.zone,
               attemptsToTop: normalized.attemptsToTop,
               attemptsToZone: normalized.attemptsToZone,
+              clientEventId: metadata.clientEventId,
+              scoredAt: metadata.scoredAt,
+              judgeDeviceId: metadata.judgeDeviceId,
+              judgeSessionId: metadata.judgeSessionId,
             }
           );
       await updateClimberInSnapshot(
@@ -761,13 +817,20 @@ export default function StaffJudgePage() {
         }),
         (climber) => ({
           ...climber,
-          qualifier_attempts: mergeQualifierAttempt(climber.qualifier_attempts, savedAttempt),
+          qualifier_attempts: mergeQualifierAttempt(climber.qualifier_attempts, savedAttempt.attempt),
         })
       );
-      setMessage(`Saved qualifier score for boulder ${selectedBoulder}.`);
+      setMessage(
+        savedAttempt.status === "ignored_as_stale"
+          ? `A newer qualifier score already exists for boulder ${selectedBoulder}. Your queued score was preserved but did not replace the current result.`
+          : savedAttempt.status === "conflicted"
+            ? `Saved qualifier score for boulder ${selectedBoulder}, but another judge had already scored this cell. The latest timed event is now live.`
+            : `Saved qualifier score for boulder ${selectedBoulder}.`
+      );
     } catch (nextError) {
       if (shouldQueueFailedSave(nextError)) {
-        enqueueOfflineItem({
+        const metadata = await buildQueueMetadata();
+        await enqueueOfflineItem({
           id: `qualifier-${climberId}-${selectedBoulder}`,
           type: "qualifier",
           competitionId: snapshot.competition.id,
@@ -778,9 +841,15 @@ export default function StaffJudgePage() {
           zone: normalized.zone,
           attemptsToTop: normalized.attemptsToTop,
           attemptsToZone: normalized.attemptsToZone,
+          clientEventId: metadata.clientEventId,
+          scoredAt: metadata.scoredAt,
+          judgeDeviceId: metadata.judgeDeviceId,
+          judgeSessionId: metadata.judgeSessionId,
           createdAt: new Date().toISOString(),
+          retryCount: 0,
+          lastTriedAt: null,
         });
-        setQueuedCount(readOfflineQueue().length);
+        setQueuedCount((await readOfflineQueue()).length);
         setError(
           nextError instanceof Error
             ? `${nextError.message} Score queued locally and will retry automatically.`
@@ -816,6 +885,7 @@ export default function StaffJudgePage() {
     setMessage("");
 
     try {
+      const metadata = await buildQueueMetadata();
       const savedAttempt = await updateFinalAttempt(
         snapshot.competition.id,
         selectedCell.climberId,
@@ -823,7 +893,13 @@ export default function StaffJudgePage() {
         normalized.top,
         normalized.zone,
         normalized.attemptsToTop,
-        normalized.attemptsToZone
+        normalized.attemptsToZone,
+        {
+          clientEventId: metadata.clientEventId,
+          scoredAt: metadata.scoredAt,
+          judgeDeviceId: metadata.judgeDeviceId,
+          judgeSessionId: metadata.judgeSessionId,
+        }
       );
       await updateClimberInSnapshot(
         selectedCell.climberId,
@@ -839,13 +915,20 @@ export default function StaffJudgePage() {
         }),
         (climber) => ({
           ...climber,
-          final_attempts: mergeFinalAttempt(climber.final_attempts, savedAttempt),
+          final_attempts: mergeFinalAttempt(climber.final_attempts, savedAttempt.attempt),
         })
       );
-      setMessage(`Saved finals score for boulder ${selectedCell.climbNumber}.`);
+      setMessage(
+        savedAttempt.status === "ignored_as_stale"
+          ? `A newer finals score already exists for boulder ${selectedCell.climbNumber}. Your queued score was preserved but did not replace the current result.`
+          : savedAttempt.status === "conflicted"
+            ? `Saved finals score for boulder ${selectedCell.climbNumber}, but another judge also updated this cell. The latest timed event is now live.`
+            : `Saved finals score for boulder ${selectedCell.climbNumber}.`
+      );
     } catch (nextError) {
       if (shouldQueueFailedSave(nextError)) {
-        enqueueOfflineItem({
+        const metadata = await buildQueueMetadata();
+        await enqueueOfflineItem({
           id: `finals-${selectedCell.climberId}-${selectedCell.climbNumber}`,
           type: "finals",
           competitionId: snapshot.competition.id,
@@ -855,9 +938,15 @@ export default function StaffJudgePage() {
           zone: normalized.zone,
           attemptsToTop: normalized.attemptsToTop,
           attemptsToZone: normalized.attemptsToZone,
+          clientEventId: metadata.clientEventId,
+          scoredAt: metadata.scoredAt,
+          judgeDeviceId: metadata.judgeDeviceId,
+          judgeSessionId: metadata.judgeSessionId,
           createdAt: new Date().toISOString(),
+          retryCount: 0,
+          lastTriedAt: null,
         });
-        setQueuedCount(readOfflineQueue().length);
+        setQueuedCount((await readOfflineQueue()).length);
         setError(
           nextError instanceof Error
             ? `${nextError.message} Score queued locally and will retry automatically.`

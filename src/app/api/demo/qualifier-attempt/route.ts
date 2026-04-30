@@ -11,6 +11,11 @@ type DemoQualifierAttemptRequest = {
   zone?: boolean;
   attemptsToTop?: number | null;
   attemptsToZone?: number | null;
+  clientEventId?: string;
+  scoredAt?: string;
+  judgeDeviceId?: string | null;
+  judgeSessionId?: string | null;
+  replayedFromOffline?: boolean;
 };
 
 export async function POST(request: NextRequest) {
@@ -87,31 +92,59 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Climber not found in the demo competition." }, { status: 404 });
     }
 
-    const { data: attempt, error: attemptError } = await supabase
-      .from("qualifier_attempts")
-      .upsert(
-        {
-          competition_id: competition.id,
-          round_id: round.id,
-          climber_id: climber.id,
-          climb_number: payload.climbNumber,
-          attempt_count: normalized.attemptCount,
-          topped: normalized.topped,
-          zone: normalized.zone,
-          attempts_to_top: normalized.attemptsToTop,
-          attempts_to_zone: normalized.attemptsToZone,
-          entered_by: "staff",
-        },
-        { onConflict: "competition_id,round_id,climber_id,climb_number" }
-      )
-      .select("*")
-      .single();
+    const { data, error: attemptError } = await supabase.rpc("append_qualifier_score_event", {
+      p_competition_id: competition.id,
+      p_round_id: round.id,
+      p_climber_id: climber.id,
+      p_climb_number: payload.climbNumber,
+      p_attempt_count: normalized.attemptCount,
+      p_topped: normalized.topped,
+      p_zone: normalized.zone,
+      p_attempts_to_top: normalized.attemptsToTop,
+      p_attempts_to_zone: normalized.attemptsToZone,
+      p_entered_by: "staff",
+      p_client_event_id: payload.clientEventId,
+      p_scored_at: payload.scoredAt,
+      p_judge_device_id: payload.judgeDeviceId?.trim() || null,
+      p_judge_session_id: payload.judgeSessionId?.trim() || null,
+      p_replayed_from_offline: payload.replayedFromOffline ?? false,
+    });
 
     if (attemptError) {
       throw new Error(attemptError.message);
     }
 
-    return NextResponse.json({ attempt });
+    const result = Array.isArray(data) ? data[0] : data;
+    const attempt =
+      result && typeof result === "object" && "attempt" in result
+        ? (result as { attempt: unknown }).attempt
+        : null;
+
+    return NextResponse.json({
+      attempt,
+      status:
+        result && typeof result === "object" && typeof (result as { status?: string }).status === "string"
+          ? (result as { status: string }).status
+          : "accepted",
+      conflictReason:
+        result &&
+        typeof result === "object" &&
+        typeof (result as { conflict_reason?: string }).conflict_reason === "string"
+          ? (result as { conflict_reason: string }).conflict_reason
+          : null,
+      clientEventId:
+        result &&
+        typeof result === "object" &&
+        typeof (result as { client_event_id?: string }).client_event_id === "string"
+          ? (result as { client_event_id: string }).client_event_id
+          : payload.clientEventId ?? null,
+      scoredAt:
+        result &&
+        typeof result === "object" &&
+        typeof (result as { scored_at?: string }).scored_at === "string"
+          ? (result as { scored_at: string }).scored_at
+          : payload.scoredAt ?? null,
+    });
   } catch (error) {
     return NextResponse.json(
       {

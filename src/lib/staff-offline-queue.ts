@@ -1,8 +1,20 @@
 "use client";
 
+import localforage from "localforage";
+
+type OfflineQueueBase = {
+  id: string;
+  clientEventId: string;
+  scoredAt: string;
+  judgeDeviceId: string | null;
+  judgeSessionId: string | null;
+  createdAt: string;
+  retryCount: number;
+  lastTriedAt: string | null;
+};
+
 export type OfflineQueueItem =
-  | {
-      id: string;
+  | (OfflineQueueBase & {
       type: "qualifier";
       competitionId: string;
       climberId: string;
@@ -12,10 +24,8 @@ export type OfflineQueueItem =
       zone?: boolean;
       attemptsToTop?: number | null;
       attemptsToZone?: number | null;
-      createdAt: string;
-    }
-  | {
-      id: string;
+    })
+  | (OfflineQueueBase & {
       type: "finals";
       competitionId: string;
       climberId: string;
@@ -24,43 +34,134 @@ export type OfflineQueueItem =
       zone: boolean;
       attemptsToTop: number | null;
       attemptsToZone: number | null;
-      createdAt: string;
-    };
+    });
 
 const STORAGE_KEY = "staff_offline_queue";
+const DEVICE_ID_KEY = "staff_offline_queue_device_id";
+const SESSION_ID_KEY = "staff_offline_queue_session_id";
 
-export function readOfflineQueue(): OfflineQueueItem[] {
+const queueStore = localforage.createInstance({
+  name: "scorecard",
+  storeName: "staff_offline_queue",
+});
+
+function generateId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `generated-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function readStoredString(key: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const value = await queueStore.getItem<string>(key);
+    return typeof value === "string" && value.trim() ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeStoredString(key: string, value: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  await queueStore.setItem(key, value);
+}
+
+export async function getJudgeDeviceId() {
+  const existing = await readStoredString(DEVICE_ID_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const next = generateId();
+  await writeStoredString(DEVICE_ID_KEY, next);
+  return next;
+}
+
+export async function getJudgeSessionId() {
+  const existing = await readStoredString(SESSION_ID_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const next = generateId();
+  await writeStoredString(SESSION_ID_KEY, next);
+  return next;
+}
+
+export function createClientEventId() {
+  return generateId();
+}
+
+export async function buildQueueMetadata() {
+  const [judgeDeviceId, judgeSessionId] = await Promise.all([getJudgeDeviceId(), getJudgeSessionId()]);
+  return {
+    clientEventId: createClientEventId(),
+    scoredAt: new Date().toISOString(),
+    judgeDeviceId,
+    judgeSessionId,
+  };
+}
+
+export async function readOfflineQueue(): Promise<OfflineQueueItem[]> {
   if (typeof window === "undefined") {
     return [];
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as OfflineQueueItem[]) : [];
+    const raw = await queueStore.getItem<unknown>(STORAGE_KEY);
+    return Array.isArray(raw) ? (raw as OfflineQueueItem[]) : [];
   } catch {
     return [];
   }
 }
 
-export function writeOfflineQueue(items: OfflineQueueItem[]) {
+export async function writeOfflineQueue(items: OfflineQueueItem[]) {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  await queueStore.setItem(STORAGE_KEY, items);
 }
 
-export function enqueueOfflineItem(item: OfflineQueueItem) {
-  const queue = readOfflineQueue();
-  const deduped = queue.filter((entry) => !(entry.type === item.type && entry.competitionId === item.competitionId && entry.climberId === item.climberId && entry.climbNumber === item.climbNumber));
+export async function enqueueOfflineItem(item: OfflineQueueItem) {
+  const queue = await readOfflineQueue();
+  const deduped = queue.filter(
+    (entry) =>
+      !(
+        entry.type === item.type &&
+        entry.competitionId === item.competitionId &&
+        entry.climberId === item.climberId &&
+        entry.climbNumber === item.climbNumber
+      )
+  );
   deduped.push(item);
-  writeOfflineQueue(deduped);
+  deduped.sort((left, right) => left.scoredAt.localeCompare(right.scoredAt));
+  await writeOfflineQueue(deduped);
 }
 
-export function removeOfflineItem(id: string) {
-  writeOfflineQueue(readOfflineQueue().filter((entry) => entry.id !== id));
+export async function removeOfflineItem(id: string) {
+  await writeOfflineQueue((await readOfflineQueue()).filter((entry) => entry.id !== id));
+}
+
+export async function markOfflineItemRetried(id: string) {
+  const queue = await readOfflineQueue();
+  await writeOfflineQueue(
+    queue.map((entry) =>
+      entry.id === id
+        ? {
+            ...entry,
+            retryCount: entry.retryCount + 1,
+            lastTriedAt: new Date().toISOString(),
+          }
+        : entry
+    )
+  );
 }

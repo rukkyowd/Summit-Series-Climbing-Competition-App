@@ -6,11 +6,13 @@ export type DemoRole = "judge" | "competitor" | "organizer";
 export type DemoSimulationMode = "single_score" | "live_burst";
 
 export type DemoSyncStatus = "synced" | "pending" | "syncing" | "failed";
+export type DemoPlaybackStep = "save" | "leaderboard" | "offline" | "sync" | "complete";
 
 export type DemoToolkitState = {
   simulateOffline: boolean;
   pendingQueueCount: number;
   simulationRunning: boolean;
+  scriptRunning: boolean;
   lastSyncStatus: DemoSyncStatus;
 };
 
@@ -45,4 +47,14 @@ export type LeaderboardImpact = {
   beforeRank: number | null;
   afterRank: number | null;
   delta: number;
+  reason?: string | null;
+};
+
+export type LeaderboardToast = {
+  id: string;
+  climberId: string;
+  climberName: string;
+  climbLabel: string;
+  resultLabel: string;
+  detail?: string | null;
 };

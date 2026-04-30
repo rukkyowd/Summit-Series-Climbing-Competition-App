@@ -144,29 +144,33 @@ export async function POST(request: NextRequest) {
       attemptsToZone: shouldZone ? candidate.existing?.attempts_to_zone ?? nextAttemptCount : null,
     });
 
-    const { data: attempt, error: upsertError } = await supabase
-      .from("qualifier_attempts")
-      .upsert(
-        {
-          competition_id: competition.id,
-          round_id: round.id,
-          climber_id: candidate.climberId,
-          climb_number: candidate.climbNumber,
-          attempt_count: normalized.attemptCount,
-          topped: normalized.topped,
-          zone: normalized.zone,
-          attempts_to_top: normalized.attemptsToTop,
-          attempts_to_zone: normalized.attemptsToZone,
-          entered_by: "staff",
-        },
-        { onConflict: "competition_id,round_id,climber_id,climb_number" }
-      )
-      .select("*")
-      .single();
+    const { data, error: upsertError } = await supabase.rpc("append_qualifier_score_event", {
+      p_competition_id: competition.id,
+      p_round_id: round.id,
+      p_climber_id: candidate.climberId,
+      p_climb_number: candidate.climbNumber,
+      p_attempt_count: normalized.attemptCount,
+      p_topped: normalized.topped,
+      p_zone: normalized.zone,
+      p_attempts_to_top: normalized.attemptsToTop,
+      p_attempts_to_zone: normalized.attemptsToZone,
+      p_entered_by: "staff",
+      p_client_event_id: `demo-sim-${crypto.randomUUID()}`,
+      p_scored_at: new Date().toISOString(),
+      p_judge_device_id: "demo-simulator",
+      p_judge_session_id: mode,
+      p_replayed_from_offline: false,
+    });
 
     if (upsertError) {
       throw new Error(upsertError.message);
     }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    const attempt =
+      result && typeof result === "object" && "attempt" in result
+        ? (result as { attempt: unknown }).attempt
+        : null;
 
     return NextResponse.json({
       mode,

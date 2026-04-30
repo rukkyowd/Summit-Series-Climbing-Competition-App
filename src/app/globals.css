@@ -2069,3 +2069,165 @@ body[data-demo-tour-active="true"] .results-kicker {
     opacity: 0.88;
   }
 }
+
+.demo-live-badge {
+  @apply inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800;
+}
+
+.demo-live-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 9999px;
+  background: #16a34a;
+  box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.42);
+  animation: demo-live-pulse 1.8s ease-in-out infinite;
+  flex: 0 0 auto;
+}
+
+.route-judge-counter-button {
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.route-judge-counter-button:active {
+  transform: scale(0.95);
+  filter: brightness(1.06);
+}
+
+.route-judge-action {
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.route-judge-action:active {
+  transform: scale(0.95);
+  filter: brightness(1.05);
+}
+
+.demo-rank-number {
+  font-size: clamp(1.75rem, 1.3rem + 1vw, 2.4rem);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.demo-pitch-offline-page {
+  background:
+    linear-gradient(180deg, rgba(254, 243, 199, 0.26), rgba(255, 251, 235, 0.12)),
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.16), transparent 26%),
+    radial-gradient(circle at 78% 18%, rgba(249, 115, 22, 0.14), transparent 22%),
+    linear-gradient(180deg, #f8fbff 0%, #eef3f8 100%);
+}
+
+.demo-pitch-focus-surface {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 0 0 1px rgba(56, 189, 248, 0.18),
+    0 24px 52px rgba(14, 116, 215, 0.12),
+    0 0 64px rgba(56, 189, 248, 0.1) !important;
+}
+
+.demo-judge-offline-surface {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(251, 191, 36, 0.22),
+    0 22px 48px rgba(180, 83, 9, 0.12) !important;
+}
+
+.demo-judge-offline-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(245, 158, 11, 0.06) 0,
+      rgba(245, 158, 11, 0.06) 10px,
+      rgba(255, 255, 255, 0) 10px,
+      rgba(255, 255, 255, 0) 20px
+    );
+  pointer-events: none;
+}
+
+.demo-toolkit {
+  filter: drop-shadow(0 24px 48px rgba(15, 23, 42, 0.24));
+}
+
+.demo-toolkit-summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.demo-toolkit-summary::-webkit-details-marker {
+  display: none;
+}
+
+.demo-toolkit-pill {
+  @apply flex items-center justify-between gap-3 rounded-full border border-white/10 bg-[rgba(9,12,19,0.88)] px-4 py-3 backdrop-blur-xl;
+}
+
+.demo-toolkit-icon {
+  @apply inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-sm font-semibold text-white;
+}
+
+.demo-toolkit-title {
+  @apply text-sm font-semibold uppercase tracking-[0.18em] text-white/60;
+}
+
+.demo-toolkit-status {
+  @apply mt-1 text-sm font-medium text-slate-200;
+}
+
+.demo-toolkit-chip {
+  @apply shrink-0 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200;
+}
+
+.demo-toolkit-panel {
+  @apply mt-3 space-y-4 rounded-[1.6rem] border border-white/10 bg-[rgba(9,12,19,0.94)] p-5 backdrop-blur-2xl;
+}
+
+.demo-toolkit-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.28), transparent);
+}
+
+.demo-toolkit-toggle {
+  @apply flex items-center justify-between gap-4 rounded-[1.15rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-200;
+}
+
+.demo-leaderboard-toast {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  width: min(20rem, calc(100% - 2rem));
+  border-radius: 1.25rem;
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  background: linear-gradient(180deg, rgba(7, 26, 23, 0.96), rgba(9, 17, 31, 0.96));
+  padding: 1rem 1rem 0.95rem;
+  box-shadow:
+    0 18px 42px rgba(2, 8, 23, 0.32),
+    0 0 0 1px rgba(16, 185, 129, 0.08);
+  pointer-events: none;
+}
+
+@keyframes demo-live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.42);
+    opacity: 0.9;
+  }
+
+  50% {
+    box-shadow: 0 0 0 10px rgba(22, 163, 74, 0);
+    opacity: 1;
+  }
+}

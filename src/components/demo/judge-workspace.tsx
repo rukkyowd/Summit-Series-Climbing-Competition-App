@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/alert";
@@ -134,6 +134,9 @@ type JudgeWorkspaceProps = {
   targetClimberId?: string | null;
   targetClimberName?: string | null;
   offlineMode?: boolean;
+  interactionLocked?: boolean;
+  pitchClimbLabels?: Array<{ number: number; shortLabel: string; label: string }>;
+  presentationFocus?: "judge" | "save" | "leaderboard" | "offline" | "sync" | "complete" | null;
   onSaveQualifier: (input: JudgeQualifierSaveInput) => Promise<void>;
 };
 
@@ -150,6 +153,9 @@ export function JudgeWorkspace({
   targetClimberId = null,
   targetClimberName = null,
   offlineMode = false,
+  interactionLocked = false,
+  pitchClimbLabels = [],
+  presentationFocus = null,
   onSaveQualifier,
 }: JudgeWorkspaceProps) {
   const [query, setQuery] = useState("");
@@ -183,6 +189,10 @@ export function JudgeWorkspace({
         : syncState === "failed"
           ? "Sync needs attention before the public view catches up."
           : "Every save is publishing live to the public leaderboard.";
+  const selectedPitchClimb =
+    pitchClimbLabels.find((climb) => climb.number === selectedBoulder) ??
+    pitchClimbLabels[selectedBoulder - 1] ??
+    null;
 
   useEffect(() => {
     const nextDrafts: QualifierDraftState = {};
@@ -267,7 +277,12 @@ export function JudgeWorkspace({
   };
 
   return (
-    <Surface variant="card" className={embedded ? "flex h-full min-h-0 min-w-0 flex-col" : undefined}>
+    <Surface
+      variant="card"
+      className={`${embedded ? "flex h-full min-h-0 min-w-0 flex-col" : ""} ${
+        offlineMode ? "demo-judge-offline-surface" : ""
+      } ${presentationFocus === "judge" || presentationFocus === "offline" || presentationFocus === "sync" ? "demo-pitch-focus-surface" : ""}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4" data-demo-anchor="interactive-judge">
         <div className="space-y-2">
           <div className="results-kicker">{activeQualifierRoundName} scoring workspace</div>
@@ -275,7 +290,7 @@ export function JudgeWorkspace({
             Boulder-by-boulder judging
           </h2>
           <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
-            You are judging Youth D qualifiers. Save one score on Boulder 1, then watch the public leaderboard react on the right.
+            You are judging {targetClimberId ? qualifierClimbers.find((climber) => climber.id === targetClimberId)?.display_category ?? "the live qualifier field" : "the live qualifier field"}. Save one score on Boulder 1, then watch the public leaderboard react on the right.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -293,6 +308,11 @@ export function JudgeWorkspace({
             <div className="mt-2 text-2xl font-semibold text-slate-950">
               Boulder {String(selectedBoulder).padStart(2, "0")}
             </div>
+            {selectedPitchClimb ? (
+              <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+                {selectedPitchClimb.label}
+              </div>
+            ) : null}
             <div className="mt-2 text-sm text-slate-600">
               {qualifierSavedCount} of {snapshot.climbers.length} climbers already have an entry on this
               boulder.
@@ -308,6 +328,7 @@ export function JudgeWorkspace({
             onChange={(event) => setQuery(event.target.value)}
             className="results-input"
             placeholder="Filter by name, number, or category"
+            disabled={interactionLocked}
           />
           <div className="flex max-h-[20rem] flex-wrap gap-2 overflow-y-auto">
             {getClimbs(activeQualifierProblemCount).map((climb) => (
@@ -318,8 +339,16 @@ export function JudgeWorkspace({
                 className={`results-secondary-button px-4 ${
                   selectedBoulder === climb.number ? "results-secondary-button-active" : ""
                 }`}
+                disabled={interactionLocked}
               >
-                B{String(climb.number).padStart(2, "0")}
+                <span className="flex flex-col items-center gap-1 text-center">
+                  <span>B{String(climb.number).padStart(2, "0")}</span>
+                  {pitchClimbLabels[climb.number - 1] ? (
+                    <span className="text-[11px] font-medium normal-case tracking-normal text-slate-500">
+                      {pitchClimbLabels[climb.number - 1]?.shortLabel}
+                    </span>
+                  ) : null}
+                </span>
               </button>
             ))}
           </div>
@@ -393,6 +422,7 @@ export function JudgeWorkspace({
                         }
                         className="route-judge-counter-button"
                         aria-label={`Decrease live attempts for ${climber.name}`}
+                        disabled={interactionLocked}
                       >
                         -
                       </button>
@@ -407,6 +437,7 @@ export function JudgeWorkspace({
                         }
                         className="route-judge-counter-button route-judge-counter-button-accent"
                         aria-label={`Add an attempt for ${climber.name}`}
+                        disabled={interactionLocked}
                       >
                         Attempt
                       </button>
@@ -438,6 +469,7 @@ export function JudgeWorkspace({
                       }))
                     }
                     className="route-judge-action route-judge-action-neutral"
+                    disabled={interactionLocked}
                   >
                     <span className="route-judge-action-label">Attempt</span>
                     <span className="route-judge-action-detail">Count another live start</span>
@@ -456,6 +488,7 @@ export function JudgeWorkspace({
                         ? "route-judge-action-active"
                         : ""
                     }`}
+                    disabled={interactionLocked}
                   >
                     <span className="route-judge-action-label">Zone</span>
                     <span className="route-judge-action-detail">
@@ -476,6 +509,7 @@ export function JudgeWorkspace({
                     className={`route-judge-action route-judge-action-top ${
                       presentation.normalized.topped ? "route-judge-action-active" : ""
                     }`}
+                    disabled={interactionLocked}
                   >
                     <span className="route-judge-action-label">Top</span>
                     <span className="route-judge-action-detail">
@@ -502,7 +536,7 @@ export function JudgeWorkspace({
                       variant="ghost"
                       className={`text-slate-500 ${embedded ? "min-h-12 px-5 text-sm" : "min-h-11 rounded-full px-4"}`}
                       onClick={() => setQualifierDraft(key, () => EMPTY_QUALIFIER_DRAFT)}
-                      disabled={saving}
+                      disabled={saving || interactionLocked}
                     >
                       Clear
                     </Button>
@@ -510,7 +544,7 @@ export function JudgeWorkspace({
                       variant="primary"
                       className={`${embedded ? "min-h-14 min-w-[13rem] flex-1 rounded-[1.1rem] px-6 text-base sm:flex-none" : "min-h-11 rounded-full px-5"}`}
                       onClick={() => void handleSave(climber.id, selectedBoulder)}
-                      disabled={saving || !qualifierScoringOpen}
+                      disabled={saving || !qualifierScoringOpen || interactionLocked}
                     >
                       Save judge call
                     </Button>

@@ -1,27 +1,21 @@
 import Link from "next/link";
 import SiteHeader from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 
-const demoRoles = [
-  {
-    title: "Experience as a Judge",
-    description:
-      "Judge one climber on one boulder and watch the public leaderboard update instantly from the same event state.",
-    href: "/demo/interactive",
-    badge: "Start here",
-  },
+const secondaryDemoRoles = [
   {
     title: "Experience as a Competitor",
     description:
-      "Open a seeded athlete scorecard halfway through qualifiers and see exactly what a climber would see on comp day.",
+      "Open a seeded athlete scorecard midway through qualifiers and see exactly what a climber would see on comp day.",
     href: "/demo/competitor",
     badge: "Private scorecard",
   },
   {
     title: "Experience as an Organizer",
     description:
-      "Step through setup, schedule planning, rounds, and the staff controls that shape the whole event before it goes live.",
+      "Walk through the event setup flow after the live-scoring pitch, when you want to show how the whole comp gets built.",
     href: "/staff/demo",
     badge: "Organizer workflow",
   },
@@ -34,21 +28,44 @@ export default function DemoLandingPage() {
         <SiteHeader light />
 
         <Surface variant="card" className="overflow-hidden">
-          <div className="space-y-4">
-            <div className="results-kicker">Demo roles</div>
-            <h1 className="results-editorial-title text-4xl font-semibold text-slate-950 sm:text-5xl">
-              Start with the role that makes the product click.
-            </h1>
-            <p className="max-w-3xl text-base leading-relaxed text-slate-600">
-              The judge path is the clearest first demo because it shows one action changing everyone
-              else’s view in real time. The competitor and organizer paths are here when you want to
-              widen the story.
-            </p>
+          <div className="grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)] xl:items-end">
+            <div className="space-y-4">
+              <div className="results-kicker">Live demo</div>
+              <h1 className="results-editorial-title text-4xl font-semibold text-slate-950 sm:text-5xl xl:text-6xl">
+                Save one score. Watch the gym react in real time.
+              </h1>
+              <p className="max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg">
+                Start with the judge path. It shows the whole product pitch in one screen:
+                score a climber, watch the leaderboard move instantly, then drop Wi-Fi and
+                prove the queue still holds.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link href="/demo/interactive">
+                  <Button variant="primary" className="min-w-[14rem]">
+                    Open live scoring demo
+                  </Button>
+                </Link>
+                <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/90 px-4 py-2 text-sm font-medium text-emerald-800">
+                  <span className="demo-live-dot" aria-hidden="true" />
+                  <span>Judge scoring, live leaderboard, and offline recovery in one flow</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-slate-200/80 bg-white/72 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+              <div className="results-kicker">What they feel</div>
+              <div className="mt-3 space-y-3 text-sm leading-relaxed text-slate-600">
+                <p>1. A judge taps one score.</p>
+                <p>2. The public ranking reorders instantly.</p>
+                <p>3. Wi-Fi drops and the app keeps working.</p>
+                <p>4. Reconnect once and the floor catches up.</p>
+              </div>
+            </div>
           </div>
         </Surface>
 
-        <section className="grid gap-4 lg:grid-cols-3">
-          {demoRoles.map((role) => (
+        <section className="grid gap-4 lg:grid-cols-2">
+          {secondaryDemoRoles.map((role) => (
             <Link key={role.href} href={role.href} className="block">
               <Surface variant="row" className="h-full space-y-4">
                 <Badge>{role.badge}</Badge>
@@ -56,7 +73,7 @@ export default function DemoLandingPage() {
                   <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{role.title}</h2>
                   <p className="text-sm leading-relaxed text-slate-600">{role.description}</p>
                 </div>
-                <div className="text-sm font-semibold text-sky-700">Open this demo flow</div>
+                <div className="text-sm font-semibold text-sky-700">Open this secondary demo path</div>
               </Surface>
             </Link>
           ))}

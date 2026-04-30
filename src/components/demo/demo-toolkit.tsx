@@ -1,11 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Surface } from "@/components/ui/surface";
-import type { DemoToolkitState } from "@/components/demo/types";
+import type { DemoPlaybackStep, DemoToolkitState } from "@/components/demo/types";
 
 type DemoToolkitProps = {
   state: DemoToolkitState;
+  playbackStep: DemoPlaybackStep | null;
+  onRunDemo: () => void;
   onToggleOffline: (nextValue: boolean) => void;
   onSimulateOneScore: () => void;
   onRunLiveBurst: () => void;
@@ -13,70 +14,138 @@ type DemoToolkitProps = {
   onRestoreDemo: () => void;
 };
 
+const playbackCopy: Record<DemoPlaybackStep, string> = {
+  save: "Logging the first flash...",
+  leaderboard: "Live rankings are reshuffling...",
+  offline: "Wi-Fi just dropped. Scores are queueing locally...",
+  sync: "Reconnecting and publishing queued scores...",
+  complete: "Pitch flow complete.",
+};
+
 export function DemoToolkit({
   state,
+  playbackStep,
+  onRunDemo,
   onToggleOffline,
   onSimulateOneScore,
   onRunLiveBurst,
   onSyncNow,
   onRestoreDemo,
 }: DemoToolkitProps) {
+  const syncLabel =
+    state.lastSyncStatus === "synced"
+      ? "Live sync"
+      : state.lastSyncStatus === "syncing"
+        ? "Syncing..."
+        : state.lastSyncStatus === "failed"
+          ? "Sync failed"
+          : `Queued ${state.pendingQueueCount}`;
+
   return (
-    <details className="fixed right-4 top-24 z-40 w-[min(22rem,calc(100vw-2rem))]">
-      <summary className="cursor-pointer list-none">
-        <Surface variant="meta" className="flex items-center justify-between gap-3 rounded-[1.4rem] px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
-          <div>
-            <div className="results-kicker">Demo control panel</div>
-            <div className="mt-1 text-sm font-medium text-slate-800">
-              {state.lastSyncStatus === "synced"
-                ? "Synced"
-                : state.lastSyncStatus === "syncing"
-                  ? "Syncing..."
-                  : state.lastSyncStatus === "failed"
-                    ? "Sync failed"
-                    : `Pending sync (${state.pendingQueueCount})`}
+    <details className="demo-toolkit fixed bottom-4 left-1/2 z-40 w-[min(34rem,calc(100vw-1.5rem))] -translate-x-1/2">
+      <summary className="demo-toolkit-summary">
+        <div className="demo-toolkit-pill">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="demo-toolkit-icon" aria-hidden="true">
+              ▶
+            </div>
+            <div className="min-w-0">
+              <div className="demo-toolkit-title">Demo controls</div>
+              <div className="demo-toolkit-status">
+                {state.scriptRunning && playbackStep
+                  ? playbackCopy[playbackStep]
+                  : state.simulateOffline
+                    ? "Wi-Fi dropped. Scores queue locally."
+                    : "Run the money-moment pitch or steer it manually."}
+              </div>
             </div>
           </div>
-          <div className="results-chip">{state.simulateOffline ? "Wi-Fi dropped" : "Live sync"}</div>
-        </Surface>
+          <div className="demo-toolkit-chip">{syncLabel}</div>
+        </div>
       </summary>
-      <Surface variant="card" className="mt-3 space-y-4 rounded-[1.8rem] p-5 shadow-[0_22px_54px_rgba(15,23,42,0.18)]">
-        <div>
-          <div className="results-kicker">Controls</div>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Use this panel to prove the live scoring loop, simulate a gym Wi-Fi drop, and reset the seeded event.
+
+      <div className="demo-toolkit-panel">
+        <div className="space-y-3">
+          <div className="results-kicker text-white/60">Pitch controls</div>
+          <h3 className="text-xl font-semibold text-white">Run the 90-second comp-day story</h3>
+          <p className="text-sm leading-relaxed text-slate-300">
+            Kick off one guided sequence that scores a flash, moves the leaderboard, drops Wi-Fi,
+            queues a score, then reconnects and publishes everything live.
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button variant="secondary" onClick={onSimulateOneScore}>
-            Trigger live score
+
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <Button
+            variant="linearPrimary"
+            className="min-h-14 rounded-[1.15rem] text-base"
+            onClick={onRunDemo}
+            disabled={state.scriptRunning || state.simulationRunning}
+          >
+            {state.scriptRunning ? "Running sales demo..." : "Run demo"}
           </Button>
-          <Button variant="secondary" onClick={onRunLiveBurst} disabled={state.simulationRunning}>
+          <Button
+            variant="linearSecondary"
+            className="min-h-14 rounded-[1.15rem] px-5"
+            onClick={onRestoreDemo}
+            disabled={state.scriptRunning}
+          >
+            Restore state
+          </Button>
+        </div>
+
+        <div className="demo-toolkit-divider" />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Button
+            variant="linearSecondary"
+            className="min-h-12 rounded-[1rem]"
+            onClick={onSimulateOneScore}
+            disabled={state.scriptRunning}
+          >
+            Trigger one live score
+          </Button>
+          <Button
+            variant="linearSecondary"
+            className="min-h-12 rounded-[1rem]"
+            onClick={onRunLiveBurst}
+            disabled={state.scriptRunning || state.simulationRunning}
+          >
             {state.simulationRunning ? "Live burst running..." : "Run live burst"}
           </Button>
         </div>
-        <label className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-700">
-          <span>Simulate Wi-Fi drop</span>
+
+        <label className="demo-toolkit-toggle">
+          <div>
+            <div className="font-semibold text-white">Simulate Wi-Fi drop</div>
+            <div className="mt-1 text-sm text-slate-300">
+              Keep scoring locally while the public leaderboard pauses.
+            </div>
+          </div>
           <input
             type="checkbox"
             checked={state.simulateOffline}
             onChange={(event) => onToggleOffline(event.target.checked)}
-            className="h-5 w-5 rounded border-slate-300 text-sky-600"
+            className="h-5 w-5 rounded border-white/20 bg-transparent text-sky-400"
+            disabled={state.scriptRunning && playbackStep !== "offline" && playbackStep !== "sync"}
           />
         </label>
-        <div className="grid gap-2 sm:grid-cols-2">
+
+        <div className="grid gap-3 sm:grid-cols-2">
           <Button
-            variant="ghost"
+            variant="linearGhost"
+            className="min-h-11 rounded-[1rem] border border-white/10 bg-white/[0.04]"
             onClick={onSyncNow}
-            disabled={state.pendingQueueCount === 0 && state.lastSyncStatus !== "failed"}
+            disabled={(state.pendingQueueCount === 0 && state.lastSyncStatus !== "failed") || state.scriptRunning}
           >
             Reconnect and sync
           </Button>
-          <Button variant="danger" onClick={onRestoreDemo}>
-            Restore demo state
-          </Button>
+          <div className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+            {state.pendingQueueCount > 0
+              ? `${state.pendingQueueCount} queued ${state.pendingQueueCount === 1 ? "score" : "scores"} waiting`
+              : "No queued scores"}
+          </div>
         </div>
-      </Surface>
+      </div>
     </details>
   );
 }

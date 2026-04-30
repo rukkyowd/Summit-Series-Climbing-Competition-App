@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -9,11 +9,13 @@ import { JudgeWorkspace } from "@/components/demo/judge-workspace";
 import { LeaderboardPanel } from "@/components/demo/leaderboard-panel";
 import type {
   DemoScenarioAthlete,
+  DemoPlaybackStep,
   DemoSimulationMode,
   DemoSimulationResponse,
   DemoToolkitState,
   JudgeQualifierSaveInput,
   LeaderboardImpact,
+  LeaderboardToast,
 } from "@/components/demo/types";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,11 +23,15 @@ import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { DEMO_COMPETITION_SLUG } from "@/lib/demo";
 import {
+  buildQueueMetadata,
+  type OfflineQueueItem,
+  markOfflineItemRetried,
   enqueueOfflineItem,
   readOfflineQueue,
   removeOfflineItem,
   writeOfflineQueue,
 } from "@/lib/staff-offline-queue";
+import { DEMO_PITCH_CLIMBS, getDemoPitchClimb } from "@/lib/demo";
 import {
   buildCompetitionPath,
   buildDisplayPath,
@@ -92,14 +98,18 @@ function applyQualifierAttemptToSnapshot(
   };
 }
 
-function getDemoQueueItems(competitionId: string) {
-  return readOfflineQueue().filter(
-    (
-      item
-    ): item is Extract<
-      ReturnType<typeof readOfflineQueue>[number],
-      { type: "qualifier" }
-    > => item.type === "qualifier" && item.competitionId === competitionId
+type DemoQualifierSaveResponse = {
+  attempt: QualifierAttempt;
+  status: "accepted" | "projected" | "conflicted" | "ignored_as_stale";
+  conflictReason: string | null;
+  clientEventId: string | null;
+  scoredAt: string | null;
+};
+
+async function getDemoQueueItems(competitionId: string) {
+  return (await readOfflineQueue()).filter(
+    (item): item is Extract<OfflineQueueItem, { type: "qualifier" }> =>
+      item.type === "qualifier" && item.competitionId === competitionId
   );
 }
 
@@ -112,6 +122,11 @@ async function postDemoQualifierAttempt(input: {
   zone: boolean;
   attemptsToTop: number | null;
   attemptsToZone: number | null;
+  clientEventId: string;
+  scoredAt: string;
+  judgeDeviceId: string | null;
+  judgeSessionId: string | null;
+  replayedFromOffline?: boolean;
 }) {
   const response = await fetch("/api/demo/qualifier-attempt", {
     method: "POST",
@@ -121,14 +136,20 @@ async function postDemoQualifierAttempt(input: {
     body: JSON.stringify(input),
   });
   const payload = (await response.json().catch(() => null)) as
-    | { error?: string; attempt?: QualifierAttempt }
+    | { error?: string; attempt?: QualifierAttempt; status?: DemoQualifierSaveResponse["status"]; conflictReason?: string | null; clientEventId?: string | null; scoredAt?: string | null }
     | null;
 
   if (!response.ok || !payload?.attempt) {
     throw new Error(payload?.error || "Unable to save the demo qualifier score.");
   }
 
-  return payload.attempt;
+  return {
+    attempt: payload.attempt,
+    status: payload.status ?? "accepted",
+    conflictReason: payload.conflictReason ?? null,
+    clientEventId: payload.clientEventId ?? null,
+    scoredAt: payload.scoredAt ?? null,
+  } satisfies DemoQualifierSaveResponse;
 }
 
 function shouldQueueFailedSave(error: unknown) {
@@ -182,6 +203,57 @@ function ordinalSuffix(value: number) {
   return "th";
 }
 
+function buildScoreResultLabel(attempt: Pick<QualifierAttempt, "topped" | "zone" | "attempt_count">) {
+  if (attempt.topped) {
+    return attempt.attempt_count === 1
+      ? "FLASH TOP ✓"
+      : `TOP on attempt ${attempt.attempt_count} ✓`;
+  }
+  if (attempt.zone) {
+    return `ZONE on attempt ${attempt.attempt_count}`;
+  }
+  return `Attempt ${attempt.attempt_count} logged`;
+}
+
+function findClimber(snapshot: CompetitionSnapshot, climberId: string) {
+  return snapshot.climbers.find((climber) => climber.id === climberId) ?? null;
+}
+
+function buildImpactReason(snapshot: CompetitionSnapshot, climberId: string) {
+  const entry = snapshot.qualifierLeaderboard.find((row) => row.climber_id === climberId);
+  if (!entry) {
+    return null;
+  }
+
+  const sameCategory = snapshot.qualifierLeaderboard.filter(
+    (row) => row.category_id === entry.category_id && row.climber_id !== climberId
+  );
+
+  const nearby = sameCategory.find(
+    (row) =>
+      row.category_rank === entry.category_rank + 1 ||
+      row.category_rank === entry.category_rank - 1
+  );
+
+  if (!nearby) {
+    return null;
+  }
+
+  if (
+    entry.topped_count === nearby.topped_count &&
+    entry.zone_count === nearby.zone_count &&
+    entry.counting_attempt_total < nearby.counting_attempt_total
+  ) {
+    return "Fewer attempts wins";
+  }
+
+  if (entry.topped_count >= nearby.topped_count && entry.counting_attempt_total < nearby.counting_attempt_total) {
+    return "Cleaner attempts edge it";
+  }
+
+  return null;
+}
+
 export function InteractiveDemoClient() {
   const shellClassName = "mx-auto w-full space-y-6 xl:space-y-7";
 
@@ -193,28 +265,41 @@ export function InteractiveDemoClient() {
   const [saving, setSaving] = useState(false);
   const [highlightedClimberId, setHighlightedClimberId] = useState<string | null>(null);
   const [leaderboardImpact, setLeaderboardImpact] = useState<LeaderboardImpact | null>(null);
+  const [leaderboardToast, setLeaderboardToast] = useState<LeaderboardToast | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(new Date().toISOString());
   const [liveSaveCompleted, setLiveSaveCompleted] = useState(false);
   const [leaderboardObserved, setLeaderboardObserved] = useState(false);
   const [offlineQueuedSaveCompleted, setOfflineQueuedSaveCompleted] = useState(false);
   const [syncRecovered, setSyncRecovered] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("judge");
   const [activeTourStep, setActiveTourStep] = useState<TourStepId>("judge");
+  const [playbackStep, setPlaybackStep] = useState<DemoPlaybackStep | null>(null);
+  const [presentationFocus, setPresentationFocus] = useState<DemoPlaybackStep | "judge" | null>("judge");
   const [toolkitState, setToolkitState] = useState<DemoToolkitState>({
     simulateOffline: false,
     pendingQueueCount: 0,
     simulationRunning: false,
+    scriptRunning: false,
     lastSyncStatus: "synced",
   });
   const refreshTimerRef = useRef<number | null>(null);
+  const leaderboardToastTimerRef = useRef<number | null>(null);
   const leaderboardBurstTriggeredRef = useRef(false);
+  const snapshotRef = useRef<CompetitionSnapshot | null>(null);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   const refreshSnapshot = useCallback(async () => {
     const nextSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
+    const pendingQueueCount = await getDemoQueueItems(nextSnapshot.competition.id);
     setSnapshot(nextSnapshot);
     setLeaderboardSnapshot(nextSnapshot);
+    setLastUpdatedAt(new Date().toISOString());
     setToolkitState((current) => ({
       ...current,
-      pendingQueueCount: getDemoQueueItems(nextSnapshot.competition.id).length,
+      pendingQueueCount: pendingQueueCount.length,
     }));
     return nextSnapshot;
   }, []);
@@ -250,6 +335,9 @@ export function InteractiveDemoClient() {
       if (refreshTimerRef.current) {
         window.clearTimeout(refreshTimerRef.current);
       }
+      if (leaderboardToastTimerRef.current) {
+        window.clearTimeout(leaderboardToastTimerRef.current);
+      }
     };
   }, []);
 
@@ -263,6 +351,20 @@ export function InteractiveDemoClient() {
       setLeaderboardImpact(null);
     }, 2600);
   };
+
+  const showLeaderboardToast = useCallback(
+    (toast: LeaderboardToast) => {
+      setLeaderboardToast(toast);
+      setLastUpdatedAt(new Date().toISOString());
+      if (leaderboardToastTimerRef.current) {
+        window.clearTimeout(leaderboardToastTimerRef.current);
+      }
+      leaderboardToastTimerRef.current = window.setTimeout(() => {
+        setLeaderboardToast(null);
+      }, 3200);
+    },
+    []
+  );
 
   const scenarioAthlete = useMemo<DemoScenarioAthlete | null>(() => {
     if (!snapshot) {
@@ -288,13 +390,14 @@ export function InteractiveDemoClient() {
 
   const handleSaveQualifier = useCallback(
     async (input: JudgeQualifierSaveInput) => {
-      if (!snapshot) {
+      const liveSnapshot = snapshotRef.current ?? snapshot;
+      if (!liveSnapshot) {
         return;
       }
 
-      const previousSnapshot = snapshot;
-      const optimisticAttempt = buildLocalAttempt(snapshot, input);
-      const optimisticSnapshot = applyQualifierAttemptToSnapshot(snapshot, optimisticAttempt);
+      const previousSnapshot = liveSnapshot;
+      const optimisticAttempt = buildLocalAttempt(liveSnapshot, input);
+      const optimisticSnapshot = applyQualifierAttemptToSnapshot(liveSnapshot, optimisticAttempt);
       setSaving(true);
       setError("");
       setMessage("");
@@ -306,6 +409,7 @@ export function InteractiveDemoClient() {
         beforeRank,
         afterRank: optimisticAfterRank,
         delta: (beforeRank ?? 0) - (optimisticAfterRank ?? 0),
+        reason: buildImpactReason(optimisticSnapshot, input.climberId),
       });
       setSnapshot(optimisticSnapshot);
       if (!toolkitState.simulateOffline) {
@@ -314,10 +418,11 @@ export function InteractiveDemoClient() {
       clearHighlightLater();
 
       if (toolkitState.simulateOffline) {
-        enqueueOfflineItem({
+        const metadata = await buildQueueMetadata();
+        await enqueueOfflineItem({
           id: `demo-qualifier-${input.climberId}-${input.climbNumber}`,
           type: "qualifier",
-          competitionId: snapshot.competition.id,
+          competitionId: liveSnapshot.competition.id,
           climberId: input.climberId,
           climbNumber: input.climbNumber,
           attemptCount: input.attemptCount,
@@ -325,11 +430,18 @@ export function InteractiveDemoClient() {
           zone: input.zone,
           attemptsToTop: input.attemptsToTop,
           attemptsToZone: input.attemptsToZone,
+          clientEventId: metadata.clientEventId,
+          scoredAt: metadata.scoredAt,
+          judgeDeviceId: metadata.judgeDeviceId,
+          judgeSessionId: metadata.judgeSessionId,
           createdAt: new Date().toISOString(),
+          retryCount: 0,
+          lastTriedAt: null,
         });
+        const queue = await getDemoQueueItems(liveSnapshot.competition.id);
         setToolkitState((current) => ({
           ...current,
-          pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
+          pendingQueueCount: queue.length,
           lastSyncStatus: "pending",
         }));
         if (scenarioAthlete && input.climberId === scenarioAthlete.id) {
@@ -344,8 +456,9 @@ export function InteractiveDemoClient() {
       }
 
       try {
-        const savedAttempt = await postDemoQualifierAttempt({
-          competitionId: snapshot.competition.id,
+        const metadata = await buildQueueMetadata();
+        const savedResult = await postDemoQualifierAttempt({
+          competitionId: liveSnapshot.competition.id,
           climberId: input.climberId,
           climbNumber: input.climbNumber,
           attemptCount: input.attemptCount,
@@ -353,10 +466,19 @@ export function InteractiveDemoClient() {
           zone: input.zone,
           attemptsToTop: input.attemptsToTop,
           attemptsToZone: input.attemptsToZone,
+          clientEventId: metadata.clientEventId,
+          scoredAt: metadata.scoredAt,
+          judgeDeviceId: metadata.judgeDeviceId,
+          judgeSessionId: metadata.judgeSessionId,
         });
 
-        const savedSnapshot = applyQualifierAttemptToSnapshot(snapshot, savedAttempt);
+        const savedSnapshot = applyQualifierAttemptToSnapshot(liveSnapshot, savedResult.attempt);
         const savedAfterRank = getQualifierRank(savedSnapshot, input.climberId);
+        const impactReason = buildImpactReason(savedSnapshot, input.climberId);
+        const savedClimber = findClimber(savedSnapshot, input.climberId);
+        const climbLabel =
+          getDemoPitchClimb(input.climbNumber)?.label ??
+          `Boulder ${String(input.climbNumber).padStart(2, "0")}`;
         setSnapshot(savedSnapshot);
         setLeaderboardSnapshot(savedSnapshot);
         setLeaderboardImpact({
@@ -364,6 +486,7 @@ export function InteractiveDemoClient() {
           beforeRank,
           afterRank: savedAfterRank,
           delta: (beforeRank ?? 0) - (savedAfterRank ?? 0),
+          reason: impactReason,
         });
         setToolkitState((current) => ({
           ...current,
@@ -377,15 +500,26 @@ export function InteractiveDemoClient() {
             ? buildRankMessage(previousSnapshot, savedSnapshot, scenarioAthlete)
             : "Saved judge call. The leaderboard updated from the same competition snapshot."
         );
+        if (savedClimber) {
+          showLeaderboardToast({
+            id: `${savedClimber.id}-${Date.now()}`,
+            climberId: savedClimber.id,
+            climberName: savedClimber.name,
+            climbLabel,
+            resultLabel: buildScoreResultLabel(savedResult.attempt),
+            detail: impactReason,
+          });
+        }
         void refreshSnapshot().catch(() => {
           // The optimistic state already shows the result; silent failure is okay here.
         });
       } catch (nextError) {
         if (shouldQueueFailedSave(nextError)) {
-          enqueueOfflineItem({
+          const metadata = await buildQueueMetadata();
+          await enqueueOfflineItem({
             id: `demo-qualifier-${input.climberId}-${input.climbNumber}`,
             type: "qualifier",
-            competitionId: snapshot.competition.id,
+          competitionId: liveSnapshot.competition.id,
             climberId: input.climberId,
             climbNumber: input.climbNumber,
             attemptCount: input.attemptCount,
@@ -393,11 +527,18 @@ export function InteractiveDemoClient() {
             zone: input.zone,
             attemptsToTop: input.attemptsToTop,
             attemptsToZone: input.attemptsToZone,
+            clientEventId: metadata.clientEventId,
+            scoredAt: metadata.scoredAt,
+            judgeDeviceId: metadata.judgeDeviceId,
+            judgeSessionId: metadata.judgeSessionId,
             createdAt: new Date().toISOString(),
+            retryCount: 0,
+            lastTriedAt: null,
           });
+          const queue = await getDemoQueueItems(liveSnapshot.competition.id);
           setToolkitState((current) => ({
             ...current,
-            pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
+            pendingQueueCount: queue.length,
             lastSyncStatus: "pending",
           }));
           if (scenarioAthlete && input.climberId === scenarioAthlete.id) {
@@ -418,15 +559,16 @@ export function InteractiveDemoClient() {
         setSaving(false);
       }
     },
-    [refreshSnapshot, scenarioAthlete, snapshot, toolkitState.simulateOffline]
+    [refreshSnapshot, scenarioAthlete, showLeaderboardToast, snapshot, toolkitState.simulateOffline]
   );
 
   const flushOfflineQueue = useCallback(async () => {
-    if (!snapshot) {
+    const liveSnapshot = snapshotRef.current ?? snapshot;
+    if (!liveSnapshot) {
       return;
     }
 
-    const queue = getDemoQueueItems(snapshot.competition.id);
+    const queue = await getDemoQueueItems(liveSnapshot.competition.id);
     if (!queue.length) {
       setToolkitState((current) => ({
         ...current,
@@ -454,29 +596,60 @@ export function InteractiveDemoClient() {
           zone: item.zone ?? false,
           attemptsToTop: item.attemptsToTop ?? null,
           attemptsToZone: item.attemptsToZone ?? null,
+          clientEventId: item.clientEventId,
+          scoredAt: item.scoredAt,
+          judgeDeviceId: item.judgeDeviceId,
+          judgeSessionId: item.judgeSessionId,
+          replayedFromOffline: true,
         });
-        removeOfflineItem(item.id);
+        await removeOfflineItem(item.id);
       }
 
       await refreshSnapshot();
+      const remaining = await getDemoQueueItems(liveSnapshot.competition.id);
       setToolkitState((current) => ({
         ...current,
-        pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
+        pendingQueueCount: remaining.length,
         lastSyncStatus: "synced",
       }));
       if (queue.length > 0) {
         setSyncRecovered(true);
       }
+      const lastQueuedItem = queue[queue.length - 1];
+      if (lastQueuedItem) {
+        const refreshedSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
+        const queuedClimber = findClimber(refreshedSnapshot, lastQueuedItem.climberId);
+        if (queuedClimber) {
+          showLeaderboardToast({
+            id: `${queuedClimber.id}-${Date.now()}`,
+            climberId: queuedClimber.id,
+            climberName: queuedClimber.name,
+            climbLabel:
+              getDemoPitchClimb(lastQueuedItem.climbNumber)?.label ??
+              `Boulder ${String(lastQueuedItem.climbNumber).padStart(2, "0")}`,
+            resultLabel: buildScoreResultLabel({
+              topped: lastQueuedItem.topped,
+              zone: lastQueuedItem.zone ?? false,
+              attempt_count: lastQueuedItem.attemptCount,
+            }),
+            detail: "Queued score just landed on the public leaderboard.",
+          });
+        }
+      }
       setMessage("Queued score synced. Public leaderboard is live again.");
     } catch (nextError) {
+      if (queue[0]) {
+        await markOfflineItemRetried(queue[0].id);
+      }
+      const remaining = await getDemoQueueItems(liveSnapshot.competition.id);
       setToolkitState((current) => ({
         ...current,
-        pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
+        pendingQueueCount: remaining.length,
         lastSyncStatus: "failed",
       }));
       setError(nextError instanceof Error ? nextError.message : "Unable to sync queued demo scores.");
     }
-  }, [refreshSnapshot, snapshot]);
+  }, [refreshSnapshot, showLeaderboardToast, snapshot]);
 
   const handleToggleOffline = (nextValue: boolean) => {
     setToolkitState((current) => ({
@@ -496,6 +669,7 @@ export function InteractiveDemoClient() {
 
   const runSimulationStep = useCallback(
     async (mode: DemoSimulationMode) => {
+      const liveSnapshot = snapshotRef.current ?? snapshot;
       const response = await fetch("/api/demo/simulate", {
         method: "POST",
         headers: {
@@ -507,16 +681,21 @@ export function InteractiveDemoClient() {
         | ({ error?: string } & Partial<DemoSimulationResponse>)
         | null;
 
-      if (!response.ok || !payload?.attempt || !snapshot) {
+      if (!response.ok || !payload?.attempt || !liveSnapshot) {
         throw new Error(payload?.error || "Unable to run the demo simulation.");
       }
 
       const impactedClimberId = payload.climberId ?? payload.attempt.climber_id;
-      const beforeRank = getQualifierRank(snapshot, impactedClimberId);
+      const beforeRank = getQualifierRank(liveSnapshot, impactedClimberId);
       const simulatedSnapshot = applyQualifierAttemptToSnapshot(
-        snapshot,
+        liveSnapshot,
         payload.attempt as QualifierAttempt
       );
+      const impactReason = buildImpactReason(simulatedSnapshot, impactedClimberId);
+      const impactedClimber = findClimber(simulatedSnapshot, impactedClimberId);
+      const climbLabel =
+        getDemoPitchClimb(payload.climbNumber ?? payload.attempt.climb_number)?.label ??
+        `Boulder ${String(payload.climbNumber ?? payload.attempt.climb_number).padStart(2, "0")}`;
       setHighlightedClimberId(impactedClimberId);
       setSnapshot(simulatedSnapshot);
       setLeaderboardSnapshot(simulatedSnapshot);
@@ -527,11 +706,22 @@ export function InteractiveDemoClient() {
         delta:
           (beforeRank ?? 0) -
           (getQualifierRank(simulatedSnapshot, impactedClimberId) ?? 0),
+        reason: impactReason,
       });
+      if (impactedClimber) {
+        showLeaderboardToast({
+          id: `${impactedClimber.id}-${Date.now()}`,
+          climberId: impactedClimber.id,
+          climberName: impactedClimber.name,
+          climbLabel,
+          resultLabel: buildScoreResultLabel(payload.attempt),
+          detail: impactReason,
+        });
+      }
       clearHighlightLater();
       await refreshSnapshot();
     },
-    [refreshSnapshot, snapshot]
+    [refreshSnapshot, showLeaderboardToast, snapshot]
   );
 
   const handleSimulateOneScore = async () => {
@@ -546,7 +736,7 @@ export function InteractiveDemoClient() {
   };
 
   const handleRunLiveBurst = async () => {
-    if (toolkitState.simulationRunning) {
+    if (toolkitState.simulationRunning || toolkitState.scriptRunning) {
       return;
     }
 
@@ -555,16 +745,17 @@ export function InteractiveDemoClient() {
       simulationRunning: true,
     }));
     setMessage("Live burst started. Watch the public rankings keep moving without leaving the page.");
-    setError("");
+      setError("");
 
-    try {
-      await runSimulationStep("live_burst");
-      const burstCount = 11;
-      for (let index = 0; index < burstCount; index += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 5000));
-        await runSimulationStep("live_burst");
-      }
-      setMessage("Live burst complete.");
+      try {
+        const burstCount = 5;
+        for (let index = 0; index < burstCount; index += 1) {
+          if (index > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1300));
+          }
+          await runSimulationStep("live_burst");
+        }
+        setMessage("Live burst complete.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to run the live burst.");
     } finally {
@@ -572,8 +763,103 @@ export function InteractiveDemoClient() {
         ...current,
         simulationRunning: false,
       }));
+      }
+    };
+
+  const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+  async function handleRunDemo() {
+    if (toolkitState.scriptRunning || toolkitState.simulationRunning) {
+      return;
     }
-  };
+
+    await handleRestoreDemo();
+    const freshSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
+    const athlete =
+      freshSnapshot.climbers.find((climber) => climber.name.toLowerCase().includes("maya foster")) ??
+      freshSnapshot.climbers[0] ??
+      null;
+
+    if (!athlete) {
+      setError("Unable to find the scripted demo athlete.");
+      return;
+    }
+
+    setToolkitState((current) => ({
+      ...current,
+      scriptRunning: true,
+    }));
+    setError("");
+    setMessage("Pitch demo started. Watch the judge call, the live reorder, the Wi-Fi drop, and the sync recovery.");
+
+    try {
+      setPresentationFocus("judge");
+      setPlaybackStep("save");
+      setMobileTab("judge");
+      await wait(800);
+
+      await handleSaveQualifier({
+        climberId: athlete.id,
+        climbNumber: 1,
+        attemptCount: 1,
+        topped: true,
+        zone: true,
+        attemptsToTop: 1,
+        attemptsToZone: 1,
+      });
+
+      setPresentationFocus("leaderboard");
+      setPlaybackStep("leaderboard");
+      setMobileTab("leaderboard");
+      await wait(900);
+      await runSimulationStep("live_burst");
+      setLeaderboardObserved(true);
+      await wait(1200);
+      await runSimulationStep("live_burst");
+      setMessage("The board is live, and a clean flash moves Maya up while other judge calls keep landing.");
+
+      setPresentationFocus("offline");
+      setPlaybackStep("offline");
+      setMobileTab("judge");
+      setToolkitState((current) => ({
+        ...current,
+        simulateOffline: true,
+        lastSyncStatus: current.pendingQueueCount > 0 ? "pending" : current.lastSyncStatus,
+      }));
+      await wait(700);
+      await handleSaveQualifier({
+        climberId: athlete.id,
+        climbNumber: 2,
+        attemptCount: 2,
+        topped: false,
+        zone: true,
+        attemptsToTop: null,
+        attemptsToZone: 2,
+      });
+      await wait(900);
+
+      setPresentationFocus("sync");
+      setPlaybackStep("sync");
+      setToolkitState((current) => ({
+        ...current,
+        simulateOffline: false,
+      }));
+      await flushOfflineQueue();
+      setMobileTab("leaderboard");
+      await wait(800);
+
+      setPlaybackStep("complete");
+      setPresentationFocus("leaderboard");
+      setMessage("Sales demo complete. The floor saw a flash, a live reorder, an offline save, and a clean sync recovery.");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to run the scripted sales demo.");
+    } finally {
+      setToolkitState((current) => ({
+        ...current,
+        scriptRunning: false,
+      }));
+    }
+  }
 
   const handleGuidedLeaderboardBurst = useCallback(async () => {
     if (toolkitState.simulationRunning || toolkitState.simulateOffline) {
@@ -620,7 +906,7 @@ export function InteractiveDemoClient() {
       setLeaderboardObserved(false);
     }
 
-    if (!liveSaveCompleted || toolkitState.simulateOffline) {
+    if (!liveSaveCompleted || toolkitState.simulateOffline || toolkitState.scriptRunning) {
       return;
     }
 
@@ -633,18 +919,19 @@ export function InteractiveDemoClient() {
   }, [
     activeTourStep,
     handleGuidedLeaderboardBurst,
-    leaderboardObserved,
-    liveSaveCompleted,
-    toolkitState.simulateOffline,
-  ]);
+      leaderboardObserved,
+      liveSaveCompleted,
+      toolkitState.scriptRunning,
+      toolkitState.simulateOffline,
+    ]);
 
-  const handleRestoreDemo = async () => {
+  async function handleRestoreDemo() {
     setError("");
     setMessage("");
     try {
       if (snapshot) {
-        const remaining = readOfflineQueue().filter((item) => item.competitionId !== snapshot.competition.id);
-        writeOfflineQueue(remaining);
+        const remaining = (await readOfflineQueue()).filter((item) => item.competitionId !== snapshot.competition.id);
+        await writeOfflineQueue(remaining);
       }
 
       const response = await fetch("/api/demo/reset", {
@@ -656,9 +943,10 @@ export function InteractiveDemoClient() {
       }
 
       await refreshSnapshot();
+      const remaining = snapshot ? await getDemoQueueItems(snapshot.competition.id) : [];
       setToolkitState((current) => ({
         ...current,
-        pendingQueueCount: snapshot ? getDemoQueueItems(snapshot.competition.id).length : 0,
+        pendingQueueCount: remaining.length,
         lastSyncStatus: "synced",
       }));
       setLiveSaveCompleted(false);
@@ -666,13 +954,22 @@ export function InteractiveDemoClient() {
       setOfflineQueuedSaveCompleted(false);
       setSyncRecovered(false);
       setLeaderboardImpact(null);
+      setLeaderboardToast(null);
       setHighlightedClimberId(null);
+      setLastUpdatedAt(new Date().toISOString());
+      setPlaybackStep(null);
+      setPresentationFocus("judge");
+      setMobileTab("judge");
+      setToolkitState((current) => ({
+        ...current,
+        scriptRunning: false,
+      }));
       leaderboardBurstTriggeredRef.current = false;
       setMessage("Demo restored to the seeded qualifier-in-progress state.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to restore the demo.");
     }
-  };
+  }
 
   const statusLabel = useMemo(() => {
     const status = toolkitState.lastSyncStatus;
@@ -720,7 +1017,7 @@ export function InteractiveDemoClient() {
   }
 
   return (
-    <main className="results-page">
+    <main className={`results-page ${toolkitState.simulateOffline ? "demo-pitch-offline-page" : ""}`}>
       <div className={shellClassName}>
         <SiteHeader
           light
@@ -745,7 +1042,7 @@ export function InteractiveDemoClient() {
                 Save one score. Watch the rank change live.
               </h1>
               <p className="max-w-3xl text-base leading-relaxed text-slate-600">
-                You are judging {scenarioAthlete?.categoryLabel ?? "Youth D qualifiers"}. Start with{" "}
+                You are judging {scenarioAthlete?.categoryLabel ?? "the featured qualifier field"}. Start with{" "}
                 {scenarioAthlete?.name ?? "the highlighted athlete"} on Boulder 1. The moment you save,
                 the right side shows exactly what climbers, coaches, and spectators see.
               </p>
@@ -786,6 +1083,9 @@ export function InteractiveDemoClient() {
               targetClimberId={scenarioAthlete?.id ?? null}
               targetClimberName={scenarioAthlete?.name ?? null}
               offlineMode={toolkitState.simulateOffline}
+              interactionLocked={toolkitState.scriptRunning}
+              pitchClimbLabels={[...DEMO_PITCH_CLIMBS]}
+              presentationFocus={presentationFocus}
               onSaveQualifier={handleSaveQualifier}
             />
           </div>
@@ -796,6 +1096,9 @@ export function InteractiveDemoClient() {
               highlightedClimberId={highlightedClimberId}
               targetClimberId={scenarioAthlete?.id ?? null}
               impact={leaderboardImpact}
+              lastUpdatedAt={lastUpdatedAt}
+              toast={leaderboardToast}
+              presentationFocus={presentationFocus}
             />
           </div>
         </div>
@@ -803,6 +1106,8 @@ export function InteractiveDemoClient() {
 
       <DemoToolkit
         state={toolkitState}
+        playbackStep={playbackStep}
+        onRunDemo={() => void handleRunDemo()}
         onToggleOffline={handleToggleOffline}
         onSimulateOneScore={() => void handleSimulateOneScore()}
         onRunLiveBurst={() => void handleRunLiveBurst()}
