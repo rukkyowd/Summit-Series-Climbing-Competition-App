@@ -35,5 +35,9 @@ export function isDemoCompetitionRecord(
     return false;
   }
 
-  return Boolean(competition.is_demo) || isCanonicalDemoCompetitionSlug(competition.slug) || isLegacyDemoCompetitionSlug(competition.slug);
+  if (typeof competition.is_demo === "boolean") {
+    return competition.is_demo || isCanonicalDemoCompetitionSlug(competition.slug);
+  }
+
+  return isCanonicalDemoCompetitionSlug(competition.slug) || isLegacyDemoCompetitionSlug(competition.slug);
 }
