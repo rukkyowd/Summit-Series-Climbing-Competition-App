@@ -83,6 +83,17 @@ export function LeaderboardPanel({
       });
   }, [selectedCategory, snapshot.qualifierLeaderboard]);
 
+  useEffect(() => {
+    if (!impact?.climberId) {
+      return;
+    }
+
+    const impactedEntry = snapshot.qualifierLeaderboard.find((entry) => entry.climber_id === impact.climberId);
+    if (impactedEntry?.category_id && impactedEntry.category_id !== selectedCategory) {
+      setSelectedCategory(impactedEntry.category_id);
+    }
+  }, [impact?.climberId, selectedCategory, snapshot.qualifierLeaderboard]);
+
   const finalsGroups = useMemo(() => {
     const groups = new Map<string, CompetitionSnapshot["finalsLeaderboard"]>();
     snapshot.finalsLeaderboard.forEach((entry) => {
@@ -143,6 +154,34 @@ export function LeaderboardPanel({
     const minutes = Math.round(seconds / 60);
     return `Updated ${minutes}m ago`;
   }, [lastUpdatedAt, relativeNow]);
+
+  const impactHeadline = useMemo(() => {
+    if (!impact?.climberId) {
+      return null;
+    }
+
+    const impactedEntry = snapshot.qualifierLeaderboard.find((entry) => entry.climber_id === impact.climberId);
+    if (!impactedEntry) {
+      return null;
+    }
+
+    const beforeLabel = impact.beforeRank ? `#${impact.beforeRank}` : "Unranked";
+    const afterLabel = impact.afterRank ? `#${impact.afterRank}` : `#${impactedEntry.category_rank}`;
+    const movementLabel =
+      impact.delta > 0
+        ? `${impactedEntry.name} moved ${beforeLabel} -> ${afterLabel}`
+        : impact.delta < 0
+          ? `${impactedEntry.name} moved ${beforeLabel} -> ${afterLabel}`
+          : `${impactedEntry.name} is now ${afterLabel}`;
+
+    return {
+      entry: impactedEntry,
+      movementLabel,
+      scoreLabel: Number.isInteger(impactedEntry.total_score)
+        ? impactedEntry.total_score.toLocaleString()
+        : formatFinalPoints(impactedEntry.total_score),
+    };
+  }, [impact, snapshot.qualifierLeaderboard]);
 
   const getImpactLabel = (climberId: string) => {
     if (!impact || impact.climberId !== climberId) {
@@ -232,6 +271,30 @@ export function LeaderboardPanel({
             <div>{lastUpdatedLabel}</div>
             <div>{qualifierScoreContextLabel}</div>
           </div>
+
+          {impactHeadline ? (
+            <motion.div
+              layout
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+              animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+              transition={{ duration: reduceMotion ? 0.18 : 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="mt-5 rounded-[1.35rem] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(240,249,255,0.96))] px-4 py-4 shadow-[0_16px_40px_-28px_rgba(16,185,129,0.5)]"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="results-kicker text-emerald-700">Rank change live</div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">{impactHeadline.movementLabel}</div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    {impactHeadline.entry.display_category} · Score {impactHeadline.scoreLabel} · {impactHeadline.entry.topped_count} tops / {impactHeadline.entry.zone_count} zones
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {impact?.delta ? <Badge variant="live">{impact.delta > 0 ? `Up ${impact.delta}` : `Down ${Math.abs(impact.delta)}`}</Badge> : null}
+                  {impact?.reason ? <Badge variant="live">{impact.reason}</Badge> : null}
+                </div>
+              </div>
+            </motion.div>
+          ) : null}
 
           <div
             className={`mt-5 w-full overflow-x-auto rounded-[1.3rem] border border-slate-200/80 bg-white/72 px-2 py-2 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl ${embedded ? "" : "sticky top-20 z-20 sm:top-24"}`}

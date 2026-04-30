@@ -1354,6 +1354,9 @@ export default function StaffDashboard({
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        mode: "public_demo",
+      }),
     });
     const payload = (await response.json().catch(() => null)) as
       | {
@@ -1903,16 +1906,16 @@ export default function StaffDashboard({
           actionLabel: "Start setup walkthrough",
         },
         {
-          title: "Judge live flow",
+          title: "Judge station demo",
           description: "See the same event move into live scoring and watch one save update the public rankings.",
           href: demoJudgePath,
-          actionLabel: "Open live scoring demo",
+          actionLabel: "Open judge station demo",
         },
         {
-          title: "Public leaderboard",
+          title: "Live leaderboard",
           description: "Preview the climber-facing rankings and display experience for this sample event.",
           href: leaderboardPath,
-          actionLabel: "Open public leaderboard",
+          actionLabel: "Open live leaderboard",
         },
       ]
     : [];
@@ -2090,14 +2093,14 @@ export default function StaffDashboard({
     setOrganizerPlaybackStep("handoff");
     setOrganizerNarration({
       title: "Building the event you just configured",
-      body: "In the background, the sales demo is provisioning a clean event with categories, boulders, schedule blocks, stages, and public results so the judge station opens ready to run.",
+      body: "In the background, the guided demo is building a clean event with categories, boulders, schedule blocks, stages, and public results so the judge station opens ready to run.",
     });
     patchDemoSalesSession({
       phase: "build",
       storyStep: "organizer-build",
       narratorTitle: "Building the event you just configured",
       narratorBody:
-        "In the background, the sales demo is provisioning a clean event with categories, boulders, schedule blocks, stages, and public results so the judge station opens ready to run.",
+        "In the background, the guided demo is building a clean event with categories, boulders, schedule blocks, stages, and public results so the judge station opens ready to run.",
       autoplay: true,
       organizerCompleted: true,
       judgePending: true,
@@ -2125,7 +2128,7 @@ export default function StaffDashboard({
     });
     setOrganizerNarration({
       title: "Judge station ready",
-      body: "The sample event is prepared. Next, the story moves into one live judge save, a public leaderboard reaction, and an offline recovery moment.",
+      body: "The sample event is prepared. Next, the story moves into one live score save, a live leaderboard reaction, and an offline recovery moment.",
     });
     writeDemoSalesSession(
       createDemoSalesSession({
@@ -2278,7 +2281,7 @@ export default function StaffDashboard({
       });
       await moveOrganizerDemoCursor("organizer-handoff-judge", {
         click: true,
-        label: "Judge live flow",
+        label: "Judge station demo",
       });
       handleOrganizerHandoff("judge");
       await waitForOrganizerPlayback(2200);
@@ -2513,7 +2516,7 @@ export default function StaffDashboard({
                 </p>
                 <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-4 py-2 text-sm font-medium text-sky-800">
                   <span className="demo-live-dot" aria-hidden="true" />
-                  {buildTransitionState.complete ? "Judge station ready" : "Provisioning the event now"}
+                  {buildTransitionState.complete ? "Judge station ready" : "Building the live event now"}
                 </div>
               </div>
               <div className="rounded-[2rem] border border-sky-200/80 bg-white/90 p-5 shadow-[0_20px_60px_-30px_rgba(14,165,233,0.4)]">
@@ -2599,12 +2602,12 @@ export default function StaffDashboard({
                   </a>
                   {leaderboardPath ? (
                     <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button">
-                      See public leaderboard
+                      See live leaderboard
                     </Link>
                   ) : null}
                   {displayPath ? (
                     <Link href={displayPath} onClick={() => handleOrganizerHandoff("display")} className="results-secondary-button">
-                      See public display
+                      See big-screen display
                     </Link>
                   ) : null}
                 </div>
@@ -2619,8 +2622,14 @@ export default function StaffDashboard({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge>{selectedSummary?.climber_count ?? 0} climbers</Badge>
                   <Badge>{draft?.categories.length ?? 0} categories</Badge>
-                  <Badge>{draft?.schedule_blocks.length ?? 0} schedule blocks</Badge>
-                  <Badge>{currentCompetitionStages.length} stages</Badge>
+                  <Badge>
+                    {draft?.schedule_blocks.length ?? 0}{" "}
+                    {(draft?.schedule_blocks.length ?? 0) === 1 ? "schedule block" : "schedule blocks"}
+                  </Badge>
+                  <Badge>
+                    {currentCompetitionStages.length}{" "}
+                    {currentCompetitionStages.length === 1 ? "stage" : "stages"}
+                  </Badge>
                 </div>
                 <div className="mt-4 space-y-2 text-sm text-slate-600">
                   <div>{draft?.location_name || "Location TBD"}</div>
@@ -2986,19 +2995,19 @@ export default function StaffDashboard({
                     <div className={`results-workspace-callout ${organizerDemoSectionClass("handoff")}`} data-demo-anchor="organizer-links">
                       <div className="results-kicker">Quick links</div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                        <Link href={publicPath} className="results-secondary-button w-full">Public page</Link>
+                        <Link href={publicPath} className="results-secondary-button w-full">Public event page</Link>
                         <Link
                           href={demoMode ? demoJudgePath : judgeUrl}
                           onClick={() => handleOrganizerHandoff("judge")}
                           className="results-secondary-button w-full"
                           data-demo-anchor="organizer-handoff-judge"
                         >
-                          {demoMode ? "Judge live flow" : "Judge scoring"}
+                          {demoMode ? "Judge station demo" : "Judge station"}
                         </Link>
                         <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button w-full">
-                          Public leaderboard
+                          Live leaderboard
                         </Link>
-                        <Link href={displayPath} onClick={() => handleOrganizerHandoff("display")} className="results-secondary-button w-full">Public display</Link>
+                        <Link href={displayPath} onClick={() => handleOrganizerHandoff("display")} className="results-secondary-button w-full">Big-screen display</Link>
                         {!demoMode ? (
                           <Link href={buildStaffCompetitionPath(draft.slug, "preflight")} className="results-secondary-button w-full">Event checklist</Link>
                         ) : null}
@@ -4426,7 +4435,7 @@ export default function StaffDashboard({
                   {snapshot ? (
                     <>
                       <button type="button" onClick={() => window.open(buildDisplayPath(draft.slug), "_blank", "noopener,noreferrer")} className="results-secondary-button">
-                        Open public display
+                        Open big-screen display
                       </button>
                     </>
                   ) : null}

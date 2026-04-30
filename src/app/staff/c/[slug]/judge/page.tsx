@@ -21,6 +21,7 @@ import {
   markOfflineItemRetried,
   readOfflineQueue,
   removeOfflineItem,
+  type OfflineQueueItem,
 } from "@/lib/staff-offline-queue";
 import {
   buildFinalsLeaderboard,
@@ -44,6 +45,14 @@ type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
 type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
 type QualifierDraftState = Record<string, QualifierDraft>;
 type FinalsDraftState = Record<string, FinalsDraft>;
+type QueuedScorePreview = {
+  id: string;
+  climberName: string;
+  climbLabel: string;
+  resultLabel: string;
+  queuedAtLabel: string;
+  retryCount: number;
+};
 
 const EMPTY_QUALIFIER_DRAFT: QualifierDraft = { attemptCount: 0, topped: false, zone: false };
 const EMPTY_FINALS_DRAFT: FinalsDraft = { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
@@ -194,6 +203,48 @@ function shouldQueueFailedSave(error: unknown) {
 
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /failed to fetch|networkerror|network request failed|load failed|fetch/i.test(message);
+}
+
+function normalizeJudgeSaveError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message.trim() : String(error ?? "").trim();
+  if (!message) {
+    return fallback;
+  }
+
+  if (/unauthorized/i.test(message)) {
+    return "This judge station needs a fresh authorized session before it can publish live again.";
+  }
+
+  return message;
+}
+
+function buildResultLabel(input: { topped?: boolean; zone?: boolean; top?: boolean; attemptCount?: number; attemptsToTop?: number | null; attemptsToZone?: number | null }) {
+  if (input.top ?? input.topped) {
+    const attemptNumber = input.attemptsToTop ?? input.attemptCount ?? 0;
+    return attemptNumber === 1 ? "Flash top" : `Top on attempt ${attemptNumber}`;
+  }
+  if (input.zone) {
+    const attemptNumber = input.attemptsToZone ?? input.attemptCount ?? 0;
+    return `Zone on attempt ${attemptNumber}`;
+  }
+  return `Attempt ${input.attemptCount ?? 0} logged`;
+}
+
+function formatQueuedAtLabel(scoredAt: string) {
+  const timestamp = new Date(scoredAt).getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Queued just now";
+  }
+
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 5) {
+    return "Queued just now";
+  }
+  if (seconds < 60) {
+    return `Queued ${seconds}s ago`;
+  }
+
+  return `Queued ${Math.round(seconds / 60)}m ago`;
 }
 
 type ConfirmationTone = "pending" | "confirmed" | "dirty";
@@ -393,7 +444,7 @@ function FinalsEditorPanel({
           <div className="mt-2 text-2xl font-semibold text-slate-950">{formatFinalPoints(pointsValue)}</div>
         </div>
         <div className="text-sm text-slate-600">
-          Finals points update from the current judge calls in this editor. Save when the boulder card matches what you observed.
+          Finals points update from the current scores in this editor. Save when the boulder card matches what you observed.
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -427,6 +478,7 @@ export default function StaffJudgePage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [queuedCount, setQueuedCount] = useState(0);
+  const [queuedItems, setQueuedItems] = useState<QueuedScorePreview[]>([]);
   const flushingQueueRef = useRef(false);
   const finalsGridViewportRef = useRef<HTMLDivElement | null>(null);
   const activeQualifierRoundId = snapshot?.activeQualifierRound?.id ?? getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.id ?? null;
@@ -435,6 +487,42 @@ export default function StaffJudgePage() {
   const activeFinalsRoundName = snapshot?.activeFinalsRound?.name ?? getActiveFinalsRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.name ?? "Finals";
   const activeQualifierProblemCount = snapshot?.activeQualifierRound?.problem_count ?? snapshot?.competition.total_climbs ?? 0;
   const activeFinalsProblemCount = snapshot?.activeFinalsRound?.problem_count ?? snapshot?.competition.finals_problem_count ?? 0;
+
+  const syncQueuedState = useCallback(async (nextSnapshot?: CompetitionSnapshot | null) => {
+    const queue = await readOfflineQueue();
+    const competitionId = nextSnapshot?.competition.id ?? snapshot?.competition.id ?? null;
+    const relevantQueue = competitionId ? queue.filter((item) => item.competitionId === competitionId) : queue;
+    const sourceSnapshot = nextSnapshot ?? snapshot;
+
+    setQueuedCount(relevantQueue.length);
+    setQueuedItems(
+      relevantQueue.map((item) => {
+        const climber = sourceSnapshot?.climbers.find((entry) => entry.id === item.climberId);
+        return {
+          id: item.id,
+          climberName: climber?.name ?? "Queued climber",
+          climbLabel: `Boulder ${String(item.climbNumber).padStart(2, "0")}`,
+          resultLabel:
+            item.type === "qualifier"
+              ? buildResultLabel({
+                  topped: item.topped,
+                  zone: item.zone,
+                  attemptCount: item.attemptCount,
+                  attemptsToTop: item.attemptsToTop,
+                  attemptsToZone: item.attemptsToZone,
+                })
+              : buildResultLabel({
+                  top: item.top,
+                  zone: item.zone,
+                  attemptsToTop: item.attemptsToTop,
+                  attemptsToZone: item.attemptsToZone,
+                }),
+          queuedAtLabel: formatQueuedAtLabel(item.scoredAt),
+          retryCount: item.retryCount,
+        };
+      })
+    );
+  }, [snapshot]);
 
   const flushOfflineQueue = useCallback(async () => {
     if (flushingQueueRef.current) {
@@ -486,15 +574,16 @@ export default function StaffJudgePage() {
         }
       }
 
-      setQueuedCount((await readOfflineQueue()).length);
+      await syncQueuedState(snapshot);
       if (snapshot) {
         const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
         setSnapshot(refreshed);
+        await syncQueuedState(refreshed);
       }
     } finally {
       flushingQueueRef.current = false;
     }
-  }, [snapshot]);
+  }, [snapshot, syncQueuedState]);
 
   useEffect(() => {
     setLoading(true);
@@ -532,16 +621,16 @@ export default function StaffJudgePage() {
           setSelectedCell({ climberId: initialClimberId, climbNumber: 1 });
         }
         setError("");
+        void syncQueuedState(nextSnapshot);
       })
       .catch((nextError) => {
         setError(nextError instanceof Error ? nextError.message : "Unable to load the judge panel.");
       })
       .finally(() => setLoading(false));
-  }, [initialClimberId, slug]);
+  }, [initialClimberId, slug, syncQueuedState]);
 
   useEffect(() => {
-    const syncQueuedCount = async () => setQueuedCount((await readOfflineQueue()).length);
-    void syncQueuedCount();
+    void syncQueuedState();
     void (async () => {
       const queue = await readOfflineQueue();
       if (typeof navigator !== "undefined" && navigator.onLine && queue.length > 0) {
@@ -549,7 +638,7 @@ export default function StaffJudgePage() {
       }
     })();
     const onOnline = () => {
-      void syncQueuedCount();
+      void syncQueuedState();
       void flushOfflineQueue();
     };
     const retryTimer = window.setInterval(async () => {
@@ -563,7 +652,7 @@ export default function StaffJudgePage() {
       window.removeEventListener("online", onOnline);
       window.clearInterval(retryTimer);
     };
-  }, [flushOfflineQueue]);
+  }, [flushOfflineQueue, syncQueuedState]);
 
   const qualifierClimbers = useMemo(() => {
     if (!snapshot) {
@@ -634,6 +723,14 @@ export default function StaffJudgePage() {
   const finalsProblemCount = activeFinalsProblemCount;
   const finalsGridTemplateColumns = `minmax(9rem, 1.15fr) repeat(${Math.max(finalsProblemCount, 1)}, minmax(6.75rem, 1fr))`;
   const finalsGridMinWidth = `${Math.max(640, 176 + finalsProblemCount * 124)}px`;
+  const syncStatusLabel = saving
+    ? "Saving live..."
+    : queuedCount > 0
+      ? `Saved on this device (${queuedCount})`
+      : "Saved live";
+  const syncHelperCopy = queuedCount > 0
+    ? "Queued scores are preserved on this judge station and will publish automatically when saving is available again."
+    : "Every save is publishing live to the leaderboard and public event surfaces.";
   const finalsBlockedMessage = !snapshot
     ? ""
     : !finalists.length
@@ -825,8 +922,9 @@ export default function StaffJudgePage() {
           ? `A newer qualifier score already exists for boulder ${selectedBoulder}. Your queued score was preserved but did not replace the current result.`
           : savedAttempt.status === "conflicted"
             ? `Saved qualifier score for boulder ${selectedBoulder}, but another judge had already scored this cell. The latest timed event is now live.`
-            : `Saved qualifier score for boulder ${selectedBoulder}.`
+            : `Score saved live for boulder ${selectedBoulder}.`
       );
+      await syncQueuedState();
     } catch (nextError) {
       if (shouldQueueFailedSave(nextError)) {
         const metadata = await buildQueueMetadata();
@@ -849,14 +947,14 @@ export default function StaffJudgePage() {
           retryCount: 0,
           lastTriedAt: null,
         });
-        setQueuedCount((await readOfflineQueue()).length);
-        setError(
+        await syncQueuedState();
+        setMessage(
           nextError instanceof Error
-            ? `${nextError.message} Score queued locally and will retry automatically.`
-            : "Unable to save qualifier score right now. Score queued for retry."
+            ? `${normalizeJudgeSaveError(nextError, "Unable to save live right now.")} Score saved on this device and will retry automatically.`
+            : "Unable to save live right now. Score saved on this device and will retry automatically."
         );
       } else {
-        setError(nextError instanceof Error ? nextError.message : "Unable to save qualifier score.");
+        setError(normalizeJudgeSaveError(nextError, "Unable to save qualifier score."));
       }
     } finally {
       setSaving(false);
@@ -923,8 +1021,9 @@ export default function StaffJudgePage() {
           ? `A newer finals score already exists for boulder ${selectedCell.climbNumber}. Your queued score was preserved but did not replace the current result.`
           : savedAttempt.status === "conflicted"
             ? `Saved finals score for boulder ${selectedCell.climbNumber}, but another judge also updated this cell. The latest timed event is now live.`
-            : `Saved finals score for boulder ${selectedCell.climbNumber}.`
+            : `Score saved live for boulder ${selectedCell.climbNumber}.`
       );
+      await syncQueuedState();
     } catch (nextError) {
       if (shouldQueueFailedSave(nextError)) {
         const metadata = await buildQueueMetadata();
@@ -946,14 +1045,14 @@ export default function StaffJudgePage() {
           retryCount: 0,
           lastTriedAt: null,
         });
-        setQueuedCount((await readOfflineQueue()).length);
-        setError(
+        await syncQueuedState();
+        setMessage(
           nextError instanceof Error
-            ? `${nextError.message} Score queued locally and will retry automatically.`
-            : "Unable to save finals score right now. Score queued for retry."
+            ? `${normalizeJudgeSaveError(nextError, "Unable to save live right now.")} Score saved on this device and will retry automatically.`
+            : "Unable to save live right now. Score saved on this device and will retry automatically."
         );
       } else {
-        setError(nextError instanceof Error ? nextError.message : "Unable to save finals score.");
+        setError(normalizeJudgeSaveError(nextError, "Unable to save finals score."));
       }
     } finally {
       setSaving(false);
@@ -1029,6 +1128,9 @@ export default function StaffJudgePage() {
               <div className="results-kicker">Desk status</div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <div className="results-chip">{profile?.display_name || profile?.role || "staff"}</div>
+                <div className={queuedCount > 0 || saving ? "results-chip results-chip-live" : "results-chip"}>
+                  {syncStatusLabel}
+                </div>
                 <div className={qualifierScoringOpen ? "results-chip results-chip-live" : "results-chip"}>
                   {qualifierScoringOpen ? "Qualifier scoring open" : "Qualifier scoring closed"}
                 </div>
@@ -1038,6 +1140,7 @@ export default function StaffJudgePage() {
               </div>
             </div>
           </div>
+          <div className="mt-3 text-sm text-slate-600">{syncHelperCopy}</div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-slate-600">
               Judges and admins can score the active qualifier-style round and the active finals round from this page. Use qualifier mode for qualifier or semifinal entry, and finals mode for the full finals grid.
@@ -1070,8 +1173,27 @@ export default function StaffJudgePage() {
             </div>
           </div>
           {queuedCount > 0 ? (
-            <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              {queuedCount} score {queuedCount === 1 ? "is" : "are"} queued locally. They will retry automatically as soon as saving is available again.
+            <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-4">
+              <div className="text-sm font-semibold text-amber-800">
+                {queuedCount} {queuedCount === 1 ? "score is" : "scores are"} saved on this device
+              </div>
+              <div className="mt-1 text-sm text-amber-700">
+                They will retry automatically as soon as saving is available again.
+              </div>
+              <div className="mt-3 space-y-2">
+                {queuedItems.slice(0, 4).map((item) => (
+                  <div key={item.id} className="rounded-[1rem] border border-amber-200 bg-white/80 px-3 py-3 text-sm text-slate-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-semibold text-slate-950">{item.climberName}</div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.queuedAtLabel}</div>
+                    </div>
+                    <div className="mt-1">{item.climbLabel} · {item.resultLabel}</div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      {item.retryCount > 0 ? `Retry attempts: ${item.retryCount}` : "Waiting for the next publish attempt."}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
         </section>
@@ -1170,13 +1292,13 @@ export default function StaffJudgePage() {
                                 className="route-judge-counter-button route-judge-counter-button-accent"
                                 aria-label={`Add an attempt for ${climber.name}`}
                               >
-                                Attempt
+                                Add attempt
                               </button>
                             </div>
                           </div>
                           <div className="judge-live-summary">
                             <div>
-                              <div className="results-kicker">Judge call</div>
+                              <div className="results-kicker">Score status</div>
                               <div className="mt-2 text-xl font-semibold text-slate-950">{presentation.liveLabel}</div>
                             </div>
                             <div className="text-sm text-slate-600">{presentation.liveDetail}</div>
@@ -1193,7 +1315,7 @@ export default function StaffJudgePage() {
                             }
                             className="route-judge-action route-judge-action-neutral"
                           >
-                            <span className="route-judge-action-label">Attempt</span>
+                            <span className="route-judge-action-label">Add attempt</span>
                             <span className="route-judge-action-detail">Count another live start</span>
                           </button>
                           <button
@@ -1252,7 +1374,7 @@ export default function StaffJudgePage() {
                               disabled={saving || !canStaffScoreQualifier(snapshot.competition)}
                               className="results-primary-button"
                             >
-                              Confirm judge call
+                              Save score
                             </button>
                           </div>
                         </div>

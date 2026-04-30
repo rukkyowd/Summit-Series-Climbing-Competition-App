@@ -57,9 +57,9 @@ function clamp(value: number, min: number, max: number) {
 
 function getRouteLabel(routeId: DemoTourRouteId) {
   if (routeId === "organizer") return "Organizer demo";
-  if (routeId === "judge") return "Judge scoring";
+  if (routeId === "judge") return "Judge station";
   if (routeId === "leaderboard") return "Live leaderboard";
-  return "Spectator display";
+  return "Big-screen display";
 }
 
 function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
@@ -94,7 +94,7 @@ function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
       routeId: "judge",
       href: `/staff/c/${competitionSlug}/judge`,
       selector: '[data-demo-anchor="judge-entry-cards"]',
-      title: "Judge scoring",
+      title: "Judge station",
       description:
         "Each athlete card handles attempts, zone, top, and save in one touch surface that works well on a phone or tablet.",
       action:
@@ -113,7 +113,7 @@ function buildDemoTourSteps(competitionSlug: string): DemoTourStep[] {
       description:
         "This is the page climbers, parents, and coaches watch in real time. One URL serves every category instead of splitting divisions across separate pages.",
       action:
-        "Switch categories here to show how one family can follow multiple climbers from the same public page.",
+        "Switch categories here to show how one family can follow multiple climbers from the same live leaderboard.",
       preferredSide: "right",
       verticalBias: "top",
       calloutWidth: 332,

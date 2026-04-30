@@ -10,7 +10,7 @@ const secondaryDemoRoles = [
     description:
       "Jump straight into the live scoring split-screen after the organizer story, or use it as a standalone fast pitch.",
     href: "/demo/interactive",
-    badge: "Judge live flow",
+    badge: "Judge station demo",
   },
   {
     title: "Experience as a Competitor",
@@ -32,7 +32,7 @@ export default function DemoLandingPage() {
             <div className="space-y-4">
               <div className="results-kicker">Live demo</div>
               <h1 className="results-editorial-title text-4xl font-semibold text-slate-950 sm:text-5xl xl:text-6xl">
-                Build the comp. Hand it into live judging. Watch the gym react.
+                Build the comp. Hand it into live judging. Watch the event run live.
               </h1>
               <p className="max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg">
                 Start with the organizer story. It shows how the event gets built, then hands the
@@ -42,7 +42,7 @@ export default function DemoLandingPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <Link href="/staff/demo">
                   <Button variant="primary" className="min-w-[14rem]">
-                    Open organizer sales demo
+                    Open organizer demo
                   </Button>
                 </Link>
                 <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/90 px-4 py-2 text-sm font-medium text-emerald-800">
@@ -55,10 +55,10 @@ export default function DemoLandingPage() {
             <div className="rounded-[1.75rem] border border-slate-200/80 bg-white/72 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
               <div className="results-kicker">What they feel</div>
               <div className="mt-3 space-y-3 text-sm leading-relaxed text-slate-600">
-                <p>1. The organizer picks a comp format.</p>
-                <p>2. The event structure appears automatically.</p>
-                <p>3. The same event opens in the judge station.</p>
-                <p>4. One score moves the leaderboard and survives bad Wi-Fi.</p>
+                <p>1. Choose a comp format.</p>
+                <p>2. Generate categories, boulders, and rounds.</p>
+                <p>3. Open the judge station on that same event.</p>
+                <p>4. Save one score and watch the leaderboard survive bad Wi-Fi.</p>
               </div>
             </div>
           </div>

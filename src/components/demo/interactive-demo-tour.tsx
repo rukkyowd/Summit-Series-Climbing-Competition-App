@@ -30,8 +30,8 @@ const baseSteps = [
   },
   {
     id: "save",
-    title: "Save one judge call",
-    body: "For __ATHLETE__ on Boulder 1, tap Zone or Top, then press Save judge call. Continue unlocks after that score is officially saved.",
+    title: "Save one score",
+    body: "For __ATHLETE__ on Boulder 1, tap Zone or Top, then press Save score. Continue unlocks after that score is officially saved.",
   },
   {
     id: "leaderboard",
@@ -134,7 +134,7 @@ export function InteractiveDemoTour({
         complete: liveSaveCompleted,
         label: liveSaveCompleted
           ? "Live score saved."
-          : `Tap Zone or Top for ${climberName} on Boulder 1, then press Save judge call.`,
+          : `Tap Zone or Top for ${climberName} on Boulder 1, then press Save score.`,
       };
     }
 

@@ -5,7 +5,7 @@ export type DemoRole = "judge" | "competitor" | "organizer";
 
 export type DemoSimulationMode = "single_score" | "live_burst";
 
-export type DemoSyncStatus = "synced" | "pending" | "syncing" | "failed";
+export type DemoSyncStatus = "synced" | "saving" | "pending" | "syncing" | "failed";
 export type DemoPlaybackStep = "save" | "leaderboard" | "offline" | "sync" | "complete";
 
 export type DemoToolkitState = {
@@ -57,4 +57,13 @@ export type LeaderboardToast = {
   climbLabel: string;
   resultLabel: string;
   detail?: string | null;
+};
+
+export type DemoQueuedScorePreview = {
+  id: string;
+  climberName: string;
+  climbLabel: string;
+  resultLabel: string;
+  queuedAtLabel: string;
+  retryCount: number;
 };

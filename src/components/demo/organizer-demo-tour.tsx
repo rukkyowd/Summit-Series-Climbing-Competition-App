@@ -176,8 +176,8 @@ export function OrganizerDemoTour({
     return {
       complete: Boolean(handoffTarget),
       label: handoffTarget
-        ? `${handoffTarget === "judge" ? "Judge live flow" : handoffTarget === "leaderboard" ? "Public leaderboard" : "Public display"} opened.`
-        : "Open Judge live flow, Public leaderboard, or Public display to finish the organizer handoff.",
+        ? `${handoffTarget === "judge" ? "Judge station demo" : handoffTarget === "leaderboard" ? "Live leaderboard" : "Big-screen display"} opened.`
+        : "Open Judge station demo, Live leaderboard, or Big-screen display to finish the organizer handoff.",
     };
   }, [
     activeStep.id,
@@ -273,7 +273,7 @@ export function OrganizerDemoTour({
           {activeStep.id === "handoff" ? (
             <div className="flex flex-wrap gap-2">
               <Link href={judgeHref} onClick={() => onHandoffClick("judge")} className="results-primary-button">
-                See judge live flow
+            See judge station demo
               </Link>
               <Link href={leaderboardHref} onClick={() => onHandoffClick("leaderboard")} className="results-secondary-button">
                 Open leaderboard

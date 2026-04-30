@@ -11,6 +11,7 @@ import { JudgeWorkspace } from "@/components/demo/judge-workspace";
 import { LeaderboardPanel } from "@/components/demo/leaderboard-panel";
 import type {
   DemoScenarioAthlete,
+  DemoQueuedScorePreview,
   DemoPlaybackStep,
   DemoSimulationMode,
   DemoSimulationResponse,
@@ -195,6 +196,19 @@ function shouldQueueFailedSave(error: unknown) {
   return /failed to fetch|networkerror|network request failed|load failed|fetch/i.test(message);
 }
 
+function normalizeDemoErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message.trim() : String(error ?? "").trim();
+  if (!message) {
+    return fallback;
+  }
+
+  if (/unauthorized/i.test(message)) {
+    return "This demo action needs a fresh authorized session before it can publish live again.";
+  }
+
+  return message;
+}
+
 function getQualifierRank(snapshot: CompetitionSnapshot, climberId: string) {
   return snapshot.qualifierLeaderboard.find((entry) => entry.climber_id === climberId)?.category_rank ?? null;
 }
@@ -247,6 +261,44 @@ function buildScoreResultLabel(attempt: Pick<QualifierAttempt, "topped" | "zone"
     return `ZONE on attempt ${attempt.attempt_count}`;
   }
   return `Attempt ${attempt.attempt_count} logged`;
+}
+
+function formatQueuedAtLabel(scoredAt: string) {
+  const timestamp = new Date(scoredAt).getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Queued just now";
+  }
+
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 5) {
+    return "Queued just now";
+  }
+  if (seconds < 60) {
+    return `Queued ${seconds}s ago`;
+  }
+
+  return `Queued ${Math.round(seconds / 60)}m ago`;
+}
+
+function buildQueuedScorePreviews(
+  queue: Extract<OfflineQueueItem, { type: "qualifier" }>[],
+  snapshot: CompetitionSnapshot | null
+): DemoQueuedScorePreview[] {
+  return queue.map((item) => {
+    const climber = snapshot?.climbers.find((entry) => entry.id === item.climberId);
+    return {
+      id: item.id,
+      climberName: climber?.name ?? "Queued climber",
+      climbLabel: getDemoPitchClimb(item.climbNumber)?.label ?? `Boulder ${String(item.climbNumber).padStart(2, "0")}`,
+      resultLabel: buildScoreResultLabel({
+        topped: item.topped,
+        zone: item.zone ?? false,
+        attempt_count: item.attemptCount,
+      }),
+      queuedAtLabel: formatQueuedAtLabel(item.scoredAt),
+      retryCount: item.retryCount,
+    };
+  });
 }
 
 function findClimber(snapshot: CompetitionSnapshot, climberId: string) {
@@ -328,6 +380,7 @@ export function InteractiveDemoClient() {
     scriptRunning: false,
     lastSyncStatus: "synced",
   });
+  const [queuedScorePreviews, setQueuedScorePreviews] = useState<DemoQueuedScorePreview[]>([]);
   const refreshTimerRef = useRef<number | null>(null);
   const leaderboardToastTimerRef = useRef<number | null>(null);
   const leaderboardBurstTriggeredRef = useRef(false);
@@ -433,13 +486,14 @@ export function InteractiveDemoClient() {
 
   const refreshSnapshot = useCallback(async () => {
     const nextSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
-    const pendingQueueCount = await getDemoQueueItems(nextSnapshot.competition.id);
+    const pendingQueue = await getDemoQueueItems(nextSnapshot.competition.id);
     setSnapshot(nextSnapshot);
     setLeaderboardSnapshot(nextSnapshot);
     setLastUpdatedAt(new Date().toISOString());
+    setQueuedScorePreviews(buildQueuedScorePreviews(pendingQueue, nextSnapshot));
     setToolkitState((current) => ({
       ...current,
-      pendingQueueCount: pendingQueueCount.length,
+      pendingQueueCount: pendingQueue.length,
     }));
     return nextSnapshot;
   }, []);
@@ -541,6 +595,10 @@ export function InteractiveDemoClient() {
       setSaving(true);
       setError("");
       setMessage("");
+      setToolkitState((current) => ({
+        ...current,
+        lastSyncStatus: toolkitState.simulateOffline ? "pending" : "saving",
+      }));
       setHighlightedClimberId(input.climberId);
       const beforeRank = getQualifierRank(previousSnapshot, input.climberId);
       const optimisticAfterRank = getQualifierRank(optimisticSnapshot, input.climberId);
@@ -579,6 +637,7 @@ export function InteractiveDemoClient() {
           lastTriedAt: null,
         });
         const queue = await getDemoQueueItems(liveSnapshot.competition.id);
+        setQueuedScorePreviews(buildQueuedScorePreviews(queue, optimisticSnapshot));
         setToolkitState((current) => ({
           ...current,
           pendingQueueCount: queue.length,
@@ -638,7 +697,7 @@ export function InteractiveDemoClient() {
         setMessage(
           scenarioAthlete && input.climberId === scenarioAthlete.id
             ? buildRankMessage(previousSnapshot, savedSnapshot, scenarioAthlete)
-            : "Saved judge call. The leaderboard updated from the same competition snapshot."
+            : "Score saved live. The leaderboard updated from the same event record."
         );
         if (savedClimber) {
           showLeaderboardToast({
@@ -676,6 +735,7 @@ export function InteractiveDemoClient() {
             lastTriedAt: null,
           });
           const queue = await getDemoQueueItems(liveSnapshot.competition.id);
+          setQueuedScorePreviews(buildQueuedScorePreviews(queue, previousSnapshot));
           setToolkitState((current) => ({
             ...current,
             pendingQueueCount: queue.length,
@@ -693,7 +753,7 @@ export function InteractiveDemoClient() {
             ...current,
             lastSyncStatus: "failed",
           }));
-          setError(nextError instanceof Error ? nextError.message : "Unable to save the judge call.");
+          setError(normalizeDemoErrorMessage(nextError, "Unable to save the score live right now."));
         }
       } finally {
         setSaving(false);
@@ -710,6 +770,7 @@ export function InteractiveDemoClient() {
 
     const queue = await getDemoQueueItems(liveSnapshot.competition.id);
     if (!queue.length) {
+      setQueuedScorePreviews([]);
       setToolkitState((current) => ({
         ...current,
         pendingQueueCount: 0,
@@ -747,6 +808,8 @@ export function InteractiveDemoClient() {
 
       await refreshSnapshot();
       const remaining = await getDemoQueueItems(liveSnapshot.competition.id);
+      const refreshedSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
+      setQueuedScorePreviews(buildQueuedScorePreviews(remaining, refreshedSnapshot));
       setToolkitState((current) => ({
         ...current,
         pendingQueueCount: remaining.length,
@@ -757,7 +820,6 @@ export function InteractiveDemoClient() {
       }
       const lastQueuedItem = queue[queue.length - 1];
       if (lastQueuedItem) {
-        const refreshedSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
         const queuedClimber = findClimber(refreshedSnapshot, lastQueuedItem.climberId);
         if (queuedClimber) {
           showLeaderboardToast({
@@ -782,6 +844,7 @@ export function InteractiveDemoClient() {
         await markOfflineItemRetried(queue[0].id);
       }
       const remaining = await getDemoQueueItems(liveSnapshot.competition.id);
+      setQueuedScorePreviews(buildQueuedScorePreviews(remaining, liveSnapshot));
       setToolkitState((current) => ({
         ...current,
         pendingQueueCount: remaining.length,
@@ -974,6 +1037,12 @@ export function InteractiveDemoClient() {
 
     const response = await fetch("/api/demo/reset", {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        mode: "public_demo",
+      }),
     });
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     if (!response.ok) {
@@ -990,7 +1059,7 @@ export function InteractiveDemoClient() {
         storyStep: "organizer-intro",
         narratorTitle: "Build the comp from scratch, then watch it run live.",
         narratorBody:
-          "The sales story starts from a clean organizer shell, generates the event in front of you, then hands it into the judge station.",
+          "The guided story starts from a clean organizer shell, generates the event in front of you, then hands it into the judge station.",
         autoplay: true,
         organizerCompleted: false,
         judgePending: false,
@@ -1023,7 +1092,7 @@ export function InteractiveDemoClient() {
       scriptRunning: true,
     }));
     setError("");
-    setMessage("Pitch demo started. Watch the judge call, the live reorder, the Wi-Fi drop, and the sync recovery.");
+    setMessage("Guided demo started. Watch one saved score, the live reorder, the Wi-Fi drop, and the sync recovery.");
     syncSalesSessionState((current) =>
       createDemoSalesSession({
         mode: "judge",
@@ -1031,10 +1100,10 @@ export function InteractiveDemoClient() {
         storyStep: "judge-save",
         narratorTitle: options?.preserveSalesSession
           ? "The event you just configured is now powering live judging."
-          : "Watch one judge call drive the whole comp-day story.",
+          : "Watch one saved score drive the whole comp-day story.",
         narratorBody: options?.preserveSalesSession
           ? "Stay with the story as the same sample event moves into one judge save, a live leaderboard reaction, and an offline recovery moment."
-          : "This sales demo shows the money moment: one clean save, live public movement, a Wi-Fi failure, and a resilient sync catch-up.",
+          : "This guided demo shows the money moment: one clean save, live public movement, a Wi-Fi failure, and a resilient sync catch-up.",
         autoplay: true,
         organizerCompleted: options?.preserveSalesSession ?? false,
         judgePending: false,
@@ -1045,7 +1114,7 @@ export function InteractiveDemoClient() {
 
     try {
       setPlaybackNarration({
-        title: "Starting the sales demo",
+        title: "Starting the guided demo",
         body: "You are watching the exact comp-day story: one judge logs a score, the public ranking updates live, Wi-Fi drops, scores keep queueing, then everything syncs back in.",
       });
       await wait(2600);
@@ -1078,7 +1147,7 @@ export function InteractiveDemoClient() {
       await wait(900);
       await moveDemoCursorTo("interactive-save-button", {
         click: true,
-        label: "Save judge call",
+        label: "Save score",
       });
       await wait(1200);
 
@@ -1126,7 +1195,7 @@ export function InteractiveDemoClient() {
       setLeaderboardObserved(true);
       await wait(2200);
       await runSimulationStep("live_burst");
-      setMessage("The board is live, and a clean flash moves Maya up while other judge calls keep landing.");
+      setMessage("The board is live, and a clean flash moves Maya up while other saved scores keep landing.");
       await wait(2200);
 
       setPresentationFocus("offline");
@@ -1250,9 +1319,9 @@ export function InteractiveDemoClient() {
         audioEnabled: salesAudioEnabled,
       }));
       salesAutoplayStartedRef.current = false;
-      setMessage("Sales demo complete. The final story stays visible, and the seeded event is already reset behind the scenes for the next replay.");
+      setMessage("Guided demo complete. The final story stays visible, and the seeded event is already reset behind the scenes for the next replay.");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to run the scripted sales demo.");
+      setError(normalizeDemoErrorMessage(nextError, "Unable to run the guided demo."));
     } finally {
       setDemoCursor((current) => ({
         ...current,
@@ -1342,6 +1411,12 @@ export function InteractiveDemoClient() {
 
       const response = await fetch("/api/demo/reset", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mode: "public_demo",
+        }),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
@@ -1385,7 +1460,7 @@ export function InteractiveDemoClient() {
           mode: "judge",
           phase: "judge",
           storyStep: "judge-save",
-          narratorTitle: "Watch one judge call drive the whole comp-day story.",
+          narratorTitle: "Watch one saved score drive the whole comp-day story.",
           narratorBody:
             "One score save should move the public ranking, survive a Wi-Fi drop, and recover cleanly when the connection returns.",
           autoplay: false,
@@ -1397,22 +1472,25 @@ export function InteractiveDemoClient() {
       );
       setMessage("Demo restored to the seeded qualifier-in-progress state.");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to restore the demo.");
+      setError(normalizeDemoErrorMessage(nextError, "Unable to restore the demo."));
     }
   }
 
   const statusLabel = useMemo(() => {
     const status = toolkitState.lastSyncStatus;
     if (status === "synced") {
-      return "Synced";
+      return "Saved live";
+    }
+    if (status === "saving") {
+      return "Saving live...";
     }
     if (status === "syncing") {
-      return "Syncing...";
+      return "Publishing queued scores...";
     }
     if (status === "failed") {
-      return "Sync failed";
+      return "Sync needs review";
     }
-    return `Pending sync (${toolkitState.pendingQueueCount})`;
+    return toolkitState.pendingQueueCount > 0 ? `Saved on this device (${toolkitState.pendingQueueCount})` : "Saved on this device";
   }, [toolkitState.lastSyncStatus, toolkitState.pendingQueueCount]);
   const showPersistentCompletion = playbackStep === "complete" || salesSession?.persistentCompletion === true;
 
@@ -1479,7 +1557,7 @@ export function InteractiveDemoClient() {
         <DemoSalesShell
           mode="judge"
           stepLabel={JUDGE_STEP_LABELS[playbackStep ?? "save"]}
-          title={playbackNarration?.title ?? salesSession?.narratorTitle ?? "Watch one judge call drive the whole comp-day story."}
+          title={playbackNarration?.title ?? salesSession?.narratorTitle ?? "Watch one saved score drive the whole comp-day story."}
           body={
             playbackNarration?.body ??
             salesSession?.narratorBody ??
@@ -1523,7 +1601,7 @@ export function InteractiveDemoClient() {
                   mode: "judge",
                   phase: "judge",
                   storyStep: "judge-save",
-                  narratorTitle: "Watch one judge call drive the whole comp-day story.",
+                  narratorTitle: "Watch one saved score drive the whole comp-day story.",
                   narratorBody:
                     "This pitch path shows a clean save, a live leaderboard reaction, a Wi-Fi drop, and a resilient sync recovery.",
                   autoplay: false,
@@ -1541,7 +1619,7 @@ export function InteractiveDemoClient() {
           <Surface variant="card" className="overflow-hidden border-emerald-200 bg-emerald-50/70">
             <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
               <div className="space-y-3">
-                <div className="results-kicker text-emerald-700">Sales story complete</div>
+                  <div className="results-kicker text-emerald-700">Guided story complete</div>
                 <h2 className="text-3xl font-semibold text-slate-950 sm:text-4xl">
                   The event was built, judged live, and safely recovered from bad Wi‑Fi.
                 </h2>
@@ -1634,6 +1712,7 @@ export function InteractiveDemoClient() {
               embedded
               saving={saving}
               queuedCount={toolkitState.pendingQueueCount}
+              queuedItems={queuedScorePreviews}
               message={message}
               error={error}
               syncStatus={statusLabel}

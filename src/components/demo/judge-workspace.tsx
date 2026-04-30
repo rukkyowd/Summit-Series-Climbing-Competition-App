@@ -15,7 +15,7 @@ import {
   getClimbs,
   type QualifierAttempt,
 } from "@/lib/scoring";
-import type { DemoSyncStatus, JudgeQualifierSaveInput } from "@/components/demo/types";
+import type { DemoQueuedScorePreview, DemoSyncStatus, JudgeQualifierSaveInput } from "@/components/demo/types";
 
 type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
 type QualifierDraftState = Record<string, QualifierDraft>;
@@ -126,6 +126,7 @@ type JudgeWorkspaceProps = {
   embedded?: boolean;
   saving?: boolean;
   queuedCount?: number;
+  queuedItems?: DemoQueuedScorePreview[];
   message?: string;
   error?: string;
   syncStatus?: string;
@@ -145,9 +146,10 @@ export function JudgeWorkspace({
   embedded = false,
   saving = false,
   queuedCount = 0,
+  queuedItems = [],
   message = "",
   error = "",
-  syncStatus = "Synced",
+  syncStatus = "Saved live",
   syncState = "synced",
   initialClimberId = null,
   targetClimberId = null,
@@ -175,13 +177,15 @@ export function JudgeWorkspace({
   const syncToneClass =
     syncState === "failed"
       ? "demo-judge-sync-row-failed"
-      : syncState === "syncing"
+      : syncState === "syncing" || syncState === "saving"
         ? "demo-judge-sync-row-syncing"
         : syncState === "pending" || offlineMode
           ? "demo-judge-sync-row-pending"
           : "demo-judge-sync-row-synced";
   const syncHelperCopy = offlineMode
     ? "New scores stay on this judge station until you reconnect."
+    : syncState === "saving"
+      ? "Saving this result live to the public leaderboard now."
     : syncState === "pending"
       ? `${queuedCount} ${queuedCount === 1 ? "score is" : "scores are"} waiting to publish.`
       : syncState === "syncing"
@@ -357,6 +361,50 @@ export function JudgeWorkspace({
               ? "Large touch targets are enabled here on purpose so a judge can save a score fast, even under gym pressure."
               : "Qualifier scoring is currently locked, so the workspace is in read-only mode."}
           </div>
+          {offlineMode || queuedItems.length || syncState === "syncing" || syncState === "failed" ? (
+            <div className="rounded-[1.2rem] border border-slate-200 bg-white/90 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+              <div className="results-kicker">Offline queue</div>
+              <div className="mt-2 text-lg font-semibold text-slate-950">
+                {queuedCount > 0
+                  ? `${queuedCount} ${queuedCount === 1 ? "score is" : "scores are"} waiting to publish`
+                  : syncState === "syncing"
+                    ? "Queued scores are publishing now"
+                    : offlineMode
+                      ? "New scores will stay on this device until you reconnect"
+                      : "No queued scores right now"}
+              </div>
+              <div className="mt-2 text-sm text-slate-600">
+                {offlineMode
+                  ? "Every save is preserved on this judge station first, then replayed to the public leaderboard after reconnection."
+                  : syncState === "failed"
+                    ? "Publishing needs attention. The queued scores below are still preserved on this device."
+                    : "This queue is the proof that no judge save disappears during a Wi-Fi drop."}
+              </div>
+              {queuedItems.length ? (
+                <div className="mt-4 space-y-2">
+                  {queuedItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-[1rem] border border-slate-200 bg-slate-50/85 px-3 py-3 text-sm text-slate-700"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold text-slate-950">{item.climberName}</div>
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.queuedAtLabel}</div>
+                      </div>
+                      <div className="mt-1">
+                        {item.climbLabel} · {item.resultLabel}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        {item.retryCount > 0
+                          ? `Retry attempts: ${item.retryCount}`
+                          : "Waiting for the next publish opportunity."}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="min-h-0 min-w-0 space-y-3 overflow-y-auto pr-1" data-demo-anchor="interactive-judge-card">
@@ -439,14 +487,14 @@ export function JudgeWorkspace({
                         aria-label={`Add an attempt for ${climber.name}`}
                         disabled={interactionLocked}
                       >
-                        Attempt
+                        Add attempt
                       </button>
                     </div>
                   </div>
 
                   <div className={`judge-live-summary min-w-0 ${embedded ? "demo-judge-live-summary-embedded" : ""}`}>
                     <div className="space-y-2">
-                      <div className="results-kicker">Judge call</div>
+                      <div className="results-kicker">Score status</div>
                       <div className="mt-2 text-xl font-semibold text-slate-950">{presentation.liveLabel}</div>
                       <div className={`demo-judge-sync-row ${syncToneClass}`} data-demo-anchor={climberIndex === 0 ? "interactive-offline-banner" : undefined}>
                         <span className="demo-judge-sync-dot" />
@@ -471,7 +519,7 @@ export function JudgeWorkspace({
                     className="route-judge-action route-judge-action-neutral"
                     disabled={interactionLocked}
                   >
-                    <span className="route-judge-action-label">Attempt</span>
+                    <span className="route-judge-action-label">Add attempt</span>
                     <span className="route-judge-action-detail">Count another live start</span>
                   </button>
                   <button
@@ -549,7 +597,7 @@ export function JudgeWorkspace({
                       disabled={saving || !qualifierScoringOpen || interactionLocked}
                       data-demo-anchor={climberIndex === 0 ? "interactive-save-button" : undefined}
                     >
-                      Save judge call
+                      Save score
                     </Button>
                   </div>
                 </div>

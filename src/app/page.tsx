@@ -124,6 +124,7 @@ export default function HomePage() {
   const featured = filtered.find((summary) => summary.live_now) ?? filtered[0] ?? null;
   const featuredLifecycle = featured ? getCompetitionLifecycleLabel(featured.competition) : null;
   const featuredLiveNow = featuredLifecycle === "Live / Ongoing";
+  const featuredScheduleLabel = featured?.active_schedule_block?.label ?? "Schedule not posted yet";
 
   return (
     <main className="results-page">
@@ -133,7 +134,7 @@ export default function HomePage() {
           status={
             <div className="flex flex-wrap items-center gap-2">
               <Link href="/demo" className="results-secondary-button">
-                Open interactive demo
+                Open product demo
               </Link>
               {isStaffRole(profile?.role) ? (
                 <Link href="/staff/dashboard" className="results-secondary-button">
@@ -155,17 +156,17 @@ export default function HomePage() {
             <SectionHeader
               kicker="Climbing competitions"
               align="wide"
-              title="Everything you need for comp day, all in one place."
-              description="Set up the event, share registration, track scores, and keep climbers, parents, and spectators up to date without juggling a bunch of separate tools."
+              title="Run registration, judging, and live results from one event workspace."
+              description="Build the event once, then carry that same setup into the judge station, live leaderboard, big-screen display, and public event page without juggling separate tools."
             />
             <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-1">
               {featured ? (
                 <Link href={buildCompetitionPath(featured.competition.slug)} className={buttonStyles({ variant: "primary", fullWidth: true })}>
-                  Open live competition
+                  Open public event page
                 </Link>
               ) : null}
-              <Link href="/demo" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
-                Start guided demo
+              <Link href="/staff/demo" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
+                Open organizer demo
               </Link>
             </div>
           </div>
@@ -183,6 +184,11 @@ export default function HomePage() {
                     <Badge variant="contrast">{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</Badge>
                     <Badge variant="contrast">{featured.competition.location_name || "Location TBD"}</Badge>
                   </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge variant="contrast">{featured.climber_count} climbers</Badge>
+                    <Badge variant="contrast">{featured.finalist_count} finalists tracked</Badge>
+                    <Badge variant="contrast">{featuredScheduleLabel}</Badge>
+                  </div>
                 </div>
                 <Surface variant="feature" className="min-w-0">
                   {featuredLiveNow ? (
@@ -193,15 +199,15 @@ export default function HomePage() {
                       <span className="sr-only">{featuredLifecycle}</span>
                     </>
                   ) : null}
-                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">What people can do now</div>
+                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Comp-day snapshot</div>
                   <div className="mt-3 break-words text-2xl font-semibold text-slate-950">{featuredLifecycle}</div>
                   <div className="mt-4 space-y-2 text-sm leading-relaxed text-slate-600">
-                    <div className="break-words">Registration, scorecards, live standings, and display all live under one event.</div>
+                    <div className="break-words">One event record powers the judge station, live leaderboard, big-screen display, and public event page.</div>
                     <div className="break-words">{featured.competition.location_name || "Location TBD"}</div>
-                    <div className="break-words">{formatDateRange(featured.competition.start_date, featured.competition.end_date)}</div>
+                    <div className="break-words">Current block: {featuredScheduleLabel}</div>
                   </div>
                   <Link href={buildCompetitionPath(featured.competition.slug)} className={`${buttonStyles({ variant: "secondary", fullWidth: true })} mt-5`}>
-                    Enter event
+                    Open public event page
                   </Link>
                 </Surface>
               </div>

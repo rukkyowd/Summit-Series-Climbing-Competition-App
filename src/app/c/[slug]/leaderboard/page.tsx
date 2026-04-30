@@ -39,7 +39,7 @@ export default function CompetitionLeaderboardPage() {
             competitionSlug={snapshot.competition.slug}
             bannerTitle="Public leaderboard demo"
             bannerDescription="This is the page climbers, parents, and spectators can open during the event. It updates from the same competition model the judge panel writes to."
-            bannerTip="Change categories or refresh after a saved judge call to show how public results stay in sync."
+            bannerTip="Change categories or refresh after a saved score to show how public results stay in sync."
           />
         ) : null}
 
