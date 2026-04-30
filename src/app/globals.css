@@ -773,6 +773,10 @@ body::after {
     animation: results-fade-up 620ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  .demo-judge-shell-embedded {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .results-stage-toggle {
     @apply rounded-[1.5rem] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-5 py-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.06)];
   }
@@ -1223,17 +1227,9 @@ body::after {
     @apply inline-flex items-center justify-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:text-slate-800;
   }
 
-  @media (min-width: 1400px) {
-    .demo-judge-live-stack-embedded {
-      grid-template-columns: 15.5rem minmax(0, 1fr);
-    }
-
-    .demo-judge-action-grid-embedded {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .demo-judge-action-grid-embedded .route-judge-action-top {
-      grid-column: auto;
+  @media (min-width: 1680px) {
+    .demo-judge-shell-embedded {
+      grid-template-columns: 18rem minmax(0, 1fr);
     }
   }
 

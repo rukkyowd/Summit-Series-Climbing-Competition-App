@@ -286,7 +286,7 @@ export function JudgeWorkspace({
         </div>
       </div>
 
-      <div className={`mt-6 grid gap-4 ${embedded ? "2xl:grid-cols-[17rem_minmax(0,1fr)]" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
+      <div className={`mt-6 grid gap-4 ${embedded ? "demo-judge-shell-embedded" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
         <div className="results-control-stack">
           <div>
             <div className="results-kicker">{activeQualifierRoundName} controls</div>

@@ -182,6 +182,9 @@ function ordinalSuffix(value: number) {
 }
 
 export function InteractiveDemoClient() {
+  const shellClassName =
+    "mx-auto w-full max-w-[min(1600px,calc(100vw-1rem))] space-y-6 xl:space-y-7";
+
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [leaderboardSnapshot, setLeaderboardSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -598,7 +601,7 @@ export function InteractiveDemoClient() {
   if (loading) {
     return (
       <main className="results-page">
-        <div className="content-frame space-y-6">
+        <div className={shellClassName}>
           <SiteHeader
             light
             status={
@@ -618,7 +621,7 @@ export function InteractiveDemoClient() {
   if (!snapshot || !leaderboardSnapshot) {
     return (
       <main className="results-page">
-        <div className="content-frame space-y-6">
+        <div className={shellClassName}>
           <SiteHeader light />
           <Alert variant="error">{error || "Unable to load the live scoring demo."}</Alert>
         </div>
@@ -628,7 +631,7 @@ export function InteractiveDemoClient() {
 
   return (
     <main className="results-page">
-      <div className="content-frame space-y-6">
+      <div className={shellClassName}>
         <SiteHeader
           light
           status={
@@ -678,8 +681,8 @@ export function InteractiveDemoClient() {
           </div>
         </Surface>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-          <div className={`min-w-0 ${mobileTab === "leaderboard" ? "hidden xl:block" : ""}`}>
+        <div className="grid gap-6 2xl:[grid-template-columns:minmax(0,1.18fr)_minmax(34rem,0.82fr)]">
+          <div className={`min-w-0 ${mobileTab === "leaderboard" ? "hidden 2xl:block" : ""}`}>
             <JudgeWorkspace
               snapshot={snapshot}
               embedded
@@ -696,7 +699,7 @@ export function InteractiveDemoClient() {
               onSaveQualifier={handleSaveQualifier}
             />
           </div>
-          <div className={`min-w-0 ${mobileTab === "judge" ? "hidden xl:block" : ""}`}>
+          <div className={`min-w-0 ${mobileTab === "judge" ? "hidden 2xl:block" : ""}`}>
             <LeaderboardPanel
               snapshot={leaderboardSnapshot}
               embedded
