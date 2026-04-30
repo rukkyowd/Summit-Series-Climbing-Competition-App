@@ -348,6 +348,14 @@ export function InteractiveDemoClient() {
     setSalesAudioEnabled(session?.audioEnabled ?? false);
   }, []);
 
+  const syncSalesSessionState = useCallback((updater: (current: DemoSalesSession | null) => DemoSalesSession) => {
+    setSalesSession((current) => {
+      const next = updater(current);
+      writeDemoSalesSession(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     return () => {
       if (confettiTimerRef.current) {
@@ -956,6 +964,43 @@ export function InteractiveDemoClient() {
     [playDemoSound]
   );
 
+  const resetDemoDataInBackground = useCallback(async () => {
+    if (snapshotRef.current) {
+      const remaining = (await readOfflineQueue()).filter(
+        (item) => item.competitionId !== snapshotRef.current?.competition.id
+      );
+      await writeOfflineQueue(remaining);
+    }
+
+    const response = await fetch("/api/demo/reset", {
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to restore the seeded demo.");
+    }
+  }, []);
+
+  const replayFullSalesStory = useCallback(async () => {
+    salesAutoplayStartedRef.current = false;
+    syncSalesSessionState((current) =>
+      createDemoSalesSession({
+        mode: "organizer",
+        phase: "organizer",
+        storyStep: "organizer-intro",
+        narratorTitle: "Build the comp from scratch, then watch it run live.",
+        narratorBody:
+          "The sales story starts from a clean organizer shell, generates the event in front of you, then hands it into the judge station.",
+        autoplay: true,
+        organizerCompleted: false,
+        judgePending: false,
+        persistentCompletion: false,
+        audioEnabled: current?.audioEnabled ?? salesAudioEnabled,
+      })
+    );
+    router.push("/staff/demo");
+  }, [router, salesAudioEnabled, syncSalesSessionState]);
+
   async function handleRunDemo(options?: { preserveSalesSession?: boolean }) {
     if (toolkitState.scriptRunning || toolkitState.simulationRunning) {
       return;
@@ -979,9 +1024,10 @@ export function InteractiveDemoClient() {
     }));
     setError("");
     setMessage("Pitch demo started. Watch the judge call, the live reorder, the Wi-Fi drop, and the sync recovery.");
-    writeDemoSalesSession(
+    syncSalesSessionState((current) =>
       createDemoSalesSession({
         mode: "judge",
+        phase: "judge",
         storyStep: "judge-save",
         narratorTitle: options?.preserveSalesSession
           ? "The event you just configured is now powering live judging."
@@ -991,7 +1037,9 @@ export function InteractiveDemoClient() {
           : "This sales demo shows the money moment: one clean save, live public movement, a Wi-Fi failure, and a resilient sync catch-up.",
         autoplay: true,
         organizerCompleted: options?.preserveSalesSession ?? false,
-        audioEnabled: salesAudioEnabled,
+        judgePending: false,
+        persistentCompletion: false,
+        audioEnabled: current?.audioEnabled ?? salesAudioEnabled,
       })
     );
 
@@ -1009,11 +1057,20 @@ export function InteractiveDemoClient() {
         title: "Step 1: Judge logs a flash",
         body: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
       });
-      patchDemoSalesSession({
+      syncSalesSessionState((current) => ({
+        ...(current ??
+          createDemoSalesSession({
+            mode: "judge",
+            phase: "judge",
+            storyStep: "judge-save",
+            narratorTitle: "",
+            narratorBody: "",
+          })),
+        phase: "judge",
         storyStep: "judge-save",
         narratorTitle: "Step 1: Judge logs a flash",
         narratorBody: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
-      });
+      }));
       await moveDemoCursorTo("interactive-top-button", {
         click: true,
         label: "Top",
@@ -1045,12 +1102,21 @@ export function InteractiveDemoClient() {
         title: "Step 2: The leaderboard moves live",
         body: "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
       });
-      patchDemoSalesSession({
+      syncSalesSessionState((current) => ({
+        ...(current ??
+          createDemoSalesSession({
+            mode: "judge",
+            phase: "judge",
+            storyStep: "judge-leaderboard",
+            narratorTitle: "",
+            narratorBody: "",
+          })),
+        phase: "judge",
         storyStep: "judge-leaderboard",
         narratorTitle: "Step 2: The leaderboard moves live",
         narratorBody:
           "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
-      });
+      }));
       setDemoCursor((current) => ({
         ...current,
         label: "Leaderboard reacts live",
@@ -1070,12 +1136,21 @@ export function InteractiveDemoClient() {
         title: "Step 3: Wi-Fi drops, but judging keeps going",
         body: "The left side is now in offline mode. The public leaderboard pauses, but the judge can still save a score locally without losing the result.",
       });
-      patchDemoSalesSession({
+      syncSalesSessionState((current) => ({
+        ...(current ??
+          createDemoSalesSession({
+            mode: "judge",
+            phase: "judge",
+            storyStep: "judge-offline",
+            narratorTitle: "",
+            narratorBody: "",
+          })),
+        phase: "judge",
         storyStep: "judge-offline",
         narratorTitle: "Step 3: Wi-Fi drops, but judging keeps going",
         narratorBody:
           "The left side is now in offline mode. The public leaderboard pauses, but the judge can still save a score locally without losing the result.",
-      });
+      }));
       setToolkitState((current) => ({
         ...current,
         simulateOffline: true,
@@ -1113,12 +1188,21 @@ export function InteractiveDemoClient() {
         title: "Step 4: Reconnect and publish the queue",
         body: "Wi-Fi comes back, the queued score flushes, and the public side catches up without the judge having to re-enter anything.",
       });
-      patchDemoSalesSession({
+      syncSalesSessionState((current) => ({
+        ...(current ??
+          createDemoSalesSession({
+            mode: "judge",
+            phase: "judge",
+            storyStep: "judge-sync",
+            narratorTitle: "",
+            narratorBody: "",
+          })),
+        phase: "judge",
         storyStep: "judge-sync",
         narratorTitle: "Step 4: Reconnect and publish the queue",
         narratorBody:
           "Wi-Fi comes back, the queued score flushes, and the public side catches up without the judge having to re-enter anything.",
-      });
+      }));
       setToolkitState((current) => ({
         ...current,
         simulateOffline: false,
@@ -1141,16 +1225,32 @@ export function InteractiveDemoClient() {
       setPresentationFocus("leaderboard");
       setPlaybackNarration({
         title: "Demo complete",
-        body: "In under a minute, you just saw the whole trust story: judge scoring, instant public updates, offline resilience, and clean recovery when the connection returns.",
+        body: "In under a minute, you just built the event, watched judging go live, saw the leaderboard update, and proved the app can recover cleanly when Wi-Fi drops.",
       });
-      patchDemoSalesSession({
+      await resetDemoDataInBackground();
+      syncSalesSessionState((current) => ({
+        ...(current ??
+          createDemoSalesSession({
+            mode: "judge",
+            phase: "complete",
+            storyStep: "complete",
+            narratorTitle: "",
+            narratorBody: "",
+          })),
+        mode: "judge",
+        phase: "complete",
         storyStep: "complete",
         narratorTitle: "Demo complete",
         narratorBody:
-          "In under a minute, you just saw the whole trust story: judge scoring, instant public updates, offline resilience, and clean recovery when the connection returns.",
+          "The comp was created from scratch, judging worked, the leaderboard reacted live, and the offline queue recovered cleanly. This end state stays on screen while the underlying demo data resets for the next replay.",
         autoplay: false,
-      });
-      setMessage("Sales demo complete. The floor saw a flash, a live reorder, an offline save, and a clean sync recovery.");
+        organizerCompleted: true,
+        judgePending: false,
+        persistentCompletion: true,
+        audioEnabled: salesAudioEnabled,
+      }));
+      salesAutoplayStartedRef.current = false;
+      setMessage("Sales demo complete. The final story stays visible, and the seeded event is already reset behind the scenes for the next replay.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to run the scripted sales demo.");
     } finally {
@@ -1280,16 +1380,19 @@ export function InteractiveDemoClient() {
       }));
       salesAutoplayStartedRef.current = false;
       leaderboardBurstTriggeredRef.current = false;
-      writeDemoSalesSession(
+      syncSalesSessionState((current) =>
         createDemoSalesSession({
           mode: "judge",
+          phase: "judge",
           storyStep: "judge-save",
           narratorTitle: "Watch one judge call drive the whole comp-day story.",
           narratorBody:
             "One score save should move the public ranking, survive a Wi-Fi drop, and recover cleanly when the connection returns.",
           autoplay: false,
-          organizerCompleted: salesSession?.organizerCompleted ?? false,
-          audioEnabled: salesAudioEnabled,
+          organizerCompleted: current?.organizerCompleted ?? salesSession?.organizerCompleted ?? false,
+          judgePending: false,
+          persistentCompletion: false,
+          audioEnabled: current?.audioEnabled ?? salesAudioEnabled,
         })
       );
       setMessage("Demo restored to the seeded qualifier-in-progress state.");
@@ -1311,6 +1414,7 @@ export function InteractiveDemoClient() {
     }
     return `Pending sync (${toolkitState.pendingQueueCount})`;
   }, [toolkitState.lastSyncStatus, toolkitState.pendingQueueCount]);
+  const showPersistentCompletion = playbackStep === "complete" || salesSession?.persistentCompletion === true;
 
   useEffect(() => {
     if (!snapshot || !salesSession || salesAutoplayStartedRef.current) {
@@ -1383,18 +1487,21 @@ export function InteractiveDemoClient() {
           }
           autoplayRunning={toolkitState.scriptRunning}
           audioEnabled={salesAudioEnabled}
-          onReplay={() => void handleRunDemo({ preserveSalesSession: salesSession?.organizerCompleted })}
+          onReplay={() => void replayFullSalesStory()}
           onSkipToJudge={() => void handleRunDemo({ preserveSalesSession: salesSession?.organizerCompleted })}
           onBackToOrganizer={() => {
             writeDemoSalesSession(
               createDemoSalesSession({
                 mode: "organizer",
+                phase: "organizer",
                 storyStep: "organizer-intro",
                 narratorTitle: "Back to the organizer side of the story.",
                 narratorBody:
                   "Return to the organizer setup flow to show how the event gets built before comp day starts.",
                 autoplay: false,
                 organizerCompleted: false,
+                judgePending: false,
+                persistentCompletion: false,
                 audioEnabled: salesAudioEnabled,
               })
             );
@@ -1405,23 +1512,64 @@ export function InteractiveDemoClient() {
             setSalesAudioEnabled(nextValue);
             const existing = readDemoSalesSession();
             if (existing) {
+              setSalesSession({
+                ...existing,
+                audioEnabled: nextValue,
+              });
               patchDemoSalesSession({ audioEnabled: nextValue });
             } else {
               writeDemoSalesSession(
                 createDemoSalesSession({
                   mode: "judge",
+                  phase: "judge",
                   storyStep: "judge-save",
                   narratorTitle: "Watch one judge call drive the whole comp-day story.",
                   narratorBody:
                     "This pitch path shows a clean save, a live leaderboard reaction, a Wi-Fi drop, and a resilient sync recovery.",
                   autoplay: false,
                   organizerCompleted: false,
+                  judgePending: false,
+                  persistentCompletion: false,
                   audioEnabled: nextValue,
                 })
               );
             }
           }}
         />
+
+        {showPersistentCompletion ? (
+          <Surface variant="card" className="overflow-hidden border-emerald-200 bg-emerald-50/70">
+            <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <div className="space-y-3">
+                <div className="results-kicker text-emerald-700">Sales story complete</div>
+                <h2 className="text-3xl font-semibold text-slate-950 sm:text-4xl">
+                  The event was built, judged live, and safely recovered from bad Wi‑Fi.
+                </h2>
+                <p className="max-w-3xl text-base leading-7 text-slate-600">
+                  This ending stays visible for the presenter, even though the underlying demo event has already been reset behind the scenes and is ready for the next replay.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  "Organizer created the event structure",
+                  "Judge station saved a live score",
+                  "Leaderboard reacted instantly",
+                  "Offline queue recovered cleanly",
+                ].map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-[1.4rem] border border-emerald-200 bg-white/90 px-4 py-4 text-sm font-medium text-emerald-900 shadow-[0_16px_45px_-30px_rgba(16,185,129,0.5)]"
+                  >
+                    <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
+                      ✓
+                    </span>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Surface>
+        ) : null}
 
         <Surface variant="card" className="overflow-hidden">
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">

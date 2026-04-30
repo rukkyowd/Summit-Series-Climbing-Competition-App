@@ -7,19 +7,25 @@ export type DemoSalesStoryStep =
   | "organizer-schedule"
   | "organizer-stages"
   | "organizer-handoff"
+  | "organizer-build"
   | "judge-save"
   | "judge-leaderboard"
   | "judge-offline"
   | "judge-sync"
   | "complete";
 
+export type DemoSalesPhase = "organizer" | "build" | "judge" | "complete";
+
 export type DemoSalesSession = {
   mode: DemoSalesMode;
+  phase: DemoSalesPhase;
   storyStep: DemoSalesStoryStep;
   narratorTitle: string;
   narratorBody: string;
   autoplay: boolean;
   organizerCompleted: boolean;
+  judgePending: boolean;
+  persistentCompletion: boolean;
   audioEnabled: boolean;
 };
 
@@ -78,8 +84,11 @@ export function createDemoSalesSession(
   partial: Partial<DemoSalesSession> & Pick<DemoSalesSession, "mode" | "storyStep" | "narratorTitle" | "narratorBody">
 ) {
   return {
+    phase: partial.mode,
     autoplay: true,
     organizerCompleted: false,
+    judgePending: false,
+    persistentCompletion: false,
     audioEnabled: false,
     ...partial,
   } satisfies DemoSalesSession;
