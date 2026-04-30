@@ -288,9 +288,9 @@ export function JudgeWorkspace({
       } ${presentationFocus === "judge" || presentationFocus === "offline" || presentationFocus === "sync" ? "demo-pitch-focus-surface" : ""}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-4" data-demo-anchor="interactive-judge">
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <div className="results-kicker">{activeQualifierRoundName} scoring workspace</div>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
             Boulder-by-boulder judging
           </h2>
           <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
@@ -305,24 +305,59 @@ export function JudgeWorkspace({
         </div>
       </div>
 
-      <div className={`mt-6 grid gap-4 ${embedded ? "demo-judge-shell-embedded" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
-        <div className="results-control-stack">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="results-kicker">Current boulder</div>
+          <div className="mt-2 text-base font-semibold text-slate-950">
+            B{String(selectedBoulder).padStart(2, "0")}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            {qualifierSavedCount} of {snapshot.climbers.length} entries saved
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="results-kicker">Field</div>
+          <div className="mt-2 text-base font-semibold text-slate-950">
+            {qualifierClimbers.length} visible {qualifierClimbers.length === 1 ? "climber" : "climbers"}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            {activeQualifierProblemCount} qualifier {activeQualifierProblemCount === 1 ? "boulder" : "boulders"}
+          </div>
+        </div>
+        <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="results-kicker">Sync state</div>
+          <div className="mt-2 text-base font-semibold text-slate-950">{syncStatus}</div>
+          <div className="mt-1 text-xs text-slate-500">{syncHelperCopy}</div>
+        </div>
+        <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="results-kicker">Queue</div>
+          <div className="mt-2 text-base font-semibold text-slate-950">
+            {queuedCount > 0 ? `${queuedCount} waiting` : "Clear"}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            {offlineMode ? "Device-first saves are enabled." : "No delayed judge saves right now."}
+          </div>
+        </div>
+      </div>
+
+      <div className={`mt-4 grid gap-4 ${embedded ? "demo-judge-shell-embedded" : "xl:grid-cols-[20rem_minmax(0,1fr)]"}`}>
+        <div className="results-control-stack space-y-3">
           <div>
             <div className="results-kicker">{activeQualifierRoundName} controls</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">
+            <div className="mt-1 text-xl font-semibold text-slate-950">
               Boulder {String(selectedBoulder).padStart(2, "0")}
             </div>
             {selectedPitchClimb ? (
-              <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+              <div className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
                 {selectedPitchClimb.label}
               </div>
             ) : null}
-            <div className="mt-2 text-sm text-slate-600">
+            <div className="mt-1 text-sm text-slate-600">
               {qualifierSavedCount} of {snapshot.climbers.length} climbers already have an entry on this
               boulder.
             </div>
             {targetClimberName ? (
-              <div className="mt-3 rounded-[1rem] border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm text-sky-800">
+              <div className="mt-3 rounded-[1rem] border border-sky-200 bg-sky-50/80 px-3 py-2.5 text-sm text-sky-800">
                 Demo target: save {targetClimberName} on Boulder 1, then watch the leaderboard jump.
               </div>
             ) : null}
@@ -334,7 +369,7 @@ export function JudgeWorkspace({
             placeholder="Filter by name, number, or category"
             disabled={interactionLocked}
           />
-          <div className="flex max-h-[20rem] flex-wrap gap-2 overflow-y-auto">
+          <div className="flex max-h-[16rem] flex-wrap gap-2 overflow-y-auto">
             {getClimbs(activeQualifierProblemCount).map((climb) => (
               <button
                 key={climb.number}
@@ -356,15 +391,20 @@ export function JudgeWorkspace({
               </button>
             ))}
           </div>
-          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-600">
+          <div className="rounded-[1.1rem] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
             {qualifierScoringOpen
               ? "Large touch targets are enabled here on purpose so a judge can save a score fast, even under gym pressure."
               : "Qualifier scoring is currently locked, so the workspace is in read-only mode."}
           </div>
           {offlineMode || queuedItems.length || syncState === "syncing" || syncState === "failed" ? (
             <div className="rounded-[1.2rem] border border-slate-200 bg-white/90 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-              <div className="results-kicker">Offline queue</div>
-              <div className="mt-2 text-lg font-semibold text-slate-950">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="results-kicker">Offline queue</div>
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Queue proof
+                </div>
+              </div>
+              <div className="mt-2 text-base font-semibold text-slate-950">
                 {queuedCount > 0
                   ? `${queuedCount} ${queuedCount === 1 ? "score is" : "scores are"} waiting to publish`
                   : syncState === "syncing"
@@ -381,7 +421,7 @@ export function JudgeWorkspace({
                     : "This queue is the proof that no judge save disappears during a Wi-Fi drop."}
               </div>
               {queuedItems.length ? (
-                <div className="mt-4 space-y-2">
+                <div className="mt-3 space-y-2">
                   {queuedItems.map((item) => (
                     <div
                       key={item.id}
@@ -407,7 +447,7 @@ export function JudgeWorkspace({
           ) : null}
         </div>
 
-        <div className="min-h-0 min-w-0 space-y-3 overflow-y-auto pr-1" data-demo-anchor="interactive-judge-card">
+        <div className="min-h-0 min-w-0 space-y-2.5 overflow-y-auto pr-1" data-demo-anchor="interactive-judge-card">
           {qualifierClimbers.map((climber, climberIndex) => {
             const key = `${climber.id}:${selectedBoulder}`;
             const existingAttempt = filterAttemptsForRound(

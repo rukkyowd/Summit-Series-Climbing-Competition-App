@@ -128,9 +128,16 @@ export default function CompetitionDisplayPage() {
           />
         ) : null}
         <section className="results-card" data-demo-anchor="display-overview">
-          <div className="results-kicker">Live display</div>
+          <div className="results-kicker">Big-screen display</div>
           <h1 className="mt-2 text-5xl font-semibold text-slate-950">{snapshot?.competition.name ?? "Loading competition..."}</h1>
-          <p className="mt-3 text-lg text-slate-600">Projector view for public rankings and finals results.</p>
+          <p className="mt-3 text-lg text-slate-600">Projector view for live leaderboard updates, finals results, and wall traffic around the room.</p>
+          {snapshot ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Badge>{snapshot.competition.current_phase.replace(/_/g, " ")}</Badge>
+              {snapshot.activeQualifierRound?.name ? <Badge>{snapshot.activeQualifierRound.name}</Badge> : null}
+              {activeQueueSession ? <Badge>{activeQueueSession.label}</Badge> : null}
+            </div>
+          ) : null}
         </section>
 
         {snapshot?.competition.current_phase === "finals_open" || snapshot?.competition.current_phase === "finals_closed" || snapshot?.competition.current_phase === "results" ? (

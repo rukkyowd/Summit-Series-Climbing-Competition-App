@@ -3021,17 +3021,34 @@ export default function StaffDashboard({
                   </div>
 
                 <div className="results-section-band">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="results-kicker">Configure selected event</div>
                       <div className="mt-2 text-lg font-semibold tracking-tight text-slate-950">
                         {publicUrl || publicPath}
                       </div>
-                      <div className="mt-2 text-sm leading-relaxed text-slate-600">
+                      <div className="mt-1 text-sm leading-relaxed text-slate-600">
                         Use the local section nav to jump between setup areas without losing the guided step flow.
                       </div>
                     </div>
-                    <div className="results-chip">{setupProgressCount} / {SETUP_WIZARD_STEPS.length} setup areas ready</div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-[1rem] border border-slate-200 bg-white/80 px-3 py-2">
+                        <div className="results-kicker">Ready</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-950">
+                          {setupProgressCount} / {SETUP_WIZARD_STEPS.length}
+                        </div>
+                      </div>
+                      <div className="rounded-[1rem] border border-slate-200 bg-white/80 px-3 py-2">
+                        <div className="results-kicker">Stage</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-950">
+                          Step {currentSetupStep + 1}
+                        </div>
+                      </div>
+                      <div className="rounded-[1rem] border border-slate-200 bg-white/80 px-3 py-2">
+                        <div className="results-kicker">Progress</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-950">{setupProgressPercent}%</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -3057,21 +3074,39 @@ export default function StaffDashboard({
 
                 <div
                   id="demo-run-event"
-                  className={`results-workspace-card space-y-6 ${organizerDemoSectionClass(["categories", "preset", "schedule", "stages"])}`}
+                  className={`results-workspace-card space-y-4 ${organizerDemoSectionClass(["categories", "preset", "schedule", "stages"])}`}
                   data-demo-anchor="organizer-progress"
                 >
-                  <div className="space-y-4">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)] lg:items-start">
                     <div className="min-w-0">
                       <div className="results-kicker">Setup progress</div>
-                      <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+                      <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
                         Step {currentSetupStep + 1} of {SETUP_WIZARD_STEPS.length}: {activeSetupStep.title}
                       </div>
-                      <div className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
+                      <div className="mt-1.5 max-w-3xl text-sm leading-relaxed text-slate-600">
                         {activeSetupStep.description}
                       </div>
                     </div>
+                    <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                        <div className="results-kicker">Areas ready</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-950">{setupProgressCount}</div>
+                      </div>
+                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                        <div className="results-kicker">Applied preset</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-950">
+                          {selectedGuidedSetupPreset?.title ?? "Manual"}
+                        </div>
+                      </div>
+                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                        <div className="results-kicker">Next review</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-950">
+                          {isLastSetupStep ? "Operations" : SETUP_WIZARD_STEPS[currentSetupStep + 1]?.shortLabel ?? "Operations"}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="h-3 overflow-hidden rounded-full bg-slate-200/80">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-200/80">
                     <div
                       className="h-full rounded-full bg-slate-950 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
                       style={{ width: `${setupProgressPercent}%` }}
@@ -3100,22 +3135,22 @@ export default function StaffDashboard({
                                     ? "organizer-step-stages"
                                     : undefined
                           }
-                          className={`group min-w-0 rounded-[2rem] border px-5 py-6 text-left transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-1 sm:px-6 sm:py-7 ${
+                          className={`group min-w-0 rounded-[1.5rem] border px-4 py-4 text-left transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-1 sm:px-5 sm:py-5 ${
                             isActive
                               ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_54px_rgba(15,23,42,0.18)]"
                               : isComplete
                                 ? "border-emerald-200/90 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(220,252,231,0.9))] text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.06)] hover:border-emerald-300"
                                 : "border-slate-200/90 bg-white text-slate-900 shadow-[0_8px_26px_rgba(15,23,42,0.04)] hover:border-slate-300"
                           }`}
-                          style={{ minHeight: "12rem" }}
+                          style={{ minHeight: "9.5rem" }}
                         >
                           <div className={`text-sm font-semibold uppercase tracking-[0.24em] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-700" : "text-slate-500"}`}>
                             Step {index + 1}
                           </div>
-                          <div className="mt-4 max-w-full break-words text-[clamp(2rem,1.8rem+0.3vw,2.45rem)] font-semibold leading-[1.08] tracking-tight">
+                          <div className="mt-3 max-w-full break-words text-[clamp(1.55rem,1.45rem+0.2vw,1.95rem)] font-semibold leading-[1.08] tracking-tight">
                             {step.shortLabel}
                           </div>
-                          <div className={`mt-4 max-w-full break-words text-[1.1rem] leading-relaxed ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
+                          <div className={`mt-2.5 max-w-full break-words text-sm leading-relaxed ${isActive ? "text-slate-200" : isComplete ? "text-emerald-900" : "text-slate-600"}`}>
                             {step.description}
                           </div>
                         </button>

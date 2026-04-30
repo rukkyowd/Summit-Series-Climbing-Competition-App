@@ -45,6 +45,7 @@ export default function CompetitionListCard({
             )}
           </Badge>
           {summary.active_schedule_block ? <span>{summary.active_schedule_block.label}</span> : null}
+          <span>{summary.climber_count} climbers</span>
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 md:contents">

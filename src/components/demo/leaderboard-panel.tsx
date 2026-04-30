@@ -131,7 +131,7 @@ export function LeaderboardPanel({
       ? "Score column shows climb points."
       : "Score column shows official qualifier points.";
 
-  const wrapperClass = embedded ? "h-full space-y-4" : "space-y-6";
+  const wrapperClass = embedded ? "h-full space-y-3" : "space-y-5";
 
   const lastUpdatedLabel = useMemo(() => {
     if (!lastUpdatedAt) {
@@ -260,7 +260,7 @@ export function LeaderboardPanel({
           data-demo-anchor={embedded ? "interactive-leaderboard" : "leaderboard-overview"}
         >
           <div className="results-kicker">{activeQualifierRoundName} standings</div>
-          <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">
+          <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
             {scrambleFormat ? "Live scramble standings" : `Live ${activeQualifierRoundName.toLowerCase()} rankings`}
           </h2>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
@@ -271,6 +271,30 @@ export function LeaderboardPanel({
             <div>{lastUpdatedLabel}</div>
             <div>{qualifierScoreContextLabel}</div>
           </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div className="results-kicker">Visible field</div>
+              <div className="mt-2 text-base font-semibold text-slate-950">
+                {qualifierRows.length} {qualifierRows.length === 1 ? "climber" : "climbers"}
+              </div>
+            </div>
+            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div className="results-kicker">Category</div>
+              <div className="mt-2 text-base font-semibold text-slate-950">
+                {categories.find((category) => category.id === selectedCategory)?.display_name ?? "All categories"}
+              </div>
+            </div>
+            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div className="results-kicker">Round</div>
+              <div className="mt-2 text-base font-semibold text-slate-950">{activeQualifierRoundName}</div>
+            </div>
+            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div className="results-kicker">Status</div>
+              <div className="mt-2 text-base font-semibold text-slate-950">
+                {toast ? `Score saved for ${toast.climberName}` : impactHeadline ? "Rank movement detected" : "Steady live feed"}
+              </div>
+            </div>
+          </div>
 
           {impactHeadline ? (
             <motion.div
@@ -278,12 +302,12 @@ export function LeaderboardPanel({
               initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
               animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0.18 : 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="mt-5 rounded-[1.35rem] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(240,249,255,0.96))] px-4 py-4 shadow-[0_16px_40px_-28px_rgba(16,185,129,0.5)]"
+              className="mt-4 rounded-[1.2rem] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(240,249,255,0.96))] px-4 py-3.5 shadow-[0_16px_40px_-28px_rgba(16,185,129,0.5)]"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="results-kicker text-emerald-700">Rank change live</div>
-                  <div className="mt-2 text-2xl font-semibold text-slate-950">{impactHeadline.movementLabel}</div>
+                  <div className="mt-1.5 text-xl font-semibold text-slate-950 sm:text-2xl">{impactHeadline.movementLabel}</div>
                   <div className="mt-2 text-sm text-slate-600">
                     {impactHeadline.entry.display_category} · Score {impactHeadline.scoreLabel} · {impactHeadline.entry.topped_count} tops / {impactHeadline.entry.zone_count} zones
                   </div>
@@ -297,7 +321,7 @@ export function LeaderboardPanel({
           ) : null}
 
           <div
-            className={`mt-5 w-full overflow-x-auto rounded-[1.3rem] border border-slate-200/80 bg-white/72 px-2 py-2 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl ${embedded ? "" : "sticky top-20 z-20 sm:top-24"}`}
+            className={`mt-4 w-full overflow-x-auto rounded-[1.1rem] border border-slate-200/80 bg-white/72 px-2 py-2 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl ${embedded ? "" : "sticky top-20 z-20 sm:top-24"}`}
             data-demo-anchor={embedded ? undefined : "leaderboard-categories"}
           >
             <div className="flex min-w-max gap-2">
@@ -326,7 +350,7 @@ export function LeaderboardPanel({
             </Surface>
           ) : (
             <>
-              <motion.div layout className="mt-6 space-y-3 md:hidden">
+              <motion.div layout className="mt-5 space-y-2.5 md:hidden">
                 {qualifierRows.map((entry) => {
                   const impactLabel = getImpactLabel(entry.climber_id);
                   const impacted = Boolean(impactLabel);
@@ -374,7 +398,7 @@ export function LeaderboardPanel({
               </motion.div>
 
               <div
-                className={`results-data-scroll mt-6 hidden md:block ${embedded ? "relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden" : ""}`}
+                className={`results-data-scroll mt-5 hidden md:block ${embedded ? "relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden" : ""}`}
                 data-demo-anchor={embedded ? "interactive-leaderboard-table" : "leaderboard-table"}
               >
                 <div className="results-table-scroll-hint">
@@ -382,7 +406,7 @@ export function LeaderboardPanel({
                   <span>Scroll sideways for the full standings table.</span>
                 </div>
                 <motion.div layout className="min-w-[920px]">
-                  <div className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <div className="grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-200 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     <div>Rank</div>
                     <div>Name</div>
                     <div>Province</div>
@@ -398,7 +422,7 @@ export function LeaderboardPanel({
                         key={entry.climber_id}
                         layout
                         transition={{ duration: reduceMotion ? 0.18 : 0.55, ease: [0.16, 1, 0.3, 1] }}
-                        className={`grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700 transition-colors ${
+                        className={`grid grid-cols-[0.7fr_1.6fr_1fr_1fr_1fr_1.2fr] gap-4 border-b border-slate-100 px-4 py-3 text-sm text-slate-700 transition-colors ${
                           highlightedClimberId === entry.climber_id ? "bg-sky-50/80" : ""
                         } ${impacted ? "demo-rank-impact-row" : ""}`}
                       >

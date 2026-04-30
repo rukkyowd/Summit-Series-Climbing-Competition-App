@@ -162,13 +162,14 @@ export default function CompetitionOverviewPage() {
     snapshot?.competition.current_phase === "finals_open" ||
     snapshot?.competition.current_phase === "finals_closed" ||
     snapshot?.competition.current_phase === "results";
+  const liveCategoryCount = activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids).length : 0;
   const overviewNavItems = useMemo(
     () => [
       { href: buildCompetitionPath(slug), label: "Overview" },
       { href: `${buildCompetitionPath(slug)}#start-list`, label: "Start list" },
       { href: buildCompetitionPath(slug, "register"), label: "Register" },
       { href: buildCompetitionPath(slug, "scorecard"), label: "Scorecard" },
-      { href: buildCompetitionPath(slug, "leaderboard"), label: "Rankings" },
+      { href: buildCompetitionPath(slug, "leaderboard"), label: "Live leaderboard" },
     ],
     [slug]
   );
@@ -238,7 +239,7 @@ export default function CompetitionOverviewPage() {
             <CompetitionHero competition={snapshot.competition} />
 
             <section className="results-editorial-panel">
-              <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+              <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
                 <SectionHeader
                   kicker="What should I do now?"
                   title={activeBlock ? `${activeBlock.label} is the current focus.` : "The event page is ready even before the first live block starts."}
@@ -246,17 +247,49 @@ export default function CompetitionOverviewPage() {
                 />
                 <div className="results-link-list">
                   <Link href={buildCompetitionPath(slug, "register")} className={buttonStyles({ variant: "primary", fullWidth: true })}>
-                    Register
+                    Open registration
                   </Link>
                   <Link href={buildCompetitionPath(slug, "scorecard")} className={buttonStyles({ variant: "secondary", fullWidth: true })}>
                     Open scorecard
                   </Link>
                   <Link href={buildCompetitionPath(slug, "leaderboard")} className={buttonStyles({ variant: "secondary", fullWidth: true })}>
-                    View rankings
+                    Open live leaderboard
                   </Link>
                   <Link href={buildDisplayPath(slug)} className={buttonStyles({ variant: "secondary", fullWidth: true })}>
-                    Open display
+                    Open big-screen display
                   </Link>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[1rem] border border-slate-200 bg-white/85 px-4 py-3">
+                  <div className="results-kicker">Current phase</div>
+                  <div className="mt-2 text-base font-semibold text-slate-950">
+                    {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
+                  </div>
+                </div>
+                <div className="rounded-[1rem] border border-slate-200 bg-white/85 px-4 py-3">
+                  <div className="results-kicker">Field size</div>
+                  <div className="mt-2 text-base font-semibold text-slate-950">
+                    {snapshot.climbers.length} {snapshot.climbers.length === 1 ? "climber" : "climbers"}
+                  </div>
+                </div>
+                <div className="rounded-[1rem] border border-slate-200 bg-white/85 px-4 py-3">
+                  <div className="results-kicker">Live block</div>
+                  <div className="mt-2 text-base font-semibold text-slate-950">
+                    {activeBlock ? formatTimeRange(activeBlock.start_time, activeBlock.end_time) : "Waiting"}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {activeBlock ? `${liveCategoryCount} live ${liveCategoryCount === 1 ? "group" : "groups"}` : "No schedule block is live yet."}
+                  </div>
+                </div>
+                <div className="rounded-[1rem] border border-slate-200 bg-white/85 px-4 py-3">
+                  <div className="results-kicker">Up next</div>
+                  <div className="mt-2 text-base font-semibold text-slate-950">
+                    {nextBlock ? nextBlock.label : "Nothing queued"}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {nextBlock ? formatTimeRange(nextBlock.start_time, nextBlock.end_time) : "The current schedule has no later block."}
+                  </div>
                 </div>
               </div>
             </section>
@@ -298,10 +331,10 @@ export default function CompetitionOverviewPage() {
 
             <section className="results-card">
               <div className="results-kicker">{activeScrambleSession ? "Active scramble session" : "Live schedule"}</div>
-              <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">
+              <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
                 {activeBlock ? activeBlock.label : "No block live"}
               </h2>
-              <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600">
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
                 The live block, the next block, and the public-facing schedule stay together here so athletes and spectators can orient themselves quickly.
               </p>
 
@@ -326,7 +359,7 @@ export default function CompetitionOverviewPage() {
               ) : null}
 
               {orderedScheduleBlocks.length ? (
-                <div className="results-schedule-list mt-6 grid gap-3">
+                <div className="results-schedule-list mt-4 grid gap-3">
                   {orderedScheduleBlocks.map((block, index) => {
                     const blockAgeGroups = getBlockAgeGroups(block.eligible_category_ids);
                     const isPastBlock = activeBlockIndex >= 0 && index < activeBlockIndex;

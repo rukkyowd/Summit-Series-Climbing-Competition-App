@@ -37,14 +37,27 @@ export default function CompetitionLeaderboardPage() {
             enabled
             routeId="leaderboard"
             competitionSlug={snapshot.competition.slug}
-            bannerTitle="Public leaderboard demo"
+            bannerTitle="Live leaderboard demo"
             bannerDescription="This is the page climbers, parents, and spectators can open during the event. It updates from the same competition model the judge panel writes to."
             bannerTip="Change categories or refresh after a saved score to show how public results stay in sync."
           />
         ) : null}
 
         {snapshot ? (
-          <LeaderboardPanel snapshot={snapshot} />
+          <>
+            {!presentationMode ? (
+              <Surface variant="card">
+                <div className="results-kicker">Live leaderboard</div>
+                <h1 className="mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+                  {snapshot.competition.name}
+                </h1>
+                <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600">
+                  This is the public-facing leaderboard for climbers, coaches, parents, and spectators. It stays in sync with the same event record the judge station writes to.
+                </p>
+              </Surface>
+            ) : null}
+            <LeaderboardPanel snapshot={snapshot} />
+          </>
         ) : (
           <Surface variant="card" className="text-slate-600">
             Loading rankings...
