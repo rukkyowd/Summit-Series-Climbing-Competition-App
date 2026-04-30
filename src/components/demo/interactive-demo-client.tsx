@@ -182,8 +182,7 @@ function ordinalSuffix(value: number) {
 }
 
 export function InteractiveDemoClient() {
-  const shellClassName =
-    "mx-auto w-full max-w-[min(1600px,calc(100vw-1rem))] space-y-6 xl:space-y-7";
+  const shellClassName = "mx-auto w-full space-y-6 xl:space-y-7";
 
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [leaderboardSnapshot, setLeaderboardSnapshot] = useState<CompetitionSnapshot | null>(null);

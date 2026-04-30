@@ -114,7 +114,7 @@ body::after {
   }
 
   .content-frame {
-    @apply relative z-10 mx-auto w-full max-w-7xl min-w-0;
+    @apply relative z-10 mx-auto w-full min-w-0;
   }
 
   .app-header {
