@@ -3230,7 +3230,7 @@ export default function StaffDashboard({
                 </div>
 
                 <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
-                <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
+                <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 <div id="setup-operations" className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -4315,7 +4315,7 @@ export default function StaffDashboard({
                 </div>
 
                 {currentSetupStep === 4 ? (
-                <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
+                <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {draft.rounds?.length ? (
                   <div
                     id="setup-stages"
