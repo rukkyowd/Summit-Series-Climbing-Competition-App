@@ -17,6 +17,7 @@ type InteractiveDemoTourProps = {
   offlineQueuedSaveCompleted: boolean;
   syncRecovered: boolean;
   syncStatus: DemoSyncStatus;
+  suppressed?: boolean;
   onActiveStepChange?: (stepId: "judge" | "save" | "leaderboard" | "offline" | "sync") => void;
   onRestart?: () => void;
 };
@@ -58,6 +59,7 @@ export function InteractiveDemoTour({
   offlineQueuedSaveCompleted,
   syncRecovered,
   syncStatus,
+  suppressed = false,
   onActiveStepChange,
   onRestart,
 }: InteractiveDemoTourProps) {
@@ -113,8 +115,12 @@ export function InteractiveDemoTour({
   const activeStep = steps[stepIndex];
 
   useEffect(() => {
+    if (suppressed) {
+      return;
+    }
+
     onActiveStepChange?.(activeStep.id);
-  }, [activeStep.id, onActiveStepChange]);
+  }, [activeStep.id, onActiveStepChange, suppressed]);
   const stepRequirement = useMemo(() => {
     if (activeStep.id === "judge") {
       return {
@@ -170,6 +176,10 @@ export function InteractiveDemoTour({
     syncRecovered,
     syncStatus,
   ]);
+
+  if (suppressed) {
+    return null;
+  }
 
   if (hidden) {
     return (

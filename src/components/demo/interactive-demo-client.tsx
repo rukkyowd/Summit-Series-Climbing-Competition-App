@@ -1180,6 +1180,7 @@ export function InteractiveDemoClient() {
         offlineQueuedSaveCompleted={offlineQueuedSaveCompleted}
         syncRecovered={syncRecovered}
         syncStatus={toolkitState.lastSyncStatus}
+        suppressed={toolkitState.scriptRunning || playbackStep !== null}
         onActiveStepChange={setActiveTourStep}
         onRestart={() => void handleRestoreDemo()}
       />
