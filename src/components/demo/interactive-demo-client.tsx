@@ -42,6 +42,10 @@ import {
 
 type MobileTab = "judge" | "leaderboard";
 type TourStepId = "judge" | "save" | "leaderboard" | "offline" | "sync";
+type PlaybackNarration = {
+  title: string;
+  body: string;
+};
 
 function buildLocalAttempt(
   snapshot: CompetitionSnapshot,
@@ -275,6 +279,7 @@ export function InteractiveDemoClient() {
   const [activeTourStep, setActiveTourStep] = useState<TourStepId>("judge");
   const [playbackStep, setPlaybackStep] = useState<DemoPlaybackStep | null>(null);
   const [presentationFocus, setPresentationFocus] = useState<DemoPlaybackStep | "judge" | null>("judge");
+  const [playbackNarration, setPlaybackNarration] = useState<PlaybackNarration | null>(null);
   const [toolkitState, setToolkitState] = useState<DemoToolkitState>({
     simulateOffline: false,
     pendingQueueCount: 0,
@@ -793,10 +798,20 @@ export function InteractiveDemoClient() {
     setMessage("Pitch demo started. Watch the judge call, the live reorder, the Wi-Fi drop, and the sync recovery.");
 
     try {
+      setPlaybackNarration({
+        title: "Starting the sales demo",
+        body: "You are watching the exact comp-day story: one judge logs a score, the public ranking updates live, Wi-Fi drops, scores keep queueing, then everything syncs back in.",
+      });
+      await wait(2600);
+
       setPresentationFocus("judge");
       setPlaybackStep("save");
       setMobileTab("judge");
-      await wait(800);
+      setPlaybackNarration({
+        title: "Step 1: Judge logs a flash",
+        body: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
+      });
+      await wait(2800);
 
       await handleSaveQualifier({
         climberId: athlete.id,
@@ -807,26 +822,36 @@ export function InteractiveDemoClient() {
         attemptsToTop: 1,
         attemptsToZone: 1,
       });
+      await wait(2200);
 
       setPresentationFocus("leaderboard");
       setPlaybackStep("leaderboard");
       setMobileTab("leaderboard");
-      await wait(900);
+      setPlaybackNarration({
+        title: "Step 2: The leaderboard moves live",
+        body: "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
+      });
+      await wait(2600);
       await runSimulationStep("live_burst");
       setLeaderboardObserved(true);
-      await wait(1200);
+      await wait(2200);
       await runSimulationStep("live_burst");
       setMessage("The board is live, and a clean flash moves Maya up while other judge calls keep landing.");
+      await wait(2200);
 
       setPresentationFocus("offline");
       setPlaybackStep("offline");
       setMobileTab("judge");
+      setPlaybackNarration({
+        title: "Step 3: Wi-Fi drops, but judging keeps going",
+        body: "The left side is now in offline mode. The public leaderboard pauses, but the judge can still save a score locally without losing the result.",
+      });
       setToolkitState((current) => ({
         ...current,
         simulateOffline: true,
         lastSyncStatus: current.pendingQueueCount > 0 ? "pending" : current.lastSyncStatus,
       }));
-      await wait(700);
+      await wait(2600);
       await handleSaveQualifier({
         climberId: athlete.id,
         climbNumber: 2,
@@ -836,20 +861,29 @@ export function InteractiveDemoClient() {
         attemptsToTop: null,
         attemptsToZone: 2,
       });
-      await wait(900);
+      await wait(2400);
 
       setPresentationFocus("sync");
       setPlaybackStep("sync");
+      setPlaybackNarration({
+        title: "Step 4: Reconnect and publish the queue",
+        body: "Wi-Fi comes back, the queued score flushes, and the public side catches up without the judge having to re-enter anything.",
+      });
       setToolkitState((current) => ({
         ...current,
         simulateOffline: false,
       }));
+      await wait(2200);
       await flushOfflineQueue();
       setMobileTab("leaderboard");
-      await wait(800);
+      await wait(2600);
 
       setPlaybackStep("complete");
       setPresentationFocus("leaderboard");
+      setPlaybackNarration({
+        title: "Demo complete",
+        body: "In under a minute, you just saw the whole trust story: judge scoring, instant public updates, offline resilience, and clean recovery when the connection returns.",
+      });
       setMessage("Sales demo complete. The floor saw a flash, a live reorder, an offline save, and a clean sync recovery.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to run the scripted sales demo.");
@@ -959,6 +993,7 @@ export function InteractiveDemoClient() {
       setLastUpdatedAt(new Date().toISOString());
       setPlaybackStep(null);
       setPresentationFocus("judge");
+      setPlaybackNarration(null);
       setMobileTab("judge");
       setToolkitState((current) => ({
         ...current,
@@ -1067,6 +1102,28 @@ export function InteractiveDemoClient() {
             </div>
           </div>
         </Surface>
+
+        {playbackNarration ? (
+          <Surface variant="row" className="border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.94))]">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <div className="results-kicker text-sky-700">
+                  {toolkitState.scriptRunning ? "Autoplay walkthrough" : "Walkthrough summary"}
+                </div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  {playbackNarration.title}
+                </h2>
+                <p className="max-w-4xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                  {playbackNarration.body}
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/90 px-4 py-2 text-sm font-semibold text-sky-800 shadow-[0_10px_24px_rgba(14,116,215,0.08)]">
+                <span className="demo-live-dot" aria-hidden="true" />
+                <span>{toolkitState.scriptRunning ? "Watch this step before the next one starts" : "Ready to replay"}</span>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
 
         <div className="grid gap-6 2xl:[grid-template-columns:minmax(0,1.18fr)_minmax(34rem,0.82fr)]">
           <div className={`min-w-0 ${mobileTab === "leaderboard" ? "hidden 2xl:block" : ""}`}>

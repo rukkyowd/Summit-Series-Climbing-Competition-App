@@ -15,11 +15,11 @@ type DemoToolkitProps = {
 };
 
 const playbackCopy: Record<DemoPlaybackStep, string> = {
-  save: "Logging the first flash...",
-  leaderboard: "Live rankings are reshuffling...",
-  offline: "Wi-Fi just dropped. Scores are queueing locally...",
-  sync: "Reconnecting and publishing queued scores...",
-  complete: "Pitch flow complete.",
+  save: "Step 1 of 4: judge is logging the flash...",
+  leaderboard: "Step 2 of 4: the live ranking is reordering...",
+  offline: "Step 3 of 4: Wi-Fi is down, but scores are still saving...",
+  sync: "Step 4 of 4: reconnecting and publishing queued scores...",
+  complete: "Pitch flow complete. You can replay it or take over manually.",
 };
 
 export function DemoToolkit({
