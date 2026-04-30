@@ -253,12 +253,6 @@ export function InteractiveDemoClient() {
     };
   }, []);
 
-  useEffect(() => {
-    if (leaderboardImpact) {
-      setLeaderboardObserved(true);
-    }
-  }, [leaderboardImpact]);
-
   const clearHighlightLater = () => {
     if (refreshTimerRef.current) {
       window.clearTimeout(refreshTimerRef.current);
@@ -586,6 +580,7 @@ export function InteractiveDemoClient() {
       return;
     }
 
+    setLeaderboardObserved(false);
     setToolkitState((current) => ({
       ...current,
       simulationRunning: true,
@@ -600,6 +595,9 @@ export function InteractiveDemoClient() {
           await new Promise((resolve) => window.setTimeout(resolve, 1200));
         }
         await runSimulationStep("live_burst");
+        if (index === 0) {
+          setLeaderboardObserved(true);
+        }
       }
       setMessage("Live event burst complete. The right side just showed what a busy qualifier window feels like.");
     } catch (nextError) {
@@ -618,7 +616,11 @@ export function InteractiveDemoClient() {
       return;
     }
 
-    if (!liveSaveCompleted || leaderboardObserved || toolkitState.simulateOffline) {
+    if (!leaderboardBurstTriggeredRef.current) {
+      setLeaderboardObserved(false);
+    }
+
+    if (!liveSaveCompleted || toolkitState.simulateOffline) {
       return;
     }
 
@@ -817,6 +819,7 @@ export function InteractiveDemoClient() {
         syncRecovered={syncRecovered}
         syncStatus={toolkitState.lastSyncStatus}
         onActiveStepChange={setActiveTourStep}
+        onRestart={() => void handleRestoreDemo()}
       />
     </main>
   );

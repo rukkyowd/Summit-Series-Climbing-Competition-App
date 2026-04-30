@@ -18,6 +18,7 @@ type InteractiveDemoTourProps = {
   syncRecovered: boolean;
   syncStatus: DemoSyncStatus;
   onActiveStepChange?: (stepId: "judge" | "save" | "leaderboard" | "offline" | "sync") => void;
+  onRestart?: () => void;
 };
 
 const baseSteps = [
@@ -58,6 +59,7 @@ export function InteractiveDemoTour({
   syncRecovered,
   syncStatus,
   onActiveStepChange,
+  onRestart,
 }: InteractiveDemoTourProps) {
   const reduceMotion = useReducedMotion();
   const [hidden, setHidden] = useState(false);
@@ -237,7 +239,11 @@ export function InteractiveDemoTour({
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
-                onClick={() => setStepIndex(0)}
+                onClick={() => {
+                  setStepIndex(0);
+                  setHidden(false);
+                  onRestart?.();
+                }}
               >
                 Restart
               </Button>
