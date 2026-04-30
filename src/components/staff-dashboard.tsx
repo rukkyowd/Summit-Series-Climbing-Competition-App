@@ -12,6 +12,7 @@ import {
   type OrganizerDemoHandoffTarget,
   type OrganizerDemoStepId,
 } from "@/components/demo/organizer-demo-tour";
+import { DemoSalesShell } from "@/components/demo/demo-sales-shell";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
@@ -78,6 +79,12 @@ import {
   type SchedulePhaseType,
 } from "@/lib/scoring";
 import { normalizeCompetitionFinalsSetup } from "@/lib/competition-structure";
+import {
+  createDemoSalesSession,
+  patchDemoSalesSession,
+  readDemoSalesSession,
+  writeDemoSalesSession,
+} from "@/lib/demo-sales-session";
 import { sanitizeExternalUrl } from "@/lib/security";
 
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
@@ -175,6 +182,15 @@ type OrganizerDemoCursorState = {
   y: number;
   clicking: boolean;
   label: string | null;
+};
+
+const ORGANIZER_STEP_LABELS: Record<OrganizerPlaybackStep, string> = {
+  intro: "Organizer · introduction",
+  categories: "Organizer · categories",
+  preset: "Organizer · format template",
+  schedule: "Organizer · day schedule",
+  stages: "Organizer · competition stages",
+  handoff: "Organizer · handoff to judge",
 };
 
 const DEMO_FLOW_STEPS: DemoFlowStep[] = [
@@ -649,6 +665,7 @@ export default function StaffDashboard({
   const [organizerAutoplayRunning, setOrganizerAutoplayRunning] = useState(false);
   const [organizerPlaybackStep, setOrganizerPlaybackStep] = useState<OrganizerPlaybackStep | null>(null);
   const [organizerNarration, setOrganizerNarration] = useState<OrganizerNarration | null>(null);
+  const [salesAudioEnabled, setSalesAudioEnabled] = useState(false);
   const [organizerDemoCursor, setOrganizerDemoCursor] = useState<OrganizerDemoCursorState>({
     visible: false,
     x: 0,
@@ -717,6 +734,19 @@ export default function StaffDashboard({
       setShareOrigin(window.location.origin);
     }
   }, []);
+
+  useEffect(() => {
+    if (!demoMode) {
+      return;
+    }
+
+    const session = readDemoSalesSession();
+    if (!session) {
+      return;
+    }
+
+    setSalesAudioEnabled(session.audioEnabled);
+  }, [demoMode]);
 
 
   useEffect(() => {
@@ -1908,9 +1938,21 @@ export default function StaffDashboard({
       clicking: false,
       label: null,
     });
+    writeDemoSalesSession(
+      createDemoSalesSession({
+        mode: "organizer",
+        storyStep: "organizer-intro",
+        narratorTitle: "Choose a comp format. Generate the day. Hand it into live judging.",
+        narratorBody:
+          "This sales story starts in organizer setup, then carries the same event into the judge station and public results.",
+        autoplay: false,
+        organizerCompleted: false,
+        audioEnabled: salesAudioEnabled,
+      })
+    );
     setError("");
     setMessage("");
-  }, [selectedSummary]);
+  }, [salesAudioEnabled, selectedSummary]);
   const organizerDemoSectionClass = useCallback(
     (stepIds: OrganizerDemoStepId | OrganizerDemoStepId[]) => {
       if (!demoMode) {
@@ -1988,12 +2030,27 @@ export default function StaffDashboard({
     setOrganizerAutoplayRunning(true);
     setError("");
     setMessage("Organizer pitch started. Watch the event build itself, then hand off into live judging.");
+    writeDemoSalesSession(
+      createDemoSalesSession({
+        mode: "organizer",
+        storyStep: "organizer-intro",
+        narratorTitle: "Start with a comp format, not a blank admin tool",
+        narratorBody:
+          "This organizer demo shows the setup path a gym owner actually cares about: choose the event shape, generate the day, then hand the same event into live scoring.",
+        autoplay: true,
+        organizerCompleted: false,
+        audioEnabled: salesAudioEnabled,
+      })
+    );
 
     try {
       setOrganizerPlaybackStep("intro");
       setOrganizerNarration({
         title: "Start with a comp format, not a blank admin tool",
         body: "This organizer demo shows the setup path a gym owner actually cares about: choose the event shape, generate the day, then hand the same event into live scoring.",
+      });
+      patchDemoSalesSession({
+        storyStep: "organizer-intro",
       });
       await moveOrganizerDemoCursor("organizer-run-demo", {
         click: true,
@@ -2007,6 +2064,12 @@ export default function StaffDashboard({
         title: "Choose who can register",
         body: "First, confirm the age groups this event serves so the rest of the structure is built around the right field.",
       });
+      patchDemoSalesSession({
+        storyStep: "organizer-categories",
+        narratorTitle: "Choose who can register",
+        narratorBody:
+          "First, confirm the age groups this event serves so the rest of the structure is built around the right field.",
+      });
       await moveOrganizerDemoCursor("organizer-step-categories", {
         click: true,
         label: "Categories",
@@ -2018,6 +2081,12 @@ export default function StaffDashboard({
       setOrganizerNarration({
         title: "Apply a proven comp format",
         body: "Instead of building every round by hand, the organizer chooses a tested setup that creates the competition stages and day plan automatically.",
+      });
+      patchDemoSalesSession({
+        storyStep: "organizer-preset",
+        narratorTitle: "Apply a proven comp format",
+        narratorBody:
+          "Instead of building every round by hand, the organizer chooses a tested setup that creates the competition stages and day plan automatically.",
       });
       await moveOrganizerDemoCursor("organizer-step-structure", {
         click: true,
@@ -2038,6 +2107,12 @@ export default function StaffDashboard({
         title: "Review the day schedule",
         body: "The schedule blocks are generated from that format, so the event timeline is already linked to the right competition moments.",
       });
+      patchDemoSalesSession({
+        storyStep: "organizer-schedule",
+        narratorTitle: "Review the day schedule",
+        narratorBody:
+          "The schedule blocks are generated from that format, so the event timeline is already linked to the right competition moments.",
+      });
       await moveOrganizerDemoCursor("organizer-step-schedule", {
         click: true,
         label: "Schedule",
@@ -2050,6 +2125,12 @@ export default function StaffDashboard({
         title: "Confirm the competition stages",
         body: "Now the organizer can see exactly how qualifiers and finals connect before anyone ever walks onto the mats.",
       });
+      patchDemoSalesSession({
+        storyStep: "organizer-stages",
+        narratorTitle: "Confirm the competition stages",
+        narratorBody:
+          "Now the organizer can see exactly how qualifiers and finals connect before anyone ever walks onto the mats.",
+      });
       await moveOrganizerDemoCursor("organizer-step-stages", {
         click: true,
         label: "Stages",
@@ -2061,12 +2142,31 @@ export default function StaffDashboard({
         title: "This same event now powers live judging",
         body: "The organizer setup is done. Next, the judge station opens on the exact event model you just configured.",
       });
+      patchDemoSalesSession({
+        storyStep: "organizer-handoff",
+        narratorTitle: "This same event now powers live judging",
+        narratorBody:
+          "The organizer setup is done. Next, the judge station opens on the exact event model you just configured.",
+        organizerCompleted: true,
+      });
       await moveOrganizerDemoCursor("organizer-handoff-judge", {
         click: true,
         label: "Judge live flow",
       });
       handleOrganizerHandoff("judge");
       await waitForOrganizerPlayback(2200);
+      writeDemoSalesSession(
+        createDemoSalesSession({
+          mode: "judge",
+          storyStep: "judge-save",
+          narratorTitle: "The event you just configured is now powering live judging.",
+          narratorBody:
+            "Stay with the story as the same sample event moves into one judge save, a live leaderboard reaction, and an offline recovery moment.",
+          autoplay: true,
+          organizerCompleted: true,
+          audioEnabled: salesAudioEnabled,
+        })
+      );
       router.push(demoJudgePath);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to run the organizer demo.");
@@ -2089,6 +2189,7 @@ export default function StaffDashboard({
     organizerAutoplayRunning,
     resetOrganizerDemoWalkthrough,
     router,
+    salesAudioEnabled,
     updateOrganizerDemoState,
     waitForOrganizerPlayback,
     moveOrganizerDemoCursor,
@@ -2226,6 +2327,61 @@ export default function StaffDashboard({
 
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
+        {demoMode ? (
+          <DemoSalesShell
+            mode="organizer"
+            stepLabel={organizerPlaybackStep ? ORGANIZER_STEP_LABELS[organizerPlaybackStep] : "Organizer · sales intro"}
+            title={
+              organizerNarration?.title ??
+              "Choose a comp format. Generate the day. Hand it straight into live judging."
+            }
+            body={
+              organizerNarration?.body ??
+              "This guided organizer story shows how a gym can set up the event once, then carry the same model into judging, leaderboards, and display."
+            }
+            autoplayRunning={organizerAutoplayRunning}
+            audioEnabled={salesAudioEnabled}
+            onReplay={() => void runOrganizerDemo()}
+            onSkipToJudge={() => {
+              writeDemoSalesSession(
+                createDemoSalesSession({
+                  mode: "judge",
+                  storyStep: "judge-save",
+                  narratorTitle: "Jumping straight into live judging.",
+                  narratorBody:
+                    "You skipped the organizer setup story and moved straight into the judge station, where the scoring and live public reaction happen.",
+                  autoplay: true,
+                  organizerCompleted: true,
+                  audioEnabled: salesAudioEnabled,
+                })
+              );
+              router.push("/demo/interactive");
+            }}
+            onBackToOrganizer={() => {}}
+            onToggleAudio={() => {
+              const nextValue = !salesAudioEnabled;
+              setSalesAudioEnabled(nextValue);
+              const existing = readDemoSalesSession();
+              if (existing) {
+                patchDemoSalesSession({ audioEnabled: nextValue });
+              } else {
+                writeDemoSalesSession(
+                  createDemoSalesSession({
+                    mode: "organizer",
+                    storyStep: "organizer-intro",
+                    narratorTitle:
+                      "Choose a comp format. Generate the day. Hand it into live judging.",
+                    narratorBody:
+                      "This sales story starts in organizer setup, then carries the same event into the judge station and public results.",
+                    autoplay: false,
+                    organizerCompleted: false,
+                    audioEnabled: nextValue,
+                  })
+                );
+              }
+            }}
+          />
+        ) : null}
         {demoMode && draft ? (
           <OrganizerDemoTour
             competitionName={draft.name}

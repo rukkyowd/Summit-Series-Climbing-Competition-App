@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import SiteHeader from "@/components/site-header";
+import { DemoSalesShell } from "@/components/demo/demo-sales-shell";
 import { DemoToolkit } from "@/components/demo/demo-toolkit";
 import { InteractiveDemoTour } from "@/components/demo/interactive-demo-tour";
 import { JudgeWorkspace } from "@/components/demo/judge-workspace";
@@ -22,6 +24,13 @@ import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { DEMO_COMPETITION_SLUG } from "@/lib/demo";
+import {
+  createDemoSalesSession,
+  patchDemoSalesSession,
+  readDemoSalesSession,
+  writeDemoSalesSession,
+  type DemoSalesSession,
+} from "@/lib/demo-sales-session";
 import {
   buildQueueMetadata,
   type OfflineQueueItem,
@@ -47,12 +56,25 @@ type PlaybackNarration = {
   body: string;
 };
 
+type DemoAudioEngine = {
+  click: () => void;
+  flash: () => void;
+};
+
 type DemoCursorState = {
   visible: boolean;
   x: number;
   y: number;
   clicking: boolean;
   label: string | null;
+};
+
+const JUDGE_STEP_LABELS: Record<Exclude<DemoPlaybackStep, "complete"> | "complete", string> = {
+  save: "Judge · flash save",
+  leaderboard: "Judge · live leaderboard",
+  offline: "Judge · Wi-Fi drop",
+  sync: "Judge · reconnect and sync",
+  complete: "Judge · story complete",
 };
 
 function buildLocalAttempt(
@@ -267,6 +289,7 @@ function buildImpactReason(snapshot: CompetitionSnapshot, climberId: string) {
 }
 
 export function InteractiveDemoClient() {
+  const router = useRouter();
   const shellClassName = "mx-auto w-full space-y-6 xl:space-y-7";
 
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
@@ -288,6 +311,9 @@ export function InteractiveDemoClient() {
   const [playbackStep, setPlaybackStep] = useState<DemoPlaybackStep | null>(null);
   const [presentationFocus, setPresentationFocus] = useState<DemoPlaybackStep | "judge" | null>("judge");
   const [playbackNarration, setPlaybackNarration] = useState<PlaybackNarration | null>(null);
+  const [salesSession, setSalesSession] = useState<DemoSalesSession | null>(null);
+  const [salesAudioEnabled, setSalesAudioEnabled] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [demoCursor, setDemoCursor] = useState<DemoCursorState>({
     visible: false,
     x: 0,
@@ -306,10 +332,96 @@ export function InteractiveDemoClient() {
   const leaderboardToastTimerRef = useRef<number | null>(null);
   const leaderboardBurstTriggeredRef = useRef(false);
   const snapshotRef = useRef<CompetitionSnapshot | null>(null);
+  const confettiTimerRef = useRef<number | null>(null);
+  const audioEngineRef = useRef<DemoAudioEngine | null>(null);
+  const salesAutoplayStartedRef = useRef(false);
+  const runDemoRef = useRef<((options?: { preserveSalesSession?: boolean }) => Promise<void>) | null>(null);
+  runDemoRef.current = handleRunDemo;
 
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
+
+  useEffect(() => {
+    const session = readDemoSalesSession();
+    setSalesSession(session);
+    setSalesAudioEnabled(session?.audioEnabled ?? false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (confettiTimerRef.current) {
+        window.clearTimeout(confettiTimerRef.current);
+      }
+    };
+  }, []);
+
+  const getAudioEngine = useCallback(() => {
+    if (audioEngineRef.current) {
+      return audioEngineRef.current;
+    }
+
+    const AudioContextCtor =
+      typeof window !== "undefined"
+        ? (window.AudioContext ||
+            // @ts-expect-error webkit fallback
+            window.webkitAudioContext)
+        : null;
+
+    if (!AudioContextCtor) {
+      return null;
+    }
+
+    const context = new AudioContextCtor();
+    const playTone = (frequency: number, duration: number, gainValue: number) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(gainValue, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + duration);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + duration);
+    };
+
+    audioEngineRef.current = {
+      click: () => playTone(560, 0.09, 0.03),
+      flash: () => {
+        playTone(780, 0.12, 0.045);
+        playTone(1170, 0.2, 0.028);
+      },
+    };
+
+    return audioEngineRef.current;
+  }, []);
+
+  const playDemoSound = useCallback(
+    (tone: "click" | "flash") => {
+      if (!salesAudioEnabled) {
+        return;
+      }
+
+      const engine = getAudioEngine();
+      if (!engine) {
+        return;
+      }
+
+      engine[tone]();
+    },
+    [getAudioEngine, salesAudioEnabled]
+  );
+
+  const triggerConfetti = useCallback(() => {
+    setShowConfetti(true);
+    if (confettiTimerRef.current) {
+      window.clearTimeout(confettiTimerRef.current);
+    }
+    confettiTimerRef.current = window.setTimeout(() => {
+      setShowConfetti(false);
+    }, 1800);
+  }, []);
 
   const refreshSnapshot = useCallback(async () => {
     const nextSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
@@ -833,6 +945,7 @@ export function InteractiveDemoClient() {
           ...current,
           clicking: true,
         }));
+        playDemoSound("click");
         await wait(260);
         setDemoCursor((current) => ({
           ...current,
@@ -840,10 +953,10 @@ export function InteractiveDemoClient() {
         }));
       }
     },
-    []
+    [playDemoSound]
   );
 
-  async function handleRunDemo() {
+  async function handleRunDemo(options?: { preserveSalesSession?: boolean }) {
     if (toolkitState.scriptRunning || toolkitState.simulationRunning) {
       return;
     }
@@ -866,6 +979,21 @@ export function InteractiveDemoClient() {
     }));
     setError("");
     setMessage("Pitch demo started. Watch the judge call, the live reorder, the Wi-Fi drop, and the sync recovery.");
+    writeDemoSalesSession(
+      createDemoSalesSession({
+        mode: "judge",
+        storyStep: "judge-save",
+        narratorTitle: options?.preserveSalesSession
+          ? "The event you just configured is now powering live judging."
+          : "Watch one judge call drive the whole comp-day story.",
+        narratorBody: options?.preserveSalesSession
+          ? "Stay with the story as the same sample event moves into one judge save, a live leaderboard reaction, and an offline recovery moment."
+          : "This sales demo shows the money moment: one clean save, live public movement, a Wi-Fi failure, and a resilient sync catch-up.",
+        autoplay: true,
+        organizerCompleted: options?.preserveSalesSession ?? false,
+        audioEnabled: salesAudioEnabled,
+      })
+    );
 
     try {
       setPlaybackNarration({
@@ -880,6 +1008,11 @@ export function InteractiveDemoClient() {
       setPlaybackNarration({
         title: "Step 1: Judge logs a flash",
         body: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
+      });
+      patchDemoSalesSession({
+        storyStep: "judge-save",
+        narratorTitle: "Step 1: Judge logs a flash",
+        narratorBody: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
       });
       await moveDemoCursorTo("interactive-top-button", {
         click: true,
@@ -901,6 +1034,8 @@ export function InteractiveDemoClient() {
         attemptsToTop: 1,
         attemptsToZone: 1,
       });
+      playDemoSound("flash");
+      triggerConfetti();
       await wait(2200);
 
       setPresentationFocus("leaderboard");
@@ -909,6 +1044,12 @@ export function InteractiveDemoClient() {
       setPlaybackNarration({
         title: "Step 2: The leaderboard moves live",
         body: "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
+      });
+      patchDemoSalesSession({
+        storyStep: "judge-leaderboard",
+        narratorTitle: "Step 2: The leaderboard moves live",
+        narratorBody:
+          "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
       });
       setDemoCursor((current) => ({
         ...current,
@@ -928,6 +1069,12 @@ export function InteractiveDemoClient() {
       setPlaybackNarration({
         title: "Step 3: Wi-Fi drops, but judging keeps going",
         body: "The left side is now in offline mode. The public leaderboard pauses, but the judge can still save a score locally without losing the result.",
+      });
+      patchDemoSalesSession({
+        storyStep: "judge-offline",
+        narratorTitle: "Step 3: Wi-Fi drops, but judging keeps going",
+        narratorBody:
+          "The left side is now in offline mode. The public leaderboard pauses, but the judge can still save a score locally without losing the result.",
       });
       setToolkitState((current) => ({
         ...current,
@@ -966,6 +1113,12 @@ export function InteractiveDemoClient() {
         title: "Step 4: Reconnect and publish the queue",
         body: "Wi-Fi comes back, the queued score flushes, and the public side catches up without the judge having to re-enter anything.",
       });
+      patchDemoSalesSession({
+        storyStep: "judge-sync",
+        narratorTitle: "Step 4: Reconnect and publish the queue",
+        narratorBody:
+          "Wi-Fi comes back, the queued score flushes, and the public side catches up without the judge having to re-enter anything.",
+      });
       setToolkitState((current) => ({
         ...current,
         simulateOffline: false,
@@ -989,6 +1142,13 @@ export function InteractiveDemoClient() {
       setPlaybackNarration({
         title: "Demo complete",
         body: "In under a minute, you just saw the whole trust story: judge scoring, instant public updates, offline resilience, and clean recovery when the connection returns.",
+      });
+      patchDemoSalesSession({
+        storyStep: "complete",
+        narratorTitle: "Demo complete",
+        narratorBody:
+          "In under a minute, you just saw the whole trust story: judge scoring, instant public updates, offline resilience, and clean recovery when the connection returns.",
+        autoplay: false,
       });
       setMessage("Sales demo complete. The floor saw a flash, a live reorder, an offline save, and a clean sync recovery.");
     } catch (nextError) {
@@ -1118,7 +1278,20 @@ export function InteractiveDemoClient() {
         ...current,
         scriptRunning: false,
       }));
+      salesAutoplayStartedRef.current = false;
       leaderboardBurstTriggeredRef.current = false;
+      writeDemoSalesSession(
+        createDemoSalesSession({
+          mode: "judge",
+          storyStep: "judge-save",
+          narratorTitle: "Watch one judge call drive the whole comp-day story.",
+          narratorBody:
+            "One score save should move the public ranking, survive a Wi-Fi drop, and recover cleanly when the connection returns.",
+          autoplay: false,
+          organizerCompleted: salesSession?.organizerCompleted ?? false,
+          audioEnabled: salesAudioEnabled,
+        })
+      );
       setMessage("Demo restored to the seeded qualifier-in-progress state.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to restore the demo.");
@@ -1138,6 +1311,17 @@ export function InteractiveDemoClient() {
     }
     return `Pending sync (${toolkitState.pendingQueueCount})`;
   }, [toolkitState.lastSyncStatus, toolkitState.pendingQueueCount]);
+
+  useEffect(() => {
+    if (!snapshot || !salesSession || salesAutoplayStartedRef.current) {
+      return;
+    }
+
+    if (salesSession.mode === "judge" && salesSession.autoplay) {
+      salesAutoplayStartedRef.current = true;
+      void runDemoRef.current?.({ preserveSalesSession: salesSession.organizerCompleted });
+    }
+  }, [salesSession, snapshot]);
 
   if (loading) {
     return (
@@ -1186,6 +1370,57 @@ export function InteractiveDemoClient() {
               <div className="results-chip">{statusLabel}</div>
             </div>
           }
+        />
+
+        <DemoSalesShell
+          mode="judge"
+          stepLabel={JUDGE_STEP_LABELS[playbackStep ?? "save"]}
+          title={playbackNarration?.title ?? salesSession?.narratorTitle ?? "Watch one judge call drive the whole comp-day story."}
+          body={
+            playbackNarration?.body ??
+            salesSession?.narratorBody ??
+            "This pitch path shows a clean save, a live leaderboard reaction, a Wi-Fi drop, and a resilient sync recovery."
+          }
+          autoplayRunning={toolkitState.scriptRunning}
+          audioEnabled={salesAudioEnabled}
+          onReplay={() => void handleRunDemo({ preserveSalesSession: salesSession?.organizerCompleted })}
+          onSkipToJudge={() => void handleRunDemo({ preserveSalesSession: salesSession?.organizerCompleted })}
+          onBackToOrganizer={() => {
+            writeDemoSalesSession(
+              createDemoSalesSession({
+                mode: "organizer",
+                storyStep: "organizer-intro",
+                narratorTitle: "Back to the organizer side of the story.",
+                narratorBody:
+                  "Return to the organizer setup flow to show how the event gets built before comp day starts.",
+                autoplay: false,
+                organizerCompleted: false,
+                audioEnabled: salesAudioEnabled,
+              })
+            );
+            router.push("/staff/demo");
+          }}
+          onToggleAudio={() => {
+            const nextValue = !salesAudioEnabled;
+            setSalesAudioEnabled(nextValue);
+            const existing = readDemoSalesSession();
+            if (existing) {
+              patchDemoSalesSession({ audioEnabled: nextValue });
+            } else {
+              writeDemoSalesSession(
+                createDemoSalesSession({
+                  mode: "judge",
+                  storyStep: "judge-save",
+                  narratorTitle: "Watch one judge call drive the whole comp-day story.",
+                  narratorBody:
+                    "This pitch path shows a clean save, a live leaderboard reaction, a Wi-Fi drop, and a resilient sync recovery.",
+                  autoplay: false,
+                  organizerCompleted: false,
+                  audioEnabled: nextValue,
+                })
+              );
+            }
+          }}
         />
 
         <Surface variant="card" className="overflow-hidden">
@@ -1290,6 +1525,20 @@ export function InteractiveDemoClient() {
         onSyncNow={() => void flushOfflineQueue()}
         onRestoreDemo={() => void handleRestoreDemo()}
       />
+      {showConfetti ? (
+        <div className="demo-confetti" aria-hidden="true">
+          {Array.from({ length: 18 }).map((_, index) => (
+            <span
+              key={`confetti-${index}`}
+              className="demo-confetti-piece"
+              style={{
+                left: `${8 + index * 5}%`,
+                animationDelay: `${index * 60}ms`,
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
       {demoCursor.visible ? (
         <div
           className={`demo-pointer ${demoCursor.clicking ? "demo-pointer-clicking" : ""}`}
