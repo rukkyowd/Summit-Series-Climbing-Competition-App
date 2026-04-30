@@ -192,6 +192,10 @@ export function InteractiveDemoClient() {
   const [saving, setSaving] = useState(false);
   const [highlightedClimberId, setHighlightedClimberId] = useState<string | null>(null);
   const [leaderboardImpact, setLeaderboardImpact] = useState<LeaderboardImpact | null>(null);
+  const [liveSaveCompleted, setLiveSaveCompleted] = useState(false);
+  const [leaderboardObserved, setLeaderboardObserved] = useState(false);
+  const [offlineQueuedSaveCompleted, setOfflineQueuedSaveCompleted] = useState(false);
+  const [syncRecovered, setSyncRecovered] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("judge");
   const [toolkitState, setToolkitState] = useState<DemoToolkitState>({
     simulateOffline: false,
@@ -245,6 +249,12 @@ export function InteractiveDemoClient() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (leaderboardImpact) {
+      setLeaderboardObserved(true);
+    }
+  }, [leaderboardImpact]);
 
   const clearHighlightLater = () => {
     if (refreshTimerRef.current) {
@@ -325,6 +335,10 @@ export function InteractiveDemoClient() {
           pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
           lastSyncStatus: "pending",
         }));
+        if (scenarioAthlete && input.climberId === scenarioAthlete.id) {
+          setOfflineQueuedSaveCompleted(true);
+          setSyncRecovered(false);
+        }
         setMessage(
           `Saved locally for ${scenarioAthlete?.name ?? "the demo athlete"}. The public leaderboard stays unchanged until you reconnect and sync.`
         );
@@ -358,6 +372,9 @@ export function InteractiveDemoClient() {
           ...current,
           lastSyncStatus: "synced",
         }));
+        if (scenarioAthlete && input.climberId === scenarioAthlete.id) {
+          setLiveSaveCompleted(true);
+        }
         setMessage(
           scenarioAthlete && input.climberId === scenarioAthlete.id
             ? buildRankMessage(previousSnapshot, savedSnapshot, scenarioAthlete)
@@ -386,6 +403,10 @@ export function InteractiveDemoClient() {
             pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
             lastSyncStatus: "pending",
           }));
+          if (scenarioAthlete && input.climberId === scenarioAthlete.id) {
+            setOfflineQueuedSaveCompleted(true);
+            setSyncRecovered(false);
+          }
           setMessage("Network failed, so the score queued locally for retry. Reconnect to publish it.");
         } else {
           setSnapshot(previousSnapshot);
@@ -446,6 +467,9 @@ export function InteractiveDemoClient() {
         pendingQueueCount: getDemoQueueItems(snapshot.competition.id).length,
         lastSyncStatus: "synced",
       }));
+      if (queue.length > 0) {
+        setSyncRecovered(true);
+      }
       setMessage("Queued score synced. Public leaderboard is live again.");
     } catch (nextError) {
       setToolkitState((current) => ({
@@ -577,6 +601,12 @@ export function InteractiveDemoClient() {
         pendingQueueCount: snapshot ? getDemoQueueItems(snapshot.competition.id).length : 0,
         lastSyncStatus: "synced",
       }));
+      setLiveSaveCompleted(false);
+      setLeaderboardObserved(false);
+      setOfflineQueuedSaveCompleted(false);
+      setSyncRecovered(false);
+      setLeaderboardImpact(null);
+      setHighlightedClimberId(null);
       setMessage("Demo restored to the seeded qualifier-in-progress state.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to restore the demo.");
@@ -721,6 +751,12 @@ export function InteractiveDemoClient() {
       <InteractiveDemoTour
         pendingQueueCount={toolkitState.pendingQueueCount}
         climberName={scenarioAthlete?.name ?? "the demo athlete"}
+        liveSaveCompleted={liveSaveCompleted}
+        leaderboardObserved={leaderboardObserved}
+        offlineMode={toolkitState.simulateOffline}
+        offlineQueuedSaveCompleted={offlineQueuedSaveCompleted}
+        syncRecovered={syncRecovered}
+        syncStatus={toolkitState.lastSyncStatus}
       />
     </main>
   );

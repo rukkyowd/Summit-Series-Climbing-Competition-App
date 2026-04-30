@@ -359,7 +359,9 @@ export function JudgeWorkspace({
                       <div className={`judge-status-chip judge-status-chip-${presentation.confirmationTone}`}>
                         {presentation.confirmationLabel}
                       </div>
-                      {targetClimberId === climber.id ? <Badge>Demo target</Badge> : null}
+                      {targetClimberId === climber.id ? (
+                        <Badge className="demo-judge-target-badge">Demo target</Badge>
+                      ) : null}
                     </div>
                   </div>
                   <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">

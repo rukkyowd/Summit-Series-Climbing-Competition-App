@@ -4,12 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import type { DemoSyncStatus } from "@/components/demo/types";
 
-const TOUR_STATE_KEY = "interactive_demo_tour_state_v1";
+const TOUR_STATE_KEY = "interactive_demo_tour_state_v2";
 
 type InteractiveDemoTourProps = {
   pendingQueueCount: number;
   climberName: string;
+  liveSaveCompleted: boolean;
+  leaderboardObserved: boolean;
+  offlineMode: boolean;
+  offlineQueuedSaveCompleted: boolean;
+  syncRecovered: boolean;
+  syncStatus: DemoSyncStatus;
 };
 
 const baseSteps = [
@@ -21,21 +28,35 @@ const baseSteps = [
   {
     id: "save",
     title: "Save one judge call",
-    body: "Add the result on Boulder 1, then hit Save judge call. The point is to make one official scoring decision, not explore every control.",
+    body: "Add the result on Boulder 1, then hit Save judge call. Continue unlocks after the official score is saved.",
   },
   {
     id: "leaderboard",
     title: "Watch the ranking react",
-    body: "The leaderboard on the right should move as soon as the save lands. That instant cause and effect is the product story.",
+    body: "The leaderboard on the right should move as soon as the save lands. Continue unlocks once the rank impact is visible.",
+  },
+  {
+    id: "offline",
+    title: "Simulate a Wi-Fi drop",
+    body: "Turn on Simulate Wi-Fi drop, save the demo athlete again, and leave the score queued locally.",
   },
   {
     id: "sync",
-    title: "Prove the offline safety net",
-    body: "Now simulate a gym Wi-Fi drop, save again, and point out that the score queues locally until you reconnect.",
+    title: "Reconnect and sync",
+    body: "Turn Wi-Fi back on or hit Reconnect and sync. Continue unlocks once the queued score publishes.",
   },
 ] as const;
 
-export function InteractiveDemoTour({ pendingQueueCount, climberName }: InteractiveDemoTourProps) {
+export function InteractiveDemoTour({
+  pendingQueueCount,
+  climberName,
+  liveSaveCompleted,
+  leaderboardObserved,
+  offlineMode,
+  offlineQueuedSaveCompleted,
+  syncRecovered,
+  syncStatus,
+}: InteractiveDemoTourProps) {
   const reduceMotion = useReducedMotion();
   const [hidden, setHidden] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
@@ -75,7 +96,7 @@ export function InteractiveDemoTour({ pendingQueueCount, climberName }: Interact
               ...step,
               body: `${pendingQueueCount} queued ${
                 pendingQueueCount === 1 ? "score is" : "scores are"
-              } waiting right now, which is perfect for showing how the app survives bad gym Wi-Fi.`,
+              } waiting right now. Reconnect and publish them to finish the resilience story.`,
             }
           : {
               ...step,
@@ -86,6 +107,61 @@ export function InteractiveDemoTour({ pendingQueueCount, climberName }: Interact
   );
 
   const activeStep = steps[stepIndex];
+  const stepRequirement = useMemo(() => {
+    if (activeStep.id === "judge") {
+      return {
+        complete: true,
+        label: "The demo athlete is already highlighted.",
+      };
+    }
+
+    if (activeStep.id === "save") {
+      return {
+        complete: liveSaveCompleted,
+        label: liveSaveCompleted
+          ? "Live score saved."
+          : `Save ${climberName} on Boulder 1 to unlock Continue.`,
+      };
+    }
+
+    if (activeStep.id === "leaderboard") {
+      return {
+        complete: leaderboardObserved,
+        label: leaderboardObserved
+          ? "Leaderboard impact confirmed."
+          : "Wait for the leaderboard row to highlight and show the rank change.",
+      };
+    }
+
+    if (activeStep.id === "offline") {
+      return {
+        complete: offlineQueuedSaveCompleted,
+        label: offlineQueuedSaveCompleted
+          ? "Offline queue created."
+          : offlineMode
+            ? `Save ${climberName} again while Wi-Fi is dropped so it queues locally.`
+            : "Turn on Simulate Wi-Fi drop, then save the demo athlete again.",
+      };
+    }
+
+    return {
+      complete: syncRecovered,
+      label: syncRecovered
+        ? "Queued score synced back to the public leaderboard."
+        : syncStatus === "syncing"
+          ? "Sync is running now. Wait for it to finish."
+          : "Reconnect and sync the queued score to finish the walkthrough.",
+    };
+  }, [
+    activeStep.id,
+    climberName,
+    leaderboardObserved,
+    liveSaveCompleted,
+    offlineMode,
+    offlineQueuedSaveCompleted,
+    syncRecovered,
+    syncStatus,
+  ]);
 
   if (hidden) {
     return (
@@ -126,6 +202,16 @@ export function InteractiveDemoTour({ pendingQueueCount, climberName }: Interact
             <h3 className="text-2xl font-semibold tracking-tight text-slate-950">{activeStep.title}</h3>
             <p className="text-sm leading-relaxed text-slate-600">{activeStep.body}</p>
           </div>
+          <div
+            className={`rounded-[1rem] border px-4 py-3 text-sm font-medium ${
+              stepRequirement.complete
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            {stepRequirement.complete ? "Ready to continue: " : "Do this next: "}
+            {stepRequirement.label}
+          </div>
           <div className="flex gap-2">
             {steps.map((step, index) => (
               <div
@@ -151,6 +237,7 @@ export function InteractiveDemoTour({ pendingQueueCount, climberName }: Interact
               </Button>
               <Button
                 variant="primary"
+                disabled={!stepRequirement.complete}
                 onClick={() => {
                   if (stepIndex === steps.length - 1) {
                     setHidden(true);
