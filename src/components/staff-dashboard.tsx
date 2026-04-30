@@ -673,6 +673,11 @@ export default function StaffDashboard({
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<GuidedSetupPreset["id"] | null>(null);
   const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
+  const [organizerGuidedBasicsState, setOrganizerGuidedBasicsState] = useState({
+    identityReviewed: false,
+    formatReviewed: false,
+    registrationReviewed: false,
+  });
   const [organizerDemoState, setOrganizerDemoState] = useState<{
     setupOpened: boolean;
     categoriesViewed: boolean;
@@ -849,6 +854,11 @@ export default function StaffDashboard({
       scheduleViewed: false,
       stagesViewed: false,
       handoffTarget: null,
+    });
+    setOrganizerGuidedBasicsState({
+      identityReviewed: false,
+      formatReviewed: false,
+      registrationReviewed: false,
     });
     setActiveOrganizerDemoStep("overview");
     setOrganizerAutoplayRunning(false);
@@ -1897,6 +1907,28 @@ export default function StaffDashboard({
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
     : "No stage flow yet";
+  const organizerBasicsNameComplete = Boolean(
+    draft?.name.trim() &&
+      draft?.slug.trim() &&
+      draft?.location_name.trim() &&
+      organizerGuidedBasicsState.identityReviewed
+  );
+  const organizerBasicsFormatComplete = Boolean(draft?.format && organizerGuidedBasicsState.formatReviewed);
+  const organizerBasicsRegistrationComplete = Boolean(
+    draft?.registration_opens_at &&
+      draft?.registration_closes_at &&
+      organizerGuidedBasicsState.registrationReviewed
+  );
+  const organizerCategoriesComplete = Boolean(
+    draft?.qualifier_eligible_age_groups.length && organizerDemoState.categoriesViewed
+  );
+  const organizerScheduleComplete = Boolean(
+    draft?.schedule_blocks.length && organizerDemoState.scheduleViewed
+  );
+  const organizerStagesComplete = Boolean(
+    currentCompetitionStages.some((round) => round.scoring_bucket !== "none") &&
+      organizerDemoState.stagesViewed
+  );
   const demoTourCards: DemoTourCard[] = draft
     ? [
         {
@@ -1944,9 +1976,6 @@ export default function StaffDashboard({
       setOrganizerDemoState((current) => ({
         ...current,
         setupOpened: true,
-        categoriesViewed: current.categoriesViewed || nextIndex === 1,
-        scheduleViewed: current.scheduleViewed || nextIndex === 3,
-        stagesViewed: current.stagesViewed || nextIndex === 4,
       }));
     },
     [demoMode]
@@ -1980,6 +2009,11 @@ export default function StaffDashboard({
       scheduleViewed: false,
       stagesViewed: false,
       handoffTarget: null,
+    });
+    setOrganizerGuidedBasicsState({
+      identityReviewed: false,
+      formatReviewed: false,
+      registrationReviewed: false,
     });
     setActiveOrganizerDemoStep("overview");
     setOrganizerAutoplayRunning(false);
@@ -2032,6 +2066,35 @@ export default function StaffDashboard({
     },
     [activeOrganizerDemoStep, demoMode, organizerAutoplayRunning]
   );
+  const organizerFieldFocusClass = useCallback(
+    (stepIds: OrganizerDemoStepId | OrganizerDemoStepId[]) => {
+      if (!demoMode) {
+        return "";
+      }
+
+      const targets = Array.isArray(stepIds) ? stepIds : [stepIds];
+      return targets.includes(activeOrganizerDemoStep)
+        ? "ring-2 ring-sky-300/80 shadow-[0_18px_42px_rgba(14,116,215,0.12)]"
+        : "";
+    },
+    [activeOrganizerDemoStep, demoMode]
+  );
+  const focusOrganizerDemoAnchor = useCallback((anchor: string) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const element = document.querySelector<HTMLElement>(`[data-demo-anchor="${anchor}"]`);
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+  }, []);
   const waitForOrganizerPlayback = useCallback(
     (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms)),
     []
@@ -2554,10 +2617,13 @@ export default function StaffDashboard({
         {demoMode && draft ? (
           <OrganizerDemoTour
             competitionName={draft.name}
-            categoriesViewed={organizerDemoState.categoriesViewed}
+            basicsNameComplete={organizerBasicsNameComplete}
+            basicsFormatComplete={organizerBasicsFormatComplete}
+            basicsRegistrationComplete={organizerBasicsRegistrationComplete}
+            categoriesViewed={organizerCategoriesComplete}
             presetSelectedTitle={organizerDemoState.presetSelected ? selectedGuidedSetupPreset?.title ?? "Selected preset" : null}
-            scheduleViewed={organizerDemoState.scheduleViewed}
-            stagesViewed={organizerDemoState.stagesViewed}
+            scheduleViewed={organizerScheduleComplete}
+            stagesViewed={organizerStagesComplete}
             handoffTarget={organizerDemoState.handoffTarget}
             judgeHref={demoJudgePath}
             leaderboardHref={leaderboardPath}
@@ -2567,6 +2633,7 @@ export default function StaffDashboard({
             onRestart={resetOrganizerDemoWalkthrough}
             onHandoffClick={handleOrganizerHandoff}
             onJumpToSetupStep={goToSetupStep}
+            onFocusAnchor={focusOrganizerDemoAnchor}
           />
         ) : null}
         {demoMode ? <Alert>{demoBanner}</Alert> : null}
@@ -3404,7 +3471,14 @@ export default function StaffDashboard({
 
                 {currentSetupStep === 0 ? (
                   <>
-                <div id="setup-basics" className="results-workspace-card">
+                <div
+                  id="setup-basics"
+                  className={`results-workspace-card ${organizerDemoSectionClass([
+                    "basics_name",
+                    "basics_format",
+                    "basics_registration",
+                  ])}`}
+                >
                   <div className="results-kicker">Step 1 - Event basics</div>
                   <div className="mt-2 text-sm text-slate-600">
                     Set the basic event details first. These choices shape registration, finals availability, and the guided setup options below.
@@ -3412,23 +3486,64 @@ export default function StaffDashboard({
                 </div>
 
                 <div id="setup-categories" className="grid gap-4 md:grid-cols-2">
-                  <label className="results-field-group" htmlFor="current-event-name">
+                  <label
+                    className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_name")}`}
+                    htmlFor="current-event-name"
+                    data-demo-anchor="organizer-basic-name"
+                  >
                     <span className="results-field-label">Current event name</span>
-                    <input id="current-event-name" aria-label="Current event name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Current event name" />
+                    <input
+                      id="current-event-name"
+                      aria-label="Current event name"
+                      value={draft.name}
+                      onChange={(event) => {
+                        setOrganizerGuidedBasicsState((current) => ({
+                          ...current,
+                          identityReviewed: true,
+                        }));
+                        setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) });
+                      }}
+                      className="results-input"
+                      placeholder="Current event name"
+                    />
                   </label>
-                  <label className="results-field-group" htmlFor="current-event-slug">
+                  <label
+                    className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_name")}`}
+                    htmlFor="current-event-slug"
+                  >
                     <span className="results-field-label">Current event slug</span>
-                    <input id="current-event-slug" aria-label="Current event slug" value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) })} className="results-input" placeholder="Current event slug" />
+                    <input
+                      id="current-event-slug"
+                      aria-label="Current event slug"
+                      value={draft.slug}
+                      onChange={(event) => {
+                        setOrganizerGuidedBasicsState((current) => ({
+                          ...current,
+                          identityReviewed: true,
+                        }));
+                        setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) });
+                      }}
+                      className="results-input"
+                      placeholder="Current event slug"
+                    />
                   </label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="results-field-group" htmlFor="current-event-format">
+                  <label
+                    className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_format")}`}
+                    htmlFor="current-event-format"
+                    data-demo-anchor="organizer-basic-format"
+                  >
                     <span className="results-field-label">Current event format</span>
                     <select
                       id="current-event-format"
                       aria-label="Current event format"
                       value={draft.format}
                       onChange={(event) => {
+                        setOrganizerGuidedBasicsState((current) => ({
+                          ...current,
+                          formatReviewed: true,
+                        }));
                         const nextFormat = event.target.value as Competition["format"];
                         if (!roundPlanCustomized) {
                           replaceRoundPlanFromTemplate(nextFormat);
@@ -3458,9 +3573,25 @@ export default function StaffDashboard({
                       ))}
                     </select>
                   </label>
-                  <label className="results-field-group" htmlFor="current-event-location">
+                  <label
+                    className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_name")}`}
+                    htmlFor="current-event-location"
+                  >
                     <span className="results-field-label">Current event location</span>
-                    <input id="current-event-location" aria-label="Current event location" value={draft.location_name} onChange={(event) => setDraft({ ...draft, location_name: event.target.value })} className="results-input" placeholder="Current event location" />
+                    <input
+                      id="current-event-location"
+                      aria-label="Current event location"
+                      value={draft.location_name}
+                      onChange={(event) => {
+                        setOrganizerGuidedBasicsState((current) => ({
+                          ...current,
+                          identityReviewed: true,
+                        }));
+                        setDraft({ ...draft, location_name: event.target.value });
+                      }}
+                      className="results-input"
+                      placeholder="Current event location"
+                    />
                   </label>
                 </div>
                 {roundPlanNeedsReset ? (
@@ -3475,7 +3606,10 @@ export default function StaffDashboard({
                     </button>
                   </div>
                 ) : null}
-                <div className="grid gap-4 md:grid-cols-2">
+                <div
+                  className={`grid gap-4 md:grid-cols-2 rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_registration")}`}
+                  data-demo-anchor="organizer-basic-registration"
+                >
                   <label className="results-field-group" htmlFor="current-event-registration-opens">
                     <span className="results-field-label">Current event registration opens</span>
                     <input
@@ -3483,12 +3617,16 @@ export default function StaffDashboard({
                       aria-label="Current event registration opens"
                       type="datetime-local"
                       value={formatDateTimeLocalInput(draft.registration_opens_at)}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        setOrganizerGuidedBasicsState((current) => ({
+                          ...current,
+                          registrationReviewed: true,
+                        }));
                         setDraft({
                           ...draft,
                           registration_opens_at: parseDateTimeLocalInput(event.target.value),
-                        })
-                      }
+                        });
+                      }}
                       className="results-input"
                     />
                   </label>
@@ -3499,12 +3637,16 @@ export default function StaffDashboard({
                       aria-label="Current event registration deadline"
                       type="datetime-local"
                       value={formatDateTimeLocalInput(draft.registration_closes_at)}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        setOrganizerGuidedBasicsState((current) => ({
+                          ...current,
+                          registrationReviewed: true,
+                        }));
                         setDraft({
                           ...draft,
                           registration_closes_at: parseDateTimeLocalInput(event.target.value),
-                        })
-                      }
+                        });
+                      }}
                       className="results-input"
                     />
                   </label>
@@ -3597,7 +3739,10 @@ export default function StaffDashboard({
                 ) : null}
 
                 {currentSetupStep === 1 ? (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div
+                  className={`grid gap-4 md:grid-cols-2 ${organizerDemoSectionClass("categories")}`}
+                  data-demo-anchor="organizer-categories"
+                >
                   <div className="results-workspace-card">
                     <div className="results-kicker">Step 2 - Choose qualifier categories</div>
                     <div className="mt-2 text-sm text-slate-600">These are the categories athletes can register into, and they also drive the guided schedule presets.</div>
@@ -3608,7 +3753,10 @@ export default function StaffDashboard({
                           <button
                             key={ageGroup}
                             type="button"
-                            onClick={() => setDraft({ ...draft, qualifier_eligible_age_groups: toggleAgeGroup(draft.qualifier_eligible_age_groups, ageGroup) })}
+                            onClick={() => {
+                              updateOrganizerDemoState({ categoriesViewed: true });
+                              setDraft({ ...draft, qualifier_eligible_age_groups: toggleAgeGroup(draft.qualifier_eligible_age_groups, ageGroup) });
+                            }}
                             className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                           >
                             {ageGroup}
@@ -3629,7 +3777,10 @@ export default function StaffDashboard({
                             <button
                               key={ageGroup}
                               type="button"
-                              onClick={() => setDraft({ ...draft, finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, ageGroup) })}
+                              onClick={() => {
+                                updateOrganizerDemoState({ categoriesViewed: true });
+                                setDraft({ ...draft, finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, ageGroup) });
+                              }}
                               className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                             >
                               {ageGroup}
@@ -3747,7 +3898,11 @@ export default function StaffDashboard({
                 ) : null}
 
                 {currentSetupStep === 3 ? (
-                <div id="setup-schedule" className={`results-workspace-card ${organizerDemoSectionClass("schedule")}`}>
+                <div
+                  id="setup-schedule"
+                  className={`results-workspace-card ${organizerDemoSectionClass("schedule")}`}
+                  data-demo-anchor="organizer-schedule"
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Step 4 - Build the day</div>
@@ -3771,7 +3926,10 @@ export default function StaffDashboard({
                             <button
                               key={`${group.title}-${template.phase_type}-${template.label}`}
                               type="button"
-                              onClick={() => addScheduleBlockFromTemplate(template)}
+                              onClick={() => {
+                                updateOrganizerDemoState({ scheduleViewed: true });
+                                addScheduleBlockFromTemplate(template);
+                              }}
                               className="results-secondary-button"
                             >
                               Add {template.label}
@@ -3859,7 +4017,10 @@ export default function StaffDashboard({
                             <div className="results-inline-insert pb-4">
                               <button
                                 type="button"
-                                onClick={() => insertScheduleBlockFromTemplate(insertTemplate, blockIndex, "above")}
+                                onClick={() => {
+                                  updateOrganizerDemoState({ scheduleViewed: true });
+                                  insertScheduleBlockFromTemplate(insertTemplate, blockIndex, "above");
+                                }}
                                 className="results-secondary-button"
                               >
                                 Add block above
@@ -3868,7 +4029,10 @@ export default function StaffDashboard({
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <button
                                 type="button"
-                                onClick={() => setExpandedScheduleBlockId((current) => (current === block.id ? null : block.id))}
+                                onClick={() => {
+                                  updateOrganizerDemoState({ scheduleViewed: true });
+                                  setExpandedScheduleBlockId((current) => (current === block.id ? null : block.id));
+                                }}
                                 className="min-w-0 text-left"
                               >
                                 <div className="text-lg font-semibold text-slate-950">{block.label || "Untitled block"}</div>
@@ -4073,7 +4237,10 @@ export default function StaffDashboard({
                             <div className="results-inline-insert pt-4">
                               <button
                                 type="button"
-                                onClick={() => insertScheduleBlockFromTemplate(insertTemplate, blockIndex, "below")}
+                                onClick={() => {
+                                  updateOrganizerDemoState({ scheduleViewed: true });
+                                  insertScheduleBlockFromTemplate(insertTemplate, blockIndex, "below");
+                                }}
                                 className="results-secondary-button"
                               >
                                 Add block below
@@ -4150,7 +4317,11 @@ export default function StaffDashboard({
                 {currentSetupStep === 4 ? (
                 <fieldset disabled={demoMode || !canEditSetup} className={demoMode || !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {draft.rounds?.length ? (
-                  <div id="setup-stages" className={`results-workspace-card ${organizerDemoSectionClass("stages")}`}>
+                  <div
+                    id="setup-stages"
+                    className={`results-workspace-card ${organizerDemoSectionClass("stages")}`}
+                    data-demo-anchor="organizer-stages"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="results-kicker">Step 5 - Competition stages</div>
@@ -4161,14 +4332,26 @@ export default function StaffDashboard({
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => setShowAdvancedStageSettings((current) => !current)}
+                          onClick={() => {
+                            updateOrganizerDemoState({ stagesViewed: true });
+                            setShowAdvancedStageSettings((current) => !current);
+                          }}
                           className="results-secondary-button"
                         >
                           {showAdvancedStageSettings ? "Hide advanced" : "Show advanced"}
                         </button>
-                        <button type="button" onClick={() => addRound("qualifier")} className="results-secondary-button">Add qualifier</button>
-                        <button type="button" onClick={() => addRound("semifinal")} className="results-secondary-button">Add semifinal</button>
-                        <button type="button" onClick={() => addRound("finals")} className="results-secondary-button">Add finals</button>
+                        <button type="button" onClick={() => {
+                          updateOrganizerDemoState({ stagesViewed: true });
+                          addRound("qualifier");
+                        }} className="results-secondary-button">Add qualifier</button>
+                        <button type="button" onClick={() => {
+                          updateOrganizerDemoState({ stagesViewed: true });
+                          addRound("semifinal");
+                        }} className="results-secondary-button">Add semifinal</button>
+                        <button type="button" onClick={() => {
+                          updateOrganizerDemoState({ stagesViewed: true });
+                          addRound("finals");
+                        }} className="results-secondary-button">Add finals</button>
                       </div>
                     </div>
                     <div className="results-step-summary">
@@ -4200,7 +4383,10 @@ export default function StaffDashboard({
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <button
                                     type="button"
-                                    onClick={() => setExpandedRoundId((current) => (current === round.id ? null : round.id))}
+                                    onClick={() => {
+                                      updateOrganizerDemoState({ stagesViewed: true });
+                                      setExpandedRoundId((current) => (current === round.id ? null : round.id));
+                                    }}
                                     className="flex min-w-0 flex-1 flex-col items-start text-left"
                                   >
                                     <div className="flex w-full items-center justify-between gap-3">

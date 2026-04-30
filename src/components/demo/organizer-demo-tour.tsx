@@ -10,6 +10,9 @@ const TOUR_STATE_KEY = "organizer_demo_tour_state_v1";
 
 export type OrganizerDemoStepId =
   | "overview"
+  | "basics_name"
+  | "basics_format"
+  | "basics_registration"
   | "categories"
   | "preset"
   | "schedule"
@@ -20,6 +23,9 @@ export type OrganizerDemoHandoffTarget = "judge" | "leaderboard" | "display";
 
 type OrganizerDemoTourProps = {
   competitionName: string;
+  basicsNameComplete: boolean;
+  basicsFormatComplete: boolean;
+  basicsRegistrationComplete: boolean;
   categoriesViewed: boolean;
   presetSelectedTitle: string | null;
   scheduleViewed: boolean;
@@ -33,6 +39,7 @@ type OrganizerDemoTourProps = {
   onRestart: () => void;
   onHandoffClick: (target: OrganizerDemoHandoffTarget) => void;
   onJumpToSetupStep: (stepIndex: number) => void;
+  onFocusAnchor: (anchor: string) => void;
 };
 
 const baseSteps: Array<{
@@ -44,6 +51,21 @@ const baseSteps: Array<{
     id: "overview",
     title: "You are in the organizer control room",
     body: "This page is the event setup spine. You will step through categories, structure, schedule, and stages in the same order a gym would use before comp day starts.",
+  },
+  {
+    id: "basics_name",
+    title: "Set the event name, slug, and venue",
+    body: "Start with the core identity for the comp. In the demo, update the event name details first so the setup story feels grounded in a real gym event.",
+  },
+  {
+    id: "basics_format",
+    title: "Choose the competition format",
+    body: "Confirm the event format before structure is generated. This affects qualifiers, counting climbs, and whether finals are part of the plan.",
+  },
+  {
+    id: "basics_registration",
+    title: "Set the registration window",
+    body: "Enter the registration open and close timing so the event feels ready for athletes, not just sketched out.",
   },
   {
     id: "categories",
@@ -74,6 +96,9 @@ const baseSteps: Array<{
 
 export function OrganizerDemoTour({
   competitionName,
+  basicsNameComplete,
+  basicsFormatComplete,
+  basicsRegistrationComplete,
   categoriesViewed,
   presetSelectedTitle,
   scheduleViewed,
@@ -87,6 +112,7 @@ export function OrganizerDemoTour({
   onRestart,
   onHandoffClick,
   onJumpToSetupStep,
+  onFocusAnchor,
 }: OrganizerDemoTourProps) {
   const reduceMotion = useReducedMotion();
   const [hidden, setHidden] = useState(false);
@@ -137,12 +163,39 @@ export function OrganizerDemoTour({
       };
     }
 
+    if (activeStep.id === "basics_name") {
+      return {
+        complete: basicsNameComplete,
+        label: basicsNameComplete
+          ? `${competitionName} basics are filled.`
+          : "Update the event name, slug, and venue in Event basics to unlock Continue.",
+      };
+    }
+
+    if (activeStep.id === "basics_format") {
+      return {
+        complete: basicsFormatComplete,
+        label: basicsFormatComplete
+          ? "Competition format confirmed."
+          : "Choose the current event format before moving into registration and structure.",
+      };
+    }
+
+    if (activeStep.id === "basics_registration") {
+      return {
+        complete: basicsRegistrationComplete,
+        label: basicsRegistrationComplete
+          ? "Registration timing reviewed."
+          : "Set the registration open and close timing in Event basics.",
+      };
+    }
+
     if (activeStep.id === "categories") {
       return {
         complete: categoriesViewed,
         label: categoriesViewed
-          ? "Categories reviewed."
-          : "Switch to Categories in the setup progress area to unlock Continue.",
+          ? "Qualifier categories selected."
+          : "Choose at least one qualifier category before moving into structure.",
       };
     }
 
@@ -159,8 +212,8 @@ export function OrganizerDemoTour({
       return {
         complete: scheduleViewed,
         label: scheduleViewed
-          ? "Schedule reviewed."
-          : "Open Schedule in the setup progress cards to inspect the day plan.",
+          ? "Schedule block interaction recorded."
+          : "Add or open a schedule block in the day plan before continuing.",
       };
     }
 
@@ -168,8 +221,8 @@ export function OrganizerDemoTour({
       return {
         complete: stagesViewed,
         label: stagesViewed
-          ? "Competition stages reviewed."
-          : "Open Stages so you can see how the actual comp rounds connect.",
+          ? "Competition stage interaction recorded."
+          : "Open or edit a competition stage before moving into handoff.",
       };
     }
 
@@ -181,6 +234,9 @@ export function OrganizerDemoTour({
     };
   }, [
     activeStep.id,
+    basicsFormatComplete,
+    basicsNameComplete,
+    basicsRegistrationComplete,
     categoriesViewed,
     competitionName,
     handoffTarget,
@@ -244,28 +300,98 @@ export function OrganizerDemoTour({
           </div>
           {activeStep.id === "categories" ? (
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => onJumpToSetupStep(1)} className="results-primary-button">
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToSetupStep(1);
+                  onFocusAnchor("organizer-categories");
+                }}
+                className="results-primary-button"
+              >
                 Open categories
+              </button>
+            </div>
+          ) : null}
+          {activeStep.id === "basics_name" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToSetupStep(0);
+                  onFocusAnchor("organizer-basic-name");
+                }}
+                className="results-primary-button"
+              >
+                Focus event basics
+              </button>
+            </div>
+          ) : null}
+          {activeStep.id === "basics_format" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToSetupStep(0);
+                  onFocusAnchor("organizer-basic-format");
+                }}
+                className="results-primary-button"
+              >
+                Focus format
+              </button>
+            </div>
+          ) : null}
+          {activeStep.id === "basics_registration" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToSetupStep(0);
+                  onFocusAnchor("organizer-basic-registration");
+                }}
+                className="results-primary-button"
+              >
+                Focus registration dates
               </button>
             </div>
           ) : null}
           {activeStep.id === "preset" ? (
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => onJumpToSetupStep(2)} className="results-primary-button">
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToSetupStep(2);
+                  onFocusAnchor("organizer-preset-qualifier-finals");
+                }}
+                className="results-primary-button"
+              >
                 Open structure templates
               </button>
             </div>
           ) : null}
           {activeStep.id === "schedule" ? (
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => onJumpToSetupStep(3)} className="results-primary-button">
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToSetupStep(3);
+                  onFocusAnchor("organizer-schedule");
+                }}
+                className="results-primary-button"
+              >
                 Open schedule
               </button>
             </div>
           ) : null}
           {activeStep.id === "stages" ? (
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => onJumpToSetupStep(4)} className="results-primary-button">
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToSetupStep(4);
+                  onFocusAnchor("organizer-stages");
+                }}
+                className="results-primary-button"
+              >
                 Open stages
               </button>
             </div>
@@ -273,7 +399,7 @@ export function OrganizerDemoTour({
           {activeStep.id === "handoff" ? (
             <div className="flex flex-wrap gap-2">
               <Link href={judgeHref} onClick={() => onHandoffClick("judge")} className="results-primary-button">
-            See judge station demo
+                See judge station demo
               </Link>
               <Link href={leaderboardHref} onClick={() => onHandoffClick("leaderboard")} className="results-secondary-button">
                 Open leaderboard
