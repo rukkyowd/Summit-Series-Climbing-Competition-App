@@ -1233,6 +1233,91 @@ export default function StaffDashboard({
     });
   };
 
+  const normalizeDraftFinalsState = (competition: Competition) => {
+    const currentRounds = [...(competition.rounds ?? [])];
+    const shouldHaveFinals = competitionHasFinals(competition);
+    const qualifierRound =
+      currentRounds.find((round) => round.scoring_bucket === "qualifier") ?? currentRounds[0] ?? null;
+    const finalsRoundIndex = currentRounds.findIndex((round) => round.scoring_bucket === "finals");
+    const standbyFinalsRoundIndex = currentRounds.findIndex(
+      (round) => round.round_type === "finals" && round.scoring_bucket !== "finals"
+    );
+
+    let nextRounds = currentRounds;
+    let roundsChanged = false;
+
+    if (shouldHaveFinals && finalsRoundIndex < 0) {
+      if (standbyFinalsRoundIndex >= 0) {
+        nextRounds = currentRounds.map((round, index) =>
+          index === standbyFinalsRoundIndex
+            ? {
+                ...round,
+                scoring_bucket: "finals",
+                format: "ifsc_finals_format",
+                advancement_source_round_id: round.advancement_source_round_id ?? qualifierRound?.id ?? null,
+              }
+            : round
+        );
+      } else {
+        const nextFinalsRound = createRoundTemplate(competition, "finals", currentRounds.length + 1);
+        nextFinalsRound.advancement_source_round_id = qualifierRound?.id ?? null;
+        nextRounds = [...currentRounds, nextFinalsRound];
+      }
+      roundsChanged = true;
+    }
+
+    if (!shouldHaveFinals && finalsRoundIndex >= 0) {
+      nextRounds = currentRounds.filter((round) => round.scoring_bucket !== "finals");
+      roundsChanged = true;
+    }
+
+    if (roundsChanged) {
+      nextRounds = nextRounds.map((round, index) => ({
+        ...round,
+        round_number: index + 1,
+        sort_order: index + 1,
+        competition_id: competition.id,
+      }));
+    }
+
+    const finalsRound = nextRounds.find((round) => round.scoring_bucket === "finals") ?? null;
+    const finalsLinkedPhaseTypes = new Set<CompetitionScheduleBlock["phase_type"]>([
+      "isolation",
+      "observation",
+      "finals_round",
+    ]);
+
+    let scheduleChanged = false;
+    const nextScheduleBlocks = competition.schedule_blocks.map((block) => {
+      if (!finalsLinkedPhaseTypes.has(block.phase_type)) {
+        return block;
+      }
+
+      const nextRoundId = shouldHaveFinals ? finalsRound?.id ?? null : null;
+      if ((block.round_id ?? null) === nextRoundId) {
+        return block;
+      }
+
+      scheduleChanged = true;
+      return {
+        ...block,
+        round_id: nextRoundId,
+      };
+    });
+
+    const nextHasFinals = shouldHaveFinals && Boolean(finalsRound);
+    if (!roundsChanged && !scheduleChanged && competition.has_finals === nextHasFinals) {
+      return competition;
+    }
+
+    return {
+      ...competition,
+      rounds: nextRounds,
+      schedule_blocks: nextScheduleBlocks,
+      has_finals: nextHasFinals,
+    };
+  };
+
   const restoreDemoCompetition = async () => {
     setError("");
     setMessage("");
@@ -1280,6 +1365,17 @@ export default function StaffDashboard({
       has_finals: nextRounds.some((round) => round.scoring_bucket === "finals"),
     });
   };
+
+  useEffect(() => {
+    if (!draft) {
+      return;
+    }
+
+    const normalizedDraft = normalizeDraftFinalsState(draft);
+    if (normalizedDraft !== draft) {
+      setDraft(normalizedDraft);
+    }
+  }, [draft]);
 
   const replaceRoundPlanFromTemplate = (nextFormat?: Competition["format"]) => {
     if (!draft) {
@@ -1710,14 +1806,34 @@ export default function StaffDashboard({
   }, [currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset, setupStepCompletion]);
   const wizardGuardrails = useMemo(() => {
     if (!draft) {
-      return [] as { label: string; ok: boolean }[];
+      return [] as { label: string; ok: boolean; okMessage: string; warningMessage: string }[];
     }
 
     return [
-      { label: "Qualifier categories selected", ok: draft.qualifier_eligible_age_groups.length > 0 },
-      { label: "Schedule blocks added", ok: orderedDraftScheduleBlocks.length > 0 },
-      { label: "Scoring blocks linked to a stage", ok: linkedScheduleBlockCount > 0 },
-      { label: "Finals has a usable scoring stage", ok: !draftHasFinals || Boolean(finalsStage) },
+      {
+        label: "Qualifier categories selected",
+        ok: draft.qualifier_eligible_age_groups.length > 0,
+        okMessage: "Registration groups are ready for the event timeline.",
+        warningMessage: "Choose at least one qualifier group so climbers know who this event is for.",
+      },
+      {
+        label: "Schedule blocks added",
+        ok: orderedDraftScheduleBlocks.length > 0,
+        okMessage: "The event timeline is laid out.",
+        warningMessage: "Add schedule blocks so staff and climbers can see how the day is structured.",
+      },
+      {
+        label: "Scoring blocks linked to a stage",
+        ok: linkedScheduleBlockCount > 0,
+        okMessage: "Live scoring blocks are connected to real competition stages.",
+        warningMessage: "Link at least one scoring block to a stage so live results know where to publish.",
+      },
+      {
+        label: "Finals scoring is ready",
+        ok: !draftHasFinals || Boolean(finalsStage),
+        okMessage: "Finals can publish real results when that round goes live.",
+        warningMessage: "If this event includes finals, add a real finals scoring stage before using it for finals day.",
+      },
     ];
   }, [draft, draftHasFinals, finalsStage, linkedScheduleBlockCount, orderedDraftScheduleBlocks.length]);
   const readyToSaveChecklist = useMemo(() => {
@@ -3092,7 +3208,7 @@ export default function StaffDashboard({
                           className={`results-check-card ${item.ok ? "results-check-card-ok" : "results-check-card-warn"}`}
                         >
                           <div className="font-semibold">{item.label}</div>
-                          <div className="mt-1">{item.ok ? "Ready for the event timeline." : "Needs attention before this flow is fully reliable."}</div>
+                          <div className="mt-1">{item.ok ? item.okMessage : item.warningMessage}</div>
                         </div>
                       ))}
                     </div>
