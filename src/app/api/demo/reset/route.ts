@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { resetDemoCompetition } from "@/lib/demo-reset";
-import { createRouteSupabaseClient } from "@/lib/server-supabase";
+import { createRouteSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
 const RESET_SECRET = process.env["CRON_SECRET"] ?? process.env["DEMO_RESET_SECRET"] ?? null;
 const PUBLIC_DEMO_PATH_PREFIXES = ["/demo", "/staff/demo"] as const;
 
 type DemoResetRequest = {
   mode?: string;
+  competitionId?: string | string[] | null;
 };
 
 async function isAuthorizedAdminRequest(request: NextRequest) {
@@ -54,7 +54,55 @@ function isPublicDemoResetRequest(request: NextRequest, payload: DemoResetReques
   }
 }
 
-async function handleReset(request: NextRequest, options?: { publicDemo?: boolean }) {
+function normalizeCompetitionIds(value: DemoResetRequest["competitionId"]) {
+  if (typeof value === "string") {
+    return value.trim() ? [value.trim()] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  return [] as string[];
+}
+
+async function clearDemoCompetitions(competitionIds: string[]) {
+  if (!competitionIds.length) {
+    return [];
+  }
+
+  const supabase = createServiceRoleSupabaseClient();
+  const { data: rows, error: loadError } = await supabase
+    .from("competitions")
+    .select("id")
+    .in("id", competitionIds)
+    .eq("is_demo", true);
+
+  if (loadError) {
+    throw new Error(loadError.message || "Unable to load demo competitions.");
+  }
+
+  const idsToDelete = (rows ?? []).map((row) => row.id as string);
+  if (!idsToDelete.length) {
+    return [];
+  }
+
+  const { error: deleteError } = await supabase.from("competitions").delete().in("id", idsToDelete);
+  if (deleteError) {
+    throw new Error(deleteError.message || "Unable to clear demo competitions.");
+  }
+
+  return idsToDelete;
+}
+
+async function handleReset(
+  request: NextRequest,
+  payload: DemoResetRequest | null,
+  options?: { publicDemo?: boolean }
+) {
   const authorized = options?.publicDemo ? true : await isAuthorizedAdminRequest(request);
   if (!authorized) {
     return NextResponse.json(
@@ -64,8 +112,13 @@ async function handleReset(request: NextRequest, options?: { publicDemo?: boolea
   }
 
   try {
-    const result = await resetDemoCompetition();
-    return NextResponse.json({ ok: true, demo: result });
+    const deletedCompetitionIds = await clearDemoCompetitions(normalizeCompetitionIds(payload?.competitionId));
+    return NextResponse.json({
+      ok: true,
+      demo: {
+        deletedCompetitionIds,
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       {
@@ -85,9 +138,9 @@ export async function POST(request: NextRequest) {
     payload = null;
   }
 
-  return handleReset(request, { publicDemo: isPublicDemoResetRequest(request, payload) });
+  return handleReset(request, payload, { publicDemo: isPublicDemoResetRequest(request, payload) });
 }
 
 export async function GET(request: NextRequest) {
-  return handleReset(request);
+  return handleReset(request, null);
 }

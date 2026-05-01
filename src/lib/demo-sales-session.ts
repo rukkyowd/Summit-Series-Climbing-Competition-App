@@ -27,6 +27,8 @@ export type DemoSalesSession = {
   judgePending: boolean;
   persistentCompletion: boolean;
   audioEnabled: boolean;
+  competitionId?: string | null;
+  competitionSlug?: string | null;
 };
 
 const DEMO_SALES_SESSION_KEY = "demo_sales_session_v1";

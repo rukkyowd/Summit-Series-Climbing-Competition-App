@@ -41,3 +41,18 @@ export function isDemoCompetitionRecord(
 
   return isCanonicalDemoCompetitionSlug(competition.slug) || isLegacyDemoCompetitionSlug(competition.slug);
 }
+
+export function isProtectedDemoCompetitionRecord(
+  competition:
+    | Pick<Competition, "slug"> & {
+        is_demo?: boolean | null;
+      }
+    | null
+    | undefined
+) {
+  if (!competition) {
+    return false;
+  }
+
+  return isCanonicalDemoCompetitionSlug(competition.slug) || isLegacyDemoCompetitionSlug(competition.slug);
+}

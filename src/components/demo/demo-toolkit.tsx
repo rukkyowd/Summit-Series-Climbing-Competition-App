@@ -105,7 +105,7 @@ export function DemoToolkit({
               onClick={onRestoreDemo}
               disabled={state.scriptRunning}
             >
-              Reset demo state
+              Start over
             </Button>
           </div>
 

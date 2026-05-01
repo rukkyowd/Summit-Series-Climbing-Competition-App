@@ -17,7 +17,11 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
-import { isCanonicalDemoCompetitionSlug, isDemoCompetitionRecord } from "@/lib/demo";
+import {
+  isCanonicalDemoCompetitionSlug,
+  isDemoCompetitionRecord,
+  isProtectedDemoCompetitionRecord,
+} from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   createCompetitionFromTemplate,
@@ -106,18 +110,6 @@ function cloneCompetition(competition: Competition): Competition {
       eligible_category_ids: [...round.eligible_category_ids],
       scoring_config: { ...round.scoring_config },
     })),
-  };
-}
-
-function buildOrganizerDemoShellDraft(competition: Competition): Competition {
-  return {
-    ...cloneCompetition(competition),
-    qualifier_eligible_age_groups: [],
-    has_finals: false,
-    rounds: [],
-    schedule_blocks: [],
-    stage_mode: "qualifier",
-    current_phase: "qualifier_open",
   };
 }
 
@@ -212,11 +204,11 @@ const ORGANIZER_STEP_LABELS: Record<OrganizerPlaybackStep, string> = {
 };
 
 const ORGANIZER_BUILD_TRANSITION_STEPS = [
-  "Creating categories and registration groups",
-  "Generating qualifier boulders and event structure",
-  "Assigning schedule blocks and stages",
-  "Preparing the judge station",
-  "Publishing the public leaderboard",
+  "Saving event setup",
+  "Simulating 150 climber registrations",
+  "Generating qualifier routes and seeded scores",
+  "Opening judge workspaces",
+  "Launching the live judge panel",
 ] as const;
 
 const DEMO_FLOW_STEPS: DemoFlowStep[] = [
@@ -673,7 +665,7 @@ export default function StaffDashboard({
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<GuidedSetupPreset["id"] | null>(null);
   const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
-  const [organizerGuidedBasicsState, setOrganizerGuidedBasicsState] = useState({
+  const [, setOrganizerGuidedBasicsState] = useState({
     identityReviewed: false,
     formatReviewed: false,
     registrationReviewed: false,
@@ -697,6 +689,7 @@ export default function StaffDashboard({
   const [organizerPlaybackStep, setOrganizerPlaybackStep] = useState<OrganizerPlaybackStep | null>(null);
   const [organizerNarration, setOrganizerNarration] = useState<OrganizerNarration | null>(null);
   const [salesAudioEnabled, setSalesAudioEnabled] = useState(false);
+  const [demoSessionCompetitionId, setDemoSessionCompetitionId] = useState<string | null>(null);
   const [buildTransitionState, setBuildTransitionState] = useState<OrganizerBuildTransitionState>({
     active: false,
     stepIndex: 0,
@@ -710,7 +703,6 @@ export default function StaffDashboard({
     label: null,
   });
   const organizerAutoplayStartedRef = useRef(false);
-  const demoBootstrapRestoredRef = useRef(false);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -743,12 +735,15 @@ export default function StaffDashboard({
         const initialMatch = initialCompetitionSlug
           ? summaries.find((entry) => entry.competition.slug === initialCompetitionSlug)
           : null;
-        const preferredDemoSummary = demoMode
-          ? summaries.find((entry) => isDemoDataSlug(entry.competition.slug)) ??
-            summaries.find((entry) => entry.live_now) ??
-            summaries[0]
-          : null;
-        return initialMatch?.competition.id ?? preferredDemoSummary?.competition.id ?? summaries[0]?.competition.id ?? "";
+        const preferredDemoSummary =
+          demoMode && demoSessionCompetitionId
+            ? summaries.find((entry) => entry.competition.id === demoSessionCompetitionId) ?? null
+            : null;
+        if (demoMode) {
+          return initialMatch?.competition.id ?? preferredDemoSummary?.competition.id ?? "";
+        }
+
+        return initialMatch?.competition.id ?? summaries[0]?.competition.id ?? "";
       });
       setError("");
     } catch (nextError) {
@@ -756,16 +751,27 @@ export default function StaffDashboard({
     } finally {
       setLoading(false);
     }
-  }, [demoMode, initialCompetitionSlug]);
+  }, [demoMode, demoSessionCompetitionId, initialCompetitionSlug]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const visibleSummaries = useMemo(
-    () => (demoMode ? allSummaries.filter((entry) => isDemoDataSlug(entry.competition.slug)) : allSummaries),
-    [allSummaries, demoMode]
-  );
+  const visibleSummaries = useMemo(() => {
+    if (!demoMode) {
+      return allSummaries;
+    }
+
+    if (!demoSessionCompetitionId) {
+      return [] as CompetitionSummary[];
+    }
+
+    return allSummaries.filter(
+      (entry) =>
+        entry.competition.id === demoSessionCompetitionId &&
+        (entry.competition.is_demo || isDemoDataSlug(entry.competition.slug))
+    );
+  }, [allSummaries, demoMode, demoSessionCompetitionId]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -784,6 +790,7 @@ export default function StaffDashboard({
     }
 
     setSalesAudioEnabled(session.audioEnabled);
+    setDemoSessionCompetitionId(session.competitionId ?? null);
   }, [demoMode]);
 
 
@@ -891,9 +898,14 @@ export default function StaffDashboard({
   }, [draft]);
   const setupProgressCount = setupStepCompletion.filter(Boolean).length;
   const setupProgressPercent = Math.round((setupProgressCount / SETUP_WIZARD_STEPS.length) * 100);
+  const hasPersistedDraft =
+    !!draft &&
+    !!selectedSummary &&
+    JSON.stringify(cloneCompetition(draft)) === JSON.stringify(cloneCompetition(selectedSummary.competition));
   const activeSetupStep = SETUP_WIZARD_STEPS[currentSetupStep] ?? SETUP_WIZARD_STEPS[0];
   const isFirstSetupStep = currentSetupStep === 0;
   const isLastSetupStep = currentSetupStep === SETUP_WIZARD_STEPS.length - 1;
+  const demoJudgeReady = demoMode && !!draft && setupProgressCount === SETUP_WIZARD_STEPS.length && hasPersistedDraft;
   const selectedGuidedSetupPreset =
     GUIDED_SETUP_PRESETS.find((preset) => preset.id === selectedGuidedSetupPresetId) ?? null;
   const setupSectionAnchors = useMemo(
@@ -920,11 +932,7 @@ export default function StaffDashboard({
       return;
     }
 
-    setDraft(
-      demoMode
-        ? buildOrganizerDemoShellDraft(selectedSummary.competition)
-        : cloneCompetition(selectedSummary.competition)
-    );
+    setDraft(cloneCompetition(selectedSummary.competition));
     void getCompetitionSnapshot(selectedSummary.competition.id)
       .then((nextSnapshot) => setSnapshot(nextSnapshot))
       .catch(() => setSnapshot(null));
@@ -976,10 +984,10 @@ export default function StaffDashboard({
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
-  const selectedCompetitionIsDemo = draft ? isDemoCompetitionRecord(draft) : false;
+  const selectedCompetitionIsDemo = draft ? isProtectedDemoCompetitionRecord(draft) : false;
   const canEditPhase = profile?.role === "admin" && !selectedCompetitionIsDemo;
   const canEditSetup = profile?.role === "admin" && !selectedCompetitionIsDemo;
-  const canRestoreDemo = profile?.role === "admin" && selectedCompetitionIsDemo && !demoMode;
+  const canRestoreDemo = false;
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
     ? getCompetitionPhaseForSchedulePhase(liveScheduleBlock.phase_type)
@@ -1355,7 +1363,23 @@ export default function StaffDashboard({
     });
   };
 
-  const restoreDemoCompetition = useCallback(async () => {
+  const saveDraftNow = useCallback(async () => {
+    if (!draft) {
+      throw new Error("No event is selected.");
+    }
+
+    setError("");
+    setMessage("");
+    await saveCompetitionConfig(draft.id, {
+      ...draft,
+      schedule_blocks: draft.schedule_blocks,
+      rounds: draft.rounds ?? [],
+    });
+    await refreshAfterChange(draft.id);
+    setRoundPlanNeedsReset(false);
+  }, [draft, refreshAfterChange]);
+
+  const resetDemoSessionCompetition = useCallback(async () => {
     setError("");
     setMessage("");
 
@@ -1366,42 +1390,26 @@ export default function StaffDashboard({
       },
       body: JSON.stringify({
         mode: "public_demo",
+        competitionId: demoSessionCompetitionId,
       }),
     });
-    const payload = (await response.json().catch(() => null)) as
-      | {
-          error?: string;
-          demo?: {
-            competitionId: string;
-          };
-        }
-      | null;
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 
-    if (!response.ok || !payload?.demo?.competitionId) {
-      throw new Error(payload?.error || "Unable to restore the seeded demo competition.");
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to reset the demo session.");
     }
 
-    await load();
-    setSelectedCompetitionId(payload.demo.competitionId);
-    await refreshSelectedSnapshot(payload.demo.competitionId);
-    setMessage("Demo competition restored to the seeded walkthrough state.");
-  }, [load, refreshSelectedSnapshot]);
-
-  useEffect(() => {
-    if (!demoMode || loading || visibleSummaries.length > 0 || demoBootstrapRestoredRef.current) {
-      return;
-    }
-
-    demoBootstrapRestoredRef.current = true;
-    void restoreDemoCompetition().catch((nextError) => {
-      demoBootstrapRestoredRef.current = false;
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Unable to restore the seeded demo competition."
-      );
+    patchDemoSalesSession({
+      competitionId: null,
+      competitionSlug: null,
     });
-  }, [demoMode, loading, restoreDemoCompetition, visibleSummaries.length]);
+    setDemoSessionCompetitionId(null);
+    await load();
+    setSelectedCompetitionId("");
+    setSnapshot(null);
+    setDraft(null);
+    setMessage("Demo reset. The organizer flow is back to a clean slate.");
+  }, [demoSessionCompetitionId, load]);
 
   const updateRounds = (updater: (rounds: CompetitionRound[]) => CompetitionRound[]) => {
     if (!draft) {
@@ -1907,28 +1915,6 @@ export default function StaffDashboard({
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
     : "No stage flow yet";
-  const organizerBasicsNameComplete = Boolean(
-    draft?.name.trim() &&
-      draft?.slug.trim() &&
-      draft?.location_name.trim() &&
-      organizerGuidedBasicsState.identityReviewed
-  );
-  const organizerBasicsFormatComplete = Boolean(draft?.format && organizerGuidedBasicsState.formatReviewed);
-  const organizerBasicsRegistrationComplete = Boolean(
-    draft?.registration_opens_at &&
-      draft?.registration_closes_at &&
-      organizerGuidedBasicsState.registrationReviewed
-  );
-  const organizerCategoriesComplete = Boolean(
-    draft?.qualifier_eligible_age_groups.length && organizerDemoState.categoriesViewed
-  );
-  const organizerScheduleComplete = Boolean(
-    draft?.schedule_blocks.length && organizerDemoState.scheduleViewed
-  );
-  const organizerStagesComplete = Boolean(
-    currentCompetitionStages.some((round) => round.scoring_bucket !== "none") &&
-      organizerDemoState.stagesViewed
-  );
   const demoTourCards: DemoTourCard[] = draft
     ? [
         {
@@ -1999,7 +1985,7 @@ export default function StaffDashboard({
       return;
     }
 
-    setDraft(buildOrganizerDemoShellDraft(selectedSummary.competition));
+    setDraft(cloneCompetition(selectedSummary.competition));
     setCurrentSetupStep(0);
     setSelectedGuidedSetupPresetId(null);
     setOrganizerDemoState({
@@ -2044,6 +2030,8 @@ export default function StaffDashboard({
         judgePending: false,
         persistentCompletion: false,
         audioEnabled: salesAudioEnabled,
+        competitionId: selectedSummary.competition.id,
+        competitionSlug: selectedSummary.competition.slug,
       })
     );
     setError("");
@@ -2148,6 +2136,10 @@ export default function StaffDashboard({
   );
 
   const runOrganizerBuildTransition = useCallback(async () => {
+    if (!draft) {
+      return;
+    }
+
     setBuildTransitionState({
       active: true,
       stepIndex: 0,
@@ -2155,62 +2147,108 @@ export default function StaffDashboard({
     });
     setOrganizerPlaybackStep("handoff");
     setOrganizerNarration({
-      title: "Building the event you just configured",
-      body: "In the background, the guided demo is building a clean event with categories, boulders, schedule blocks, stages, and public results so the judge station opens ready to run.",
-    });
-    patchDemoSalesSession({
-      phase: "build",
-      storyStep: "organizer-build",
-      narratorTitle: "Building the event you just configured",
-      narratorBody:
-        "In the background, the guided demo is building a clean event with categories, boulders, schedule blocks, stages, and public results so the judge station opens ready to run.",
-      autoplay: true,
-      organizerCompleted: true,
-      judgePending: true,
-      persistentCompletion: false,
-    });
-
-    for (let index = 0; index < ORGANIZER_BUILD_TRANSITION_STEPS.length; index += 1) {
-      setBuildTransitionState({
-        active: true,
-        stepIndex: index,
-        complete: false,
-      });
-      setOrganizerNarration({
-        title: ORGANIZER_BUILD_TRANSITION_STEPS[index],
-        body: "This is the loading handoff between organizer setup and live judging. The canonical demo event is being restored so the next screen opens in a stable, judge-ready state.",
-      });
-      await waitForOrganizerPlayback(1050);
-    }
-
-    await restoreDemoCompetition();
-    setBuildTransitionState({
-      active: true,
-      stepIndex: ORGANIZER_BUILD_TRANSITION_STEPS.length - 1,
-      complete: true,
-    });
-    setOrganizerNarration({
-      title: "Judge station ready",
-      body: "The sample event is prepared. Next, the story moves into one live score save, a live leaderboard reaction, and an offline recovery moment.",
+      title: "Finalizing the event you just built",
+      body: "We are saving your organizer setup, simulating a busy qualifier field, and opening the judge panel with live data tied to this exact event.",
     });
     writeDemoSalesSession(
       createDemoSalesSession({
-        mode: "judge",
-        phase: "judge",
-        storyStep: "judge-save",
-        narratorTitle: "The event you just built is now powering live judging.",
+        mode: "organizer",
+        phase: "build",
+        storyStep: "organizer-build",
+        narratorTitle: "Finalizing the event you just built",
         narratorBody:
-          "Stay with the story as the same sample event moves into one judge save, a live leaderboard reaction, and an offline recovery moment.",
+          "We are saving your organizer setup, simulating a busy qualifier field, and opening the judge panel with live data tied to this exact event.",
         autoplay: true,
         organizerCompleted: true,
         judgePending: true,
         persistentCompletion: false,
         audioEnabled: salesAudioEnabled,
+        competitionId: draft.id,
+        competitionSlug: draft.slug,
       })
     );
-    await waitForOrganizerPlayback(900);
-    router.push(demoJudgePath);
-  }, [demoJudgePath, restoreDemoCompetition, router, salesAudioEnabled, waitForOrganizerPlayback]);
+
+    try {
+      setBuildTransitionState({
+        active: true,
+        stepIndex: 0,
+        complete: false,
+      });
+      setOrganizerNarration({
+        title: ORGANIZER_BUILD_TRANSITION_STEPS[0],
+        body: "The organizer configuration is being saved so the judge panel opens from a real persisted event instead of a mock shell.",
+      });
+      await saveDraftNow();
+      await waitForOrganizerPlayback(450);
+
+      for (let index = 1; index < ORGANIZER_BUILD_TRANSITION_STEPS.length; index += 1) {
+        setBuildTransitionState({
+          active: true,
+          stepIndex: index,
+          complete: false,
+        });
+        setOrganizerNarration({
+          title: ORGANIZER_BUILD_TRANSITION_STEPS[index],
+          body:
+            index < ORGANIZER_BUILD_TRANSITION_STEPS.length - 1
+              ? "This handoff is turning your empty event into a believable comp day with registrations, qualifier traffic, and a live judging field."
+              : "The judge panel is ready. Next, the story moves into one live score save, a live leaderboard reaction, and an offline recovery moment.",
+        });
+
+        if (index === 1) {
+          const response = await fetch("/api/demo/simulate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              mode: "hydrate_event",
+              competitionId: draft.id,
+            }),
+          });
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          if (!response.ok) {
+            throw new Error(payload?.error || "Unable to simulate the organizer demo event.");
+          }
+          await refreshAfterChange(draft.id);
+        }
+
+        await waitForOrganizerPlayback(900);
+      }
+
+      setBuildTransitionState({
+        active: true,
+        stepIndex: ORGANIZER_BUILD_TRANSITION_STEPS.length - 1,
+        complete: true,
+      });
+      writeDemoSalesSession(
+        createDemoSalesSession({
+          mode: "judge",
+          phase: "judge",
+          storyStep: "judge-save",
+          narratorTitle: "The event you just built is now powering live judging.",
+          narratorBody:
+            "Stay with the story as the same event moves into one judge save, a live leaderboard reaction, and an offline recovery moment.",
+          autoplay: true,
+          organizerCompleted: true,
+          judgePending: true,
+          persistentCompletion: false,
+          audioEnabled: salesAudioEnabled,
+          competitionId: draft.id,
+          competitionSlug: draft.slug,
+        })
+      );
+      await waitForOrganizerPlayback(650);
+      router.push(demoJudgePath);
+    } catch (nextError) {
+      setBuildTransitionState({
+        active: false,
+        stepIndex: 0,
+        complete: false,
+      });
+      setError(nextError instanceof Error ? nextError.message : "Unable to launch the judge demo.");
+    }
+  }, [demoJudgePath, draft, refreshAfterChange, router, salesAudioEnabled, saveDraftNow, waitForOrganizerPlayback]);
 
   const runOrganizerDemo = useCallback(async () => {
     if (!demoMode || organizerAutoplayRunning || !draft) {
@@ -2231,6 +2269,8 @@ export default function StaffDashboard({
         autoplay: true,
         organizerCompleted: false,
         audioEnabled: salesAudioEnabled,
+        competitionId: draft.id,
+        competitionSlug: draft.slug,
       })
     );
 
@@ -2560,6 +2600,8 @@ export default function StaffDashboard({
                     judgePending: false,
                     persistentCompletion: false,
                     audioEnabled: nextValue,
+                    competitionId: draft?.id ?? demoSessionCompetitionId ?? null,
+                    competitionSlug: draft?.slug ?? null,
                   })
                 );
               }
@@ -2616,24 +2658,39 @@ export default function StaffDashboard({
         ) : null}
         {demoMode && draft ? (
           <OrganizerDemoTour
+            hasCreatedCompetition={Boolean(draft)}
             competitionName={draft.name}
-            basicsNameComplete={organizerBasicsNameComplete}
-            basicsFormatComplete={organizerBasicsFormatComplete}
-            basicsRegistrationComplete={organizerBasicsRegistrationComplete}
-            categoriesViewed={organizerCategoriesComplete}
-            presetSelectedTitle={organizerDemoState.presetSelected ? selectedGuidedSetupPreset?.title ?? "Selected preset" : null}
-            scheduleViewed={organizerScheduleComplete}
-            stagesViewed={organizerStagesComplete}
-            handoffTarget={organizerDemoState.handoffTarget}
-            judgeHref={demoJudgePath}
-            leaderboardHref={leaderboardPath}
-            displayHref={displayPath}
+            eventNameEntered={Boolean(createName.trim() || draft.name.trim())}
+            eventDetailsComplete={setupProgressCount === SETUP_WIZARD_STEPS.length}
+            eventSaved={hasPersistedDraft}
+            judgeReady={demoJudgeReady}
             suppressed={organizerAutoplayRunning || organizerPlaybackStep !== null || buildTransitionState.active}
             onActiveStepChange={setActiveOrganizerDemoStep}
             onRestart={resetOrganizerDemoWalkthrough}
-            onHandoffClick={handleOrganizerHandoff}
-            onJumpToSetupStep={goToSetupStep}
+            onJumpToCreate={() => {
+              document.getElementById("create-event-name")?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
             onFocusAnchor={focusOrganizerDemoAnchor}
+            onLaunchJudge={() => void runOrganizerBuildTransition()}
+          />
+        ) : demoMode ? (
+          <OrganizerDemoTour
+            hasCreatedCompetition={false}
+            competitionName=""
+            eventNameEntered={Boolean(createName.trim())}
+            eventDetailsComplete={false}
+            eventSaved={false}
+            judgeReady={false}
+            suppressed={organizerAutoplayRunning || organizerPlaybackStep !== null || buildTransitionState.active}
+            onActiveStepChange={setActiveOrganizerDemoStep}
+            onRestart={() => {
+              void resetDemoSessionCompetition();
+            }}
+            onJumpToCreate={() => {
+              document.getElementById("create-event-name")?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+            onFocusAnchor={focusOrganizerDemoAnchor}
+            onLaunchJudge={() => undefined}
           />
         ) : null}
         {demoMode ? <Alert>{demoBanner}</Alert> : null}
@@ -2655,18 +2712,26 @@ export default function StaffDashboard({
                   You are setting up a gym comp from a clean shell. Watch the categories, format, schedule, and stages appear in the organizer workflow, then follow that same event into the live judge station and public results.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void runOrganizerDemo()}
-                    className="results-primary-button"
-                    data-demo-anchor="organizer-run-demo"
-                    disabled={organizerAutoplayRunning}
-                  >
-                    {organizerAutoplayRunning ? "Running organizer demo..." : "Run organizer demo"}
-                  </button>
-                  <a href="#demo-organizer-setup" onClick={handleOrganizerSetupStart} className="results-secondary-button">
-                    Explore setup manually
-                  </a>
+                  {draft ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void runOrganizerDemo()}
+                        className="results-primary-button"
+                        data-demo-anchor="organizer-run-demo"
+                        disabled={organizerAutoplayRunning}
+                      >
+                        {organizerAutoplayRunning ? "Running organizer demo..." : "Run organizer demo"}
+                      </button>
+                      <a href="#demo-organizer-setup" onClick={handleOrganizerSetupStart} className="results-secondary-button">
+                        Explore setup manually
+                      </a>
+                    </>
+                  ) : (
+                    <a href="#create-event-name" className="results-primary-button" data-demo-anchor="organizer-create-cta">
+                      Start by creating an event
+                    </a>
+                  )}
                   {leaderboardPath ? (
                     <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button">
                       See live leaderboard
@@ -2684,7 +2749,7 @@ export default function StaffDashboard({
                   Sample event
                 </div>
                 <div className="mt-3 text-2xl font-semibold text-slate-950">
-                  {draft?.name ?? "Loading sample event"}
+                  {draft?.name ?? "No event created yet"}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge>{selectedSummary?.climber_count ?? 0} climbers</Badge>
@@ -2840,11 +2905,11 @@ export default function StaffDashboard({
                 </div>
               </>
             )}
-            {!demoMode ? (
+            {(!demoMode || !draft) ? (
             <fieldset disabled={!canEditSetup} className={!canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
               <label className="results-field-group" htmlFor="create-event-name">
                 <span className="results-field-label">New event name</span>
-                <input id="create-event-name" aria-label="New event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New event name" />
+                <input id="create-event-name" aria-label="New event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New event name" data-demo-anchor="organizer-create-name" />
               </label>
               <label className="results-field-group" htmlFor="create-event-slug-preview">
                 <span className="results-field-label">New event slug preview</span>
@@ -2961,6 +3026,7 @@ export default function StaffDashboard({
                           name: sanitizeDraftText(createName),
                           format: createFormat,
                           has_finals: competitionAllowsOptionalFinals(createFormat) ? createHasFinals : true,
+                          is_demo: demoMode,
                           location_name: sanitizeDraftText(createLocation),
                           start_date: sanitizeDraftText(createStartDate) || null,
                           end_date: sanitizeDraftText(createEndDate) || null,
@@ -2986,9 +3052,33 @@ export default function StaffDashboard({
                         setCreateOfficialScheduleUrl("");
                         setCreateHeroImageUrl("");
                         setCreateDisciplineLabel("");
+                        if (demoMode) {
+                          writeDemoSalesSession(
+                            createDemoSalesSession({
+                              mode: "organizer",
+                              phase: "organizer",
+                              storyStep: "organizer-intro",
+                              narratorTitle: "Create the event before you run it.",
+                              narratorBody:
+                                "You now have an empty event. Finish the organizer setup, save it, then hand it off into the judge panel.",
+                              autoplay: false,
+                              organizerCompleted: false,
+                              judgePending: false,
+                              persistentCompletion: false,
+                              audioEnabled: salesAudioEnabled,
+                              competitionId: created.id,
+                              competitionSlug: created.slug,
+                            })
+                          );
+                          setDemoSessionCompetitionId(created.id);
+                        }
                         await refreshAfterChange(created.id);
                         setSelectedCompetitionId(created.id);
-                        setMessage(`Created ${created.name}.`);
+                        setMessage(
+                          demoMode
+                            ? `Created ${created.name}. Continue through the organizer setup, then save the event before opening the judge panel.`
+                            : `Created ${created.name}.`
+                        );
                       } catch (nextError) {
                         setError(nextError instanceof Error ? nextError.message : "Unable to create competition.");
                       }
@@ -2996,8 +3086,9 @@ export default function StaffDashboard({
                   });
                 }}
                 className="results-primary-button"
+                data-demo-anchor="organizer-create-submit"
               >
-                  Create new event
+                  {demoMode ? "Create event" : "Create new event"}
               </button>
             </fieldset>
             ) : null}
@@ -3010,10 +3101,10 @@ export default function StaffDashboard({
             <div className="results-subtle-divider mt-8" />
             <div className="mt-5 flex items-center justify-between gap-3">
               <div>
-                <div className="results-kicker">{demoMode ? "Sample events" : "Existing events"}</div>
+                <div className="results-kicker">{demoMode ? "Demo event" : "Existing events"}</div>
                 <div className="mt-2 text-sm text-slate-600">
                   {demoMode
-                    ? "Choose the sample event you want to walk through with a gym buyer."
+                    ? "This stays empty until you create an event for the organizer walkthrough."
                     : "Choose an event to review its setup, links, and live workflow."}
                 </div>
               </div>
@@ -3021,7 +3112,7 @@ export default function StaffDashboard({
             </div>
 
             <div className="mt-4 space-y-3">
-              {visibleSummaries.map((summary) => (
+              {visibleSummaries.length ? visibleSummaries.map((summary) => (
                 <button
                   key={summary.competition.id}
                   type="button"
@@ -3036,7 +3127,11 @@ export default function StaffDashboard({
                   </div>
                   <div className="text-sm text-slate-500">{summary.competition.slug}</div>
                 </button>
-              ))}
+              )) : (
+                <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-600">
+                  No events found. Create your first competition to start the guided organizer demo.
+                </div>
+              )}
             </div>
           </section>
 
@@ -3063,14 +3158,29 @@ export default function StaffDashboard({
                       <div className="results-kicker">Quick links</div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         <Link href={publicPath} className="results-secondary-button w-full">Public event page</Link>
-                        <Link
-                          href={demoMode ? demoJudgePath : judgeUrl}
-                          onClick={() => handleOrganizerHandoff("judge")}
-                          className="results-secondary-button w-full"
-                          data-demo-anchor="organizer-handoff-judge"
-                        >
-                          {demoMode ? "Judge station demo" : "Judge station"}
-                        </Link>
+                        {demoMode ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleOrganizerHandoff("judge");
+                              void runOrganizerBuildTransition();
+                            }}
+                            disabled={!demoJudgeReady || buildTransitionState.active}
+                            className={demoJudgeReady ? "results-secondary-button w-full" : "results-secondary-button w-full opacity-60"}
+                            data-demo-anchor="organizer-handoff-judge"
+                          >
+                            {buildTransitionState.active ? "Preparing judge panel..." : "Go to judge panel"}
+                          </button>
+                        ) : (
+                          <Link
+                            href={judgeUrl}
+                            onClick={() => handleOrganizerHandoff("judge")}
+                            className="results-secondary-button w-full"
+                            data-demo-anchor="organizer-handoff-judge"
+                          >
+                            Judge station
+                          </Link>
+                        )}
                         <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button w-full">
                           Live leaderboard
                         </Link>
@@ -3081,7 +3191,9 @@ export default function StaffDashboard({
                       </div>
                       {demoMode ? (
                         <div className="mt-3 text-sm text-slate-600">
-                          Open the public views directly, or jump into the guided live judging demo to show how this same event powers scoring.
+                          {demoJudgeReady
+                            ? "The event is saved and ready. Open the judge panel to simulate registrations and move into live scoring."
+                            : "The judge panel unlocks after the event is created, fully configured, and saved."}
                         </div>
                       ) : null}
                     </div>
@@ -4650,7 +4762,7 @@ export default function StaffDashboard({
                 </div>
 
                 <div className="flex flex-wrap gap-3">
-                  <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button">
+                  <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-primary-button" data-demo-anchor="organizer-save-event">
                     {isPending ? "Saving..." : "Save competition"}
                   </button>
                   {snapshot ? (
@@ -4703,7 +4815,7 @@ export default function StaffDashboard({
                             confirmLabel: "Restore",
                             expectedValue: draft.name,
                             action: async () => {
-                              await restoreDemoCompetition();
+                              await resetDemoSessionCompetition();
                             },
                           })
                         }

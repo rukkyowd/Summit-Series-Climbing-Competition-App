@@ -24,8 +24,8 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
-import { DEMO_COMPETITION_SLUG } from "@/lib/demo";
 import {
+  clearDemoSalesSession,
   createDemoSalesSession,
   patchDemoSalesSession,
   readDemoSalesSession,
@@ -366,6 +366,7 @@ export function InteractiveDemoClient() {
   const [salesSession, setSalesSession] = useState<DemoSalesSession | null>(null);
   const [salesAudioEnabled, setSalesAudioEnabled] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [demoCompetitionId, setDemoCompetitionId] = useState<string | null>(null);
   const [demoCursor, setDemoCursor] = useState<DemoCursorState>({
     visible: false,
     x: 0,
@@ -399,11 +400,13 @@ export function InteractiveDemoClient() {
     const session = readDemoSalesSession();
     setSalesSession(session);
     setSalesAudioEnabled(session?.audioEnabled ?? false);
+    setDemoCompetitionId(session?.competitionId ?? null);
   }, []);
 
   const syncSalesSessionState = useCallback((updater: (current: DemoSalesSession | null) => DemoSalesSession) => {
     setSalesSession((current) => {
       const next = updater(current);
+      setDemoCompetitionId(next.competitionId ?? null);
       writeDemoSalesSession(next);
       return next;
     });
@@ -485,7 +488,11 @@ export function InteractiveDemoClient() {
   }, []);
 
   const refreshSnapshot = useCallback(async () => {
-    const nextSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
+    if (!demoCompetitionId) {
+      throw new Error("No organizer demo event is active yet. Create an event from the organizer flow first.");
+    }
+
+    const nextSnapshot = await getCompetitionSnapshot(demoCompetitionId);
     const pendingQueue = await getDemoQueueItems(nextSnapshot.competition.id);
     setSnapshot(nextSnapshot);
     setLeaderboardSnapshot(nextSnapshot);
@@ -496,7 +503,7 @@ export function InteractiveDemoClient() {
       pendingQueueCount: pendingQueue.length,
     }));
     return nextSnapshot;
-  }, []);
+  }, [demoCompetitionId]);
 
   useEffect(() => {
     setLoading(true);
@@ -808,7 +815,7 @@ export function InteractiveDemoClient() {
 
       await refreshSnapshot();
       const remaining = await getDemoQueueItems(liveSnapshot.competition.id);
-      const refreshedSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
+      const refreshedSnapshot = await getCompetitionSnapshot(liveSnapshot.competition.id);
       setQueuedScorePreviews(buildQueuedScorePreviews(remaining, refreshedSnapshot));
       setToolkitState((current) => ({
         ...current,
@@ -878,7 +885,7 @@ export function InteractiveDemoClient() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode, competitionId: liveSnapshot?.competition.id }),
       });
       const payload = (await response.json().catch(() => null)) as
         | ({ error?: string } & Partial<DemoSimulationResponse>)
@@ -1034,52 +1041,26 @@ export function InteractiveDemoClient() {
       );
       await writeOfflineQueue(remaining);
     }
-
-    const response = await fetch("/api/demo/reset", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        mode: "public_demo",
-      }),
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    if (!response.ok) {
-      throw new Error(payload?.error || "Unable to restore the seeded demo.");
-    }
   }, []);
 
-  const replayFullSalesStory = useCallback(async () => {
-    salesAutoplayStartedRef.current = false;
-    syncSalesSessionState((current) =>
-      createDemoSalesSession({
-        mode: "organizer",
-        phase: "organizer",
-        storyStep: "organizer-intro",
-        narratorTitle: "Build the comp from scratch, then watch it run live.",
-        narratorBody:
-          "The guided story starts from a clean organizer shell, generates the event in front of you, then hands it into the judge station.",
-        autoplay: true,
-        organizerCompleted: false,
-        judgePending: false,
-        persistentCompletion: false,
-        audioEnabled: current?.audioEnabled ?? salesAudioEnabled,
-      })
-    );
-    router.push("/staff/demo");
-  }, [router, salesAudioEnabled, syncSalesSessionState]);
+  const replayFullSalesStory = async () => {
+    await handleRestoreDemo();
+  };
 
   async function handleRunDemo(options?: { preserveSalesSession?: boolean }) {
     if (toolkitState.scriptRunning || toolkitState.simulationRunning) {
       return;
     }
 
-    await handleRestoreDemo();
-    const freshSnapshot = await getCompetitionSnapshot(DEMO_COMPETITION_SLUG);
+    const freshSnapshot = snapshotRef.current ?? snapshot;
+    if (!freshSnapshot) {
+      setError("No simulated judge event is loaded yet.");
+      return;
+    }
+
     const athlete =
-      freshSnapshot.climbers.find((climber) => climber.name.toLowerCase().includes("maya foster")) ??
-      freshSnapshot.climbers[0] ??
+      freshSnapshot?.climbers.find((climber) => climber.name.toLowerCase().includes("maya foster")) ??
+      freshSnapshot?.climbers[0] ??
       null;
 
     if (!athlete) {
@@ -1102,13 +1083,15 @@ export function InteractiveDemoClient() {
           ? "The event you just configured is now powering live judging."
           : "Watch one saved score drive the whole comp-day story.",
         narratorBody: options?.preserveSalesSession
-          ? "Stay with the story as the same sample event moves into one judge save, a live leaderboard reaction, and an offline recovery moment."
+          ? "Stay with the story as the same event moves into one judge save, a live leaderboard reaction, and an offline recovery moment."
           : "This guided demo shows the money moment: one clean save, live public movement, a Wi-Fi failure, and a resilient sync catch-up.",
         autoplay: true,
         organizerCompleted: options?.preserveSalesSession ?? false,
         judgePending: false,
         persistentCompletion: false,
         audioEnabled: current?.audioEnabled ?? salesAudioEnabled,
+        competitionId: freshSnapshot.competition.id,
+        competitionSlug: freshSnapshot.competition.slug,
       })
     );
 
@@ -1311,7 +1294,7 @@ export function InteractiveDemoClient() {
         storyStep: "complete",
         narratorTitle: "Demo complete",
         narratorBody:
-          "The comp was created from scratch, judging worked, the leaderboard reacted live, and the offline queue recovered cleanly. This end state stays on screen while the underlying demo data resets for the next replay.",
+          "The comp was created from scratch, judging worked, the leaderboard reacted live, and the offline queue recovered cleanly. Use Start over whenever you want to return to the organizer flow and build the next event.",
         autoplay: false,
         organizerCompleted: true,
         judgePending: false,
@@ -1319,7 +1302,7 @@ export function InteractiveDemoClient() {
         audioEnabled: salesAudioEnabled,
       }));
       salesAutoplayStartedRef.current = false;
-      setMessage("Guided demo complete. The final story stays visible, and the seeded event is already reset behind the scenes for the next replay.");
+      setMessage("Guided demo complete. Use Start over to jump back to the organizer flow and rebuild the event from scratch.");
     } catch (nextError) {
       setError(normalizeDemoErrorMessage(nextError, "Unable to run the guided demo."));
     } finally {
@@ -1404,8 +1387,9 @@ export function InteractiveDemoClient() {
     setError("");
     setMessage("");
     try {
-      if (snapshot) {
-        const remaining = (await readOfflineQueue()).filter((item) => item.competitionId !== snapshot.competition.id);
+      const activeCompetitionId = snapshot?.competition.id ?? demoCompetitionId;
+      if (activeCompetitionId) {
+        const remaining = (await readOfflineQueue()).filter((item) => item.competitionId !== activeCompetitionId);
         await writeOfflineQueue(remaining);
       }
 
@@ -1416,63 +1400,21 @@ export function InteractiveDemoClient() {
         },
         body: JSON.stringify({
           mode: "public_demo",
+          competitionId: activeCompetitionId,
         }),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
-        throw new Error(payload?.error || "Unable to restore the seeded demo.");
+        throw new Error(payload?.error || "Unable to reset the demo event.");
       }
 
-      await refreshSnapshot();
-      const remaining = snapshot ? await getDemoQueueItems(snapshot.competition.id) : [];
-      setToolkitState((current) => ({
-        ...current,
-        pendingQueueCount: remaining.length,
-        lastSyncStatus: "synced",
-      }));
-      setLiveSaveCompleted(false);
-      setLeaderboardObserved(false);
-      setOfflineQueuedSaveCompleted(false);
-      setSyncRecovered(false);
-      setLeaderboardImpact(null);
-      setLeaderboardToast(null);
-      setHighlightedClimberId(null);
-      setLastUpdatedAt(new Date().toISOString());
-      setPlaybackStep(null);
-      setPresentationFocus("judge");
-      setPlaybackNarration(null);
-      setMobileTab("judge");
-      setDemoCursor({
-        visible: false,
-        x: 0,
-        y: 0,
-        clicking: false,
-        label: null,
-      });
-      setToolkitState((current) => ({
-        ...current,
-        scriptRunning: false,
-      }));
+      clearDemoSalesSession();
+      setDemoCompetitionId(null);
+      setSalesSession(null);
       salesAutoplayStartedRef.current = false;
-      leaderboardBurstTriggeredRef.current = false;
-      syncSalesSessionState((current) =>
-        createDemoSalesSession({
-          mode: "judge",
-          phase: "judge",
-          storyStep: "judge-save",
-          narratorTitle: "Watch one saved score drive the whole comp-day story.",
-          narratorBody:
-            "One score save should move the public ranking, survive a Wi-Fi drop, and recover cleanly when the connection returns.",
-          autoplay: false,
-          organizerCompleted: current?.organizerCompleted ?? salesSession?.organizerCompleted ?? false,
-          judgePending: false,
-          persistentCompletion: false,
-          audioEnabled: current?.audioEnabled ?? salesAudioEnabled,
-        })
-      );
-      setMessage("Demo restored to the seeded qualifier-in-progress state.");
+      router.push("/staff/demo");
     } catch (nextError) {
-      setError(normalizeDemoErrorMessage(nextError, "Unable to restore the demo."));
+      setError(normalizeDemoErrorMessage(nextError, "Unable to reset the demo."));
     }
   }
 
@@ -1530,7 +1472,18 @@ export function InteractiveDemoClient() {
       <main className="results-page">
         <div className={shellClassName}>
           <SiteHeader light />
-          <Alert variant="error">{error || "Unable to load the live scoring demo."}</Alert>
+          <Alert variant="error">
+            {error || "Unable to load the live scoring demo."}
+            {!demoCompetitionId ? (
+              <>
+                {" "}
+                <Link href="/staff/demo" className="underline underline-offset-2">
+                  Go back to the organizer demo
+                </Link>
+                {" "}to create and launch an event first.
+              </>
+            ) : null}
+          </Alert>
         </div>
       </main>
     );
@@ -1581,6 +1534,8 @@ export function InteractiveDemoClient() {
                 judgePending: false,
                 persistentCompletion: false,
                 audioEnabled: salesAudioEnabled,
+                competitionId: snapshot.competition.id,
+                competitionSlug: snapshot.competition.slug,
               })
             );
             router.push("/staff/demo");
@@ -1609,6 +1564,8 @@ export function InteractiveDemoClient() {
                   judgePending: false,
                   persistentCompletion: false,
                   audioEnabled: nextValue,
+                  competitionId: snapshot.competition.id,
+                  competitionSlug: snapshot.competition.slug,
                 })
               );
             }

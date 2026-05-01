@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 
-const TOUR_STATE_KEY = "organizer_demo_tour_state_v1";
+const TOUR_STATE_KEY = "organizer_demo_tour_state_v2";
 
 export type OrganizerDemoStepId =
   | "overview"
@@ -17,29 +16,27 @@ export type OrganizerDemoStepId =
   | "preset"
   | "schedule"
   | "stages"
+  | "create_event"
+  | "event_name"
+  | "event_details"
+  | "save_event"
   | "handoff";
 
 export type OrganizerDemoHandoffTarget = "judge" | "leaderboard" | "display";
 
 type OrganizerDemoTourProps = {
+  hasCreatedCompetition: boolean;
   competitionName: string;
-  basicsNameComplete: boolean;
-  basicsFormatComplete: boolean;
-  basicsRegistrationComplete: boolean;
-  categoriesViewed: boolean;
-  presetSelectedTitle: string | null;
-  scheduleViewed: boolean;
-  stagesViewed: boolean;
-  handoffTarget: OrganizerDemoHandoffTarget | null;
-  judgeHref: string;
-  leaderboardHref: string;
-  displayHref: string;
+  eventNameEntered: boolean;
+  eventDetailsComplete: boolean;
+  eventSaved: boolean;
+  judgeReady: boolean;
   suppressed?: boolean;
   onActiveStepChange: (stepId: OrganizerDemoStepId) => void;
   onRestart: () => void;
-  onHandoffClick: (target: OrganizerDemoHandoffTarget) => void;
-  onJumpToSetupStep: (stepIndex: number) => void;
+  onJumpToCreate: () => void;
   onFocusAnchor: (anchor: string) => void;
+  onLaunchJudge: () => void;
 };
 
 const baseSteps: Array<{
@@ -48,71 +45,45 @@ const baseSteps: Array<{
   body: string;
 }> = [
   {
-    id: "overview",
-    title: "You are in the organizer control room",
-    body: "This page is the event setup spine. You will step through categories, structure, schedule, and stages in the same order a gym would use before comp day starts.",
+    id: "create_event",
+    title: "Create the event for real",
+    body: "Start from the empty organizer state and create the competition yourself. This is the first proof point in the story.",
   },
   {
-    id: "basics_name",
-    title: "Set the event name, slug, and venue",
-    body: "Start with the core identity for the comp. In the demo, update the event name details first so the setup story feels grounded in a real gym event.",
+    id: "event_name",
+    title: "Name the comp",
+    body: "Use the real event name field so the buyer sees a believable setup flow instead of a canned sample.",
   },
   {
-    id: "basics_format",
-    title: "Choose the competition format",
-    body: "Confirm the event format before structure is generated. This affects qualifiers, counting climbs, and whether finals are part of the plan.",
+    id: "event_details",
+    title: "Set the format, dates, and rules",
+    body: "Move through categories, structure, schedule, and stages until the event is fully configured.",
   },
   {
-    id: "basics_registration",
-    title: "Set the registration window",
-    body: "Enter the registration open and close timing so the event feels ready for athletes, not just sketched out.",
-  },
-  {
-    id: "categories",
-    title: "Confirm who can register",
-    body: "Switch to Categories so the event has the right age groups before staff build rounds and schedules.",
-  },
-  {
-    id: "preset",
-    title: "Apply a proven event template",
-    body: "Choose the setup preset that best matches the day. This generates the event structure without manual round-by-round setup.",
-  },
-  {
-    id: "schedule",
-    title: "Review the day schedule",
-    body: "Open Schedule to confirm the generated blocks. This is how the event timing stays tied to the competition model.",
-  },
-  {
-    id: "stages",
-    title: "Check the competition stages",
-    body: "Open Stages to see how qualifiers, semifinals, and finals connect before staff move into live operations.",
+    id: "save_event",
+    title: "Save the event",
+    body: "Lock in the organizer setup with the real save button before you move into the judge experience.",
   },
   {
     id: "handoff",
-    title: "Preview the public outputs",
-    body: "Open a connected public or live staff view. The same event you just configured powers every one of these surfaces.",
+    title: "Open the judge panel",
+    body: "Once the saved event is ready, launch the judge panel and let the simulation bring the comp to life.",
   },
 ];
 
 export function OrganizerDemoTour({
+  hasCreatedCompetition,
   competitionName,
-  basicsNameComplete,
-  basicsFormatComplete,
-  basicsRegistrationComplete,
-  categoriesViewed,
-  presetSelectedTitle,
-  scheduleViewed,
-  stagesViewed,
-  handoffTarget,
-  judgeHref,
-  leaderboardHref,
-  displayHref,
+  eventNameEntered,
+  eventDetailsComplete,
+  eventSaved,
+  judgeReady,
   suppressed = false,
   onActiveStepChange,
   onRestart,
-  onHandoffClick,
-  onJumpToSetupStep,
+  onJumpToCreate,
   onFocusAnchor,
+  onLaunchJudge,
 }: OrganizerDemoTourProps) {
   const reduceMotion = useReducedMotion();
   const [hidden, setHidden] = useState(false);
@@ -148,102 +119,55 @@ export function OrganizerDemoTour({
   const activeStep = baseSteps[stepIndex];
 
   useEffect(() => {
-    if (suppressed) {
-      return;
+    if (!suppressed) {
+      onActiveStepChange(activeStep.id);
     }
-
-    onActiveStepChange(activeStep.id);
   }, [activeStep.id, onActiveStepChange, suppressed]);
 
   const stepRequirement = useMemo(() => {
-    if (activeStep.id === "overview") {
+    if (activeStep.id === "create_event") {
       return {
-        complete: true,
-        label: "Hit Continue to start the guided setup flow.",
+        complete: hasCreatedCompetition,
+        label: hasCreatedCompetition
+          ? `${competitionName || "Your event"} has been created.`
+          : "Click Create event to generate the event record and unlock the organizer setup panel.",
       };
     }
 
-    if (activeStep.id === "basics_name") {
+    if (activeStep.id === "event_name") {
       return {
-        complete: basicsNameComplete,
-        label: basicsNameComplete
-          ? `${competitionName} basics are filled.`
-          : "Update the event name, slug, and venue in Event basics to unlock Continue.",
+        complete: eventNameEntered,
+        label: eventNameEntered
+          ? `${competitionName || "The event"} has a name.`
+          : "Fill in the real event name field first.",
       };
     }
 
-    if (activeStep.id === "basics_format") {
+    if (activeStep.id === "event_details") {
       return {
-        complete: basicsFormatComplete,
-        label: basicsFormatComplete
-          ? "Competition format confirmed."
-          : "Choose the current event format before moving into registration and structure.",
+        complete: eventDetailsComplete,
+        label: eventDetailsComplete
+          ? "Categories, structure, schedule, and stages are configured."
+          : "Work through the organizer setup cards until all five setup areas show ready.",
       };
     }
 
-    if (activeStep.id === "basics_registration") {
+    if (activeStep.id === "save_event") {
       return {
-        complete: basicsRegistrationComplete,
-        label: basicsRegistrationComplete
-          ? "Registration timing reviewed."
-          : "Set the registration open and close timing in Event basics.",
-      };
-    }
-
-    if (activeStep.id === "categories") {
-      return {
-        complete: categoriesViewed,
-        label: categoriesViewed
-          ? "Qualifier categories selected."
-          : "Choose at least one qualifier category before moving into structure.",
-      };
-    }
-
-    if (activeStep.id === "preset") {
-      return {
-        complete: Boolean(presetSelectedTitle),
-        label: presetSelectedTitle
-          ? `${presetSelectedTitle} is applied to ${competitionName}.`
-          : "Choose one event template in Structure so the setup flow generates rounds and schedule blocks.",
-      };
-    }
-
-    if (activeStep.id === "schedule") {
-      return {
-        complete: scheduleViewed,
-        label: scheduleViewed
-          ? "Schedule block interaction recorded."
-          : "Add or open a schedule block in the day plan before continuing.",
-      };
-    }
-
-    if (activeStep.id === "stages") {
-      return {
-        complete: stagesViewed,
-        label: stagesViewed
-          ? "Competition stage interaction recorded."
-          : "Open or edit a competition stage before moving into handoff.",
+        complete: eventSaved,
+        label: eventSaved
+          ? "The current organizer setup is saved."
+          : "Click Save competition after you finish the setup cards.",
       };
     }
 
     return {
-      complete: Boolean(handoffTarget),
-      label: handoffTarget
-        ? `${handoffTarget === "judge" ? "Judge station demo" : handoffTarget === "leaderboard" ? "Live leaderboard" : "Big-screen display"} opened.`
-        : "Open Judge station demo, Live leaderboard, or Big-screen display to finish the organizer handoff.",
+      complete: judgeReady,
+      label: judgeReady
+        ? "The judge panel is unlocked and ready to simulate registrations."
+        : "The judge panel unlocks after the event is fully configured and saved.",
     };
-  }, [
-    activeStep.id,
-    basicsFormatComplete,
-    basicsNameComplete,
-    basicsRegistrationComplete,
-    categoriesViewed,
-    competitionName,
-    handoffTarget,
-    presetSelectedTitle,
-    scheduleViewed,
-    stagesViewed,
-  ]);
+  }, [activeStep.id, competitionName, eventDetailsComplete, eventNameEntered, eventSaved, hasCreatedCompetition, judgeReady]);
 
   if (suppressed) {
     return null;
@@ -298,115 +222,59 @@ export function OrganizerDemoTour({
             {stepRequirement.complete ? "Ready to continue: " : "Do this next: "}
             {stepRequirement.label}
           </div>
-          {activeStep.id === "categories" ? (
+          {activeStep.id === "create_event" ? (
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onJumpToSetupStep(1);
-                  onFocusAnchor("organizer-categories");
-                }}
-                className="results-primary-button"
-              >
-                Open categories
+              <button type="button" onClick={onJumpToCreate} className="results-primary-button">
+                Open create form
               </button>
             </div>
           ) : null}
-          {activeStep.id === "basics_name" ? (
+          {activeStep.id === "event_name" ? (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  onJumpToSetupStep(0);
-                  onFocusAnchor("organizer-basic-name");
+                  onJumpToCreate();
+                  onFocusAnchor("organizer-create-name");
                 }}
                 className="results-primary-button"
               >
-                Focus event basics
+                Focus event name
               </button>
             </div>
           ) : null}
-          {activeStep.id === "basics_format" ? (
+          {activeStep.id === "event_details" ? (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  onJumpToSetupStep(0);
-                  onFocusAnchor("organizer-basic-format");
-                }}
+                onClick={() => onFocusAnchor("organizer-progress")}
                 className="results-primary-button"
               >
-                Focus format
+                Open setup cards
               </button>
             </div>
           ) : null}
-          {activeStep.id === "basics_registration" ? (
+          {activeStep.id === "save_event" ? (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  onJumpToSetupStep(0);
-                  onFocusAnchor("organizer-basic-registration");
-                }}
+                onClick={() => onFocusAnchor("organizer-save-event")}
                 className="results-primary-button"
               >
-                Focus registration dates
-              </button>
-            </div>
-          ) : null}
-          {activeStep.id === "preset" ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onJumpToSetupStep(2);
-                  onFocusAnchor("organizer-preset-qualifier-finals");
-                }}
-                className="results-primary-button"
-              >
-                Open structure templates
-              </button>
-            </div>
-          ) : null}
-          {activeStep.id === "schedule" ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onJumpToSetupStep(3);
-                  onFocusAnchor("organizer-schedule");
-                }}
-                className="results-primary-button"
-              >
-                Open schedule
-              </button>
-            </div>
-          ) : null}
-          {activeStep.id === "stages" ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onJumpToSetupStep(4);
-                  onFocusAnchor("organizer-stages");
-                }}
-                className="results-primary-button"
-              >
-                Open stages
+                Focus save button
               </button>
             </div>
           ) : null}
           {activeStep.id === "handoff" ? (
             <div className="flex flex-wrap gap-2">
-              <Link href={judgeHref} onClick={() => onHandoffClick("judge")} className="results-primary-button">
-                See judge station demo
-              </Link>
-              <Link href={leaderboardHref} onClick={() => onHandoffClick("leaderboard")} className="results-secondary-button">
-                Open leaderboard
-              </Link>
-              <Link href={displayHref} onClick={() => onHandoffClick("display")} className="results-secondary-button">
-                Open display
-              </Link>
+              <button
+                type="button"
+                onClick={onLaunchJudge}
+                disabled={!judgeReady}
+                className={judgeReady ? "results-primary-button" : "results-secondary-button opacity-60"}
+              >
+                Go to judge panel
+              </button>
             </div>
           ) : null}
           <div className="flex gap-2">

@@ -1,5 +1,5 @@
 import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
-import { isDemoCompetitionRecord } from "./demo";
+import { isDemoCompetitionRecord, isProtectedDemoCompetitionRecord } from "./demo";
 import { sanitizeExternalUrl } from "./security";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "./attempts";
 import {
@@ -67,6 +67,7 @@ export interface CreateCompetitionInput {
   name: string;
   format: Competition["format"];
   has_finals?: boolean;
+  is_demo?: boolean;
   location_name?: string;
   start_date?: string | null;
   end_date?: string | null;
@@ -666,7 +667,7 @@ function assertDemoCompetitionWritableActionAllowed(
   competition: Pick<Competition, "slug" | "name" | "is_demo">,
   actionLabel: string
 ) {
-  if (!isDemoCompetitionRecord(competition)) {
+  if (!isProtectedDemoCompetitionRecord(competition)) {
     return;
   }
 
@@ -1339,6 +1340,7 @@ export async function createCompetitionFromTemplate(input: CreateCompetitionInpu
     id: baseId,
     slug,
     name,
+    is_demo: input.is_demo ?? false,
     format: input.format,
     has_finals: input.has_finals,
     current_phase: "qualifier_open",
