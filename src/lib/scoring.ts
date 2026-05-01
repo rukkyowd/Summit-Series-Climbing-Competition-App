@@ -1390,7 +1390,10 @@ export function schedulePhaseAllowsFinalsScoring(phaseType: SchedulePhaseType) {
   return phaseType === "finals_round" || phaseType === "custom";
 }
 
-export function canRegisterDuringCompetition(competition: Pick<Competition, "current_phase">) {
+export function canRegisterDuringCompetition(
+  competition: Pick<Competition, "current_phase"> &
+    Partial<Pick<Competition, "status" | "registration_opens_at" | "registration_closes_at">>
+) {
   return canRegisterForCompetition(competition);
 }
 

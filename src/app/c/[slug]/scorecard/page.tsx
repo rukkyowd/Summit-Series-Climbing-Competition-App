@@ -90,7 +90,6 @@ function ScorecardContent() {
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const rawToken = searchParams?.get("token") ?? "";
-  const legacyClimberId = searchParams?.get("id") ?? "";
   const stage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
   const competitorDemoMode = searchParams?.get("demo") === "competitor";
   const [token, setToken] = useState("");
@@ -113,16 +112,6 @@ function ScorecardContent() {
     getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.name ??
     "Qualifier";
   const activeQualifierProblemCount = snapshot?.activeQualifierRound?.problem_count ?? snapshot?.competition.total_climbs ?? 0;
-
-  const redirectToJudge = useCallback(() => {
-    const query = legacyClimberId
-      ? `?climberId=${legacyClimberId}&stage=${stage}`
-      : stage === "finals"
-        ? "?stage=finals"
-        : "";
-
-    router.replace(`/staff/c/${slug}/judge${query}`);
-  }, [legacyClimberId, router, slug, stage]);
 
   const refreshScorecard = useCallback(async (resetDrafts = false) => {
     if (!token) {
@@ -170,8 +159,7 @@ function ScorecardContent() {
 
     setToken("");
     setTokenResolved(true);
-    redirectToJudge();
-  }, [rawToken, redirectToJudge, router, scorecardBasePath, searchParams, slug]);
+  }, [rawToken, router, scorecardBasePath, searchParams, slug]);
 
   useEffect(() => {
     if (!tokenResolved || !token) {
@@ -350,8 +338,21 @@ function ScorecardContent() {
   if (!tokenResolved || !token) {
     return (
       <main className="results-page">
-        <div className="content-frame">
-          <section className="results-card text-slate-600">Redirecting staff scoring to the judge panel...</section>
+        <div className="content-frame space-y-6">
+          <SiteHeader light competitionSlug={slug} />
+          <section className="results-card">
+            <p className="results-eyebrow">Private scorecard</p>
+            <h1 className="mt-2 text-3xl font-bold text-slate-950">This scorecard needs a private link.</h1>
+            <p className="mt-3 max-w-2xl text-slate-600">
+              Ask the organizer for your scorecard link, or use the link from your registration confirmation.
+              Staff scoring lives in the judge panel instead of this public scorecard route.
+            </p>
+            <div className="mt-6">
+              <Link className="results-button results-button-secondary" href={`/staff/c/${slug}/judge${stage === "finals" ? "?stage=finals" : ""}`}>
+                Open staff judge panel
+              </Link>
+            </div>
+          </section>
         </div>
       </main>
     );

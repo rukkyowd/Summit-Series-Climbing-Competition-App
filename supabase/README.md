@@ -8,13 +8,13 @@ This repo is now set up for a safer split:
 
 ## Files
 
-- [config.toml](/Users/Paul/Desktop/Scorecard/supabase/config.toml)
-- [20260331193000_current_schema.sql](/Users/Paul/Desktop/Scorecard/supabase/migrations/20260331193000_current_schema.sql)
-- [supabase-deploy.yml](/Users/Paul/Desktop/Scorecard/.github/workflows/supabase-deploy.yml)
+- [config.toml](./config.toml)
+- [20260331193000_current_schema.sql](./migrations/20260331193000_current_schema.sql)
+- [supabase-deploy.yml](../.github/workflows/supabase-deploy.yml)
 
 ## First-time setup
 
-1. Confirm [config.toml](/Users/Paul/Desktop/Scorecard/supabase/config.toml) points at the intended Supabase project ref.
+1. Confirm [config.toml](./config.toml) points at the intended Supabase project ref.
 2. Add these GitHub repository secrets:
    - `SUPABASE_ACCESS_TOKEN`
    - `SUPABASE_PROJECT_REF`
@@ -61,6 +61,20 @@ Pull remote schema changes back into the repo if needed:
 npm run db:pull
 ```
 
+Generate local TypeScript database/RPC types after the project is linked:
+
+```bash
+npm run db:types
+```
+
+This writes `src/lib/database.types.ts`. If local credentials are unavailable, skip this command and generate it after running `supabase link --project-ref YOUR_PROJECT_REF`.
+
+Verify the Security Pass 2 RPC/RLS boundary checks against a local or linked database:
+
+```bash
+psql "$DATABASE_URL" -f supabase/security-boundary-verification.sql
+```
+
 ## Important note about seed data
 
-Files like [supabase-seed.sql](/Users/Paul/Desktop/Scorecard/supabase-seed.sql) and [supabase-test-100-athletes.sql](/Users/Paul/Desktop/Scorecard/supabase-test-100-athletes.sql) are intentionally not part of the GitHub Action. They are manual test/setup scripts and should not run automatically on production deploys.
+Files like [supabase-seed.sql](../supabase-seed.sql) and [supabase-test-100-athletes.sql](../supabase-test-100-athletes.sql) are intentionally not part of the GitHub Action. They are manual test/setup scripts and should not run automatically on production deploys.

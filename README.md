@@ -38,9 +38,19 @@ Examples:
 - `/c/[slug]/register`
   - public competition registration
 - `/c/[slug]/scorecard`
-  - private climber scorecard or staff scoring page
+  - private climber scorecard only; requires an access token from the climber's private link
+- `/staff/c/[slug]/judge`
+  - staff scoring route for judges/admins
 - `/c/[slug]/leaderboard`
   - competition-specific qualifier or finals rankings
+
+## Security model
+
+- Public users can read public competition data only for active or demo competitions.
+- Climber scorecards require private access tokens; missing or invalid tokens show a private-link state instead of redirecting into staff tools.
+- Staff scoring writes go through protected route handlers under `/api/staff/scores/*` before reaching checked Supabase RPC wrappers.
+- Admin/destructive actions such as phase changes, finalist edits, schedule/config updates, reset, undo, and delete run server-side through protected admin routes.
+- The current authorization model is intentionally still global `admin`/`judge`; per-competition staff assignments are a future pass.
 
 ## Local setup
 
@@ -62,12 +72,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 Recommended for a brand-new Supabase project:
 
 - open the Supabase SQL Editor
-- run [supabase-schema.sql](/Users/Paul/Desktop/Scorecard/supabase-schema.sql)
-- optionally run [supabase-seed.sql](/Users/Paul/Desktop/Scorecard/supabase-seed.sql) for sample data
+- run [supabase-schema.sql](./supabase-schema.sql)
+- optionally run [supabase-seed.sql](./supabase-seed.sql) for sample data
 
 Recommended if you want the repo to stay migration-driven from day one:
 
-- follow [supabase/README.md](/Users/Paul/Desktop/Scorecard/supabase/README.md)
+- follow [supabase/README.md](./supabase/README.md)
 - use the baseline migration plus `supabase db push`
 
 Do not apply both the manual schema file and the full migration history to the same fresh database unless you intentionally know why.
@@ -98,23 +108,26 @@ Key tables:
 - `final_attempts`
 - `profiles`
 
-Manual setup and automation notes for migrations live in [supabase/README.md](/Users/Paul/Desktop/Scorecard/supabase/README.md).
+Manual setup and automation notes for migrations live in [supabase/README.md](./supabase/README.md).
 
 ## SQL helpers
 
-Manual SQL files for testing live at the repo root and in [sql/spring-send](/Users/Paul/Desktop/Scorecard/sql/spring-send).
+Manual SQL files for testing live at the repo root and in [sql/spring-send](./sql/spring-send).
 
-- [supabase-seed.sql](/Users/Paul/Desktop/Scorecard/supabase-seed.sql)
+- [supabase-seed.sql](./supabase-seed.sql)
   - light sample setup with multiple competitions
-- [supabase-test-100-athletes.sql](/Users/Paul/Desktop/Scorecard/supabase-test-100-athletes.sql)
+- [supabase-test-100-athletes.sql](./supabase-test-100-athletes.sql)
   - heavier test fixture with 100 athletes across multiple competitions
-- [sql/spring-send/README.md](/Users/Paul/Desktop/Scorecard/sql/spring-send/README.md)
+- [sql/spring-send/README.md](./sql/spring-send/README.md)
   - phased Spring Send scripts split by event segment
 
 ## Quality checks
 
 ```bash
+npm run typecheck
 npm run test
 npm run lint
 npm run build
+npm run security:secrets
+npm run db:push:dry
 ```

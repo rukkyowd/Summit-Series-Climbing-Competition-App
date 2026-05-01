@@ -703,7 +703,7 @@ export default function StaffDashboard({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const summaries = await listCompetitionSummaries(true);
+      const summaries = await listCompetitionSummaries(true, { authenticated: true });
       setAllSummaries(summaries);
       setProfile(
         demoMode
@@ -950,7 +950,7 @@ export default function StaffDashboard({
     }
 
     setDraft(cloneCompetition(selectedSummary.competition));
-    void getCompetitionSnapshot(selectedSummary.competition.id)
+    void getCompetitionSnapshot(selectedSummary.competition.id, { authenticated: true })
       .then((nextSnapshot) => setSnapshot(nextSnapshot))
       .catch(() => setSnapshot(null));
     setRoundPlanNeedsReset(false);
@@ -1200,16 +1200,16 @@ export default function StaffDashboard({
   }, [draft?.id, impliedCompetitionPhase, liveScheduleBlock]);
 
   const refreshSelectedSnapshot = useCallback(async (competitionId: string) => {
-    const nextSnapshot = await getCompetitionSnapshot(competitionId);
+    const nextSnapshot = await getCompetitionSnapshot(competitionId, { authenticated: true });
     setSnapshot(nextSnapshot);
   }, []);
 
-  const refreshAfterChange = async (competitionId?: string) => {
+  const refreshAfterChange = useCallback(async (competitionId?: string) => {
     await load();
     if (competitionId) {
       await refreshSelectedSnapshot(competitionId);
     }
-  };
+  }, [load, refreshSelectedSnapshot]);
 
   const runPhaseChange = async (competitionId: string, nextPhaseValue: Competition["current_phase"], successMessage: string) => {
     setError("");

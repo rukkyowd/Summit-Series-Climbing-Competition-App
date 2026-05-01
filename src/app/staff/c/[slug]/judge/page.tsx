@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import DemoExperience from "@/components/demo-experience";
+import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
+import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import { isDemoCompetitionRecord } from "@/lib/demo";
@@ -1124,56 +1126,20 @@ export default function StaffJudgePage() {
                   : "Finals mode appears here once the competition reaches observation."}
               </div>
             </div>
-            <div className="results-workspace-callout" data-demo-anchor="judge-status">
-              <div className="results-kicker">Desk status</div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="results-chip">{profile?.display_name || profile?.role || "staff"}</div>
-                <div className={queuedCount > 0 || saving ? "results-chip results-chip-live" : "results-chip"}>
-                  {syncStatusLabel}
-                </div>
-                <div className={qualifierScoringOpen ? "results-chip results-chip-live" : "results-chip"}>
-                  {qualifierScoringOpen ? "Qualifier scoring open" : "Qualifier scoring closed"}
-                </div>
-                <div className={finalsScoringOpen ? "results-chip results-chip-live" : "results-chip"}>
-                  {finalsScoringOpen ? "Finals scoring open" : "Finals scoring closed"}
-                </div>
-              </div>
-            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <div className="results-kicker">Live round</div>
-              <div className="mt-2 text-base font-semibold text-slate-950">
-                {stage === "finals" ? activeFinalsRoundName : activeQualifierRoundName}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {stage === "finals" ? "Grid scoring workspace" : "Boulder-by-boulder entry"}
-              </div>
-            </div>
-            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <div className="results-kicker">Field</div>
-              <div className="mt-2 text-base font-semibold text-slate-950">
-                {snapshot.climbers.length} {snapshot.climbers.length === 1 ? "climber" : "climbers"}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {activeQualifierProblemCount} qualifier {activeQualifierProblemCount === 1 ? "boulder" : "boulders"}
-              </div>
-            </div>
-            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <div className="results-kicker">Sync state</div>
-              <div className="mt-2 text-base font-semibold text-slate-950">{syncStatusLabel}</div>
-              <div className="mt-1 text-xs text-slate-500">{syncHelperCopy}</div>
-            </div>
-            <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <div className="results-kicker">Queue</div>
-              <div className="mt-2 text-base font-semibold text-slate-950">
-                {queuedCount > 0 ? `${queuedCount} waiting` : "Clear"}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {queuedCount > 0 ? "Device-saved scores will retry automatically." : "No pending judge saves on this device."}
-              </div>
-            </div>
-          </div>
+          <JudgeStatusStrip
+            profileLabel={profile?.display_name || profile?.role || "staff"}
+            saving={saving}
+            queuedCount={queuedCount}
+            syncStatusLabel={syncStatusLabel}
+            syncHelperCopy={syncHelperCopy}
+            qualifierScoringOpen={qualifierScoringOpen}
+            finalsScoringOpen={finalsScoringOpen}
+            liveRoundName={stage === "finals" ? activeFinalsRoundName : activeQualifierRoundName}
+            liveRoundModeLabel={stage === "finals" ? "Grid scoring workspace" : "Boulder-by-boulder entry"}
+            climberCount={snapshot.climbers.length}
+            qualifierProblemCount={activeQualifierProblemCount}
+          />
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="text-sm text-slate-600">
               Judges and admins can score the active qualifier-style round and the active finals round from this page. Use qualifier mode for qualifier or semifinal entry, and finals mode for the full finals grid.
@@ -1205,37 +1171,7 @@ export default function StaffJudgePage() {
               ) : null}
             </div>
           </div>
-          {queuedCount > 0 ? (
-            <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-amber-800">
-                    {queuedCount} {queuedCount === 1 ? "score is" : "scores are"} saved on this device
-                  </div>
-                  <div className="mt-1 text-sm text-amber-700">
-                    They will retry automatically as soon as saving is available again.
-                  </div>
-                </div>
-                <div className="rounded-full border border-amber-300 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
-                  Offline proof
-                </div>
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {queuedItems.slice(0, 4).map((item) => (
-                  <div key={item.id} className="rounded-[1rem] border border-amber-200 bg-white/80 px-3 py-3 text-sm text-slate-700">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-semibold text-slate-950">{item.climberName}</div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.queuedAtLabel}</div>
-                    </div>
-                    <div className="mt-1">{item.climbLabel} · {item.resultLabel}</div>
-                    <div className="mt-2 text-xs text-slate-500">
-                      {item.retryCount > 0 ? `Retry attempts: ${item.retryCount}` : "Waiting for the next publish attempt."}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <OfflineQueuePanel queuedCount={queuedCount} queuedItems={queuedItems} />
         </section>
 
         {stage === "qualifier" ? (

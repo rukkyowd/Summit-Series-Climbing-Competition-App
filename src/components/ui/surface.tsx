@@ -12,7 +12,16 @@ type SurfaceVariant =
   | "linearFeature"
   | "linearMeta";
 
-export function surfaceStyles(variant: SurfaceVariant = "card") {
+type SurfaceDensity = "default" | "judge" | "organizer" | "public";
+
+const densityStyles: Record<SurfaceDensity, string | null> = {
+  default: null,
+  judge: "gap-4 p-4 text-lg sm:p-6",
+  organizer: "gap-2 p-3 text-sm sm:p-4",
+  public: "gap-4 p-6 text-base sm:p-8",
+};
+
+export function surfaceStyles(variant: SurfaceVariant = "card", density: SurfaceDensity = "default") {
   return cn(
     variant === "card" &&
       "relative min-w-0 overflow-hidden rounded-[1.9rem] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.8),rgba(248,250,252,0.72))] p-5 shadow-[0_8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:rounded-[2.2rem] sm:p-8",
@@ -31,17 +40,18 @@ export function surfaceStyles(variant: SurfaceVariant = "card") {
     variant === "linearFeature" &&
       "relative min-w-0 overflow-hidden rounded-2xl border border-[rgba(94,106,210,0.18)] bg-[radial-gradient(circle_at_top,rgba(94,106,210,0.18),transparent_46%),linear-gradient(180deg,rgba(14,14,18,0.96),rgba(7,7,9,0.92))] p-6 text-[#edecef] shadow-[0_0_0_1px_rgba(94,106,210,0.16),0_16px_44px_rgba(0,0,0,0.48),0_0_80px_rgba(94,106,210,0.12)] backdrop-blur-xl",
     variant === "linearMeta" &&
-      "relative min-w-0 overflow-hidden rounded-xl border border-white/[0.07] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] p-4 text-[#b8bcc4] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_28px_rgba(0,0,0,0.26)] backdrop-blur-lg"
+      "relative min-w-0 overflow-hidden rounded-xl border border-white/[0.07] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] p-4 text-[#b8bcc4] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_28px_rgba(0,0,0,0.26)] backdrop-blur-lg",
+    densityStyles[density]
   );
 }
 
 type SurfaceProps = PropsWithChildren<
-  HTMLAttributes<HTMLDivElement> & { variant?: SurfaceVariant }
+  HTMLAttributes<HTMLDivElement> & { variant?: SurfaceVariant; density?: SurfaceDensity }
 >;
 
-export function Surface({ children, className, variant = "card", ...props }: SurfaceProps) {
+export function Surface({ children, className, variant = "card", density = "default", ...props }: SurfaceProps) {
   return (
-    <div className={cn(surfaceStyles(variant), className)} {...props}>
+    <div className={cn(surfaceStyles(variant, density), className)} {...props}>
       {children}
     </div>
   );

@@ -1,6 +1,5 @@
 import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
 import { isDemoCompetitionRecord } from "./demo";
-import { sanitizeExternalUrl } from "./security";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "./attempts";
 import {
   DEFAULT_COMPETITION,
@@ -19,20 +18,14 @@ import {
   competitionHasFinals,
   createCompetitionRoundId,
   createCategoryKey,
-  createCompetitionId,
   getCompetitionRoundById,
   getActiveQueueSessionBlock,
   getActiveFinalsRound,
-  getRecommendedFinalsCutoff,
-  getRecommendedQualifierClimbCount,
-  getRecommendedQualifierCountingClimbs,
   getActiveScheduleBlock,
   getActiveQualifierStyleRound,
-  getDefaultCompetitionCategories,
   getFinalsStyleRounds,
   getQualifierStyleRounds,
   isRoundActiveForCompetitionPhase,
-  getRoundStatusForCompetition,
   isValidClimberNumber,
   isQualifierEligibleCategory,
   isCompetitionLiveNow,
@@ -40,9 +33,7 @@ import {
   isQualifierStage,
   normalizeCompetition,
   normalizeCompetitionRounds,
-  phaseToStageMode,
   schedulePhaseAllowsRegistration,
-  slugifyCompetitionName,
   type BoulderQueueEntry,
   type Climber,
   type ClimberWithAttempts,
@@ -140,6 +131,9 @@ type RegisteredClimberResult = Climber & {
   scorecard_path: string;
 };
 
+type ReadOptions = { authenticated?: boolean };
+type SupabaseReadClient = typeof publicSupabase | typeof supabase;
+
 const LIVE_BOULDER_QUEUE_STALE_MINUTES = 3;
 
 interface BoulderQueueRow {
@@ -168,6 +162,27 @@ function ensureConfigured() {
   assertSupabaseConfigured();
 }
 
+function getReadClient(options?: ReadOptions): SupabaseReadClient {
+  return options?.authenticated ? supabase : publicSupabase;
+}
+
+async function postAdminCompetitionAction<TResponse extends Record<string, unknown> = Record<string, unknown>>(
+  payload: Record<string, unknown>
+) {
+  const response = await fetch("/api/staff/competitions/actions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+
+  if (!response.ok) {
+    throw new Error(typeof body?.error === "string" ? body.error : "Unable to complete admin action.");
+  }
+
+  return (body ?? {}) as TResponse;
+}
+
 function cleanString(value: string) {
   return value.trim();
 }
@@ -175,33 +190,6 @@ function cleanString(value: string) {
 function cleanOptionalString(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized : null;
-}
-
-function cleanOptionalExternalUrl(value: string | null | undefined) {
-  return sanitizeExternalUrl(value) || "";
-}
-
-const OPTIONAL_COMPETITION_LINK_COLUMNS = [
-  "official_event_url",
-  "official_registration_url",
-  "official_schedule_url",
-] as const;
-
-function stripOptionalCompetitionLinkColumns<T extends Record<string, unknown>>(payload: T) {
-  const next = { ...payload };
-  OPTIONAL_COMPETITION_LINK_COLUMNS.forEach((column) => {
-    delete next[column];
-  });
-  return next;
-}
-
-function isMissingCompetitionLinkColumnError(error: { message?: string } | null | undefined) {
-  const message = error?.message?.toLowerCase() ?? "";
-  if (!message) {
-    return false;
-  }
-
-  return OPTIONAL_COMPETITION_LINK_COLUMNS.some((column) => message.includes(column));
 }
 
 function createAccessToken() {
@@ -251,12 +239,43 @@ function parseScoreWriteResult<TAttempt>(payload: unknown) {
     attempt: attempt as TAttempt,
     status: (record.status as ScoreWriteStatus | undefined) ?? "accepted",
     conflictReason:
-      typeof record.conflict_reason === "string" ? record.conflict_reason : null,
+      typeof record.conflict_reason === "string"
+        ? record.conflict_reason
+        : typeof record.conflictReason === "string"
+          ? record.conflictReason
+          : null,
     clientEventId:
-      typeof record.client_event_id === "string" ? record.client_event_id : "",
+      typeof record.client_event_id === "string"
+        ? record.client_event_id
+        : typeof record.clientEventId === "string"
+          ? record.clientEventId
+          : "",
     scoredAt:
-      typeof record.scored_at === "string" ? record.scored_at : new Date().toISOString(),
+      typeof record.scored_at === "string"
+        ? record.scored_at
+        : typeof record.scoredAt === "string"
+          ? record.scoredAt
+          : new Date().toISOString(),
   } satisfies ScoreWriteResult<TAttempt>;
+}
+
+async function postStaffScore<TAttempt>(path: string, payload: Record<string, unknown>) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await response.json().catch(() => null)) as unknown;
+
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string"
+        ? (data as { error: string }).error
+        : "Unable to save score.";
+    throw new Error(message);
+  }
+
+  return parseScoreWriteResult<TAttempt>(data);
 }
 
 function assertQualifierOpen(competition: Competition, message: string) {
@@ -321,8 +340,8 @@ function requireActiveFinalsRound(competition: Competition) {
   return round;
 }
 
-async function fetchCompetitionRows(includeArchived = false) {
-  let query = publicSupabase.from("competitions").select("*").order("start_date", { ascending: false }).order("name");
+async function fetchCompetitionRows(includeArchived = false, readClient: SupabaseReadClient = publicSupabase) {
+  let query = readClient.from("competitions").select("*").order("start_date", { ascending: false }).order("name");
 
   if (!includeArchived) {
     query = query.eq("status", "active");
@@ -336,8 +355,8 @@ async function fetchCompetitionRows(includeArchived = false) {
   return data ?? [];
 }
 
-async function fetchCompetitionRowBySlug(slug: string) {
-  const { data, error } = await publicSupabase.from("competitions").select("*").eq("slug", slug).maybeSingle();
+async function fetchCompetitionRowBySlug(slug: string, readClient: SupabaseReadClient = publicSupabase) {
+  const { data, error } = await readClient.from("competitions").select("*").eq("slug", slug).maybeSingle();
   if (error) {
     return null;
   }
@@ -345,8 +364,8 @@ async function fetchCompetitionRowBySlug(slug: string) {
   return data;
 }
 
-async function fetchCompetitionRowById(id: string) {
-  const { data, error } = await publicSupabase.from("competitions").select("*").eq("id", id).maybeSingle();
+async function fetchCompetitionRowById(id: string, readClient: SupabaseReadClient = publicSupabase) {
+  const { data, error } = await readClient.from("competitions").select("*").eq("id", id).maybeSingle();
   if (error) {
     return null;
   }
@@ -354,12 +373,12 @@ async function fetchCompetitionRowById(id: string) {
   return data;
 }
 
-async function fetchCompetitionCategories(competitionIds: string[]) {
+async function fetchCompetitionCategories(competitionIds: string[], readClient: SupabaseReadClient = publicSupabase) {
   if (!competitionIds.length) {
     return [] as CompetitionCategory[];
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("competition_categories")
     .select("*")
     .in("competition_id", competitionIds)
@@ -380,12 +399,12 @@ async function fetchCompetitionCategories(competitionIds: string[]) {
   }));
 }
 
-async function fetchCompetitionScheduleBlocks(competitionIds: string[]) {
+async function fetchCompetitionScheduleBlocks(competitionIds: string[], readClient: SupabaseReadClient = publicSupabase) {
   if (!competitionIds.length) {
     return [] as CompetitionScheduleBlock[];
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("competition_schedule_blocks")
     .select("*")
     .in("competition_id", competitionIds)
@@ -413,12 +432,12 @@ async function fetchCompetitionScheduleBlocks(competitionIds: string[]) {
   }));
 }
 
-async function fetchCompetitionRounds(competitionIds: string[]) {
+async function fetchCompetitionRounds(competitionIds: string[], readClient: SupabaseReadClient = publicSupabase) {
   if (!competitionIds.length) {
     return [] as CompetitionRound[];
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("competition_rounds")
     .select("*")
     .in("competition_id", competitionIds)
@@ -475,12 +494,12 @@ function hydrateCompetitions(
   });
 }
 
-async function fetchClimberRows(competitionIds: string[]) {
+async function fetchClimberRows(competitionIds: string[], readClient: SupabaseReadClient = publicSupabase) {
   if (!competitionIds.length) {
     return [] as Climber[];
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("climbers")
     .select("*")
     .in("competition_id", competitionIds)
@@ -507,8 +526,12 @@ async function fetchClimberRows(competitionIds: string[]) {
   }));
 }
 
-async function fetchClimberRowById(competitionId: string, climberId: string) {
-  const { data, error } = await publicSupabase
+async function fetchClimberRowById(
+  competitionId: string,
+  climberId: string,
+  readClient: SupabaseReadClient = publicSupabase
+) {
+  const { data, error } = await readClient
     .from("climbers")
     .select("*")
     .eq("competition_id", competitionId)
@@ -536,12 +559,12 @@ async function fetchClimberRowById(competitionId: string, climberId: string) {
   } satisfies Climber;
 }
 
-async function fetchQualifierAttempts(competitionIds: string[]) {
+async function fetchQualifierAttempts(competitionIds: string[], readClient: SupabaseReadClient = publicSupabase) {
   if (!competitionIds.length) {
     return [] as QualifierAttempt[];
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("qualifier_attempts")
     .select("*")
     .in("competition_id", competitionIds)
@@ -567,12 +590,12 @@ async function fetchQualifierAttempts(competitionIds: string[]) {
   }));
 }
 
-async function fetchFinalAttempts(competitionIds: string[]) {
+async function fetchFinalAttempts(competitionIds: string[], readClient: SupabaseReadClient = publicSupabase) {
   if (!competitionIds.length) {
     return [] as FinalAttempt[];
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("final_attempts")
     .select("*")
     .in("competition_id", competitionIds)
@@ -597,12 +620,12 @@ async function fetchFinalAttempts(competitionIds: string[]) {
   }));
 }
 
-async function fetchFinalists(competitionIds: string[]) {
+async function fetchFinalists(competitionIds: string[], readClient: SupabaseReadClient = publicSupabase) {
   if (!competitionIds.length) {
     return [] as (FinalistSelection & { competition_id: string })[];
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("competition_finalists")
     .select("*")
     .in("competition_id", competitionIds)
@@ -630,14 +653,18 @@ async function fetchFinalists(competitionIds: string[]) {
   }));
 }
 
-async function fetchBoulderQueueRows(competitionId: string, scheduleBlockId: string | null) {
+async function fetchBoulderQueueRows(
+  competitionId: string,
+  scheduleBlockId: string | null,
+  readClient: SupabaseReadClient = publicSupabase
+) {
   if (!scheduleBlockId) {
     return [] as BoulderQueueRow[];
   }
 
   const freshAfter = new Date(Date.now() - LIVE_BOULDER_QUEUE_STALE_MINUTES * 60 * 1000).toISOString();
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("competition_boulder_queue")
     .select("*")
     .eq("competition_id", competitionId)
@@ -663,14 +690,18 @@ function isDemoCompetitionSlug(slug: string) {
   return isDemoCompetitionRecord({ slug, is_demo: false });
 }
 
-async function fetchBoulderQueueRowsForCompetition(competition: Competition, scheduleBlockId: string | null) {
-  const freshRows = await fetchBoulderQueueRows(competition.id, scheduleBlockId);
+async function fetchBoulderQueueRowsForCompetition(
+  competition: Competition,
+  scheduleBlockId: string | null,
+  readClient: SupabaseReadClient = publicSupabase
+) {
+  const freshRows = await fetchBoulderQueueRows(competition.id, scheduleBlockId, readClient);
 
   if (freshRows.length || !scheduleBlockId || !isDemoCompetitionSlug(competition.slug)) {
     return freshRows;
   }
 
-  const { data, error } = await publicSupabase
+  const { data, error } = await readClient
     .from("competition_boulder_queue")
     .select("*")
     .eq("competition_id", competition.id)
@@ -692,8 +723,12 @@ async function fetchBoulderQueueRowsForCompetition(competition: Competition, sch
   }));
 }
 
-async function fetchOfficialQualifierLeaderboard(competitionId: string, roundId: string | null) {
-  const { data, error } = await publicSupabase.rpc("compute_qualifier_standings", {
+async function fetchOfficialQualifierLeaderboard(
+  competitionId: string,
+  roundId: string | null,
+  readClient: SupabaseReadClient = publicSupabase
+) {
+  const { data, error } = await readClient.rpc("compute_qualifier_standings", {
     p_competition_id: competitionId,
     p_round_id: roundId,
   });
@@ -723,8 +758,13 @@ async function fetchOfficialQualifierLeaderboard(competitionId: string, roundId:
   }));
 }
 
-async function fetchProjectedFinalists(competitionId: string, sourceRoundId: string | null, cutoff: number | null = null) {
-  const { data, error } = await publicSupabase.rpc("compute_finalist_selection", {
+async function fetchProjectedFinalists(
+  competitionId: string,
+  sourceRoundId: string | null,
+  cutoff: number | null = null,
+  readClient: SupabaseReadClient = publicSupabase
+) {
+  const { data, error } = await readClient.rpc("compute_finalist_selection", {
     p_competition_id: competitionId,
     p_source_round_id: sourceRoundId,
     p_cutoff_override: cutoff,
@@ -889,246 +929,33 @@ function resolveClimberAssignedQualifierRound(
   return { slot, round };
 }
 
-function getScoreBearingRounds(rounds: CompetitionRound[]) {
-  const qualifierRound = getQualifierStyleRounds(rounds)[0] ?? null;
-  const finalsRound = getFinalsStyleRounds(rounds)[0] ?? null;
-
-  return { qualifierRound, finalsRound };
-}
-
-function assertValidCompetitionRounds(rounds: CompetitionRound[]) {
-  const qualifierScoreRounds = getQualifierStyleRounds(rounds);
-  const finalsScoreRounds = getFinalsStyleRounds(rounds);
-  const activeRounds = rounds.filter((round) => round.is_active);
-
-  if (finalsScoreRounds.length > 1) {
-    throw new Error("Only one round can use the finals scoring bucket.");
-  }
-
-  if (rounds.some((round) => round.round_type === "finals" && round.scoring_bucket === "qualifier")) {
-    throw new Error("Finals rounds must use the finals scoring bucket or remain planning-only.");
-  }
-
-  if (rounds.some((round) => round.round_type !== "finals" && round.scoring_bucket === "finals")) {
-    throw new Error("Only finals rounds can use the finals scoring bucket.");
-  }
-
-  if (activeRounds.length > 1) {
-    throw new Error("Only one round can be active at a time.");
-  }
-}
-
-function projectLegacyCompetitionFields(
-  competition: Competition,
-  rounds: CompetitionRound[]
-) {
-  const { qualifierRound, finalsRound } = getScoreBearingRounds(rounds);
-
-  return {
-    format: qualifierRound?.format ?? competition.format,
-    total_climbs: qualifierRound?.problem_count ?? competition.total_climbs,
-    qualifier_counting_climbs: qualifierRound?.counting_climbs ?? competition.qualifier_counting_climbs,
-    finals_cutoff:
-      finalsRound?.finals_cutoff ??
-      qualifierRound?.finals_cutoff ??
-      competition.finals_cutoff,
-    finals_problem_count: finalsRound?.problem_count ?? competition.finals_problem_count,
-    has_finals: finalsRound !== null ? true : competition.has_finals,
-  };
-}
-
-async function persistCompetitionRounds(competition: Competition, rounds: CompetitionRound[]) {
-  const normalizedRounds = normalizeCompetitionRounds(rounds, competition);
-  assertValidCompetitionRounds(normalizedRounds);
-  const { error } = await supabase.rpc("save_competition_rounds", {
-    p_competition_id: competition.id,
-    p_rounds: normalizedRounds.map((round, index) => ({
-      id: round.id || createCompetitionRoundId(),
-      competition_id: competition.id,
-      round_number: round.round_number ?? index + 1,
-      sort_order: round.sort_order ?? round.round_number ?? index + 1,
-      name: cleanString(round.name),
-      round_type: round.round_type,
-      format: round.format,
-      status: round.status,
-      runtime_phase: round.runtime_phase,
-      is_enabled: round.is_enabled,
-      is_active: round.is_active,
-      activated_at: round.activated_at,
-      problem_count: round.problem_count,
-      counting_climbs: round.counting_climbs,
-      finals_cutoff: round.finals_cutoff,
-      eligible_category_ids: round.eligible_category_ids,
-      advancement_source_round_id: round.advancement_source_round_id,
-      advancement_cutoff: round.advancement_cutoff,
-      scoring_bucket: round.scoring_bucket,
-      scoring_config: round.scoring_config,
-      started_at: round.started_at,
-      closed_at: round.closed_at,
-    })),
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-async function syncCompetitionRoundRuntimeState(competitionId: string) {
-  let { error } = await supabase.rpc("sync_competition_round_runtime_state", {
-    p_competition_id: competitionId,
-  });
-
-  if (
-    error &&
-    error.message.includes("Could not find the function public.sync_competition_round_runtime_state")
-  ) {
-    const competition = await getCompetitionById(competitionId);
-    if (!competition) {
-      return;
-    }
-
-    const rounds = normalizeCompetitionRounds(competition.rounds ?? [], competition);
-    if (!rounds.length) {
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const stageMode = phaseToStageMode(competition.current_phase);
-    const activeBlockRoundId = competition.schedule_blocks.find((block) => block.is_active && block.round_id)?.round_id ?? null;
-    const preferredActiveRound =
-      rounds.find(
-        (round) =>
-          round.id === activeBlockRoundId &&
-          round.is_enabled &&
-          (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")
-      ) ??
-      rounds.find((round) => round.is_active && round.is_enabled) ??
-      rounds.find((round) => (stageMode === "qualifier" ? round.scoring_bucket === "qualifier" : round.scoring_bucket === "finals")) ??
-      rounds.find((round) => round.runtime_phase === competition.current_phase) ??
-      rounds.find((round) => round.is_enabled) ??
-      rounds[0];
-
-    const updatedRounds = rounds.map((round) => {
-      const isActive = round.id === preferredActiveRound?.id;
-      let status = round.status;
-      if (round.scoring_bucket === "finals") {
-        status = getRoundStatusForCompetition(competition, "finals");
-      } else if (round.scoring_bucket === "qualifier") {
-        if (competition.current_phase === "qualifier_open") {
-          status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
-        } else if (competition.current_phase === "qualifier_closed" || competition.current_phase === "wall_reset") {
-          status = isActive ? "active" : round.activated_at || round.closed_at ? "closed" : "pending";
-        } else {
-          status = round.activated_at || round.closed_at ? "closed" : "pending";
-        }
-      }
-
-      return {
-        ...round,
-        status,
-        is_active: isActive,
-        activated_at: isActive ? round.activated_at ?? now : round.activated_at,
-        closed_at:
-          !isActive && round.scoring_bucket === "qualifier" && round.activated_at
-            ? round.closed_at ?? now
-            : round.closed_at,
-      };
-    });
-
-    await persistCompetitionRounds(competition, updatedRounds);
-    return;
-  }
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-async function getCompetitionEditState(competitionId: string) {
-  const snapshot = await getCompetitionSnapshot(competitionId);
-  return {
-    hasRegistrations: snapshot.climbers.length > 0,
-    hasQualifierAttempts: snapshot.climbers.some((climber) => climber.qualifier_attempts.length > 0),
-    hasFinalAttempts: snapshot.climbers.some((climber) => climber.final_attempts.length > 0),
-    hasFinalists: snapshot.finalistsPersisted,
-    isHistorical: snapshot.competition.current_phase === "results" || snapshot.competition.current_phase === "finals_closed",
-  };
-}
-
-function assertStructuralEditsAllowed(
-  previous: Competition,
-  next: Competition,
-  editState: Awaited<ReturnType<typeof getCompetitionEditState>>
-) {
-  const previousRounds = normalizeCompetitionRounds(previous.rounds ?? [], previous);
-  const nextRounds = normalizeCompetitionRounds(next.rounds ?? [], next);
-  const structureChanged =
-    JSON.stringify(
-      previousRounds.map((round) => ({
-        id: round.id,
-        round_type: round.round_type,
-        scoring_bucket: round.scoring_bucket,
-        format: round.format,
-        problem_count: round.problem_count,
-        counting_climbs: round.counting_climbs,
-        finals_cutoff: round.finals_cutoff,
-        advancement_source_round_id: round.advancement_source_round_id,
-        advancement_cutoff: round.advancement_cutoff,
-      }))
-    ) !==
-    JSON.stringify(
-      nextRounds.map((round) => ({
-        id: round.id,
-        round_type: round.round_type,
-        scoring_bucket: round.scoring_bucket,
-        format: round.format,
-        problem_count: round.problem_count,
-        counting_climbs: round.counting_climbs,
-        finals_cutoff: round.finals_cutoff,
-        advancement_source_round_id: round.advancement_source_round_id,
-        advancement_cutoff: round.advancement_cutoff,
-      }))
-    );
-
-  if (!structureChanged) {
-    return;
-  }
-
-  if (editState.hasQualifierAttempts || editState.hasFinalAttempts || editState.hasFinalists) {
-    throw new Error("Round structure is locked after scoring or finalist creation begins.");
-  }
-
-  if (editState.hasRegistrations) {
-    throw new Error("Round structure is locked after registrations begin. You can still adjust schedule details.");
-  }
-
-  if (editState.isHistorical) {
-    throw new Error("Historical competitions cannot change round structure.");
-  }
-}
-
-export async function listCompetitions(includeArchived = false) {
+export async function listCompetitions(includeArchived = false, options?: ReadOptions) {
   ensureConfigured();
+  const readClient = getReadClient(options);
 
-  const rows = await fetchCompetitionRows(includeArchived);
+  const rows = await fetchCompetitionRows(includeArchived, readClient);
   const competitionIds = rows.map((row) => row.id as string);
   const [categories, scheduleBlocks, rounds] = await Promise.all([
-    fetchCompetitionCategories(competitionIds),
-    fetchCompetitionScheduleBlocks(competitionIds),
-    fetchCompetitionRounds(competitionIds),
+    fetchCompetitionCategories(competitionIds, readClient),
+    fetchCompetitionScheduleBlocks(competitionIds, readClient),
+    fetchCompetitionRounds(competitionIds, readClient),
   ]);
 
   return hydrateCompetitions(rows, categories, scheduleBlocks, rounds);
 }
 
-export async function listCompetitionSummaries(includeArchived = false): Promise<CompetitionSummary[]> {
+export async function listCompetitionSummaries(
+  includeArchived = false,
+  options?: ReadOptions
+): Promise<CompetitionSummary[]> {
   ensureConfigured();
+  const readClient = getReadClient(options);
 
-  const competitions = await listCompetitions(includeArchived);
+  const competitions = await listCompetitions(includeArchived, options);
   const competitionIds = competitions.map((competition) => competition.id);
   const [climbers, finalists] = await Promise.all([
-    fetchClimberRows(competitionIds),
-    fetchFinalists(competitionIds),
+    fetchClimberRows(competitionIds, readClient),
+    fetchFinalists(competitionIds, readClient),
   ]);
 
   return competitions.map((competition) => ({
@@ -1141,53 +968,59 @@ export async function listCompetitionSummaries(includeArchived = false): Promise
   }));
 }
 
-export async function getCompetitionBySlug(slug: string) {
+export async function getCompetitionBySlug(slug: string, options?: ReadOptions) {
   ensureConfigured();
+  const readClient = getReadClient(options);
 
-  const row = await fetchCompetitionRowBySlug(cleanString(slug));
+  const row = await fetchCompetitionRowBySlug(cleanString(slug), readClient);
   if (!row) {
     return null;
   }
 
   const [categories, scheduleBlocks, rounds] = await Promise.all([
-    fetchCompetitionCategories([row.id]),
-    fetchCompetitionScheduleBlocks([row.id]),
-    fetchCompetitionRounds([row.id]),
+    fetchCompetitionCategories([row.id], readClient),
+    fetchCompetitionScheduleBlocks([row.id], readClient),
+    fetchCompetitionRounds([row.id], readClient),
   ]);
 
   return hydrateCompetitions([row], categories, scheduleBlocks, rounds)[0] ?? null;
 }
 
-export async function getCompetitionById(id: string) {
+export async function getCompetitionById(id: string, options?: ReadOptions) {
   ensureConfigured();
+  const readClient = getReadClient(options);
 
-  const row = await fetchCompetitionRowById(id);
+  const row = await fetchCompetitionRowById(id, readClient);
   if (!row) {
     return null;
   }
 
   const [categories, scheduleBlocks, rounds] = await Promise.all([
-    fetchCompetitionCategories([row.id]),
-    fetchCompetitionScheduleBlocks([row.id]),
-    fetchCompetitionRounds([row.id]),
+    fetchCompetitionCategories([row.id], readClient),
+    fetchCompetitionScheduleBlocks([row.id], readClient),
+    fetchCompetitionRounds([row.id], readClient),
   ]);
 
   return hydrateCompetitions([row], categories, scheduleBlocks, rounds)[0] ?? null;
 }
 
-async function resolveCompetition(identifier: string) {
-  const bySlug = await getCompetitionBySlug(identifier);
+async function resolveCompetition(identifier: string, options?: ReadOptions) {
+  const bySlug = await getCompetitionBySlug(identifier, options);
   if (bySlug) {
     return bySlug;
   }
 
-  return getCompetitionById(identifier);
+  return getCompetitionById(identifier, options);
 }
 
-export async function getCompetitionSnapshot(identifier: string): Promise<CompetitionSnapshot> {
+export async function getCompetitionSnapshot(
+  identifier: string,
+  options?: ReadOptions
+): Promise<CompetitionSnapshot> {
   ensureConfigured();
+  const readClient = getReadClient(options);
 
-  const competition = await resolveCompetition(identifier);
+  const competition = await resolveCompetition(identifier, options);
   if (!competition) {
     throw new Error("Competition not found.");
   }
@@ -1210,23 +1043,24 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
   const activeQueueSession = getActiveQueueSessionBlock(competition);
 
   const [climbers, qualifierAttempts, finalAttempts, finalists, queueRows, officialQualifierLeaderboard, projectedFinalists, undoAvailability, rounds] = await Promise.all([
-    fetchClimberRows([competition.id]),
-    fetchQualifierAttempts([competition.id]),
-    fetchFinalAttempts([competition.id]),
-    fetchFinalists([competition.id]),
-    fetchBoulderQueueRowsForCompetition(competition, activeQueueSession?.id ?? null),
-    fetchOfficialQualifierLeaderboard(competition.id, activeQualifierRound?.id ?? null),
+    fetchClimberRows([competition.id], readClient),
+    fetchQualifierAttempts([competition.id], readClient),
+    fetchFinalAttempts([competition.id], readClient),
+    fetchFinalists([competition.id], readClient),
+    fetchBoulderQueueRowsForCompetition(competition, activeQueueSession?.id ?? null, readClient),
+    fetchOfficialQualifierLeaderboard(competition.id, activeQualifierRound?.id ?? null, readClient),
     fetchProjectedFinalists(
       competition.id,
       advancementSourceRound?.id ?? activeQualifierRound?.id ?? null,
-      finalsRound?.advancement_cutoff ?? finalsRound?.finals_cutoff ?? null
+      finalsRound?.advancement_cutoff ?? finalsRound?.finals_cutoff ?? null,
+      readClient
     ),
     fetchUndoAvailability(competition.id).catch(() => ({
       available: false,
       expires_at: null,
       operation_type: null,
     })),
-    fetchCompetitionRounds([competition.id]),
+    fetchCompetitionRounds([competition.id], readClient),
   ]);
   const resolvedRounds = normalizeCompetitionRounds(rounds, competition);
   const resolvedCompetition = {
@@ -1310,403 +1144,100 @@ export async function getCompetitionSnapshot(identifier: string): Promise<Compet
 
 export async function createCompetitionFromTemplate(input: CreateCompetitionInput) {
   ensureConfigured();
-
-  const baseId = createCompetitionId();
-  const name = cleanString(input.name);
-  const slugBase = slugifyCompetitionName(name);
-  const existingCompetitions = await listCompetitions(true);
-  const existingSlugs = new Set(existingCompetitions.map((competition) => competition.slug));
-  let slug = slugBase;
-  let suffix = 2;
-  while (existingSlugs.has(slug)) {
-    slug = `${slugBase}-${suffix}`;
-    suffix += 1;
-  }
-
-  const competition = normalizeCompetition({
-    id: baseId,
-    slug,
-    name,
-    is_demo: input.is_demo ?? false,
-    format: input.format,
-    has_finals: input.has_finals,
-    current_phase: "qualifier_open",
-    discipline_label: input.discipline_label ?? "Boulder",
-    location_name: input.location_name ?? "",
-    start_date: input.start_date ?? null,
-    end_date: input.end_date ?? null,
-      registration_opens_at: input.registration_opens_at ?? null,
-      registration_closes_at: input.registration_closes_at ?? null,
-      description: input.description ?? "",
-      hero_image_url: cleanOptionalExternalUrl(input.hero_image_url),
-      official_event_url: cleanOptionalExternalUrl(input.official_event_url),
-      official_registration_url: cleanOptionalExternalUrl(input.official_registration_url),
-      official_schedule_url: cleanOptionalExternalUrl(input.official_schedule_url),
-      status: "active",
-    stage_mode: "qualifier",
-    total_climbs: getRecommendedQualifierClimbCount(input.format),
-    qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(input.format),
-    finals_cutoff: getRecommendedFinalsCutoff(input.format),
+  const result = await postAdminCompetitionAction<{ competitionId?: string }>({
+    action: "create",
+    input,
   });
-  const legacyProjection = projectLegacyCompetitionFields(competition, competition.rounds ?? []);
-
-  const insertPayload = {
-    id: competition.id,
-    slug: competition.slug,
-    name: competition.name,
-    is_demo: competition.is_demo,
-    status: competition.status,
-    format: legacyProjection.format,
-    current_phase: competition.current_phase,
-    discipline_label: competition.discipline_label,
-    stage_mode: competition.stage_mode,
-    location_name: competition.location_name,
-    start_date: competition.start_date,
-    end_date: competition.end_date,
-      registration_opens_at: competition.registration_opens_at,
-      registration_closes_at: competition.registration_closes_at,
-      description: competition.description,
-      hero_image_url: competition.hero_image_url,
-      official_event_url: competition.official_event_url,
-      official_registration_url: competition.official_registration_url,
-      official_schedule_url: competition.official_schedule_url,
-      total_climbs: legacyProjection.total_climbs,
-    max_climbers: competition.max_climbers,
-    qualifier_counting_climbs: legacyProjection.qualifier_counting_climbs,
-    has_finals: legacyProjection.has_finals,
-    finals_cutoff: legacyProjection.finals_cutoff,
-    finals_tie_advances: competition.finals_tie_advances,
-    qualifier_eligible_age_groups: competition.qualifier_eligible_age_groups,
-    finals_eligible_age_groups: competition.finals_eligible_age_groups,
-    qualifier_locked_at: null,
-    finals_started_at: null,
-    finals_problem_count: legacyProjection.finals_problem_count,
-  };
-
-  let { error } = await supabase.from("competitions").insert(insertPayload);
-
-  if (error && isMissingCompetitionLinkColumnError(error)) {
-    ({ error } = await supabase.from("competitions").insert(stripOptionalCompetitionLinkColumns(insertPayload)));
+  if (!result.competitionId) {
+    throw new Error("Competition was created but no id was returned.");
   }
 
-  if (error) {
-    throw new Error(error.message);
+  const competition = await getCompetitionById(result.competitionId, { authenticated: true });
+  if (!competition) {
+    throw new Error("Competition was created but could not be loaded.");
   }
 
-  const categories = getDefaultCompetitionCategories(competition.id);
-  const { error: categoryError } = await supabase.from("competition_categories").insert(
-    categories.map((category) => ({
-      id: category.id,
-      competition_id: competition.id,
-      gender_division: category.gender_division,
-      age_group: category.age_group,
-      display_name: category.display_name,
-      sort_order: category.sort_order,
-    }))
-  );
-
-  if (categoryError) {
-    throw new Error(categoryError.message);
-  }
-
-  await persistCompetitionRounds(competition, competition.rounds ?? []);
-
-  return (await getCompetitionById(competition.id)) ?? competition;
+  return competition;
 }
 
 export async function saveCompetitionConfig(competitionId: string, input: SaveCompetitionConfigInput) {
   ensureConfigured();
-  const existingCompetition = await getCompetitionById(competitionId);
-  if (!existingCompetition) {
-    throw new Error("Competition not found.");
-  }
-  const payload = normalizeCompetition(
-    {
-      ...input,
-      id: competitionId,
-      slug: input.slug,
-      hero_image_url: cleanOptionalExternalUrl(input.hero_image_url),
-      official_event_url: cleanOptionalExternalUrl(input.official_event_url),
-      official_registration_url: cleanOptionalExternalUrl(input.official_registration_url),
-      official_schedule_url: cleanOptionalExternalUrl(input.official_schedule_url),
-    },
-    getDefaultCompetitionCategories(competitionId),
-    input.schedule_blocks,
-    input.rounds
-  );
-  await assertStructuralEditsAllowed(existingCompetition, payload, await getCompetitionEditState(competitionId));
-  const legacyProjection = projectLegacyCompetitionFields(payload, payload.rounds ?? []);
+  await postAdminCompetitionAction({
+    action: "save_config",
+    competitionId,
+    input,
+  });
 
-  const upsertPayload = {
-    id: payload.id,
-    slug: payload.slug,
-    name: payload.name,
-    is_demo: payload.is_demo,
-    status: payload.status,
-    format: legacyProjection.format,
-    current_phase: payload.current_phase,
-    discipline_label: payload.discipline_label,
-    stage_mode: payload.stage_mode,
-    location_name: payload.location_name,
-    start_date: payload.start_date,
-    end_date: payload.end_date,
-      registration_opens_at: payload.registration_opens_at,
-      registration_closes_at: payload.registration_closes_at,
-      description: payload.description,
-      hero_image_url: payload.hero_image_url,
-      official_event_url: payload.official_event_url,
-      official_registration_url: payload.official_registration_url,
-      official_schedule_url: payload.official_schedule_url,
-      total_climbs: legacyProjection.total_climbs,
-    max_climbers: payload.max_climbers,
-    qualifier_counting_climbs: legacyProjection.qualifier_counting_climbs,
-    has_finals: legacyProjection.has_finals,
-    finals_cutoff: legacyProjection.finals_cutoff,
-    finals_tie_advances: payload.finals_tie_advances,
-    qualifier_eligible_age_groups: payload.qualifier_eligible_age_groups,
-    finals_eligible_age_groups: payload.finals_eligible_age_groups,
-    qualifier_locked_at: payload.qualifier_locked_at,
-    finals_started_at: payload.finals_started_at,
-    finals_problem_count: legacyProjection.finals_problem_count,
-  };
-
-  let { error } = await supabase.from("competitions").upsert(upsertPayload);
-
-  if (error && isMissingCompetitionLinkColumnError(error)) {
-    ({ error } = await supabase.from("competitions").upsert(stripOptionalCompetitionLinkColumns(upsertPayload)));
-  }
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  await supabase.from("competition_schedule_blocks").delete().eq("competition_id", competitionId);
-
-  await persistCompetitionRounds(payload, payload.rounds ?? []);
-
-  if (payload.schedule_blocks.length) {
-    const { error: scheduleError } = await supabase.from("competition_schedule_blocks").insert(
-      payload.schedule_blocks.map((block, index) => ({
-        id: block.id || createId(),
-        competition_id: competitionId,
-        sort_order: block.sort_order ?? index,
-        label: cleanString(block.label),
-        phase_type: block.phase_type,
-        audience_label: cleanString(block.audience_label),
-        is_active: block.is_active,
-        start_time: block.start_time ? cleanString(block.start_time) : null,
-        end_time: block.end_time ? cleanString(block.end_time) : null,
-        capacity: block.capacity,
-        eligible_category_ids: block.eligible_category_ids,
-        round_id: block.round_id ?? null,
-      }))
-    );
-
-    if (scheduleError) {
-      throw new Error(scheduleError.message);
-    }
-  }
-
-  return getCompetitionById(competitionId);
+  return getCompetitionById(competitionId, { authenticated: true });
 }
 
 export async function setCompetitionLiveScheduleBlock(competitionId: string, blockId: string) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { error: clearError } = await supabase
-    .from("competition_schedule_blocks")
-    .update({ is_active: false })
-    .eq("competition_id", competitionId);
-
-  if (clearError) {
-    throw new Error(clearError.message);
-  }
-
-  const { error: setError } = await supabase
-    .from("competition_schedule_blocks")
-    .update({ is_active: true })
-    .eq("competition_id", competitionId)
-    .eq("id", blockId);
-
-  if (setError) {
-    throw new Error(setError.message);
-  }
-
-  await syncCompetitionRoundRuntimeState(competitionId);
+  await postAdminCompetitionAction({
+    action: "set_live_schedule_block",
+    competitionId,
+    blockId,
+  });
 }
 
 export async function setCompetitionStatus(competitionId: string, status: CompetitionStatus) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { error } = await supabase.from("competitions").update({ status }).eq("id", competitionId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await postAdminCompetitionAction({
+    action: "set_status",
+    competitionId,
+    status,
+  });
 }
 
 export async function setCompetitionPhase(competitionId: string, nextPhase: CompetitionPhase, note?: string) {
   ensureConfigured();
-  const existingCompetition = await getCompetitionById(competitionId);
-  if (!existingCompetition) {
-    throw new Error("Competition not found.");
-  }
-  const payload: {
-    p_competition_id: string;
-    p_next_phase: CompetitionPhase;
-    p_note?: string;
-  } = {
-    p_competition_id: competitionId,
-    p_next_phase: nextPhase,
-  };
+  await postAdminCompetitionAction({
+    action: "set_phase",
+    competitionId,
+    nextPhase,
+    note,
+  });
 
-  if (note?.trim()) {
-    payload.p_note = note.trim();
-  }
-
-  let { error } = await supabase.rpc("set_competition_phase", payload);
-
-  if (
-    error &&
-    error.message.includes("Could not find the function public.set_competition_phase") &&
-    "p_note" in payload
-  ) {
-    ({ error } = await supabase.rpc("set_competition_phase", {
-      p_competition_id: competitionId,
-      p_next_phase: nextPhase,
-    }));
-  }
-
-  if (error && error.message.includes("Could not find the function public.set_competition_phase")) {
-    const competition = await getCompetitionById(competitionId);
-    if (!competition) {
-      throw new Error("Competition not found.");
-    }
-
-    const now = new Date().toISOString();
-    const qualifierLockedAt =
-      nextPhase === "qualifier_open"
-        ? null
-        : nextPhase === "observation" || nextPhase === "finals_open" || nextPhase === "finals_closed" || nextPhase === "results"
-          ? competition.qualifier_locked_at ?? now
-          : competition.qualifier_locked_at;
-    const finalsStartedAt =
-      nextPhase === "finals_open"
-        ? competition.finals_started_at ?? now
-        : nextPhase === "qualifier_open" || nextPhase === "qualifier_closed" || nextPhase === "wall_reset"
-          ? null
-          : competition.finals_started_at;
-
-    const fallback = await supabase
-      .from("competitions")
-      .update({
-        current_phase: nextPhase,
-        stage_mode: phaseToStageMode(nextPhase),
-        qualifier_locked_at: qualifierLockedAt,
-        finals_started_at: finalsStartedAt,
-      })
-      .eq("id", competitionId);
-
-    error = fallback.error ?? null;
-  }
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  await syncCompetitionRoundRuntimeState(competitionId);
-
-  return getCompetitionSnapshot(competitionId);
+  return getCompetitionSnapshot(competitionId, { authenticated: true });
 }
 
 export async function undoCompetitionOperation(competitionId: string) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { error } = await supabase.rpc("undo_last_competition_operation", {
-    p_competition_id: competitionId,
+  await postAdminCompetitionAction({
+    action: "undo",
+    competitionId,
   });
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  await syncCompetitionRoundRuntimeState(competitionId);
-
-  return getCompetitionSnapshot(competitionId);
+  return getCompetitionSnapshot(competitionId, { authenticated: true });
 }
 
 export async function deleteCompetition(competitionId: string) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { error } = await supabase.from("competitions").delete().eq("id", competitionId);
-  if (error) {
-    throw new Error(error.message);
-  }
+  await postAdminCompetitionAction({
+    action: "delete",
+    competitionId,
+  });
 }
 
 export async function advanceCompetitionToFinals(competitionId: string) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { error } = await supabase.rpc("advance_competition_to_finals", {
-    p_competition_id: competitionId,
+  await postAdminCompetitionAction({
+    action: "advance_to_finals",
+    competitionId,
   });
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  await syncCompetitionRoundRuntimeState(competitionId);
-
-  return getCompetitionSnapshot(competitionId);
+  return getCompetitionSnapshot(competitionId, { authenticated: true });
 }
 
 export async function updateFinalistClimbingOrder(competitionId: string, orderedClimberIds: string[]) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { count, error: countError } = await supabase
-    .from("competition_finalists")
-    .select("climber_id", { count: "exact", head: true })
-    .eq("competition_id", competitionId);
+  await postAdminCompetitionAction({
+    action: "update_finalist_order",
+    competitionId,
+    orderedClimberIds,
+  });
 
-  if (countError) {
-    throw new Error(countError.message);
-  }
-
-  if (!count) {
-    throw new Error("Advance the competition to finals before changing the finals climbing order.");
-  }
-
-  for (let index = 0; index < orderedClimberIds.length; index += 1) {
-    const climberId = orderedClimberIds[index];
-    const { error } = await supabase
-      .from("competition_finalists")
-      .update({ climbing_order: index + 1 })
-      .eq("competition_id", competitionId)
-      .eq("climber_id", climberId);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-  }
-
-  return getCompetitionSnapshot(competitionId);
+  return getCompetitionSnapshot(competitionId, { authenticated: true });
 }
 
 export async function saveFinalistField(
@@ -1714,64 +1245,23 @@ export async function saveFinalistField(
   orderedFinalists: FinalistSelection[]
 ) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { error: deleteError } = await supabase
-    .from("competition_finalists")
-    .delete()
-    .eq("competition_id", competitionId);
+  await postAdminCompetitionAction({
+    action: "save_finalist_field",
+    competitionId,
+    orderedFinalists,
+  });
 
-  if (deleteError) {
-    throw new Error(deleteError.message);
-  }
-
-  if (!orderedFinalists.length) {
-    return getCompetitionSnapshot(competitionId);
-  }
-
-  const { error: insertError } = await supabase
-    .from("competition_finalists")
-    .insert(
-      orderedFinalists.map((finalist, index) => ({
-        competition_id: competitionId,
-        climber_id: finalist.climber_id,
-        name: finalist.name,
-        category_id: finalist.category_id,
-        display_category: finalist.display_category,
-        gender_division: finalist.gender_division,
-        age_group: finalist.age_group,
-        qualifier_rank: finalist.qualifier_rank,
-        advanced_with_tie: finalist.advanced_with_tie,
-        climbing_order: index + 1,
-      }))
-    );
-
-  if (insertError) {
-    throw new Error(insertError.message);
-  }
-
-  return getCompetitionSnapshot(competitionId);
+  return getCompetitionSnapshot(competitionId, { authenticated: true });
 }
 
 export async function resetCompetition(competitionId: string) {
   ensureConfigured();
-  const competition = await getCompetitionById(competitionId);
-  if (!competition) {
-    throw new Error("Competition not found.");
-  }
-  const { error } = await supabase.rpc("reset_competition", {
-    p_competition_id: competitionId,
+  await postAdminCompetitionAction({
+    action: "reset",
+    competitionId,
   });
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  await syncCompetitionRoundRuntimeState(competitionId);
-
-  return getCompetitionSnapshot(competitionId);
+  return getCompetitionSnapshot(competitionId, { authenticated: true });
 }
 
 export async function getClimberById(id: string) {
@@ -1987,29 +1477,21 @@ export async function updateQualifierAttemptByStaff(
     attemptsToZone: options?.attemptsToZone,
   });
 
-  const { data, error } = await supabase.rpc("append_qualifier_score_event", {
-    p_competition_id: competitionId,
-    p_climber_id: climberId,
-    p_round_id: linkedRound.id,
-    p_climb_number: climbNumber,
-    p_attempt_count: normalized.attemptCount,
-    p_topped: normalized.topped,
-    p_zone: normalized.zone,
-    p_attempts_to_top: normalized.attemptsToTop,
-    p_attempts_to_zone: normalized.attemptsToZone,
-    p_entered_by: "staff",
-    p_client_event_id: options?.clientEventId,
-    p_scored_at: options?.scoredAt,
-    p_judge_device_id: cleanOptionalString(options?.judgeDeviceId),
-    p_judge_session_id: cleanOptionalString(options?.judgeSessionId),
-    p_replayed_from_offline: options?.replayedFromOffline ?? false,
+  return postStaffScore<QualifierAttempt>("/api/staff/scores/qualifier", {
+    competitionId,
+    climberId,
+    climbNumber,
+    attemptCount: normalized.attemptCount,
+    topped: normalized.topped,
+    zone: normalized.zone,
+    attemptsToTop: normalized.attemptsToTop,
+    attemptsToZone: normalized.attemptsToZone,
+    clientEventId: options?.clientEventId,
+    scoredAt: options?.scoredAt,
+    judgeDeviceId: cleanOptionalString(options?.judgeDeviceId),
+    judgeSessionId: cleanOptionalString(options?.judgeSessionId),
+    replayedFromOffline: options?.replayedFromOffline ?? false,
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return parseScoreWriteResult<QualifierAttempt>(data);
 }
 
 export async function updateQualifierAttemptByToken(
@@ -2103,7 +1585,7 @@ export async function updateFinalAttempt(
 
   const snapshot = await getCompetitionSnapshot(competitionId);
   assertFinalsWindowOpen(snapshot.competition);
-  const activeRound = requireActiveFinalsRound(snapshot.competition);
+  requireActiveFinalsRound(snapshot.competition);
   const normalized = normalizeFinalAttemptInput({
     top,
     zone,
@@ -2115,25 +1597,18 @@ export async function updateFinalAttempt(
     throw new Error("Only finalists can receive finals scores.");
   }
 
-  const { data, error } = await supabase.rpc("append_final_score_event", {
-    p_competition_id: competitionId,
-    p_round_id: activeRound.id,
-    p_climber_id: climberId,
-    p_climb_number: climbNumber,
-    p_top: normalized.top,
-    p_zone: normalized.zone,
-    p_attempts_to_top: normalized.attemptsToTop,
-    p_attempts_to_zone: normalized.attemptsToZone,
-    p_client_event_id: options?.clientEventId,
-    p_scored_at: options?.scoredAt,
-    p_judge_device_id: cleanOptionalString(options?.judgeDeviceId),
-    p_judge_session_id: cleanOptionalString(options?.judgeSessionId),
-    p_replayed_from_offline: options?.replayedFromOffline ?? false,
+  return postStaffScore<FinalAttempt>("/api/staff/scores/final", {
+    competitionId,
+    climberId,
+    climbNumber,
+    top: normalized.top,
+    zone: normalized.zone,
+    attemptsToTop: normalized.attemptsToTop,
+    attemptsToZone: normalized.attemptsToZone,
+    clientEventId: options?.clientEventId,
+    scoredAt: options?.scoredAt,
+    judgeDeviceId: cleanOptionalString(options?.judgeDeviceId),
+    judgeSessionId: cleanOptionalString(options?.judgeSessionId),
+    replayedFromOffline: options?.replayedFromOffline ?? false,
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return parseScoreWriteResult<FinalAttempt>(data);
 }

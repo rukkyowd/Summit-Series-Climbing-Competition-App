@@ -36,10 +36,10 @@ function parseArgs(argv: string[]): ScriptOptions {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const { listCompetitions, saveCompetitionConfig } = await import("../src/lib/db");
+  const { handleAdminCompetitionAction, listAdminCompetitions } = await import("../src/lib/server-admin-competition-actions");
   const { normalizeCompetitionFinalsSetup } = await import("../src/lib/competition-structure");
 
-  const competitions = await listCompetitions(true);
+  const competitions = await listAdminCompetitions(true);
   const selectedCompetitions = competitions.filter((competition) => {
     if (options.competitionIds.length && !options.competitionIds.includes(competition.id)) {
       return false;
@@ -87,10 +87,14 @@ async function main() {
       continue;
     }
 
-    await saveCompetitionConfig(normalized.competition.id, {
-      ...normalized.competition,
-      schedule_blocks: normalized.competition.schedule_blocks,
-      rounds: normalized.competition.rounds ?? [],
+    await handleAdminCompetitionAction({
+      action: "save_config",
+      competitionId: normalized.competition.id,
+      input: {
+        ...normalized.competition,
+        schedule_blocks: normalized.competition.schedule_blocks,
+        rounds: normalized.competition.rounds ?? [],
+      },
     });
     repairedCount += 1;
     console.log(`REPAIRED   ${competition.slug} (${competition.id}) -> ${summary}`);
