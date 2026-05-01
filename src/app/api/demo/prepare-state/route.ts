@@ -18,7 +18,7 @@ type DemoPrepareStateRequest = {
   reset?: boolean;
 };
 
-function isAllowedDemoReferer(request: NextRequest) {
+function isAllowedDemoRequest(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (origin && origin !== request.nextUrl.origin) {
     return false;
@@ -26,7 +26,7 @@ function isAllowedDemoReferer(request: NextRequest) {
 
   const referer = request.headers.get("referer");
   if (!referer) {
-    return false;
+    return true;
   }
 
   try {
@@ -56,7 +56,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAllowedDemoReferer(request)) {
+  if (!isAllowedDemoRequest(request)) {
     return NextResponse.json(
       { ok: false, error: "Demo state preparation is only available from demo pages." },
       { status: 401 }

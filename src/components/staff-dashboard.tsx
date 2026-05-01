@@ -190,6 +190,7 @@ const ORGANIZER_BUILD_TRANSITION_STEPS = [
   "Launching the live judge panel",
 ] as const;
 
+const DEMO_AUTOPLAY_ENABLED = false;
 
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
@@ -2096,7 +2097,7 @@ export default function StaffDashboard({
         narratorTitle: "Finalizing the event you just built",
         narratorBody:
           "We are saving this exact organizer setup, filling the field, and opening judge mode on the same event.",
-        autoplay: true,
+        autoplay: false,
         organizerCompleted: true,
         judgePending: true,
         persistentCompletion: false,
@@ -2167,7 +2168,7 @@ export default function StaffDashboard({
           narratorTitle: "The event you just built is now powering live judging.",
           narratorBody:
             "Stay with the same event as it moves into one judge save, a live leaderboard reaction, and an offline recovery moment.",
-          autoplay: true,
+          autoplay: false,
           organizerCompleted: true,
           judgePending: true,
           persistentCompletion: false,
@@ -2193,6 +2194,26 @@ export default function StaffDashboard({
       return;
     }
 
+    if (!DEMO_AUTOPLAY_ENABLED) {
+      resetOrganizerDemoWalkthrough();
+      setOrganizerAutoplayRunning(false);
+      setOrganizerPlaybackStep(null);
+      setOrganizerDemoCursor({
+        visible: false,
+        x: 0,
+        y: 0,
+        clicking: false,
+        label: null,
+      });
+      setOrganizerNarration({
+        title: "Guided demo is hands-on now",
+        body:
+          "The autoplay cursor is disabled. Use the setup cards yourself, then open the judge panel when you are ready.",
+      });
+      setMessage("Autoplay is disabled for the guided story. Use the setup cards manually.");
+      return;
+    }
+
     resetOrganizerDemoWalkthrough();
     setOrganizerAutoplayRunning(true);
     setError("");
@@ -2204,7 +2225,7 @@ export default function StaffDashboard({
         narratorTitle: "Start with a comp format, not a blank admin tool",
         narratorBody:
           "This organizer demo shows the setup path a gym owner actually cares about: choose the event shape, generate the day, then hand the same event into live scoring.",
-        autoplay: true,
+        autoplay: false,
         organizerCompleted: false,
         audioEnabled: salesAudioEnabled,
         competitionId: draft.id,
@@ -2598,7 +2619,6 @@ export default function StaffDashboard({
           <OrganizerDemoTour
             hasCreatedCompetition={Boolean(draft)}
             competitionName={draft.name}
-            eventNameEntered={Boolean(createName.trim() || draft.name.trim())}
             eventDetailsComplete={setupProgressCount === SETUP_WIZARD_STEPS.length}
             eventSaved={hasPersistedDraft}
             judgeReady={demoJudgeReady}
@@ -2615,7 +2635,6 @@ export default function StaffDashboard({
           <OrganizerDemoTour
             hasCreatedCompetition={false}
             competitionName=""
-            eventNameEntered={Boolean(createName.trim())}
             eventDetailsComplete={false}
             eventSaved={false}
             judgeReady={false}

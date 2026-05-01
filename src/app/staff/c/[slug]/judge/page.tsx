@@ -517,13 +517,15 @@ export default function StaffJudgePage() {
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const initialStage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
   const initialClimberId = searchParams?.get("climberId") ?? "";
+  const initialBoulder = Math.max(1, Number(searchParams?.get("boulder") ?? 1) || 1);
+  const demoStoryMode = searchParams?.get("demoStory") === "act2";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stage, setStage] = useState<"qualifier" | "finals">(initialStage);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [selectedQualifierClimberId, setSelectedQualifierClimberId] = useState(initialClimberId);
-  const [selectedBoulder, setSelectedBoulder] = useState(1);
+  const [selectedBoulder, setSelectedBoulder] = useState(initialBoulder);
   const [selectedCell, setSelectedCell] = useState<{ climberId: string; climbNumber: number } | null>(null);
   const [qualifierDrafts, setQualifierDrafts] = useState<QualifierDraftState>({});
   const [finalsDrafts, setFinalsDrafts] = useState<FinalsDraftState>({});
@@ -711,7 +713,7 @@ export default function StaffJudgePage() {
         setFinalsDrafts(finalsNext);
         if (initialClimberId) {
           setSelectedQualifierClimberId(initialClimberId);
-          setSelectedCell({ climberId: initialClimberId, climbNumber: 1 });
+          setSelectedCell({ climberId: initialClimberId, climbNumber: initialBoulder });
         } else {
           setSelectedQualifierClimberId(nextSnapshot.climbers[0]?.id ?? "");
         }
@@ -722,7 +724,7 @@ export default function StaffJudgePage() {
         setError(nextError instanceof Error ? nextError.message : "Unable to load the judge panel.");
       })
       .finally(() => setLoading(false));
-  }, [initialClimberId, slug, syncQueuedState]);
+  }, [initialBoulder, initialClimberId, slug, syncQueuedState]);
 
   useEffect(() => {
     void syncQueuedState();
@@ -1323,6 +1325,19 @@ export default function StaffJudgePage() {
     setFinalsDraft(key, () => EMPTY_FINALS_DRAFT);
   };
 
+  const highlightDemoTarget = () => {
+    setStage("qualifier");
+    setSelectedBoulder(initialBoulder);
+    if (initialClimberId) {
+      setSelectedQualifierClimberId(initialClimberId);
+      setSelectedCell({ climberId: initialClimberId, climbNumber: initialBoulder });
+    }
+    document.querySelector('[data-demo-anchor="judge-entry-cards"]')?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
   if (loading) {
     return (
       <main className="results-page">
@@ -1358,7 +1373,27 @@ export default function StaffJudgePage() {
           detail={saveFeedbackDetail}
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
-        {isDemoCompetitionRecord(snapshot.competition) ? (
+        {isDemoCompetitionRecord(snapshot.competition) && demoStoryMode ? (
+          <section className="results-alert border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.92))] text-slate-800">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <div className="results-kicker text-sky-700">Act 2 - Judge the key climb</div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  Find Athlete C, select B{initialBoulder}, change Top from attempt 3 to attempt 1, then save.
+                </h2>
+                <p className="max-w-4xl text-sm leading-relaxed text-slate-600">
+                  This guide will not click or save for you. Use the athlete picker, the boulder selector,
+                  the Top control, and the attempt controls yourself. After saving, return to the demo guide
+                  and press “I completed this” so it can verify the database state.
+                </p>
+              </div>
+              <Button type="button" variant="secondary" onClick={highlightDemoTarget}>
+                Highlight target
+              </Button>
+            </div>
+          </section>
+        ) : null}
+        {isDemoCompetitionRecord(snapshot.competition) && !demoStoryMode ? (
           <DemoExperience
             enabled
             routeId="judge"

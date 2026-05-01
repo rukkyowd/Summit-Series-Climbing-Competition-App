@@ -8,6 +8,7 @@ import { Button, buttonStyles } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
 import { getCompetitionPreset } from "@/lib/competition-presets";
+import { clearDemoSalesSession } from "@/lib/demo-sales-session";
 import type { DemoStoryState, DemoStoryTargetAct } from "@/lib/demo-story";
 
 type ActStatus = "locked" | "ready" | "in_progress" | "complete";
@@ -46,7 +47,7 @@ const storyActs: StoryAct[] = [
     number: 2,
     title: "Correct Key Score",
     description:
-      "Fix Athlete C's Boulder 3 score from Top in 3 attempts to Top in 1 attempt.",
+      "Find Athlete C, select B3, change Top from attempt 3 to attempt 1, then save.",
     why: "A single judge correction can change the finalist cut line. The demo makes that visible.",
     targetAct: "score_corrected",
     hrefKey: "judge",
@@ -58,7 +59,7 @@ const storyActs: StoryAct[] = [
     title: "Advance Finalists / Start Finals",
     description:
       "Review the cut-line movement, lock qualifiers, advance finalists, and open finals.",
-    why: "Organizers need to trust live scoring before locking results and moving the event forward.",
+    why: "Complete the key score correction first, or prepare demo state and skip ahead.",
     targetAct: "finalists_started",
     hrefKey: "organizer",
     primaryLabel: "Open organizer view",
@@ -153,12 +154,14 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   const router = useRouter();
   const [state, setState] = useState(initialState);
   const [error, setError] = useState<string | null>(initialState.error);
+  const [notice, setNotice] = useState<string | null>(null);
   const [publicViewed, setPublicViewed] = useState(false);
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setPublicViewed(readLocalPublicViewed());
+    clearDemoSalesSession();
   }, []);
 
   async function prepareState(
@@ -170,7 +173,9 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
   ) {
     setError(null);
+    setNotice(null);
     setPendingLabel(options?.reset ? "Resetting demo..." : "Preparing demo...");
+    clearDemoSalesSession();
 
     try {
       const response = await fetch("/api/demo/prepare-state", {
@@ -205,6 +210,32 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
   }
 
+  async function refreshStoryState(messageOnIncomplete?: string) {
+    setError(null);
+    setNotice(null);
+    setPendingLabel("Checking demo progress...");
+
+    try {
+      const response = await fetch("/api/demo/prepare-state", {
+        method: "GET",
+      });
+      const payload = (await response.json()) as { ok?: boolean; state?: DemoStoryState; error?: string };
+
+      if (!response.ok || !payload.ok || !payload.state) {
+        throw new Error(payload.error ?? "Unable to refresh demo progress.");
+      }
+
+      setState(payload.state);
+      if (messageOnIncomplete && !payload.state.progress.keyScoreCorrected) {
+        setNotice(messageOnIncomplete);
+      }
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh demo progress.");
+    } finally {
+      setPendingLabel(null);
+    }
+  }
+
   function handleReset() {
     const shouldReset = window.confirm(
       "Reset the canonical demo event? This only affects demo-safe data and will recreate the guided story seed."
@@ -225,7 +256,8 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
 
     if (status === "locked" || !href) {
-      void prepareState(act.targetAct, { redirectTo: href, redirectKey: act.hrefKey });
+      const targetAct = act.id === "judge" ? "event_created" : act.targetAct;
+      void prepareState(targetAct, { redirectTo: href, redirectKey: act.hrefKey });
       return;
     }
 
@@ -298,27 +330,39 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                 >
                   Use Ready-Made Demo Event
                 </Button>
-                <Button
-                  variant="danger"
-                  size="lg"
-                  onClick={handleReset}
+              <Button
+                variant="danger"
+                size="lg"
+                onClick={handleReset}
                   disabled={isPending || Boolean(pendingLabel)}
                 >
-                  Reset Demo
+                Reset Demo
+              </Button>
+              {error ? (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => prepareState("event_created", { reset: true })}
+                  disabled={isPending || Boolean(pendingLabel)}
+                >
+                  Repair demo state
                 </Button>
+              ) : null}
               </div>
 
-              {(pendingLabel || error) && (
+              {(pendingLabel || error || notice) && (
                 <div
                   className={cn(
                     "rounded-2xl border px-4 py-3 text-sm font-semibold",
                     error
                       ? "border-red-200 bg-red-50 text-red-700"
+                      : notice
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
                       : "border-sky-200 bg-sky-50 text-sky-800"
                   )}
                   role="status"
                 >
-                  {error ?? pendingLabel}
+                  {error ?? notice ?? pendingLabel}
                 </div>
               )}
             </div>
@@ -377,6 +421,25 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   >
                     {status === "locked" ? "Prepare demo state and skip ahead" : act.primaryLabel}
                   </Button>
+                  {act.id === "judge" && state.progress.eventCreated && !state.progress.keyScoreCorrected ? (
+                    <Button
+                      variant="secondary"
+                      size="compact"
+                      onClick={() =>
+                        void refreshStoryState(
+                          "Not complete yet. Save Athlete C on B3 as Top on attempt 1, then check again."
+                        )
+                      }
+                      disabled={isPending || Boolean(pendingLabel)}
+                    >
+                      I completed this
+                    </Button>
+                  ) : null}
+                  {status === "locked" && (act.id === "organizer" || act.id === "public") ? (
+                    <p className="text-xs font-semibold leading-5 text-amber-700">
+                      This skips the hands-on task and prepares only canonical demo data.
+                    </p>
+                  ) : null}
                   {status !== "locked" && act.id === "public" && state.links.leaderboard && (
                     <Link
                       href={state.links.leaderboard}

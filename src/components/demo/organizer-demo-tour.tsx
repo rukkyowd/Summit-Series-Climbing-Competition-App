@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 
-const TOUR_STATE_KEY = "organizer_demo_tour_state_v2";
+const TOUR_STATE_KEY = "organizer_demo_tour_state_v3";
 
 export type OrganizerDemoStepId =
   | "overview"
@@ -17,7 +17,6 @@ export type OrganizerDemoStepId =
   | "schedule"
   | "stages"
   | "create_event"
-  | "event_name"
   | "event_details"
   | "save_event"
   | "handoff";
@@ -27,7 +26,6 @@ export type OrganizerDemoHandoffTarget = "judge" | "leaderboard" | "display";
 type OrganizerDemoTourProps = {
   hasCreatedCompetition: boolean;
   competitionName: string;
-  eventNameEntered: boolean;
   eventDetailsComplete: boolean;
   eventSaved: boolean;
   judgeReady: boolean;
@@ -50,14 +48,9 @@ const baseSteps: Array<{
     body: "Start from the empty organizer state and create the competition yourself. This is the first proof point in the story.",
   },
   {
-    id: "event_name",
-    title: "Name the comp",
-    body: "Use the real event name field so the buyer sees a believable setup flow instead of a canned sample.",
-  },
-  {
     id: "event_details",
-    title: "Set the format, dates, and rules",
-    body: "Move through categories, structure, schedule, and stages until the event is fully configured.",
+    title: "Review the generated event",
+    body: "Check the preset, categories, finals eligibility, schedule, and stages so the setup feels like a real comp day.",
   },
   {
     id: "save_event",
@@ -74,7 +67,6 @@ const baseSteps: Array<{
 export function OrganizerDemoTour({
   hasCreatedCompetition,
   competitionName,
-  eventNameEntered,
   eventDetailsComplete,
   eventSaved,
   judgeReady,
@@ -134,21 +126,12 @@ export function OrganizerDemoTour({
       };
     }
 
-    if (activeStep.id === "event_name") {
-      return {
-        complete: eventNameEntered,
-        label: eventNameEntered
-          ? `${competitionName || "The event"} has a name.`
-          : "Fill in the real event name field first.",
-      };
-    }
-
     if (activeStep.id === "event_details") {
       return {
         complete: eventDetailsComplete,
         label: eventDetailsComplete
           ? "Categories, structure, schedule, and stages are configured."
-          : "Work through the organizer setup cards until all five setup areas show ready.",
+          : "Review the setup cards until the meaningful setup areas show ready.",
       };
     }
 
@@ -167,7 +150,7 @@ export function OrganizerDemoTour({
         ? "The judge panel is unlocked and ready to simulate registrations."
         : "The judge panel unlocks after the event is fully configured and saved.",
     };
-  }, [activeStep.id, competitionName, eventDetailsComplete, eventNameEntered, eventSaved, hasCreatedCompetition, judgeReady]);
+  }, [activeStep.id, competitionName, eventDetailsComplete, eventSaved, hasCreatedCompetition, judgeReady]);
 
   if (suppressed) {
     return null;
@@ -226,20 +209,6 @@ export function OrganizerDemoTour({
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={onJumpToCreate} className="results-primary-button">
                 Open create form
-              </button>
-            </div>
-          ) : null}
-          {activeStep.id === "event_name" ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onJumpToCreate();
-                  onFocusAnchor("organizer-create-name");
-                }}
-                className="results-primary-button"
-              >
-                Focus event name
               </button>
             </div>
           ) : null}

@@ -1,5 +1,6 @@
 import { buildDisplayCategory, createCategoryKey } from "./scoring";
 import { getCompetitionPreset } from "./competition-presets";
+import { buildDemoStoryMetadataForClimbers } from "./demo-story-target";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG } from "./demo";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
 
@@ -721,19 +722,11 @@ export async function resetDemoCompetition() {
     );
     await requireNoSupabaseError(dramaEventInsert, "Unable to create the demo cut-line score events.");
 
-    const dramaMetadata = {
-      ...initialDemoMetadata,
-      drama_pair: [athleteB.id, athleteC.id],
-      drama_target_climber: athleteC.id,
-      drama_target_climber_name: athleteC.name,
-      drama_target_climber_number: athleteC.climber_number,
-      drama_target_climb_number: 3,
-      drama_target_attempts_before: 3,
-      drama_target_attempts_after: 1,
-      drama_description: `${athleteC.name} tops Boulder 3 in 1 attempt instead of 3 and jumps past ${athleteB.name} at the finals cut line on attempts.`,
-      drama_affected_climber: athleteB.id,
-      drama_affected_climber_name: athleteB.name,
-    };
+    const dramaMetadata = buildDemoStoryMetadataForClimbers({
+      baseMetadata: initialDemoMetadata,
+      targetClimber: athleteC,
+      affectedClimber: athleteB,
+    });
 
     const metadataUpdate = await supabase
       .from("competitions")

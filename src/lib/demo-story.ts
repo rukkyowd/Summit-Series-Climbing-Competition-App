@@ -1,6 +1,12 @@
 import { normalizeQualifierAttemptInput } from "./attempts";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG, isCanonicalDemoCompetitionSlug } from "./demo";
 import { resetDemoCompetition } from "./demo-reset";
+import {
+  buildDemoStoryMetadataForClimbers,
+  findDemoStoryClimberFromMetadata,
+  type DemoStoryClimberIdentity,
+  type DemoStoryTargetMetadata,
+} from "./demo-story-target";
 import { handleAdminCompetitionAction } from "./server-admin-competition-actions";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
 
@@ -18,26 +24,11 @@ export type DemoStoryProgress = {
   publicViewed: boolean;
 };
 
-export type DemoStoryMetadata = {
-  scenario_version?: string;
-  preset_id?: string;
-  preset_name?: string;
+export type DemoStoryMetadata = DemoStoryTargetMetadata & {
   story_step?: DemoStoryTargetAct | string;
-  finals_ineligible_age_groups?: string[];
-  drama_pair?: string[];
-  drama_target_climber?: string;
-  drama_target_climber_name?: string;
-  drama_target_climber_number?: string;
-  drama_target_climb_number?: number;
-  drama_target_attempts_before?: number;
-  drama_target_attempts_after?: number;
-  drama_description?: string;
-  drama_affected_climber?: string;
-  drama_affected_climber_name?: string;
   key_score_corrected_at?: string;
   finalists_started_at?: string;
   public_ready_at?: string;
-  [key: string]: unknown;
 };
 
 export type DemoStoryCompetitionSummary = {
@@ -64,6 +55,7 @@ export type DemoStoryProgressSnapshot = {
   targetAttempt?: DemoStoryAttemptSummary | null;
   finalistCount?: number | null;
   publicViewed?: boolean;
+  targetClimberBelongsToCompetition?: boolean;
 };
 
 export type DemoStoryState = {
@@ -113,7 +105,11 @@ export function deriveDemoStoryProgress(snapshot: DemoStoryProgressSnapshot): De
   const expectedAttempts = metadata?.drama_target_attempts_after ?? 1;
   const attempt = snapshot.targetAttempt ?? null;
   const completedTopAttempt = attempt?.attempts_to_top ?? attempt?.attempt_count ?? null;
-  const eventCreated = isCanonicalDemoMutableCompetition(snapshot.competition) && Boolean(metadata?.scenario_version);
+  const targetBelongs = snapshot.targetClimberBelongsToCompetition !== false;
+  const eventCreated =
+    isCanonicalDemoMutableCompetition(snapshot.competition) &&
+    Boolean(metadata?.scenario_version) &&
+    targetBelongs;
   const keyScoreCorrected =
     eventCreated &&
     Boolean(attempt?.topped) &&
@@ -211,6 +207,87 @@ async function loadDemoTargetAttempt(
   return (data ?? null) as DemoStoryAttemptSummary | null;
 }
 
+async function loadDemoStoryClimbers(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competitionId: string
+) {
+  const { data, error } = await supabase
+    .from("climbers")
+    .select("id, competition_id, name, climber_number, gender_division, age_group, display_category")
+    .eq("competition_id", competitionId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as DemoStoryClimberIdentity[];
+}
+
+async function repairDemoStoryMetadata(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoStoryCompetitionSummary,
+  options: { resetIfUnrepairable?: boolean } = {}
+) {
+  const metadata = competition.demo_metadata ?? null;
+  const climbers = await loadDemoStoryClimbers(supabase, competition.id);
+  const targetClimber = findDemoStoryClimberFromMetadata(climbers, metadata, "target");
+  const affectedClimber = findDemoStoryClimberFromMetadata(climbers, metadata, "affected");
+
+  if (!targetClimber || !affectedClimber) {
+    if (options.resetIfUnrepairable) {
+      await resetDemoCompetition();
+      const resetCompetition = await loadCanonicalDemoCompetition(supabase);
+      if (!resetCompetition) {
+        throw new Error("Unable to repair the demo state.");
+      }
+      return repairDemoStoryMetadata(supabase, resetCompetition, { resetIfUnrepairable: false });
+    }
+
+    return {
+      competition,
+      targetClimber: null,
+      repaired: false,
+    };
+  }
+
+  const nextMetadata = buildDemoStoryMetadataForClimbers({
+    baseMetadata: {
+      scenario_version: "demo-story-v1",
+      story_step: "event_created",
+      finals_ineligible_age_groups: ["Youth D", "Youth C"],
+      ...(metadata ?? {}),
+    },
+    targetClimber,
+    affectedClimber,
+  });
+  const alreadyFresh =
+    metadata?.drama_target_climber === targetClimber.id &&
+    metadata?.target_climber_id === targetClimber.id &&
+    metadata?.drama_affected_climber === affectedClimber.id &&
+    metadata?.affected_climber_id === affectedClimber.id;
+
+  if (!alreadyFresh) {
+    const update = await supabase
+      .from("competitions")
+      .update({ demo_metadata: nextMetadata })
+      .eq("id", competition.id)
+      .eq("is_demo", true);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+  }
+
+  return {
+    competition: {
+      ...competition,
+      demo_metadata: nextMetadata,
+    },
+    targetClimber,
+    repaired: !alreadyFresh,
+  };
+}
+
 async function loadDemoFinalistCount(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competition: DemoStoryCompetitionSummary | null
@@ -265,11 +342,30 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
   }
 
   try {
-    const competition = await loadCanonicalDemoCompetition(supabase);
-    if (!competition) {
+    const loadedCompetition = await loadCanonicalDemoCompetition(supabase);
+    if (!loadedCompetition) {
       return emptyDemoStoryState(null);
     }
 
+    const repairResult = await repairDemoStoryMetadata(supabase, loadedCompetition);
+    if (!repairResult.targetClimber) {
+      return {
+        ...emptyDemoStoryState("Demo target climber is missing. Repair the demo state to regenerate canonical demo metadata."),
+        available: true,
+        competition: loadedCompetition,
+        metadata: loadedCompetition.demo_metadata,
+        links: {
+          setup: "/staff/demo",
+          judge: `/staff/c/${loadedCompetition.slug}/judge?demoStory=act2`,
+          organizer: `/staff/c/${loadedCompetition.slug}?demoStory=act3`,
+          publicEvent: `/c/${loadedCompetition.slug}?demoStory=public`,
+          leaderboard: `/c/${loadedCompetition.slug}/leaderboard?demoStory=public`,
+          scorecard: null,
+        },
+      };
+    }
+
+    const competition = repairResult.competition;
     const [targetAttempt, finalistCount, scorecard] = await Promise.all([
       loadDemoTargetAttempt(supabase, competition),
       loadDemoFinalistCount(supabase, competition),
@@ -280,7 +376,15 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       targetAttempt,
       finalistCount,
       publicViewed,
+      targetClimberBelongsToCompetition: true,
     });
+    const judgeParams = new URLSearchParams({ demoStory: "act2" });
+    if (competition.demo_metadata?.drama_target_climber) {
+      judgeParams.set("climberId", competition.demo_metadata.drama_target_climber);
+    }
+    if (competition.demo_metadata?.drama_target_climb_number) {
+      judgeParams.set("boulder", String(competition.demo_metadata.drama_target_climb_number));
+    }
 
     return {
       available: true,
@@ -292,7 +396,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       progress,
       links: {
         setup: "/staff/demo",
-        judge: `/staff/c/${competition.slug}/judge?demoStory=act2`,
+        judge: `/staff/c/${competition.slug}/judge?${judgeParams.toString()}`,
         organizer: `/staff/c/${competition.slug}?demoStory=act3`,
         publicEvent: `/c/${competition.slug}?demoStory=public`,
         leaderboard: `/c/${competition.slug}/leaderboard?demoStory=public`,
@@ -340,7 +444,12 @@ async function ensureStoryMetadata(supabase: ReturnType<typeof createServiceRole
     throw new Error("Unable to prepare the demo story metadata.");
   }
 
-  return competition;
+  const repairResult = await repairDemoStoryMetadata(supabase, competition, { resetIfUnrepairable: true });
+  if (!repairResult.targetClimber) {
+    throw new Error("Unable to repair the demo target climber.");
+  }
+
+  return repairResult.competition;
 }
 
 async function applyDemoKeyScoreCorrection(supabase: ReturnType<typeof createServiceRoleSupabaseClient>) {
