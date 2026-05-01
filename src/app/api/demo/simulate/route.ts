@@ -4,11 +4,35 @@ import { buildDisplayCategory } from "@/lib/scoring";
 import { MOCK_ATHLETE_CURATED_FULL_NAMES } from "@/lib/mock-athlete-name-pool";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
-type DemoSimulationMode = "single_score" | "live_burst" | "hydrate_event";
+type DemoSimulationMode =
+  | "single_score"
+  | "live_burst"
+  | "hydrate_event"
+  | "drama_tick"
+  | "drama_reset";
 
 type DemoSimulationRequest = {
   mode?: DemoSimulationMode;
   competitionId?: string;
+};
+
+type DramaMetadata = {
+  drama_pair?: string[];
+  drama_target_climber?: string;
+  drama_target_climb_number?: number;
+  drama_target_attempts_before?: number;
+  drama_target_attempts_after?: number;
+  drama_description?: string;
+} | null;
+
+type DramaContext = {
+  athleteName: string;
+  climberBName: string;
+  climbLabel: string;
+  beforeRank: number | null;
+  afterRank: number | null;
+  tiebreakExplanation: string;
+  isRankSwap: boolean;
 };
 
 type QualifierAttemptRow = {
@@ -28,6 +52,7 @@ type DemoCompetitionRecord = {
   current_phase: string;
   total_climbs: number | null;
   max_climbers: number | null;
+  demo_metadata: DramaMetadata;
 };
 
 type DemoCategoryRecord = {
@@ -47,7 +72,22 @@ type DemoScheduleBlockRecord = {
   eligible_category_ids: string[] | null;
 };
 
+type DemoClimberInsertRow = {
+  id: string;
+  competition_id: string;
+  name: string;
+  climber_number: string;
+  province: string;
+  category_id: string;
+  gender_division: string;
+  age_group: string;
+  display_category: string;
+  time_slot_id: string | null;
+  access_token: string;
+};
+
 const PROVINCES = ["BC", "AB", "SK", "MB", "ON", "QC", "NB", "NS", "PE", "NL"] as const;
+const DRAMA_PREFERRED_AGE_GROUPS = ["Youth B", "Youth A", "Junior", "Open"] as const;
 
 function randomItem<T>(items: readonly T[]) {
   return items[Math.floor(Math.random() * items.length)];
@@ -133,10 +173,17 @@ function buildRealisticAttempt(
   const finalScore = performance + volatility;
 
   if (finalScore > 0.27) {
-    const attemptsToTop = clamp(1 + Math.floor((0.46 - finalScore) * -4 + seededUnit(`${climberSeed}:top:${climbNumber}`) * 2), 1, 4);
+    const attemptsToTop = clamp(
+      1 + Math.floor((0.46 - finalScore) * -4 + seededUnit(`${climberSeed}:top:${climbNumber}`) * 2),
+      1,
+      4
+    );
     const flashBias = seededUnit(`${climberSeed}:flash:${climbNumber}`);
     const adjustedAttemptsToTop = finalScore > 0.44 && flashBias > 0.32 ? 1 : attemptsToTop;
-    const attemptsToZone = adjustedAttemptsToTop === 1 ? 1 : clamp(adjustedAttemptsToTop - (flashBias > 0.66 ? 1 : 0), 1, adjustedAttemptsToTop);
+    const attemptsToZone =
+      adjustedAttemptsToTop === 1
+        ? 1
+        : clamp(adjustedAttemptsToTop - (flashBias > 0.66 ? 1 : 0), 1, adjustedAttemptsToTop);
 
     return {
       attempt_count: adjustedAttemptsToTop,
@@ -192,7 +239,7 @@ async function requireCompetition(
 
   const { data: competition, error: competitionError } = await supabase
     .from("competitions")
-    .select("id, slug, is_demo, current_phase, total_climbs, max_climbers")
+    .select("id, slug, is_demo, current_phase, total_climbs, max_climbers, demo_metadata")
     .eq("id", competitionId)
     .maybeSingle();
 
@@ -211,6 +258,329 @@ async function requireCompetition(
     error: null,
     competition: competition as DemoCompetitionRecord,
   };
+}
+
+async function seedDramaScenario(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoCompetitionRecord,
+  qualifierRound: DemoRoundRecord,
+  categoryRows: DemoCategoryRecord[],
+  climberRows: DemoClimberInsertRow[],
+  problemCount: number
+) {
+  if (problemCount < 4) {
+    throw new Error("This demo event needs at least four qualifier boulders to seed the cut-line drama scenario.");
+  }
+
+  const categoryCounts = new Map<string, number>();
+  climberRows.forEach((climber) => {
+    categoryCounts.set(climber.category_id, (categoryCounts.get(climber.category_id) ?? 0) + 1);
+  });
+
+  const targetCategory =
+    [...categoryRows]
+      .filter(
+        (category) =>
+          category.gender_division === "Men" &&
+          DRAMA_PREFERRED_AGE_GROUPS.includes(
+            category.age_group as (typeof DRAMA_PREFERRED_AGE_GROUPS)[number]
+          )
+      )
+      .sort((left, right) => {
+        const countDiff = (categoryCounts.get(right.id) ?? 0) - (categoryCounts.get(left.id) ?? 0);
+        if (countDiff !== 0) {
+          return countDiff;
+        }
+
+        return left.sort_order - right.sort_order;
+      })[0] ?? null;
+
+  if (!targetCategory) {
+    throw new Error("Unable to find a category for the demo cut-line drama scenario.");
+  }
+
+  const trio = [...climberRows]
+    .filter((climber) => climber.category_id === targetCategory.id)
+    .sort((left, right) => Number(left.climber_number) - Number(right.climber_number))
+    .slice(0, 3);
+
+  if (trio.length < 3) {
+    throw new Error("The demo cut-line drama scenario needs at least three climbers in one category.");
+  }
+
+  const [athleteA, athleteB, athleteC] = trio;
+
+  const { error: deleteDramaAttemptsError } = await supabase
+    .from("qualifier_attempts")
+    .delete()
+    .eq("competition_id", competition.id)
+    .in(
+      "climber_id",
+      [athleteA.id, athleteB.id, athleteC.id]
+    );
+
+  if (deleteDramaAttemptsError) {
+    throw new Error(deleteDramaAttemptsError.message);
+  }
+
+  const seededDramaAttempts = [
+    [athleteA.id, 1, 1, true, true, 1, 1],
+    [athleteA.id, 2, 1, true, true, 1, 1],
+    [athleteA.id, 3, 1, true, true, 1, 1],
+    [athleteA.id, 4, 2, true, false, null, 2],
+    [athleteB.id, 1, 1, true, true, 1, 1],
+    [athleteB.id, 2, 2, true, true, 2, 1],
+    [athleteB.id, 3, 2, true, true, 2, 1],
+    [athleteB.id, 4, 1, true, false, null, 1],
+    [athleteC.id, 1, 1, true, true, 1, 1],
+    [athleteC.id, 2, 2, true, true, 2, 1],
+    [athleteC.id, 3, 3, true, true, 3, 2],
+    [athleteC.id, 4, 1, true, false, null, 1],
+  ].map(
+    ([
+      climberId,
+      climbNumber,
+      attemptCount,
+      zone,
+      topped,
+      attemptsToTop,
+      attemptsToZone,
+    ]) => ({
+      competition_id: competition.id,
+      round_id: qualifierRound.id,
+      climber_id: climberId,
+      climb_number: climbNumber,
+      attempt_count: attemptCount,
+      zone,
+      topped,
+      attempts_to_top: attemptsToTop,
+      attempts_to_zone: attemptsToZone,
+      entered_by: "staff" as const,
+    })
+  );
+
+  const { error: insertDramaAttemptsError } = await supabase
+    .from("qualifier_attempts")
+    .insert(seededDramaAttempts);
+
+  if (insertDramaAttemptsError) {
+    throw new Error(insertDramaAttemptsError.message);
+  }
+
+  const dramaMetadata: Exclude<DramaMetadata, null> = {
+    drama_pair: [athleteB.id, athleteC.id],
+    drama_target_climber: athleteC.id,
+    drama_target_climb_number: 3,
+    drama_target_attempts_before: 3,
+    drama_target_attempts_after: 1,
+    drama_description: `${athleteC.name} tops Boulder 3 in 1 attempt instead of 3 and jumps past ${athleteB.name} at the finals cut line on attempts.`,
+  };
+
+  const { error: updateCompetitionError } = await supabase
+    .from("competitions")
+    .update({ demo_metadata: dramaMetadata })
+    .eq("id", competition.id);
+
+  if (updateCompetitionError) {
+    throw new Error(updateCompetitionError.message);
+  }
+
+  return dramaMetadata;
+}
+
+async function handleDramaTick(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoCompetitionRecord
+) {
+  const metadata = competition.demo_metadata;
+
+  if (!metadata?.drama_target_climber || !metadata.drama_target_climb_number) {
+    return NextResponse.json(
+      { error: "No drama scenario is seeded for this competition yet." },
+      { status: 409 }
+    );
+  }
+
+  const targetClimberId = metadata.drama_target_climber;
+  const targetClimbNumber = metadata.drama_target_climb_number;
+  const attemptsAfter = metadata.drama_target_attempts_after ?? 1;
+  const dramaPair = metadata.drama_pair ?? [];
+  const climberBId = dramaPair.find((id) => id !== targetClimberId) ?? null;
+
+  const { data: climbers, error: climbersError } = await supabase
+    .from("climbers")
+    .select("id, name")
+    .in("id", climberBId ? [targetClimberId, climberBId] : [targetClimberId])
+    .eq("competition_id", competition.id);
+
+  if (climbersError) {
+    throw new Error(climbersError.message);
+  }
+
+  const climberC = climbers?.find((climber) => climber.id === targetClimberId) ?? null;
+  const climberB = climberBId ? climbers?.find((climber) => climber.id === climberBId) ?? null : null;
+
+  const { data: round, error: roundError } = await supabase
+    .from("competition_rounds")
+    .select("id, problem_count")
+    .eq("competition_id", competition.id)
+    .eq("scoring_bucket", "qualifier")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (roundError) {
+    throw new Error(roundError.message);
+  }
+
+  if (!round) {
+    return NextResponse.json({ error: "No active qualifier round found." }, { status: 409 });
+  }
+
+  const { data: currentAttempt, error: currentAttemptError } = await supabase
+    .from("qualifier_attempts")
+    .select("attempt_count, attempts_to_top, attempts_to_zone")
+    .eq("competition_id", competition.id)
+    .eq("climber_id", targetClimberId)
+    .eq("round_id", round.id)
+    .eq("climb_number", targetClimbNumber)
+    .maybeSingle();
+
+  if (currentAttemptError) {
+    throw new Error(currentAttemptError.message);
+  }
+
+  const attemptsBefore = currentAttempt?.attempt_count ?? metadata.drama_target_attempts_before ?? 3;
+  if (attemptsBefore <= attemptsAfter) {
+    return NextResponse.json({
+      mode: "drama_tick",
+      alreadyFired: true,
+      message: "The cut-line swap already fired. Reset the drama scenario to replay it cleanly.",
+      dramaContext: null,
+    });
+  }
+
+  const normalized = normalizeQualifierAttemptInput({
+    attemptCount: attemptsAfter,
+    topped: true,
+    zone: true,
+    attemptsToTop: attemptsAfter,
+    attemptsToZone: attemptsAfter,
+  });
+
+  const { data, error: upsertError } = await supabase.rpc("append_qualifier_score_event", {
+    p_competition_id: competition.id,
+    p_round_id: round.id,
+    p_climber_id: targetClimberId,
+    p_climb_number: targetClimbNumber,
+    p_attempt_count: normalized.attemptCount,
+    p_topped: normalized.topped,
+    p_zone: normalized.zone,
+    p_attempts_to_top: normalized.attemptsToTop,
+    p_attempts_to_zone: normalized.attemptsToZone,
+    p_entered_by: "staff",
+    p_client_event_id: `drama-tick-${crypto.randomUUID()}`,
+    p_scored_at: new Date().toISOString(),
+    p_judge_device_id: "drama-simulator",
+    p_judge_session_id: "drama_tick",
+    p_replayed_from_offline: false,
+  });
+
+  if (upsertError) {
+    throw new Error(upsertError.message);
+  }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  const attempt =
+    result && typeof result === "object" && "attempt" in result
+      ? (result as { attempt: unknown }).attempt
+      : null;
+
+  const dramaContext: DramaContext = {
+    athleteName: climberC?.name ?? "Athlete C",
+    climberBName: climberB?.name ?? "Athlete B",
+    climbLabel: `Boulder ${String(targetClimbNumber).padStart(2, "0")}`,
+    beforeRank: null,
+    afterRank: null,
+    tiebreakExplanation:
+      `${climberC?.name ?? "Athlete C"} now tops Boulder ${targetClimbNumber} in ${attemptsAfter} attempt instead of ${attemptsBefore}. ` +
+      `That drops their counting attempts and pushes them ahead of ${climberB?.name ?? "Athlete B"} at the finals cut line.`,
+    isRankSwap: true,
+  };
+
+  return NextResponse.json({
+    mode: "drama_tick",
+    attempt,
+    climberId: targetClimberId,
+    climbNumber: targetClimbNumber,
+    dramaContext,
+  });
+}
+
+async function handleDramaReset(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoCompetitionRecord
+) {
+  const metadata = competition.demo_metadata;
+
+  if (!metadata?.drama_target_climber || !metadata.drama_target_climb_number) {
+    return NextResponse.json(
+      { error: "No drama scenario is seeded for this competition." },
+      { status: 409 }
+    );
+  }
+
+  const { data: round, error: roundError } = await supabase
+    .from("competition_rounds")
+    .select("id")
+    .eq("competition_id", competition.id)
+    .eq("scoring_bucket", "qualifier")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (roundError) {
+    throw new Error(roundError.message);
+  }
+
+  if (!round) {
+    return NextResponse.json({ error: "No active qualifier round found." }, { status: 409 });
+  }
+
+  const attemptsBefore = metadata.drama_target_attempts_before ?? 3;
+  const normalized = normalizeQualifierAttemptInput({
+    attemptCount: attemptsBefore,
+    topped: true,
+    zone: true,
+    attemptsToTop: attemptsBefore,
+    attemptsToZone: Math.max(1, attemptsBefore - 1),
+  });
+
+  const { error: upsertError } = await supabase.rpc("append_qualifier_score_event", {
+    p_competition_id: competition.id,
+    p_round_id: round.id,
+    p_climber_id: metadata.drama_target_climber,
+    p_climb_number: metadata.drama_target_climb_number,
+    p_attempt_count: normalized.attemptCount,
+    p_topped: normalized.topped,
+    p_zone: normalized.zone,
+    p_attempts_to_top: normalized.attemptsToTop,
+    p_attempts_to_zone: normalized.attemptsToZone,
+    p_entered_by: "staff",
+    p_client_event_id: `drama-reset-${crypto.randomUUID()}`,
+    p_scored_at: new Date().toISOString(),
+    p_judge_device_id: "drama-simulator",
+    p_judge_session_id: "drama_reset",
+    p_replayed_from_offline: false,
+  });
+
+  if (upsertError) {
+    throw new Error(upsertError.message);
+  }
+
+  return NextResponse.json({ mode: "drama_reset", ok: true });
 }
 
 async function hydrateEventCompetition(
@@ -279,7 +649,7 @@ async function hydrateEventCompetition(
   await supabase.from("qualifier_attempts").delete().eq("competition_id", competition.id);
   await supabase.from("climbers").delete().eq("competition_id", competition.id);
 
-  const climberRows = categoryRows.flatMap((category, categoryIndex) =>
+  const climberRows: DemoClimberInsertRow[] = categoryRows.flatMap((category, categoryIndex) =>
     Array.from({ length: climbersPerCategory }, (_, categoryClimberIndex) => {
       const globalIndex = categoryIndex * climbersPerCategory + categoryClimberIndex;
       const poolIndex =
@@ -366,11 +736,21 @@ async function hydrateEventCompetition(
     }
   }
 
+  const dramaMetadata = await seedDramaScenario(
+    supabase,
+    competition,
+    qualifierRound as DemoRoundRecord,
+    categoryRows,
+    climberRows,
+    problemCount
+  );
+
   return {
     competitionId: competition.id,
     climberCount: climberRows.length,
     qualifierAttemptCount: seededAttempts.length,
     roundId: qualifierRound.id,
+    dramaMetadata,
   };
 }
 
@@ -384,13 +764,26 @@ export async function POST(request: NextRequest) {
   }
 
   const mode: DemoSimulationMode =
-    payload.mode === "live_burst" || payload.mode === "hydrate_event" ? payload.mode : "single_score";
+    payload.mode === "live_burst" ||
+    payload.mode === "hydrate_event" ||
+    payload.mode === "drama_tick" ||
+    payload.mode === "drama_reset"
+      ? payload.mode
+      : "single_score";
 
   try {
     const supabase = createServiceRoleSupabaseClient();
     const { competition, error } = await requireCompetition(payload.competitionId, supabase);
     if (error || !competition) {
       return error;
+    }
+
+    if (mode === "drama_tick") {
+      return await handleDramaTick(supabase, competition);
+    }
+
+    if (mode === "drama_reset") {
+      return await handleDramaReset(supabase, competition);
     }
 
     if (mode === "hydrate_event") {

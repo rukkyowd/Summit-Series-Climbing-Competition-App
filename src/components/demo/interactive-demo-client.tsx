@@ -13,6 +13,7 @@ import type {
   DemoScenarioAthlete,
   DemoQueuedScorePreview,
   DemoPlaybackStep,
+  DramaContext,
   DemoSimulationMode,
   DemoSimulationResponse,
   DemoToolkitState,
@@ -213,6 +214,10 @@ function getQualifierRank(snapshot: CompetitionSnapshot, climberId: string) {
   return snapshot.qualifierLeaderboard.find((entry) => entry.climber_id === climberId)?.category_rank ?? null;
 }
 
+function getQualifierEntryByName(snapshot: CompetitionSnapshot, climberName: string) {
+  return snapshot.qualifierLeaderboard.find((entry) => entry.name === climberName) ?? null;
+}
+
 function buildRankMessage(
   beforeSnapshot: CompetitionSnapshot,
   afterSnapshot: CompetitionSnapshot,
@@ -234,6 +239,29 @@ function buildRankMessage(
   }
 
   return `Saved. ${athlete.name} stayed ${afterRank}${ordinalSuffix(afterRank)} in ${athlete.categoryLabel}, and the public leaderboard updated instantly.`;
+}
+
+function buildDramaSwapMessage(
+  beforeSnapshot: CompetitionSnapshot,
+  afterSnapshot: CompetitionSnapshot,
+  dramaContext: DramaContext
+) {
+  const athleteBefore = getQualifierEntryByName(beforeSnapshot, dramaContext.athleteName);
+  const athleteAfter = getQualifierEntryByName(afterSnapshot, dramaContext.athleteName);
+  const bubbleBefore = getQualifierEntryByName(beforeSnapshot, dramaContext.climberBName);
+  const bubbleAfter = getQualifierEntryByName(afterSnapshot, dramaContext.climberBName);
+  const categoryLabel = athleteAfter?.display_category ?? athleteBefore?.display_category ?? "this category";
+
+  if (
+    athleteBefore?.category_rank &&
+    athleteAfter?.category_rank &&
+    bubbleBefore?.category_rank &&
+    bubbleAfter?.category_rank
+  ) {
+    return `${dramaContext.athleteName} jumps from ${athleteBefore.category_rank}${ordinalSuffix(athleteBefore.category_rank)} to ${athleteAfter.category_rank}${ordinalSuffix(athleteAfter.category_rank)} in ${categoryLabel}. ${dramaContext.climberBName} slides from ${bubbleBefore.category_rank}${ordinalSuffix(bubbleBefore.category_rank)} to ${bubbleAfter.category_rank}${ordinalSuffix(bubbleAfter.category_rank)} on counting attempts. ${dramaContext.tiebreakExplanation}`;
+  }
+
+  return dramaContext.tiebreakExplanation;
 }
 
 function ordinalSuffix(value: number) {
@@ -891,7 +919,24 @@ export function InteractiveDemoClient() {
         | ({ error?: string } & Partial<DemoSimulationResponse>)
         | null;
 
-      if (!response.ok || !payload?.attempt || !liveSnapshot) {
+      if (!response.ok || !liveSnapshot) {
+        throw new Error(payload?.error || "Unable to run the demo simulation.");
+      }
+
+      if (payload?.alreadyFired) {
+        if (payload.message) {
+          setMessage(payload.message);
+        }
+
+        return {
+          payload,
+          simulatedSnapshot: liveSnapshot,
+          beforeRank: null,
+          afterRank: null,
+        };
+      }
+
+      if (!payload?.attempt) {
         throw new Error(payload?.error || "Unable to run the demo simulation.");
       }
 
@@ -930,18 +975,71 @@ export function InteractiveDemoClient() {
       }
       clearHighlightLater();
       await refreshSnapshot();
+
+      return {
+        payload,
+        simulatedSnapshot,
+        beforeRank,
+        afterRank: getQualifierRank(simulatedSnapshot, impactedClimberId),
+      };
     },
     [refreshSnapshot, showLeaderboardToast, snapshot]
+  );
+
+  const resetDramaScenario = useCallback(
+    async (suppressErrors = false) => {
+      const liveSnapshot = snapshotRef.current ?? snapshot;
+      if (!liveSnapshot) {
+        return false;
+      }
+
+      try {
+        const response = await fetch("/api/demo/simulate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mode: "drama_reset",
+            competitionId: liveSnapshot.competition.id,
+          }),
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | ({ error?: string } & Partial<DemoSimulationResponse>)
+          | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to reset the drama scenario.");
+        }
+
+        await refreshSnapshot();
+        setHighlightedClimberId(null);
+        setLeaderboardImpact(null);
+        setLeaderboardToast(null);
+        return true;
+      } catch (nextError) {
+        if (!suppressErrors) {
+          setError(nextError instanceof Error ? nextError.message : "Unable to reset the drama scenario.");
+        }
+        return false;
+      }
+    },
+    [refreshSnapshot, snapshot]
   );
 
   const handleSimulateOneScore = async () => {
     setError("");
     setMessage("");
     try {
-      await runSimulationStep("single_score");
-      setMessage("Triggered one live score so you can point out the real-time ranking jump.");
+      const result = await runSimulationStep("drama_tick");
+      if (result?.payload?.dramaContext) {
+        setMessage(buildDramaSwapMessage(snapshotRef.current ?? snapshot ?? result.simulatedSnapshot, result.simulatedSnapshot, result.payload.dramaContext));
+        setLeaderboardObserved(true);
+      } else {
+        setMessage(result?.payload?.message ?? "Triggered the cut-line swap.");
+      }
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to simulate a score.");
+      setError(nextError instanceof Error ? nextError.message : "Unable to trigger the cut-line swap.");
     }
   };
 
@@ -1044,7 +1142,23 @@ export function InteractiveDemoClient() {
   }, []);
 
   const replayFullSalesStory = async () => {
-    await handleRestoreDemo();
+    setError("");
+    setMessage("");
+    const resetWorked = await resetDramaScenario(true);
+    if (!resetWorked) {
+      await handleRestoreDemo();
+      return;
+    }
+
+    setLiveSaveCompleted(false);
+    setLeaderboardObserved(false);
+    setOfflineQueuedSaveCompleted(false);
+    setSyncRecovered(false);
+    setPlaybackStep(null);
+    setPlaybackNarration(null);
+    setPresentationFocus("judge");
+    setMobileTab("judge");
+    await handleRunDemo({ preserveSalesSession: salesSession?.organizerCompleted });
   };
 
   async function handleRunDemo(options?: { preserveSalesSession?: boolean }) {
@@ -1073,7 +1187,7 @@ export function InteractiveDemoClient() {
       scriptRunning: true,
     }));
     setError("");
-    setMessage("Guided demo started. Watch one saved score, the live reorder, the Wi-Fi drop, and the sync recovery.");
+    setMessage("Guided demo started. Watch one saved score, the finals bubble swap, the Wi-Fi drop, and the sync recovery.");
     syncSalesSessionState((current) =>
       createDemoSalesSession({
         mode: "judge",
@@ -1096,9 +1210,10 @@ export function InteractiveDemoClient() {
     );
 
     try {
+      await resetDramaScenario(true);
       setPlaybackNarration({
         title: "Starting the guided demo",
-        body: "You are watching the exact comp-day story: one judge logs a score, the public ranking updates live, Wi-Fi drops, scores keep queueing, then everything syncs back in.",
+        body: "You are watching the exact comp-day story: one judge logs a score, the finals bubble flips live on tiebreaks, Wi-Fi drops, scores keep queueing, then everything syncs back in.",
       });
       await wait(2600);
 
@@ -1151,8 +1266,8 @@ export function InteractiveDemoClient() {
       setPlaybackStep("leaderboard");
       setMobileTab("leaderboard");
       setPlaybackNarration({
-        title: "Step 2: The leaderboard moves live",
-        body: "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
+        title: "Step 2: The finals bubble flips live",
+        body: "Now watch the right side. One corrected attempt count changes the tie-break chain and flips the last finals spot in real time.",
       });
       syncSalesSessionState((current) => ({
         ...(current ??
@@ -1165,20 +1280,31 @@ export function InteractiveDemoClient() {
           })),
         phase: "judge",
         storyStep: "judge-leaderboard",
-        narratorTitle: "Step 2: The leaderboard moves live",
+        narratorTitle: "Step 2: The finals bubble flips live",
         narratorBody:
-          "Now watch the right side. Maya's rank changes immediately, then other judges keep entering fresh scores so the board feels like a real comp floor instead of a static screenshot.",
+          "Now watch the right side. One corrected attempt count changes the tie-break chain and flips the last finals spot in real time.",
       }));
       setDemoCursor((current) => ({
         ...current,
-        label: "Leaderboard reacts live",
+        label: "Bubble spot changes live",
       }));
       await wait(2600);
-      await runSimulationStep("live_burst");
+      const dramaResult = await runSimulationStep("drama_tick");
+      if (dramaResult?.payload?.dramaContext) {
+        setMessage(
+          buildDramaSwapMessage(
+            snapshotRef.current ?? freshSnapshot,
+            dramaResult.simulatedSnapshot,
+            dramaResult.payload.dramaContext
+          )
+        );
+      }
       setLeaderboardObserved(true);
       await wait(2200);
       await runSimulationStep("live_burst");
-      setMessage("The board is live, and a clean flash moves Maya up while other saved scores keep landing.");
+      await wait(1600);
+      await runSimulationStep("live_burst");
+      setMessage("The cut line just flipped on attempts, and the rest of the board keeps moving like a real comp floor.");
       await wait(2200);
 
       setPresentationFocus("offline");
@@ -1329,21 +1455,28 @@ export function InteractiveDemoClient() {
       ...current,
       simulationRunning: true,
     }));
-    setMessage("Other judges are entering fresh scores now. Watch the live standings reshuffle on the right.");
+    setMessage("Watch the finals bubble flip first, then the rest of the field keeps moving around it.");
     setError("");
 
     try {
-      const burstCount = 4;
-      for (let index = 0; index < burstCount; index += 1) {
-        if (index > 0) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1200));
-        }
-        await runSimulationStep("live_burst");
-        if (index === 0) {
-          setLeaderboardObserved(true);
-        }
+      const dramaResult = await runSimulationStep("drama_tick");
+      if (dramaResult?.payload?.dramaContext) {
+        setMessage(
+          buildDramaSwapMessage(
+            snapshotRef.current ?? snapshot ?? dramaResult.simulatedSnapshot,
+            dramaResult.simulatedSnapshot,
+            dramaResult.payload.dramaContext
+          )
+        );
+        setLeaderboardObserved(true);
       }
-      setMessage("Live event burst complete. The right side just showed what a busy qualifier window feels like.");
+
+      const burstCount = 2;
+      for (let index = 0; index < burstCount; index += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        await runSimulationStep("live_burst");
+      }
+      setMessage("The cut line moved on attempts, then the board kept breathing with live ambient scores.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to run the guided live event burst.");
     } finally {
@@ -1352,7 +1485,7 @@ export function InteractiveDemoClient() {
         simulationRunning: false,
       }));
     }
-  }, [runSimulationStep, toolkitState.simulateOffline, toolkitState.simulationRunning]);
+  }, [runSimulationStep, snapshot, toolkitState.simulateOffline, toolkitState.simulationRunning]);
 
   useEffect(() => {
     if (activeTourStep !== "leaderboard") {
@@ -1510,11 +1643,11 @@ export function InteractiveDemoClient() {
         <DemoSalesShell
           mode="judge"
           stepLabel={JUDGE_STEP_LABELS[playbackStep ?? "save"]}
-          title={playbackNarration?.title ?? salesSession?.narratorTitle ?? "Watch one saved score drive the whole comp-day story."}
+          title={playbackNarration?.title ?? salesSession?.narratorTitle ?? "Watch the finals bubble flip live on one corrected score."}
           body={
             playbackNarration?.body ??
             salesSession?.narratorBody ??
-            "This pitch path shows a clean save, a live leaderboard reaction, a Wi-Fi drop, and a resilient sync recovery."
+            "This pitch path shows a clean save, a cut-line tiebreak swap, a Wi-Fi drop, and a resilient sync recovery."
           }
           autoplayRunning={toolkitState.scriptRunning}
           audioEnabled={salesAudioEnabled}
@@ -1556,9 +1689,9 @@ export function InteractiveDemoClient() {
                   mode: "judge",
                   phase: "judge",
                   storyStep: "judge-save",
-                  narratorTitle: "Watch one saved score drive the whole comp-day story.",
+                  narratorTitle: "Watch the finals bubble flip live on one corrected score.",
                   narratorBody:
-                    "This pitch path shows a clean save, a live leaderboard reaction, a Wi-Fi drop, and a resilient sync recovery.",
+                    "This pitch path shows a clean save, a cut-line tiebreak swap, a Wi-Fi drop, and a resilient sync recovery.",
                   autoplay: false,
                   organizerCompleted: false,
                   judgePending: false,
@@ -1611,12 +1744,11 @@ export function InteractiveDemoClient() {
             <div className="space-y-3">
               <div className="results-kicker">Experience as a judge</div>
               <h1 className="results-editorial-title text-4xl font-semibold text-slate-950 sm:text-5xl">
-                Save one score. Watch the rank change live.
+                Save one score. Watch the finals bubble flip live.
               </h1>
               <p className="max-w-3xl text-base leading-relaxed text-slate-600">
                 You are judging {scenarioAthlete?.categoryLabel ?? "the featured qualifier field"}. Start with{" "}
-                {scenarioAthlete?.name ?? "the highlighted athlete"} on Boulder 1. The moment you save,
-                the right side shows exactly what climbers, coaches, and spectators see.
+                {scenarioAthlete?.name ?? "the highlighted athlete"} on Boulder 1. Then the right side shows the exact cut-line tiebreak swing that climbers, coaches, and spectators would see live.
               </p>
               {scenarioAthlete ? (
                 <div className="inline-flex max-w-3xl flex-wrap items-center gap-2 rounded-full border border-sky-200 bg-sky-50/90 px-4 py-2 text-sm font-medium text-sky-800">

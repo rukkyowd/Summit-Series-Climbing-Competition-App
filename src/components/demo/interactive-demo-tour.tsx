@@ -36,7 +36,7 @@ const baseSteps = [
   {
     id: "leaderboard",
     title: "Watch the ranking react",
-    body: "As soon as your save lands, the demo starts simulating other judges entering fresh scores too. Watch the leaderboard on the right keep reshuffling like a real comp floor.",
+    body: "As soon as your save lands, the finals bubble flips on a tie-break. Watch the leaderboard on the right show the cut-line swap first, then keep moving like a real comp floor.",
   },
   {
     id: "offline",
@@ -143,7 +143,7 @@ export function InteractiveDemoTour({
         complete: leaderboardObserved,
         label: leaderboardObserved
           ? "Leaderboard impact confirmed."
-          : "Watch the leaderboard react as new scores keep landing across the field.",
+          : "Watch the cut line flip, then let the ambient scores keep moving around it.",
       };
     }
 

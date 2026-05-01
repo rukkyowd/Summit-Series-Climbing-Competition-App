@@ -3,7 +3,11 @@ import type { QualifierAttempt } from "@/lib/scoring";
 
 export type DemoRole = "judge" | "competitor" | "organizer";
 
-export type DemoSimulationMode = "single_score" | "live_burst";
+export type DemoSimulationMode =
+  | "single_score"
+  | "live_burst"
+  | "drama_tick"
+  | "drama_reset";
 
 export type DemoSyncStatus = "synced" | "saving" | "pending" | "syncing" | "failed";
 export type DemoPlaybackStep = "save" | "leaderboard" | "offline" | "sync" | "complete";
@@ -28,11 +32,25 @@ export type JudgeQualifierSaveInput = {
 
 export type CompetitionSnapshotUpdater = (snapshot: CompetitionSnapshot) => CompetitionSnapshot;
 
+export type DramaContext = {
+  athleteName: string;
+  climberBName: string;
+  climbLabel: string;
+  beforeRank: number | null;
+  afterRank: number | null;
+  tiebreakExplanation: string;
+  isRankSwap: boolean;
+};
+
 export type DemoSimulationResponse = {
   mode: DemoSimulationMode;
-  attempt: QualifierAttempt;
-  climberId: string;
-  climbNumber: number;
+  attempt?: QualifierAttempt;
+  climberId?: string;
+  climbNumber?: number;
+  dramaContext?: DramaContext | null;
+  alreadyFired?: boolean;
+  message?: string;
+  ok?: boolean;
 };
 
 export type DemoScenarioAthlete = {

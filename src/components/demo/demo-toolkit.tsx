@@ -17,7 +17,7 @@ type DemoToolkitProps = {
 
 const playbackCopy: Record<DemoPlaybackStep, string> = {
   save: "Step 1 of 4: judge is logging the flash...",
-  leaderboard: "Step 2 of 4: the live ranking is reordering...",
+  leaderboard: "Step 2 of 4: the finals bubble is flipping live...",
   offline: "Step 3 of 4: Wi-Fi is down, but scores are still saving...",
   sync: "Step 4 of 4: reconnecting and publishing queued scores...",
   complete: "Pitch flow complete. You can replay it or take over manually.",
@@ -84,8 +84,8 @@ export function DemoToolkit({
             <div className="results-kicker text-white/60">Walkthrough tools</div>
             <h3 className="text-xl font-semibold text-white">Run the 90-second comp-day story</h3>
             <p className="text-sm leading-relaxed text-slate-300">
-              Kick off one guided sequence that scores a flash, moves the leaderboard, drops
-              Wi-Fi, queues a score, then reconnects and publishes everything live.
+              Kick off one guided sequence that scores a flash, flips the finals bubble on a real
+              tiebreak, drops Wi-Fi, queues a score, then reconnects and publishes everything live.
             </p>
           </div>
 
@@ -118,7 +118,7 @@ export function DemoToolkit({
               onClick={onSimulateOneScore}
               disabled={state.scriptRunning}
             >
-              Save one sample score
+              Trigger cut-line swap
             </Button>
             <Button
               variant="linearSecondary"
