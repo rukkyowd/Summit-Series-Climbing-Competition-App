@@ -23,6 +23,14 @@ import {
 } from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
+  COMPETITION_PRESETS,
+  detectCompetitionPreset,
+  getCompetitionPreset,
+  getPresetFinalsEligibleCategories,
+  type CompetitionPresetId,
+  type CompetitionPresetScheduleBlock,
+} from "@/lib/competition-presets";
+import {
   createCompetitionFromTemplate,
   deleteCompetition,
   getCompetitionSnapshot,
@@ -41,8 +49,6 @@ import {
   CATEGORY_AGE_GROUPS,
   DEFAULT_FINALS_CUTOFF,
   DEFAULT_MAX_CLIMBERS,
-  DEFAULT_QUALIFIER_COUNTING_CLIMBS,
-  DEFAULT_TOTAL_CLIMBS,
   FORMAT_TEMPLATES,
   SCHEDULE_PHASE_OPTIONS,
   buildCompetitionPath,
@@ -127,14 +133,7 @@ function createScheduleBlockId() {
   return `schedule-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-type ScheduleBlockTemplate = {
-  label: string;
-  phase_type: SchedulePhaseType;
-  round_type?: CompetitionRoundType;
-  audience_label: string;
-  capacity?: number;
-  eligible_age_groups?: string[];
-};
+type ScheduleBlockTemplate = CompetitionPresetScheduleBlock;
 
 type ScheduleTemplateGroup = {
   title: string;
@@ -142,21 +141,10 @@ type ScheduleTemplateGroup = {
   templates: ScheduleBlockTemplate[];
 };
 
-type GuidedSetupPreset = {
-  id: "simple_local" | "qualifier_finals" | "qualifier_semifinal_finals";
-  title: string;
-  summary: string;
-  description: string;
-  details: string;
-  bestFor: string;
-  includes: string;
-  typicalFlow: string;
-};
-
 type OrganizerPlaybackStep =
   | "intro"
-  | "categories"
   | "preset"
+  | "categories"
   | "schedule"
   | "stages"
   | "handoff";
@@ -182,8 +170,8 @@ type OrganizerBuildTransitionState = {
 
 const ORGANIZER_STEP_LABELS: Record<OrganizerPlaybackStep, string> = {
   intro: "Organizer · introduction",
-  categories: "Organizer · categories",
   preset: "Organizer · format template",
+  categories: "Organizer · categories",
   schedule: "Organizer · day schedule",
   stages: "Organizer · competition stages",
   handoff: "Organizer · handoff to judge",
@@ -413,38 +401,7 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
   ];
 }
 
-const GUIDED_SETUP_PRESETS: GuidedSetupPreset[] = [
-  {
-    id: "simple_local",
-    title: "Simple local comp",
-    summary: "Qualifier only",
-    description: "Best for a straightforward local event with one qualifier stage and a simple day schedule.",
-    bestFor: "Local youth days and small club comps.",
-    includes: "One scoring stage and a simple awards finish.",
-    typicalFlow: "Check-in -> qualifier waves -> results and awards.",
-    details: "1 qualifier stage · guided local-day schedule",
-  },
-  {
-    id: "qualifier_finals",
-    title: "Qualifier + Finals",
-    summary: "Most common format",
-    description: "Use qualifiers during the day, then move the top climbers into finals with isolation and observation.",
-    bestFor: "Most gyms running a full-day event.",
-    includes: "Qualifier rankings, a finals cut, and finals workflow.",
-    typicalFlow: "Qualifier waves -> reset -> isolation -> observation -> finals.",
-    details: "Qualifier rankings · finals field · isolation + observation",
-  },
-  {
-    id: "qualifier_semifinal_finals",
-    title: "Qualifier + Semifinal + Finals",
-    summary: "Large event structure",
-    description: "Use this when you need a scored semifinal between qualifiers and finals.",
-    bestFor: "Large marquee events with deeper fields.",
-    includes: "Three scoring stages with an extra advancement cut.",
-    typicalFlow: "Qualifier waves -> semifinal -> reset -> finals workflow.",
-    details: "3 scoring stages · semifinal cutoff · finals workflow",
-  },
-];
+const GUIDED_SETUP_PRESETS = COMPETITION_PRESETS;
 
 const SETUP_WIZARD_STEPS = [
   {
@@ -454,16 +411,16 @@ const SETUP_WIZARD_STEPS = [
     description: "Name the event, confirm the slug, and set the key event details.",
   },
   {
+    id: "presets",
+    shortLabel: "Preset",
+    title: "Competition preset",
+    description: "Choose the event shape first so categories, finals eligibility, rounds, and schedule can be generated together.",
+  },
+  {
     id: "categories",
     shortLabel: "Categories",
     title: "Categories",
-    description: "Choose the age groups that can register and optionally advance to finals.",
-  },
-  {
-    id: "presets",
-    shortLabel: "Presets",
-    title: "Event setup",
-    description: "Start from a guided format template instead of building every round by hand.",
+    description: "Review the generated registration groups and choose any finals-eligible groups from that same set.",
   },
   {
     id: "schedule",
@@ -482,15 +439,15 @@ const SETUP_WIZARD_STEPS = [
 const SETUP_STEP_COACHING = [
   {
     task: "Name the event, pick the format, and set registration timing.",
-    unlock: "Categories and presets now apply to a real event instead of a blank shell.",
+    unlock: "Presets now apply to a real event instead of a blank shell.",
   },
   {
-    task: "Choose who can register and, if needed, who can make finals.",
-    unlock: "Presets and schedule blocks can now target the right field.",
+    task: "Apply the event shape you want before tuning categories.",
+    unlock: "Categories, finals eligibility, schedule blocks, and stage flow are generated together.",
   },
   {
-    task: "Apply the event shape you want instead of building every round by hand.",
-    unlock: "The day schedule and stage flow are generated from this setup.",
+    task: "Review who can register and, if needed, who can make finals.",
+    unlock: "Schedule blocks now target the right field.",
   },
   {
     task: "Review the day plan and make sure live blocks point at the right rounds.",
@@ -650,7 +607,7 @@ export default function StaffDashboard({
   const [expandedRoundId, setExpandedRoundId] = useState<string | null>(null);
   const [expandedScheduleBlockId, setExpandedScheduleBlockId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
-  const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<GuidedSetupPreset["id"] | null>(null);
+  const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<CompetitionPresetId | null>(null);
   const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
   const [, setOrganizerGuidedBasicsState] = useState({
     identityReviewed: false,
@@ -847,7 +804,6 @@ export default function StaffDashboard({
   useEffect(() => {
     setSnapshot(null);
     setCurrentSetupStep(0);
-    setSelectedGuidedSetupPresetId(null);
     setOrganizerDemoState({
       setupOpened: false,
       categoriesViewed: false,
@@ -890,7 +846,12 @@ export default function StaffDashboard({
       roundsAreValid &&
       Boolean(qualifierScoringRound) &&
       (!draft.has_finals || Boolean(finalsScoringRound));
-    const structureReady = Boolean(selectedGuidedSetupPreset) || manualStructureReady;
+    const presetGeneratedStructureReady = Boolean(selectedGuidedSetupPreset && selectedGuidedSetupPreset.id !== "custom");
+    const structureReady = presetGeneratedStructureReady || manualStructureReady;
+    const finalsCategoriesStayInsideQualifiers = draft.finals_eligible_age_groups.every((ageGroup) =>
+      draft.qualifier_eligible_age_groups.includes(ageGroup)
+    );
+    const categoriesReady = draft.qualifier_eligible_age_groups.length > 0 && finalsCategoriesStayInsideQualifiers;
     const scheduleReady =
       draft.schedule_blocks.length > 0 &&
       linkedScheduleBlockCount > 0 &&
@@ -909,8 +870,8 @@ export default function StaffDashboard({
 
     return [
       Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()),
-      draft.qualifier_eligible_age_groups.length > 0,
-      structureReady,
+      Boolean(selectedGuidedSetupPreset),
+      categoriesReady,
       scheduleReady,
       stagesReady,
     ];
@@ -929,8 +890,8 @@ export default function StaffDashboard({
     () =>
       [
         { id: "setup-basics", label: "Basics", stepIndex: 0 },
-        { id: "setup-categories", label: "Categories", stepIndex: 1 },
-        { id: "setup-structure", label: "Structure", stepIndex: 2 },
+        { id: "setup-presets", label: "Preset", stepIndex: 1 },
+        { id: "setup-categories", label: "Categories", stepIndex: 2 },
         { id: "setup-schedule", label: "Schedule", stepIndex: 3 },
         { id: "setup-stages", label: "Stages", stepIndex: 4 },
         { id: "setup-operations", label: "Operations", stepIndex: null },
@@ -942,6 +903,7 @@ export default function StaffDashboard({
     if (!selectedSummary) {
       setDraft(null);
       setSnapshot(null);
+      setSelectedGuidedSetupPresetId(null);
       setPhaseBlockMemory({});
       setRoundPlanNeedsReset(false);
       setExpandedRoundId(null);
@@ -949,7 +911,9 @@ export default function StaffDashboard({
       return;
     }
 
-    setDraft(cloneCompetition(selectedSummary.competition));
+    const clonedCompetition = cloneCompetition(selectedSummary.competition);
+    setDraft(clonedCompetition);
+    setSelectedGuidedSetupPresetId(detectCompetitionPreset(clonedCompetition).id);
     void getCompetitionSnapshot(selectedSummary.competition.id, { authenticated: true })
       .then((nextSnapshot) => setSnapshot(nextSnapshot))
       .catch(() => setSnapshot(null));
@@ -1659,34 +1623,33 @@ export default function StaffDashboard({
     return block.phase_type === "qualifier_round" && block.eligible_category_ids.length > 0;
   }, []);
 
-  const applyGuidedSetupPreset = useCallback((presetId: GuidedSetupPreset["id"]) => {
+  const applyGuidedSetupPreset = useCallback((presetId: CompetitionPresetId) => {
     if (!draft) {
       return;
     }
 
+    const preset = getCompetitionPreset(presetId);
+    if (preset.id === "custom") {
+      setSelectedGuidedSetupPresetId("custom");
+      setMessage("Custom setup selected. Existing categories, rounds, and schedule were kept.");
+      return;
+    }
+
+    const finalsEligibleCategories = getPresetFinalsEligibleCategories(preset);
     const baseCompetition = {
       ...draft,
-      has_finals: presetId !== "simple_local",
+      format: preset.format,
+      has_finals: preset.finalsEnabled,
+      finals_cutoff: preset.finalsCutoff,
+      finals_tie_advances: preset.tiesAdvanceDefault,
+      total_climbs: preset.qualifierProblemCount,
+      qualifier_counting_climbs: preset.countingClimbs,
+      finals_problem_count: preset.finalsProblemCount,
+      qualifier_eligible_age_groups: [...preset.defaultCategories],
+      finals_eligible_age_groups: finalsEligibleCategories,
     };
 
-    const rounds =
-      presetId === "simple_local"
-        ? [createRoundTemplate(baseCompetition, "qualifier", 1)]
-        : presetId === "qualifier_semifinal_finals"
-          ? (() => {
-              const qualifierRound = createRoundTemplate(baseCompetition, "qualifier", 1);
-              const semifinalRound = createRoundTemplate(baseCompetition, "semifinal", 2);
-              semifinalRound.name = "Semifinal";
-              semifinalRound.problem_count = Math.min(
-                Math.max(4, Math.min(baseCompetition.total_climbs, 6)),
-                baseCompetition.total_climbs
-              );
-              semifinalRound.counting_climbs = semifinalRound.problem_count;
-              const finalsRound = createRoundTemplate(baseCompetition, "finals", 3);
-              finalsRound.advancement_source_round_id = semifinalRound.id;
-              return [qualifierRound, semifinalRound, finalsRound];
-            })()
-          : buildRoundPlanTemplate(baseCompetition);
+    const rounds = buildRoundPlanTemplate(baseCompetition);
 
     const nextCompetition = normalizeCompetition(
       {
@@ -1698,69 +1661,15 @@ export default function StaffDashboard({
       rounds
     );
 
-    const qualifierSessionTemplates = buildGuidedQualifierSessionTemplates(nextCompetition);
-
-    const scheduleTemplates: ScheduleBlockTemplate[] = [
-      {
-        label: "Check-in",
-        phase_type: "check_in",
-        audience_label: formatUsesSelfScoredQualifiers(nextCompetition.format) ? "All climbers" : "All athletes",
-        capacity: nextCompetition.max_climbers,
-      },
-      ...qualifierSessionTemplates,
-      ...(presetId === "qualifier_semifinal_finals"
-        ? [
-            {
-              label: "Semifinal Session",
-              phase_type: "qualifier_round" as const,
-              round_type: "semifinal" as const,
-              audience_label: "Semifinalists",
-              capacity: nextCompetition.max_climbers,
-            },
-          ]
-        : []),
-      ...(presetId !== "simple_local"
-        ? [
-            {
-              label: "Wall reset",
-              phase_type: "wall_reset" as const,
-              audience_label: "Routesetting",
-              capacity: nextCompetition.max_climbers,
-            },
-            {
-              label: "Isolation",
-              phase_type: "isolation" as const,
-              round_type: "finals" as const,
-              audience_label: "Finalists",
-              capacity: nextCompetition.max_climbers,
-            },
-            {
-              label: "Observation",
-              phase_type: "observation" as const,
-              round_type: "finals" as const,
-              audience_label: "Finalists",
-              capacity: nextCompetition.max_climbers,
-            },
-            {
-              label: "Finals",
-              phase_type: "finals_round" as const,
-              round_type: "finals" as const,
-              audience_label: "Finalists",
-              capacity: nextCompetition.max_climbers,
-            },
-          ]
-        : []),
-      {
-        label: "Results / Awards",
-        phase_type: "results",
-        audience_label: formatUsesSelfScoredQualifiers(nextCompetition.format) ? "All climbers" : "All athletes",
-        capacity: nextCompetition.max_climbers,
-      },
-    ];
+    const scheduleTemplates =
+      preset.defaultScheduleBlocks.length > 0 ? preset.defaultScheduleBlocks : buildScheduleBlockTemplates(nextCompetition);
+    const presetQualifierCategories = nextCompetition.categories.filter((category) =>
+      nextCompetition.qualifier_eligible_age_groups.includes(category.age_group)
+    );
 
     const scheduleBlocks = reindexScheduleBlocks(
       scheduleTemplates.map((template, index) =>
-        createScheduleBlockFromTemplate(nextCompetition, template, qualifierCategories, index)
+        createScheduleBlockFromTemplate(nextCompetition, template, presetQualifierCategories, index)
       )
     );
 
@@ -1768,12 +1677,12 @@ export default function StaffDashboard({
       ...nextCompetition,
       rounds,
       schedule_blocks: scheduleBlocks,
-      has_finals: presetId !== "simple_local",
+      has_finals: preset.finalsEnabled,
     });
     setSelectedGuidedSetupPresetId(presetId);
     setRoundPlanNeedsReset(false);
-    setMessage(`Guided setup applied: ${GUIDED_SETUP_PRESETS.find((preset) => preset.id === presetId)?.title}.`);
-  }, [draft, qualifierCategories]);
+    setMessage(`Guided setup applied: ${preset.name}.`);
+  }, [draft]);
 
   const mergeScheduleBlocks = (sourceBlockId: string, targetBlockId: string) => {
     if (!draft || sourceBlockId === targetBlockId) {
@@ -1865,20 +1774,20 @@ export default function StaffDashboard({
         ? `${draft.name || "Event"} is grounded and ready for setup.`
         : "Ground the event with its name, format, and registration window.",
       setupStepCompletion[1]
+        ? `${selectedGuidedSetupPreset?.name ?? "Custom"} is the starting point.`
+        : "Choose a preset before tuning categories.",
+      setupStepCompletion[2]
         ? `${draft.qualifier_eligible_age_groups.length} registration groups are set.`
-        : "Pick the groups this event is actually for.",
-      setupStepCompletion[2] && selectedGuidedSetupPreset
-        ? `${selectedGuidedSetupPreset.title} is driving the event structure.`
-        : setupStepCompletion[2]
-          ? "The event structure is fully configured."
-          : "Apply a setup or finish the manual structure before moving on.",
+        : "Review the generated groups and keep finals eligibility inside that field.",
       setupStepCompletion[3]
         ? `${orderedDraftScheduleBlocks.length} schedule blocks are planned and linked.`
         : "Make sure the day plan and live rounds point at each other.",
-      setupStepCompletion[4]
-        ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} are ready to score.`
-        : "Lock in the scored stages before handing this event to judges.",
-    ];
+      setupStepCompletion[4] && selectedGuidedSetupPreset && selectedGuidedSetupPreset.id !== "custom"
+        ? `${selectedGuidedSetupPreset.name} generated the event structure.`
+        : setupStepCompletion[4]
+          ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} are ready to score.`
+          : "Confirm the scored stages before moving on.",
+    ].slice(0, SETUP_WIZARD_STEPS.length);
   }, [currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset, setupStepCompletion]);
   const activeSetupCoaching = SETUP_STEP_COACHING[currentSetupStep] ?? SETUP_STEP_COACHING[0];
   const wizardGuardrails = useMemo(() => {
@@ -1892,6 +1801,12 @@ export default function StaffDashboard({
         ok: draft.qualifier_eligible_age_groups.length > 0,
         okMessage: "Registration groups are ready for the event timeline.",
         warningMessage: "Choose at least one qualifier group so climbers know who this event is for.",
+      },
+      {
+        label: "Finals categories are in the qualifier field",
+        ok: draft.finals_eligible_age_groups.every((ageGroup) => draft.qualifier_eligible_age_groups.includes(ageGroup)),
+        okMessage: "Finals eligibility only uses selected registration groups.",
+        warningMessage: "Remove finals-eligible groups that are not selected for qualifiers.",
       },
       {
         label: "Schedule blocks added",
@@ -1924,8 +1839,8 @@ export default function StaffDashboard({
 
     return [
       { label: "Event details filled", ok: Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()) },
-      { label: "Categories selected", ok: draft.qualifier_eligible_age_groups.length > 0 },
-      { label: "Structure is fully defined", ok: setupStepCompletion[2] },
+      { label: "Preset selected", ok: setupStepCompletion[1] },
+      { label: "Categories selected", ok: setupStepCompletion[2] },
       { label: "Schedule is linked to scoring", ok: setupStepCompletion[3] },
       { label: "Scoring stages are ready", ok: setupStepCompletion[4] },
     ];
@@ -1962,7 +1877,19 @@ export default function StaffDashboard({
     },
     [demoMode]
   );
-  const handleOrganizerPresetSelection = (presetId: GuidedSetupPreset["id"]) => {
+  const handleOrganizerPresetSelection = (presetId: CompetitionPresetId) => {
+    if (
+      draft &&
+      presetId !== "custom" &&
+      selectedGuidedSetupPresetId &&
+      selectedGuidedSetupPresetId !== presetId &&
+      !window.confirm(
+        "Changing presets will overwrite generated categories, finals eligibility, rounds, and schedule blocks. Continue?"
+      )
+    ) {
+      return;
+    }
+
     applyGuidedSetupPreset(presetId);
     updateOrganizerDemoState({ presetSelected: true });
   };
@@ -1981,9 +1908,10 @@ export default function StaffDashboard({
       return;
     }
 
-    setDraft(cloneCompetition(selectedSummary.competition));
+    const clonedCompetition = cloneCompetition(selectedSummary.competition);
+    setDraft(clonedCompetition);
     setCurrentSetupStep(0);
-    setSelectedGuidedSetupPresetId(null);
+    setSelectedGuidedSetupPresetId(detectCompetitionPreset(clonedCompetition).id);
     setOrganizerDemoState({
       setupOpened: false,
       categoriesViewed: false,
@@ -2285,48 +2213,48 @@ export default function StaffDashboard({
       });
       await waitForOrganizerPlayback(2200);
 
-      setOrganizerPlaybackStep("categories");
+      setOrganizerPlaybackStep("preset");
       goToSetupStep(1);
       setOrganizerNarration({
-        title: "Choose who can register",
-        body: "First, confirm the age groups this event serves so the rest of the structure is built around the right field.",
+        title: "Apply a proven comp format",
+        body: "First, the organizer chooses a tested setup that generates categories, finals eligibility, competition stages, and the day plan together.",
+      });
+      patchDemoSalesSession({
+        storyStep: "organizer-preset",
+        narratorTitle: "Apply a proven comp format",
+        narratorBody:
+          "First, the organizer chooses a tested setup that generates categories, finals eligibility, competition stages, and the day plan together.",
+      });
+      await moveOrganizerDemoCursor("organizer-step-preset", {
+        click: true,
+        label: "Preset",
+      });
+      await waitForOrganizerPlayback(1200);
+      await moveOrganizerDemoCursor("organizer-preset-open-boulder", {
+        click: true,
+        label: "Open championship",
+      });
+      applyGuidedSetupPreset("open_boulder_championship");
+      updateOrganizerDemoState({ presetSelected: true });
+      await waitForOrganizerPlayback(2400);
+
+      setOrganizerPlaybackStep("categories");
+      goToSetupStep(2);
+      setOrganizerNarration({
+        title: "Review the generated categories",
+        body: "After the preset lands, the organizer can trim the registration groups and choose finals-eligible categories from that same selected field.",
       });
       patchDemoSalesSession({
         storyStep: "organizer-categories",
-        narratorTitle: "Choose who can register",
+        narratorTitle: "Review the generated categories",
         narratorBody:
-          "First, confirm the age groups this event serves so the rest of the structure is built around the right field.",
+          "After the preset lands, the organizer can trim the registration groups and choose finals-eligible categories from that same selected field.",
       });
       await moveOrganizerDemoCursor("organizer-step-categories", {
         click: true,
         label: "Categories",
       });
       await waitForOrganizerPlayback(2200);
-
-      setOrganizerPlaybackStep("preset");
-      goToSetupStep(2);
-      setOrganizerNarration({
-        title: "Apply a proven comp format",
-        body: "Instead of building every round by hand, the organizer chooses a tested setup that creates the competition stages and day plan automatically.",
-      });
-      patchDemoSalesSession({
-        storyStep: "organizer-preset",
-        narratorTitle: "Apply a proven comp format",
-        narratorBody:
-          "Instead of building every round by hand, the organizer chooses a tested setup that creates the competition stages and day plan automatically.",
-      });
-      await moveOrganizerDemoCursor("organizer-step-structure", {
-        click: true,
-        label: "Structure",
-      });
-      await waitForOrganizerPlayback(1200);
-      await moveOrganizerDemoCursor("organizer-preset-qualifier-finals", {
-        click: true,
-        label: "Qualifier + Finals",
-      });
-      applyGuidedSetupPreset("qualifier_finals");
-      updateOrganizerDemoState({ presetSelected: true });
-      await waitForOrganizerPlayback(2400);
 
       setOrganizerPlaybackStep("schedule");
       goToSetupStep(3);
@@ -3134,7 +3062,7 @@ export default function StaffDashboard({
                       <div className={`rounded-[1rem] border px-3 py-2.5 ${demoMode ? "border-sky-100 bg-white/95" : "border-slate-200 bg-slate-50/80"}`}>
                         <div className="results-kicker">Applied preset</div>
                         <div className="mt-1 text-sm font-semibold text-slate-950">
-                          {selectedGuidedSetupPreset?.title ?? (setupStepCompletion[2] ? "Manual build ready" : "None")}
+                          {selectedGuidedSetupPreset?.name ?? (setupStepCompletion[4] ? "Manual build ready" : "None")}
                         </div>
                       </div>
                       <div className={`rounded-[1rem] border px-3 py-2.5 ${demoMode ? "border-sky-100 bg-white/95" : "border-slate-200 bg-slate-50/80"}`}>
@@ -3167,7 +3095,7 @@ export default function StaffDashboard({
                             step.id === "categories"
                               ? "organizer-step-categories"
                               : step.id === "presets"
-                                ? "organizer-step-structure"
+                                ? "organizer-step-preset"
                                 : step.id === "schedule"
                                   ? "organizer-step-schedule"
                                   : step.id === "stages"
@@ -3457,7 +3385,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
-                <div id="setup-categories" className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
                   <label
                     className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_name")}`}
                     htmlFor="current-event-name"
@@ -3517,6 +3445,7 @@ export default function StaffDashboard({
                           formatReviewed: true,
                         }));
                         const nextFormat = event.target.value as Competition["format"];
+                        setSelectedGuidedSetupPresetId("custom");
                         if (!roundPlanCustomized) {
                           replaceRoundPlanFromTemplate(nextFormat);
                           return;
@@ -3664,14 +3593,17 @@ export default function StaffDashboard({
                   </>
                 ) : null}
 
-                {currentSetupStep === 1 ? (
+                {currentSetupStep === 2 ? (
                 <div
+                  id="setup-categories"
                   className={`grid gap-4 md:grid-cols-2 ${organizerDemoSectionClass("categories")} ${demoMode ? "[&_>.results-workspace-card]:border-sky-200/70 [&_>.results-workspace-card]:bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.98))] [&_>.results-workspace-card]:shadow-[0_16px_36px_rgba(15,23,42,0.05)]" : ""}`}
                   data-demo-anchor="organizer-categories"
                 >
                   <div className="results-workspace-card">
-                    <div className="results-kicker">Step 2 - Choose qualifier categories</div>
-                    <div className="mt-2 text-sm text-slate-600">Pick the groups this event is actually for.</div>
+                    <div className="results-kicker">Step 3 - Review qualifier categories</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      Presets generate the starting field. Trim this list only if this event is serving fewer groups.
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                         const active = draft.qualifier_eligible_age_groups.includes(ageGroup);
@@ -3681,7 +3613,15 @@ export default function StaffDashboard({
                             type="button"
                             onClick={() => {
                               updateOrganizerDemoState({ categoriesViewed: true });
-                              setDraft({ ...draft, qualifier_eligible_age_groups: toggleAgeGroup(draft.qualifier_eligible_age_groups, ageGroup) });
+                              const nextQualifierAgeGroups = toggleAgeGroup(draft.qualifier_eligible_age_groups, ageGroup);
+                              setSelectedGuidedSetupPresetId("custom");
+                              setDraft({
+                                ...draft,
+                                qualifier_eligible_age_groups: nextQualifierAgeGroups,
+                                finals_eligible_age_groups: draft.finals_eligible_age_groups.filter((entry) =>
+                                  nextQualifierAgeGroups.includes(entry)
+                                ),
+                              });
                             }}
                             className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                           >
@@ -3695,9 +3635,11 @@ export default function StaffDashboard({
                   {draftHasFinals ? (
                     <div className="results-workspace-card">
                     <div className="results-kicker">Finals categories (optional)</div>
-                    <div className="mt-2 text-sm text-slate-600">Limit finals only if some groups should stop after qualifiers.</div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      Finals eligibility can only come from the qualifier categories selected on the left.
+                    </div>
                       <div className="mt-4 flex flex-wrap gap-2">
-                        {CATEGORY_AGE_GROUPS.map((ageGroup) => {
+                        {draft.qualifier_eligible_age_groups.length ? draft.qualifier_eligible_age_groups.map((ageGroup) => {
                           const active = draft.finals_eligible_age_groups.includes(ageGroup);
                           return (
                             <button
@@ -3705,6 +3647,7 @@ export default function StaffDashboard({
                               type="button"
                               onClick={() => {
                                 updateOrganizerDemoState({ categoriesViewed: true });
+                                setSelectedGuidedSetupPresetId("custom");
                                 setDraft({ ...draft, finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, ageGroup) });
                               }}
                               className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
@@ -3712,36 +3655,41 @@ export default function StaffDashboard({
                               {ageGroup}
                             </button>
                           );
-                        })}
+                        }) : (
+                          <div className="rounded-[1rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            Select at least one qualifier category before choosing finals eligibility.
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : null}
                 </div>
                 ) : null}
 
-                {currentSetupStep === 2 ? (
-                <div id="setup-structure" className={`results-workspace-card ${organizerDemoSectionClass("preset")} ${demoMode ? "border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))] shadow-[0_18px_40px_rgba(14,116,215,0.08)]" : ""}`}>
+                {currentSetupStep === 1 ? (
+                <div id="setup-presets" className={`results-workspace-card ${organizerDemoSectionClass("preset")} ${demoMode ? "border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))] shadow-[0_18px_40px_rgba(14,116,215,0.08)]" : ""}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Step 3 - Pick an event setup</div>
+                      <div className="results-kicker">Step 2 - Pick a competition preset</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        Choose the event shape that should generate the rounds and day plan for you.
+                        Choose the event shape before category setup. The preset generates categories, finals eligibility, rounds, and schedule blocks together.
                       </div>
                     </div>
                     {selectedGuidedSetupPreset ? (
                       <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900">
-                        Selected: {selectedGuidedSetupPreset.title}
+                        Selected: {selectedGuidedSetupPreset.name}
                       </div>
                     ) : (
                       <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-                        Choose a template to apply it
+                        Choose a preset to apply it
                       </div>
                     )}
                   </div>
-                  <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                  <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                     {GUIDED_SETUP_PRESETS.map((preset) => (
                       (() => {
                         const isSelected = selectedGuidedSetupPresetId === preset.id;
+                        const finalsEligibleCategories = getPresetFinalsEligibleCategories(preset);
 
                         return (
                           <button
@@ -3750,8 +3698,8 @@ export default function StaffDashboard({
                             aria-pressed={isSelected}
                             onClick={() => handleOrganizerPresetSelection(preset.id)}
                             disabled={organizerAutoplayRunning}
-                            data-demo-anchor={preset.id === "qualifier_finals" ? "organizer-preset-qualifier-finals" : undefined}
-                            className={`group flex min-w-0 h-full min-h-[21rem] flex-col rounded-[1.6rem] border px-5 py-5 text-left transition ${
+                            data-demo-anchor={preset.id === "open_boulder_championship" ? "organizer-preset-open-boulder" : undefined}
+                            className={`group flex min-w-0 h-full min-h-[24rem] flex-col rounded-[1.6rem] border px-5 py-5 text-left transition ${
                               isSelected
                                 ? "border-slate-950 bg-slate-950 text-white shadow-[0_24px_60px_rgba(15,23,42,0.18)] demo-organizer-preset-selected"
                                 : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/50"
@@ -3772,25 +3720,20 @@ export default function StaffDashboard({
                               </div>
                             </div>
                             <div className={`mt-4 text-[clamp(2rem,1.75rem+0.35vw,2.35rem)] font-semibold leading-[1.08] tracking-tight ${isSelected ? "text-white" : "text-slate-950"}`}>
-                              {preset.title}
+                              {preset.name}
                             </div>
                             <div className={`mt-4 text-base leading-relaxed ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
                               {preset.description}
                             </div>
-                            <div
-                              className={`mt-5 rounded-[1rem] border px-4 py-3 text-sm leading-relaxed ${
-                                isSelected
-                                  ? "border-white/12 bg-white/8 text-slate-100"
-                                  : "border-slate-200 bg-slate-50 text-slate-700"
-                              }`}
-                            >
-                              {preset.details}
-                            </div>
                             <div className="mt-5 space-y-3 text-sm leading-relaxed">
                               {[
-                                ["Best for", preset.bestFor],
-                                ["Includes", preset.includes],
-                                ["Typical flow", preset.typicalFlow],
+                                ["Audience", preset.targetAudience],
+                                ["Format", FORMAT_TEMPLATES.find((template) => template.value === preset.format)?.label ?? preset.format],
+                                ["Categories", preset.defaultCategories.join(" / ")],
+                                ["Finals", preset.finalsEnabled ? `Top ${preset.finalsCutoff}: ${finalsEligibleCategories.join(" / ") || "selected categories"}` : "Disabled"],
+                                ["Qualifiers", `${preset.qualifierProblemCount} problems, best ${preset.countingClimbs} count`],
+                                ["Schedule", preset.defaultScheduleBlocks.map((block) => block.label).join(" -> ") || "Manual"],
+                                ["Judging", preset.judgeRequirementLevel.replaceAll("_", " ")],
                               ].map(([label, value]) => (
                                 <div key={`${preset.id}-${label}`} className="grid gap-1 sm:grid-cols-[6.75rem_minmax(0,1fr)] sm:gap-3">
                                   <div className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
@@ -3810,14 +3753,16 @@ export default function StaffDashboard({
                   </div>
                   {selectedGuidedSetupPreset ? (
                     <div className="mt-4 rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-950">
-                      <span className="font-semibold">{selectedGuidedSetupPreset.title}</span> is currently applied.
-                      Continue to <span className="font-semibold">Day schedule</span> to adjust generated blocks, then review <span className="font-semibold">Competition stages</span>.
+                      <span className="font-semibold">{selectedGuidedSetupPreset.name}</span> is currently selected. Generated qualifier categories:{" "}
+                      <span className="font-semibold">{draft.qualifier_eligible_age_groups.join(" / ") || "none yet"}</span>. Finals-eligible categories:{" "}
+                      <span className="font-semibold">
+                        {draftHasFinals ? draft.finals_eligible_age_groups.join(" / ") || "none selected" : "finals disabled"}
+                      </span>.
                     </div>
                   ) : null}
                   <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    Next: review the generated <span className="font-semibold text-slate-900">Day schedule</span> and{" "}
-                    <span className="font-semibold text-slate-900">Competition stages</span> sections below. They are now pre-linked so
-                    real climbing sessions already point at the right round.
+                    Next: review the generated <span className="font-semibold text-slate-900">Categories</span>. If you change a preset after manual edits,
+                    Scorecard will warn before overwriting the generated setup.
                   </div>
                 </div>
                 ) : null}

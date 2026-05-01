@@ -1,23 +1,38 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-type SaveStatusState = "idle" | "saving" | "saved" | "queued" | "offline" | "error";
+export type SaveStatusState =
+  | "idle"
+  | "dirty"
+  | "saving"
+  | "saved"
+  | "queued"
+  | "offline"
+  | "replayed"
+  | "conflict"
+  | "error";
 
 const labels: Record<SaveStatusState, string> = {
   idle: "Ready",
+  dirty: "Unsaved",
   saving: "Saving...",
   saved: "Saved",
   queued: "Queued",
   offline: "Offline",
+  replayed: "Replayed",
+  conflict: "Conflict",
   error: "Save failed",
 };
 
 const dots: Record<SaveStatusState, string> = {
   idle: "bg-slate-300",
+  dirty: "bg-amber-500",
   saving: "bg-sky-500",
   saved: "bg-emerald-500",
   queued: "bg-amber-500",
   offline: "bg-slate-500",
+  replayed: "bg-violet-500",
+  conflict: "bg-orange-500",
   error: "bg-red-500",
 };
 
