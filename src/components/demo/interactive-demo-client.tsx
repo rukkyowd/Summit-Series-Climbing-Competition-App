@@ -600,7 +600,15 @@ export function InteractiveDemoClient() {
       return null;
     }
 
+    const activeRoundId = snapshot.activeQualifierRound?.id ?? null;
     const preferred =
+      snapshot.climbers.find((climber) => {
+        const boulderOneAttempt = filterAttemptsForRound(climber.qualifier_attempts, activeRoundId).find(
+          (attempt) => attempt.climb_number === 1
+        );
+
+        return !boulderOneAttempt || !boulderOneAttempt.topped || (boulderOneAttempt.attempts_to_top ?? boulderOneAttempt.attempt_count) > 1;
+      }) ??
       snapshot.climbers.find((climber) => climber.name.toLowerCase().includes("maya foster")) ??
       snapshot.climbers[0] ??
       null;
@@ -1221,8 +1229,8 @@ export function InteractiveDemoClient() {
       setPlaybackStep("save");
       setMobileTab("judge");
       setPlaybackNarration({
-        title: "Step 1: Judge logs a flash",
-        body: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
+        title: "Step 1: Judge logs the deciding top",
+        body: `Watch the left side. ${athlete.name} gets an official top on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the public score everyone else reacts to.`,
       });
       syncSalesSessionState((current) => ({
         ...(current ??
@@ -1235,8 +1243,8 @@ export function InteractiveDemoClient() {
           })),
         phase: "judge",
         storyStep: "judge-save",
-        narratorTitle: "Step 1: Judge logs a flash",
-        narratorBody: `Watch the left side. ${athlete.name} gets a flash on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the official public score.`,
+        narratorTitle: "Step 1: Judge logs the deciding top",
+        narratorBody: `Watch the left side. ${athlete.name} gets an official top on ${getDemoPitchClimb(1)?.label ?? "Boulder 1"} and that result becomes the public score everyone else reacts to.`,
       }));
       await moveDemoCursorTo("interactive-top-button", {
         click: true,
