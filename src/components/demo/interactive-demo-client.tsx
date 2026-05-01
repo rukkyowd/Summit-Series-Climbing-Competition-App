@@ -1195,7 +1195,7 @@ export function InteractiveDemoClient() {
       scriptRunning: true,
     }));
     setError("");
-    setMessage("Guided demo started. Watch one saved score, the finals bubble swap, the Wi-Fi drop, and the sync recovery.");
+    setMessage("Guided demo started. Watch the same event you built move into one saved score, the finals bubble swap, the Wi-Fi drop, and the sync recovery.");
     syncSalesSessionState((current) =>
       createDemoSalesSession({
         mode: "judge",
@@ -1205,7 +1205,7 @@ export function InteractiveDemoClient() {
           ? "The event you just configured is now powering live judging."
           : "Watch one saved score drive the whole comp-day story.",
         narratorBody: options?.preserveSalesSession
-          ? "Stay with the story as the same event moves into one judge save, a live leaderboard reaction, and an offline recovery moment."
+          ? "Stay with the same event as it moves into one judge save, a live leaderboard reaction, and an offline recovery moment."
           : "This guided demo shows the money moment: one clean save, live public movement, a Wi-Fi failure, and a resilient sync catch-up.",
         autoplay: true,
         organizerCompleted: options?.preserveSalesSession ?? false,
@@ -1221,7 +1221,7 @@ export function InteractiveDemoClient() {
       await resetDramaScenario(true);
       setPlaybackNarration({
         title: "Starting the guided demo",
-        body: "You are watching the exact comp-day story: one judge logs a score, the finals bubble flips live on tiebreaks, Wi-Fi drops, scores keep queueing, then everything syncs back in.",
+        body: "You are still on the same event from organizer setup. Now one judge logs a score, the finals bubble flips live on tiebreaks, Wi-Fi drops, scores keep queueing, then everything syncs back in.",
       });
       await wait(2600);
 
@@ -1411,7 +1411,7 @@ export function InteractiveDemoClient() {
       setPresentationFocus("leaderboard");
       setPlaybackNarration({
         title: "Demo complete",
-        body: "In under a minute, you just built the event, watched judging go live, saw the leaderboard update, and proved the app can recover cleanly when Wi-Fi drops.",
+        body: "In under a minute, the same event moved from organizer setup into live judging, a real leaderboard swing, and a clean recovery from bad Wi-Fi.",
       });
       await resetDemoDataInBackground();
       syncSalesSessionState((current) => ({
@@ -1428,7 +1428,7 @@ export function InteractiveDemoClient() {
         storyStep: "complete",
         narratorTitle: "Demo complete",
         narratorBody:
-          "The comp was created from scratch, judging worked, the leaderboard reacted live, and the offline queue recovered cleanly. Use Start over whenever you want to return to the organizer flow and build the next event.",
+          "The same event was created from scratch, judged live, and recovered cleanly. Use Start over whenever you want to return to the organizer flow and build the next event.",
         autoplay: false,
         organizerCompleted: true,
         judgePending: false,
@@ -1437,6 +1437,7 @@ export function InteractiveDemoClient() {
       }));
       salesAutoplayStartedRef.current = false;
       setMessage("Guided demo complete. Use Start over to jump back to the organizer flow and rebuild the event from scratch.");
+
     } catch (nextError) {
       setError(normalizeDemoErrorMessage(nextError, "Unable to run the guided demo."));
     } finally {

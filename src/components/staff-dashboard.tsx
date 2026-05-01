@@ -153,18 +153,6 @@ type GuidedSetupPreset = {
   typicalFlow: string;
 };
 
-type DemoFlowStep = {
-  title: string;
-  description: string;
-};
-
-type DemoTourCard = {
-  title: string;
-  description: string;
-  href: string;
-  actionLabel: string;
-};
-
 type OrganizerPlaybackStep =
   | "intro"
   | "categories"
@@ -209,27 +197,6 @@ const ORGANIZER_BUILD_TRANSITION_STEPS = [
   "Launching the live judge panel",
 ] as const;
 
-const DEMO_FLOW_STEPS: DemoFlowStep[] = [
-  { title: "Build the event", description: "Set categories, sessions, and competition stages before registration opens." },
-  { title: "Open registration", description: "Share one clean registration link instead of juggling forms and spreadsheets." },
-  { title: "Run sessions", description: "Organize qualifier, semifinal, and finals windows on a single day schedule." },
-  { title: "Record scores live", description: "Judges capture attempts while standings update in the background." },
-  { title: "Advance finalists", description: "Move athletes into the next stage without rebuilding finals lists by hand." },
-  { title: "Share results", description: "Give climbers and spectators a public leaderboard and display screen." },
-];
-
-const DEMO_REPLACES_POINTS = [
-  "Registration spreadsheets and manual session rosters",
-  "Paper scorecards or disconnected judge notes",
-  "Hand-built finalist lists and climbing orders",
-  "Scattered links for public updates and event-day screens",
-];
-
-const DEMO_TRUST_POINTS = [
-  "Staff can plan categories, sessions, and stages in one place.",
-  "Judging, standings, and finals progression follow the same event model.",
-  "Public pages look polished for climbers, parents, and spectators.",
-];
 
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
@@ -509,6 +476,29 @@ const SETUP_WIZARD_STEPS = [
     shortLabel: "Stages",
     title: "Competition stages",
     description: "Fine-tune rounds, scoring buckets, problem counts, and advancement cutoffs.",
+  },
+] as const;
+
+const SETUP_STEP_COACHING = [
+  {
+    task: "Name the event, pick the format, and set registration timing.",
+    unlock: "Categories and presets now apply to a real event instead of a blank shell.",
+  },
+  {
+    task: "Choose who can register and, if needed, who can make finals.",
+    unlock: "Presets and schedule blocks can now target the right field.",
+  },
+  {
+    task: "Apply the event shape you want instead of building every round by hand.",
+    unlock: "The day schedule and stage flow are generated from this setup.",
+  },
+  {
+    task: "Review the day plan and make sure live blocks point at the right rounds.",
+    unlock: "Judging and public timing will follow the same event timeline.",
+  },
+  {
+    task: "Confirm the scored stages, boulder counts, and advancement rules.",
+    unlock: "This event is now ready to hand into live judging.",
   },
 ] as const;
 
@@ -1872,24 +1862,25 @@ export default function StaffDashboard({
 
     return [
       setupStepCompletion[0]
-        ? `${draft.name || "Event"} in ${draft.location_name || "your venue"} is ready.`
-        : "Add the event name, slug, and venue.",
+        ? `${draft.name || "Event"} is grounded and ready for setup.`
+        : "Ground the event with its name, format, and registration window.",
       setupStepCompletion[1]
-        ? `${draft.qualifier_eligible_age_groups.length} qualifier groups selected.`
-        : "Choose the age groups that can register.",
+        ? `${draft.qualifier_eligible_age_groups.length} registration groups are set.`
+        : "Pick the groups this event is actually for.",
       setupStepCompletion[2] && selectedGuidedSetupPreset
-        ? `${selectedGuidedSetupPreset.title} applied.`
+        ? `${selectedGuidedSetupPreset.title} is driving the event structure.`
         : setupStepCompletion[2]
-          ? "Manual structure is fully configured."
-          : "Apply a preset or fully build the structure manually before this step is complete.",
+          ? "The event structure is fully configured."
+          : "Apply a setup or finish the manual structure before moving on.",
       setupStepCompletion[3]
-        ? `${orderedDraftScheduleBlocks.length} schedule blocks planned and linked.`
-        : "Add schedule blocks and link the live scoring ones to real stages.",
+        ? `${orderedDraftScheduleBlocks.length} schedule blocks are planned and linked.`
+        : "Make sure the day plan and live rounds point at each other.",
       setupStepCompletion[4]
-        ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} configured and ready.`
-        : "Finish the scoring stages and make sure the schedule points at them correctly.",
+        ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} are ready to score.`
+        : "Lock in the scored stages before handing this event to judges.",
     ];
   }, [currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset, setupStepCompletion]);
+  const activeSetupCoaching = SETUP_STEP_COACHING[currentSetupStep] ?? SETUP_STEP_COACHING[0];
   const wizardGuardrails = useMemo(() => {
     if (!draft) {
       return [] as { label: string; ok: boolean; okMessage: string; warningMessage: string }[];
@@ -1942,28 +1933,6 @@ export default function StaffDashboard({
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
     : "No stage flow yet";
-  const demoTourCards: DemoTourCard[] = draft
-    ? [
-        {
-          title: "Organizer setup",
-          description: "Review how staff configure categories, day schedule, and competition stages.",
-          href: "#demo-organizer-setup",
-          actionLabel: "Start setup walkthrough",
-        },
-        {
-          title: "Judge station demo",
-          description: "See the same event move into live scoring and watch one save update the public rankings.",
-          href: demoJudgePath,
-          actionLabel: "Open judge station demo",
-        },
-        {
-          title: "Live leaderboard",
-          description: "Preview the climber-facing rankings and display experience for this sample event.",
-          href: leaderboardPath,
-          actionLabel: "Open live leaderboard",
-        },
-      ]
-    : [];
   const updateOrganizerDemoState = useCallback(
     (patch: Partial<typeof organizerDemoState>) => {
       if (!demoMode) {
@@ -2175,7 +2144,7 @@ export default function StaffDashboard({
     setOrganizerPlaybackStep("handoff");
     setOrganizerNarration({
       title: "Finalizing the event you just built",
-      body: "We are saving your organizer setup, simulating a busy qualifier field, and opening the judge panel with live data tied to this exact event.",
+      body: "We are saving this exact organizer setup, filling the field, and opening judge mode on the same event.",
     });
     writeDemoSalesSession(
       createDemoSalesSession({
@@ -2184,7 +2153,7 @@ export default function StaffDashboard({
         storyStep: "organizer-build",
         narratorTitle: "Finalizing the event you just built",
         narratorBody:
-          "We are saving your organizer setup, simulating a busy qualifier field, and opening the judge panel with live data tied to this exact event.",
+          "We are saving this exact organizer setup, filling the field, and opening judge mode on the same event.",
         autoplay: true,
         organizerCompleted: true,
         judgePending: true,
@@ -2203,7 +2172,7 @@ export default function StaffDashboard({
       });
       setOrganizerNarration({
         title: ORGANIZER_BUILD_TRANSITION_STEPS[0],
-        body: "The organizer configuration is being saved so the judge panel opens from a real persisted event instead of a mock shell.",
+        body: "The organizer setup is being saved so judge mode opens on the same persisted event you just configured.",
       });
       await saveDraftNow();
       await waitForOrganizerPlayback(450);
@@ -2218,8 +2187,8 @@ export default function StaffDashboard({
           title: ORGANIZER_BUILD_TRANSITION_STEPS[index],
           body:
             index < ORGANIZER_BUILD_TRANSITION_STEPS.length - 1
-              ? "This handoff is turning your empty event into a believable comp day with registrations, qualifier traffic, and a live judging field."
-              : "The judge panel is ready. Next, the story moves into one live score save, a live leaderboard reaction, and an offline recovery moment.",
+              ? "This handoff keeps the same event and adds the field data needed for a believable comp day."
+              : "Judge mode is ready. You are still on the same event, now with a full field and live scoring.",
         });
 
         if (index === 1) {
@@ -2255,7 +2224,7 @@ export default function StaffDashboard({
           storyStep: "judge-save",
           narratorTitle: "The event you just built is now powering live judging.",
           narratorBody:
-            "Stay with the story as the same event moves into one judge save, a live leaderboard reaction, and an offline recovery moment.",
+            "Stay with the same event as it moves into one judge save, a live leaderboard reaction, and an offline recovery moment.",
           autoplay: true,
           organizerCompleted: true,
           judgePending: true,
@@ -2398,13 +2367,13 @@ export default function StaffDashboard({
       setOrganizerPlaybackStep("handoff");
       setOrganizerNarration({
         title: "The event structure is ready for judging",
-        body: "The organizer side is complete. Next, the demo builds a clean event instance in the background and opens the judge station on that ready-to-run setup.",
+        body: "The organizer side is complete. Next, this same event is hydrated with a field and opened in judge mode.",
       });
       patchDemoSalesSession({
         storyStep: "organizer-handoff",
         narratorTitle: "The event structure is ready for judging",
         narratorBody:
-          "The organizer side is complete. Next, the demo builds a clean event instance in the background and opens the judge station on that ready-to-run setup.",
+          "The organizer side is complete. Next, this same event is hydrated with a field and opened in judge mode.",
         organizerCompleted: true,
         phase: "organizer",
         judgePending: true,
@@ -2727,18 +2696,40 @@ export default function StaffDashboard({
           </Alert>
         ) : null}
 
-        {demoMode ? (
-          <section className="results-card overflow-hidden">
-            <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
-              <div>
-                <div className="results-kicker">Experience as an organizer</div>
-                <h1 className="results-editorial-title mt-3 max-w-4xl text-4xl font-semibold text-slate-950 sm:text-6xl">
-                  Build the comp from scratch. Then watch it run live.
-                </h1>
-                <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-                  You are setting up a gym comp from a clean shell. Watch the categories, format, schedule, and stages appear in the organizer workflow, then follow that same event into the live judge station and public results.
+        {demoMode && organizerNarration ? (
+          <Surface variant="row" className="border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.94))]">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <div className="results-kicker text-sky-700">
+                  {organizerAutoplayRunning ? "Autoplay walkthrough" : "Walkthrough summary"}
+                </div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  {organizerNarration.title}
+                </h2>
+                <p className="max-w-4xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                  {organizerNarration.body}
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/90 px-4 py-2 text-sm font-semibold text-sky-800 shadow-[0_10px_24px_rgba(14,116,215,0.08)]">
+                <span className="demo-live-dot" aria-hidden="true" />
+                <span>{organizerAutoplayRunning ? "Follow the real setup flow" : "Ready to replay"}</span>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
+
+        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="results-card">
+            {demoMode ? (
+              <div data-demo-anchor="organizer-overview" className={organizerDemoSectionClass("overview")}>
+                <div className="results-kicker">Experience as an organizer</div>
+                <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+                  Build the event on the real setup spine.
+                </h1>
+                <div className="results-hero-subline">
+                  Start with a clean shell, move through the same setup steps staff would actually use, then hand this event into live judging and public results.
+                </div>
+                <div className="mt-5 flex flex-wrap gap-3">
                   {draft ? (
                     <>
                       <button
@@ -2759,167 +2750,24 @@ export default function StaffDashboard({
                       Start by creating an event
                     </a>
                   )}
-                  {leaderboardPath ? (
-                    <Link href={leaderboardPath} onClick={() => handleOrganizerHandoff("leaderboard")} className="results-secondary-button">
-                      See live leaderboard
-                    </Link>
-                  ) : null}
-                  {displayPath ? (
-                    <Link href={displayPath} onClick={() => handleOrganizerHandoff("display")} className="results-secondary-button">
-                      See big-screen display
-                    </Link>
-                  ) : null}
                 </div>
-              </div>
-              <Surface variant="feature">
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Sample event
-                </div>
-                <div className="mt-3 text-2xl font-semibold text-slate-950">
-                  {draft?.name ?? "No event created yet"}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Badge>{selectedSummary?.climber_count ?? 0} climbers</Badge>
-                  <Badge>{draft?.categories.length ?? 0} categories</Badge>
-                  <Badge>
-                    {draft?.schedule_blocks.length ?? 0}{" "}
-                    {(draft?.schedule_blocks.length ?? 0) === 1 ? "schedule block" : "schedule blocks"}
-                  </Badge>
-                  <Badge>
-                    {currentCompetitionStages.length}{" "}
-                    {currentCompetitionStages.length === 1 ? "stage" : "stages"}
-                  </Badge>
-                </div>
-                <div className="mt-4 space-y-2 text-sm text-slate-600">
-                  <div>{draft?.location_name || "Location TBD"}</div>
-                  <div>{draft?.discipline_label || "Bouldering"}</div>
-                  <div>
-                    {draft
-                      ? `${formatCompetitionPhaseLabel(draft.current_phase)}${currentCompetitionStages.some((round) => round.round_type === "semifinal") ? " with semifinals in the sample flow." : " with a full public results flow."}`
-                      : "Sample flow loading."}
+                {draft ? (
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <span className="results-chip">{selectedSummary?.climber_count ?? 0} climbers</span>
+                    <span className="results-chip">{draft.categories.length} categories</span>
+                    <span className="results-chip">
+                      {draft.schedule_blocks.length} {draft.schedule_blocks.length === 1 ? "schedule block" : "schedule blocks"}
+                    </span>
+                    <span className="results-chip">
+                      {currentCompetitionStages.length} {currentCompetitionStages.length === 1 ? "stage" : "stages"}
+                    </span>
+                    <span className="results-chip">Next surface: Judge station</span>
                   </div>
-                </div>
-                {demoMode ? (
-                  <div className="mt-5 rounded-[1.2rem] border border-slate-200 bg-white/85 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      What this builds
-                    </div>
-                    <div className="mt-3 grid gap-2 text-sm text-slate-700">
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Categories configured</span>
-                        <span className="results-chip">{draft?.qualifier_eligible_age_groups.length ?? 0}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Format selected</span>
-                        <span className="results-chip">{selectedGuidedSetupPreset?.title ?? "Choose one"}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Schedule generated</span>
-                        <span className="results-chip">{draft?.schedule_blocks.length ?? 0} blocks</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Stages ready</span>
-                        <span className="results-chip">{currentCompetitionStages.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Next surface</span>
-                        <span className="results-chip">Judge station</span>
-                      </div>
-                    </div>
+                ) : (
+                  <div className="mt-5 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
+                    This demo stays grounded in the real organizer dashboard. Create the event first, then the setup spine will guide categories, structure, schedule, and stages in order.
                   </div>
-                ) : null}
-              </Surface>
-            </div>
-          </section>
-        ) : null}
-
-        {demoMode && organizerNarration ? (
-          <Surface variant="row" className="border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.94))]">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-2">
-                <div className="results-kicker text-sky-700">
-                  {organizerAutoplayRunning ? "Organizer autoplay" : "Organizer walkthrough"}
-                </div>
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-                  {organizerNarration.title}
-                </h2>
-                <p className="max-w-4xl text-sm leading-relaxed text-slate-600 sm:text-base">
-                  {organizerNarration.body}
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/90 px-4 py-2 text-sm font-semibold text-sky-800 shadow-[0_10px_24px_rgba(14,116,215,0.08)]">
-                <span className="demo-live-dot" aria-hidden="true" />
-                <span>{organizerAutoplayRunning ? "Follow the cursor and narration" : "Ready to replay"}</span>
-              </div>
-            </div>
-          </Surface>
-        ) : null}
-
-        {demoMode ? (
-          <section className="results-card" data-demo-anchor="demo-story">
-            <div className="results-kicker">How comp day works</div>
-            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              This is the lifecycle gyms care about: plan the event once, run the day confidently, and keep climbers informed live.
-            </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {DEMO_FLOW_STEPS.map((step) => (
-                <div key={step.title} className="rounded-[1.4rem] border border-slate-200 bg-white px-4 py-4">
-                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{step.title}</div>
-                  <div className="mt-2 text-sm leading-6 text-slate-600">{step.description}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {demoMode && demoTourCards.length ? (
-          <section className={`results-card ${organizerDemoSectionClass("handoff")}`} data-demo-anchor="demo-explore">
-            <div className="results-kicker">Explore the product</div>
-            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Start with the organizer workflow, then jump into the live and public surfaces that make comp day easier for staff and climbers.
-            </div>
-            <div className="mt-6 grid gap-4 lg:grid-cols-3">
-              {demoTourCards.map((card) => (
-                <div key={card.title} className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-                  <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{card.title}</div>
-                  <div className="mt-3 text-base leading-7 text-slate-700">{card.description}</div>
-                  {card.href.startsWith("#") ? (
-                    <a href={card.href} className="results-secondary-button mt-5 inline-flex">
-                      {card.actionLabel}
-                    </a>
-                  ) : (
-                    <Link href={card.href} className="results-secondary-button mt-5 inline-flex">
-                      {card.actionLabel}
-                    </Link>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <section className="results-card">
-            {demoMode ? (
-              <div data-demo-anchor="organizer-overview" className={organizerDemoSectionClass("overview")}>
-                <div className="results-kicker">Organizer walkthrough</div>
-                <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
-                  Set up a gym comp without getting lost.
-                </h1>
-                <div className="results-hero-subline">
-                  You are setting up a sample event. Start here, move through the setup spine, and then hand the same event off into live judging and public results.
-                </div>
-                <div className="mt-5 rounded-[1.6rem] border border-slate-200 bg-slate-50 px-5 py-5">
-                  <div className="results-kicker">What this replaces</div>
-                  <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
-                    {DEMO_REPLACES_POINTS.map((point) => (
-                      <div key={point} className="flex items-start gap-3">
-                        <span className="mt-2 h-2 w-2 rounded-full bg-sky-500" aria-hidden="true" />
-                        <span>{point}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
             ) : (
               <>
@@ -3140,7 +2988,7 @@ export default function StaffDashboard({
           <section className="results-card">
             {draft ? (
               <div id="demo-organizer-setup" className="space-y-6">
-                <div className="results-workspace-hero">
+                <div className={`results-workspace-hero ${demoMode ? "border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-[0_12px_32px_rgba(15,23,42,0.04)]" : ""}`}>
                   <div>
                     <div className="results-kicker">{demoMode ? "Organizer setup" : "Event setup"}</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
@@ -3156,8 +3004,8 @@ export default function StaffDashboard({
                       </div>
                     ) : null}
                   </div>
-                    <div className={`results-workspace-callout ${organizerDemoSectionClass("handoff")}`} data-demo-anchor="organizer-links">
-                      <div className="results-kicker">Quick links</div>
+                    <div className={`results-workspace-callout ${organizerDemoSectionClass("handoff")} ${demoMode ? "border-dashed border-slate-200 bg-slate-50/75 shadow-none" : ""}`} data-demo-anchor="organizer-links">
+                      <div className="results-kicker">{demoMode ? "After setup" : "Quick links"}</div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         <Link href={publicPath} className="results-secondary-button w-full">Public event page</Link>
                         {demoMode ? (
@@ -3171,7 +3019,7 @@ export default function StaffDashboard({
                             className={demoJudgeReady ? "results-secondary-button w-full" : "results-secondary-button w-full opacity-60"}
                             data-demo-anchor="organizer-handoff-judge"
                           >
-                            {buildTransitionState.active ? "Preparing judge panel..." : "Go to judge panel"}
+                            {buildTransitionState.active ? "Preparing judge mode..." : "Open judge mode"}
                           </button>
                         ) : (
                           <Link
@@ -3194,14 +3042,14 @@ export default function StaffDashboard({
                       {demoMode ? (
                         <div className="mt-3 text-sm text-slate-600">
                           {demoJudgeReady
-                            ? "The event is saved and ready. Open the judge panel to simulate registrations and move into live scoring."
-                            : "The judge panel unlocks after the event is created, fully configured, and saved."}
+                            ? "This exact event is saved and ready. Open judge mode to add the field and move into live scoring."
+                            : "Finish the setup spine and save once. Then this same event unlocks judge mode."}
                         </div>
                       ) : null}
                     </div>
                   </div>
 
-                <div className="results-section-band">
+                <div className={`results-section-band ${demoMode ? "border border-slate-200/70 bg-slate-50/80 shadow-none" : ""}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="results-kicker">Event setup</div>
@@ -3209,7 +3057,7 @@ export default function StaffDashboard({
                         {publicUrl || publicPath}
                       </div>
                       <div className="mt-1 text-sm leading-relaxed text-slate-600">
-                        Use the local section nav to jump between setup areas without losing the guided step flow.
+                        Stay on the main setup spine here, then open judge mode on this same event when everything is ready.
                       </div>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-3">
@@ -3233,7 +3081,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
-                <div className="results-section-nav">
+                <div className={`results-section-nav ${demoMode ? "opacity-90" : ""}`}>
                   {setupSectionAnchors.map((item) => {
                     const isActive = item.stepIndex !== null ? currentSetupStep === item.stepIndex : false;
                     return (
@@ -3245,7 +3093,7 @@ export default function StaffDashboard({
                             goToSetupStep(item.stepIndex);
                           }
                         }}
-                        className={`results-section-nav__pill ${isActive ? "results-section-nav__pill-active" : ""}`}
+                        className={`results-section-nav__pill transition-all duration-300 ${demoMode ? "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-700" : ""} ${isActive ? "results-section-nav__pill-active" : ""} ${demoMode && isActive ? "border-slate-950 bg-slate-950 text-white shadow-[0_14px_34px_rgba(15,23,42,0.16)]" : ""}`}
                       >
                         {item.label}
                       </a>
@@ -3255,7 +3103,7 @@ export default function StaffDashboard({
 
                 <div
                   id="demo-run-event"
-                  className={`results-workspace-card space-y-4 ${organizerDemoSectionClass(["categories", "preset", "schedule", "stages"])}`}
+                  className={`results-workspace-card space-y-4 ${organizerDemoSectionClass(["categories", "preset", "schedule", "stages"])} ${demoMode ? "border border-sky-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.98))] shadow-[0_22px_54px_rgba(14,116,215,0.08)]" : ""}`}
                   data-demo-anchor="organizer-progress"
                 >
                   <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)] lg:items-start">
@@ -3267,19 +3115,29 @@ export default function StaffDashboard({
                       <div className="mt-1.5 max-w-3xl text-sm leading-relaxed text-slate-600">
                         {activeSetupStep.description}
                       </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+                          <div className="results-kicker">Do here</div>
+                          <div className="mt-1 text-sm leading-relaxed text-slate-700">{activeSetupCoaching.task}</div>
+                        </div>
+                        <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-4 py-3">
+                          <div className="results-kicker">Unlocks next</div>
+                          <div className="mt-1 text-sm leading-relaxed text-slate-700">{activeSetupCoaching.unlock}</div>
+                        </div>
+                      </div>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                      <div className={`rounded-[1rem] border px-3 py-2.5 ${demoMode ? "border-sky-100 bg-white/95" : "border-slate-200 bg-slate-50/80"}`}>
                         <div className="results-kicker">Areas ready</div>
                         <div className="mt-1 text-sm font-semibold text-slate-950">{setupProgressCount}</div>
                       </div>
-                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                      <div className={`rounded-[1rem] border px-3 py-2.5 ${demoMode ? "border-sky-100 bg-white/95" : "border-slate-200 bg-slate-50/80"}`}>
                         <div className="results-kicker">Applied preset</div>
                         <div className="mt-1 text-sm font-semibold text-slate-950">
                           {selectedGuidedSetupPreset?.title ?? (setupStepCompletion[2] ? "Manual build ready" : "None")}
                         </div>
                       </div>
-                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                      <div className={`rounded-[1rem] border px-3 py-2.5 ${demoMode ? "border-sky-100 bg-white/95" : "border-slate-200 bg-slate-50/80"}`}>
                         <div className="results-kicker">Next review</div>
                         <div className="mt-1 text-sm font-semibold text-slate-950">
                           {isLastSetupStep ? "Operations" : SETUP_WIZARD_STEPS[currentSetupStep + 1]?.shortLabel ?? "Operations"}
@@ -3318,7 +3176,7 @@ export default function StaffDashboard({
                           }
                           className={`group min-w-0 rounded-[1.5rem] border px-4 py-4 text-left transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-1 sm:px-5 sm:py-5 ${
                             isActive
-                              ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_54px_rgba(15,23,42,0.18)]"
+                              ? "border-slate-950 bg-[linear-gradient(180deg,rgba(15,23,42,1),rgba(30,41,59,0.98))] text-white shadow-[0_28px_70px_rgba(15,23,42,0.24)] ring-1 ring-sky-200/40"
                               : isComplete
                                 ? "border-emerald-200/90 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(220,252,231,0.9))] text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.06)] hover:border-emerald-300"
                                 : "border-slate-200/90 bg-white text-slate-900 shadow-[0_8px_26px_rgba(15,23,42,0.04)] hover:border-slate-300"
@@ -3338,14 +3196,13 @@ export default function StaffDashboard({
                       );
                     })}
                   </div>
-                  <div className="results-step-summary">
+                  <div className={`results-step-summary ${demoMode ? "border border-sky-100 bg-sky-50/70 text-slate-700" : ""}`}>
                     {setupStepSummaries[currentSetupStep] ?? activeSetupStep.description}
                   </div>
                 </div>
 
                 <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
-                <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
-                <div id="setup-operations" className="results-workspace-card">
+                <div id="setup-operations" className={`results-workspace-card ${demoMode ? "border-dashed border-slate-200 bg-slate-50/70 shadow-none" : ""}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                   <div className="results-kicker">After setup - Run event</div>
@@ -3583,6 +3440,7 @@ export default function StaffDashboard({
                 </div>
                 </fieldset>
 
+                <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {currentSetupStep === 0 ? (
                   <>
                 <div
@@ -3591,11 +3449,11 @@ export default function StaffDashboard({
                     "basics_name",
                     "basics_format",
                     "basics_registration",
-                  ])}`}
+                  ])} ${demoMode ? "border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))] shadow-[0_18px_40px_rgba(14,116,215,0.08)]" : ""}`}
                 >
                     <div className="results-kicker">Step 1 - Event details</div>
                   <div className="mt-2 text-sm text-slate-600">
-                    Start with the basics so the rest of the setup feels like a real comp day, not a blank form.
+                    Set the event identity and registration timing first.
                   </div>
                 </div>
 
@@ -3771,10 +3629,10 @@ export default function StaffDashboard({
                     <input type="number" min={1} value={draft.max_climbers} onChange={(event) => setDraft({ ...draft, max_climbers: Number(event.target.value) || DEFAULT_MAX_CLIMBERS })} className="results-input" />
                     <span className="text-xs leading-5 text-slate-500">Maximum number of climbers this event is set up to handle.</span>
                   </label>
-                  <div className="results-workspace-card">
-                    <div className="results-kicker">Stage settings</div>
+                  <div className={`results-workspace-card ${demoMode ? "border-dashed border-slate-200 bg-slate-50/70" : ""}`}>
+                    <div className="results-kicker">Later in stages</div>
                     <div className="mt-2 text-sm text-slate-600">
-                      Edit stage scoring, qualifying climbs, advancing climbers, and finals boulders in Step 5 - Competition stages.
+                      You will fine-tune scoring, advancing climbers, and finals boulders in Step 5.
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <div className="rounded-[1rem] border border-slate-200/80 bg-white/80 px-4 py-3">
@@ -3795,9 +3653,9 @@ export default function StaffDashboard({
                       </div>
                     </div>
                   </div>
-                  <div className="results-workspace-card">
-                    <div className="results-kicker">After setup - Visibility</div>
-                    <div className="mt-2 text-sm text-slate-600">Archiving hides this event from public browsing without deleting registrations or scoring data.</div>
+                  <div className={`results-workspace-card ${demoMode ? "border-dashed border-slate-200 bg-slate-50/70" : ""}`}>
+                    <div className="results-kicker">Later - Event visibility</div>
+                    <div className="mt-2 text-sm text-slate-600">Archive or reopen the event after the build is done.</div>
                     <button type="button" onClick={() => void setCompetitionStatus(draft.id, draft.status === "active" ? "archived" : "active").then(() => refreshAfterChange(draft.id))} className={draft.status === "active" ? "results-danger-button mt-4" : "results-secondary-button mt-4"}>
                       {draft.status === "active" ? "Archive event" : "Reopen event"}
                     </button>
@@ -3808,12 +3666,12 @@ export default function StaffDashboard({
 
                 {currentSetupStep === 1 ? (
                 <div
-                  className={`grid gap-4 md:grid-cols-2 ${organizerDemoSectionClass("categories")}`}
+                  className={`grid gap-4 md:grid-cols-2 ${organizerDemoSectionClass("categories")} ${demoMode ? "[&_>.results-workspace-card]:border-sky-200/70 [&_>.results-workspace-card]:bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.98))] [&_>.results-workspace-card]:shadow-[0_16px_36px_rgba(15,23,42,0.05)]" : ""}`}
                   data-demo-anchor="organizer-categories"
                 >
                   <div className="results-workspace-card">
                     <div className="results-kicker">Step 2 - Choose qualifier categories</div>
-                    <div className="mt-2 text-sm text-slate-600">These are the categories athletes can register into, and they also drive the guided schedule presets.</div>
+                    <div className="mt-2 text-sm text-slate-600">Pick the groups this event is actually for.</div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                         const active = draft.qualifier_eligible_age_groups.includes(ageGroup);
@@ -3837,7 +3695,7 @@ export default function StaffDashboard({
                   {draftHasFinals ? (
                     <div className="results-workspace-card">
                     <div className="results-kicker">Finals categories (optional)</div>
-                    <div className="mt-2 text-sm text-slate-600">Only these categories can advance into finals.</div>
+                    <div className="mt-2 text-sm text-slate-600">Limit finals only if some groups should stop after qualifiers.</div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {CATEGORY_AGE_GROUPS.map((ageGroup) => {
                           const active = draft.finals_eligible_age_groups.includes(ageGroup);
@@ -3862,13 +3720,12 @@ export default function StaffDashboard({
                 ) : null}
 
                 {currentSetupStep === 2 ? (
-                <div id="setup-structure" className={`results-workspace-card ${organizerDemoSectionClass("preset")}`}>
+                <div id="setup-structure" className={`results-workspace-card ${organizerDemoSectionClass("preset")} ${demoMode ? "border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))] shadow-[0_18px_40px_rgba(14,116,215,0.08)]" : ""}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Step 3 - Pick an event setup</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        Start with a competition structure first. This will generate the rounds and day schedule for you,
-                        and you can fine-tune everything below afterward.
+                        Choose the event shape that should generate the rounds and day plan for you.
                       </div>
                     </div>
                     {selectedGuidedSetupPreset ? (
@@ -3968,14 +3825,14 @@ export default function StaffDashboard({
                 {currentSetupStep === 3 ? (
                 <div
                   id="setup-schedule"
-                  className={`results-workspace-card ${organizerDemoSectionClass("schedule")}`}
+                  className={`results-workspace-card ${organizerDemoSectionClass("schedule")} ${demoMode ? "border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))] shadow-[0_18px_40px_rgba(14,116,215,0.08)]" : ""}`}
                   data-demo-anchor="organizer-schedule"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Step 4 - Build the day</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        These blocks describe when things happen during the day. Real climbing sessions should link to a stage; logistics items can stay schedule-only.
+                        Review the day plan and make sure live blocks point at real scored stages.
                       </div>
                     </div>
                     <div className="results-chip">{draft.schedule_blocks.length} blocks</div>
@@ -4332,9 +4189,11 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">Wizard navigation</div>
+                      <div className="results-kicker">{demoMode ? "Move through the spine" : "Wizard navigation"}</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        Move one step at a time, or jump directly from the progress cards above.
+                        {demoMode
+                          ? "Stay focused on one setup area at a time, or jump from the progress cards above."
+                          : "Move one step at a time, or jump directly from the progress cards above."}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -4361,8 +4220,8 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
-                <div className="results-workspace-card">
-                  <div className="results-kicker">After setup - Share links</div>
+                <div className={`results-workspace-card ${demoMode ? "border-dashed border-slate-200 bg-slate-50/70" : ""}`}>
+                  <div className="results-kicker">{demoMode ? "Later - Share links" : "After setup - Share links"}</div>
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                     <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl || publicPath}</div>
                     <div><span className="font-semibold text-slate-950">Register:</span> {registerUrl || registerPath}</div>
@@ -4387,14 +4246,14 @@ export default function StaffDashboard({
                 {draft.rounds?.length ? (
                   <div
                     id="setup-stages"
-                    className={`results-workspace-card ${organizerDemoSectionClass("stages")}`}
+                    className={`results-workspace-card ${organizerDemoSectionClass("stages")} ${demoMode ? "border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))] shadow-[0_18px_40px_rgba(14,116,215,0.08)]" : ""}`}
                     data-demo-anchor="organizer-stages"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="results-kicker">Step 5 - Competition stages</div>
                         <div className="mt-2 text-sm text-slate-600">
-                          This is where you define the actual parts of the competition, like Qualifier, Semifinal, and Finals. Use stages to decide which parts create rankings and which parts are only there to organize the day.
+                          Confirm the scored stages, boulder counts, and advancement rules before going live.
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -4828,41 +4687,6 @@ export default function StaffDashboard({
             )}
           </section>
         </section>
-
-        {demoMode ? (
-          <section className="grid gap-6 lg:grid-cols-2">
-            <section className="results-card">
-              <div className="results-kicker">Why gyms like this</div>
-              <div className="mt-4 space-y-4 text-sm leading-6 text-slate-600">
-                {DEMO_TRUST_POINTS.map((point) => (
-                  <div key={point} className="flex items-start gap-3">
-                    <span className="mt-2 h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
-                    <span>{point}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <section className="results-card">
-              <div className="results-kicker">Want this for your gym?</div>
-              <h2 className="results-editorial-title mt-3 text-3xl font-semibold text-slate-950 sm:text-4xl">
-                Use the sample event as your walkthrough.
-              </h2>
-              <p className="mt-4 text-base leading-7 text-slate-600">
-                Show buyers the organizer setup first, then open the public leaderboard and display to demonstrate the event-day experience end to end.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button type="button" onClick={() => void runOrganizerDemo()} className="results-primary-button" disabled={organizerAutoplayRunning}>
-                  {organizerAutoplayRunning ? "Running organizer demo..." : "Run organizer demo"}
-                </button>
-                {leaderboardPath ? (
-                  <Link href={leaderboardPath} className="results-secondary-button">
-                    Open sample leaderboard
-                  </Link>
-                ) : null}
-              </div>
-            </section>
-          </section>
-        ) : null}
 
         {organizerDemoCursor.visible ? (
           <div
