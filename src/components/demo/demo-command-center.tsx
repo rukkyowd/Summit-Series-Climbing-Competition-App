@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
-import { getCompetitionPreset } from "@/lib/competition-presets";
+import { getGuidedDemoPreset } from "@/lib/competition-presets";
 import { clearDemoSalesSession } from "@/lib/demo-sales-session";
 import type { DemoStoryState, DemoStoryTargetAct } from "@/lib/demo-story";
 
 type ActStatus = "locked" | "ready" | "in_progress" | "complete";
+type DemoCommandView = "home" | "act1_setup";
 type BuildTransitionState = {
   active: boolean;
   stepIndex: number;
@@ -45,7 +46,41 @@ const ACT_1_BUILD_STEPS = [
   "Opening judge workspaces",
   "Launching the live judge panel",
 ] as const;
-const youthChampionshipPreset = getCompetitionPreset("youth_championship_finals");
+const ACT_1_SCHEDULE_PREVIEW = [
+  "Check-in",
+  "Judges briefing",
+  "Technical meeting",
+  "Qualifier waves",
+  "Results review",
+  "Isolation",
+  "Observation",
+  "Finals",
+  "Awards",
+] as const;
+const ACT_1_DIVISIONS = ["Men", "Women"] as const;
+const youthChampionshipPreset = getGuidedDemoPreset();
+const FINALS_STORY_STEPS = [
+  {
+    title: "Qualifiers",
+    body: "Judges score climbers during the qualifier round.",
+  },
+  {
+    title: "Cut line",
+    body: "The leaderboard ranks climbers by category. The key score correction can move an athlete above the finals cut line.",
+  },
+  {
+    title: "Advance finalists",
+    body: "The organizer locks qualifiers and advances the eligible categories.",
+  },
+  {
+    title: "Finals",
+    body: "Finalists compete in a finals stage using the configured finals format.",
+  },
+  {
+    title: "Public results",
+    body: "Athletes, coaches, parents, and spectators can view rankings and results publicly.",
+  },
+] as const;
 const DEMO_STORY_COPY = {
   title: "Summit Series Demo",
 } as const;
@@ -129,8 +164,36 @@ function clearDemoStoryLocalProgress() {
   clearDemoSalesSession();
 }
 
+function clearDemoStoryRuntimeState() {
+  clearDemoStoryLocalProgress();
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function getJudgeRouteReadinessError(state: DemoStoryState) {
+  if (state.error) {
+    return state.error;
+  }
+
+  if (!state.competition) {
+    return "Create the canonical demo event before opening the judge panel.";
+  }
+
+  if (!state.competition.is_demo) {
+    return "The canonical demo slug is not marked as demo-safe. Refusing to open the judge panel.";
+  }
+
+  if (!state.metadata?.drama_target_climber || !state.metadata.drama_target_climb_number) {
+    return "The demo is missing the target athlete or boulder metadata. Repair the demo state before opening the judge panel.";
+  }
+
+  if (!state.links.judge) {
+    return "The demo judge route is missing target athlete or qualifier route prerequisites. Repair the demo state before opening the judge panel.";
+  }
+
+  return null;
 }
 
 function getActStatus(act: StoryAct, state: DemoStoryState, publicViewed: boolean): ActStatus {
@@ -147,7 +210,7 @@ function getActStatus(act: StoryAct, state: DemoStoryState, publicViewed: boolea
 
   if (act.id === "organizer") {
     if (progress.finalistsAdvanced && progress.finalsStarted) return "complete";
-    return progress.keyScoreCorrected ? "ready" : "locked";
+    return progress.keyScoreCorrected && progress.finalsSetupReady ? "ready" : "locked";
   }
 
   if (progress.finalsStarted && publicViewed) {
@@ -183,6 +246,14 @@ function statusStyles(status: ActStatus) {
   }
 }
 
+function getActButtonLabel(act: StoryAct, status: ActStatus, state: DemoStoryState) {
+  if (act.id === "organizer" && state.progress.eventCreated && !state.progress.finalsSetupReady) {
+    return "Reset demo and restart Act 1";
+  }
+
+  return status === "locked" ? "Prepare demo state and skip ahead" : act.primaryLabel;
+}
+
 export function DemoCommandCenter({ initialState }: { initialState: DemoStoryState }) {
   const router = useRouter();
   const [state, setState] = useState(initialState);
@@ -190,6 +261,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   const [notice, setNotice] = useState<string | null>(null);
   const [publicViewed, setPublicViewed] = useState(false);
   const [act2CompletionVisible, setAct2CompletionVisible] = useState(initialState.progress.keyScoreCorrected);
+  const [activeView, setActiveView] = useState<DemoCommandView>("home");
   const [buildTransition, setBuildTransition] = useState<BuildTransitionState>({
     active: false,
     stepIndex: 0,
@@ -243,7 +315,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     setNotice(null);
     setPendingLabel(options?.reset ? "Resetting demo..." : "Preparing demo...");
     if (options?.reset) {
-      clearDemoStoryLocalProgress();
+      clearDemoStoryRuntimeState();
       setPublicViewed(false);
       setAct2CompletionVisible(false);
     } else {
@@ -253,6 +325,8 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     try {
       const nextState = await postPrepareState(targetAct, options);
       setState(nextState);
+      setError(nextState.error);
+      setActiveView("home");
       setAct2CompletionVisible(nextState.progress.keyScoreCorrected);
       if (targetAct === "public_ready" && !options?.resetOnly) {
         writeLocalPublicViewed();
@@ -272,11 +346,43 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
   }
 
+  async function startFullStory() {
+    setError(null);
+    setNotice(null);
+    setPendingLabel("Resetting demo story...");
+    setBuildTransition({ active: false, stepIndex: 0, complete: false });
+    clearDemoStoryRuntimeState();
+    setPublicViewed(false);
+    setAct2CompletionVisible(false);
+
+    try {
+      const nextState = await postPrepareState("event_created", { reset: true, resetOnly: true });
+      setState(nextState);
+      setError(nextState.error);
+      setActiveView("act1_setup");
+      setNotice(
+        nextState.error
+          ? "Act 1 is ready, but the demo state needs repair before the judge panel can open."
+          : "Act 1 is ready. Review the event setup, then finish setup to open the judge panel."
+      );
+    } catch (startError) {
+      setError(startError instanceof Error ? startError.message : "Unable to reset the guided demo story.");
+    } finally {
+      setPendingLabel(null);
+    }
+  }
+
+  function openAct1Setup() {
+    setError(null);
+    setNotice(null);
+    setActiveView("act1_setup");
+  }
+
   async function runAct1BuildTransition(options?: { reset?: boolean }) {
     setError(null);
     setNotice(null);
     setPendingLabel(null);
-    clearDemoStoryLocalProgress();
+    clearDemoStoryRuntimeState();
     setPublicViewed(false);
     setAct2CompletionVisible(false);
     setBuildTransition({ active: true, stepIndex: 0, complete: false });
@@ -297,6 +403,11 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
         throw prepareError instanceof Error ? prepareError : new Error("Unable to prepare the judge demo.");
       }
 
+      const readinessError = getJudgeRouteReadinessError(nextState);
+      if (readinessError) {
+        throw new Error(readinessError);
+      }
+
       setState(nextState);
       setBuildTransition({
         active: true,
@@ -305,13 +416,8 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       });
       await wait(420);
 
-      const judgeHref = nextState.links.judge;
-      if (!judgeHref) {
-        throw new Error("Demo judge route is not available yet.");
-      }
-
       startTransition(() => {
-        router.push(judgeHref);
+        router.push(nextState.links.judge!);
       });
     } catch (buildError) {
       setBuildTransition({ active: false, stepIndex: 0, complete: false });
@@ -335,6 +441,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       }
 
       setState(payload.state);
+      setError(payload.state.error);
       setAct2CompletionVisible(payload.state.progress.keyScoreCorrected);
       if (messageOnIncomplete && !payload.state.progress.keyScoreCorrected) {
         setNotice(messageOnIncomplete);
@@ -354,6 +461,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       return;
     }
 
+    setActiveView("home");
     void prepareState("event_created", { reset: true, resetOnly: true });
   }
 
@@ -361,7 +469,12 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     const href = state.links[act.hrefKey];
 
     if (act.id === "create") {
-      void runAct1BuildTransition();
+      openAct1Setup();
+      return;
+    }
+
+    if (act.id === "organizer" && state.progress.eventCreated && !state.progress.finalsSetupReady) {
+      void startFullStory();
       return;
     }
 
@@ -374,7 +487,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
 
     if (status === "locked" || !href) {
       if (act.id === "judge") {
-        void runAct1BuildTransition();
+        openAct1Setup();
         return;
       }
       void prepareState(act.targetAct, { redirectTo: href, redirectKey: act.hrefKey });
@@ -385,9 +498,14 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   }
 
   const currentAct =
-    storyActs.find((act) => getActStatus(act, state, publicViewed) !== "complete") ??
-    storyActs[storyActs.length - 1];
-  const currentStatus = getActStatus(currentAct, state, publicViewed);
+    activeView === "act1_setup"
+      ? storyActs[0]
+      : storyActs.find((act) => getActStatus(act, state, publicViewed) !== "complete") ??
+        storyActs[storyActs.length - 1];
+  const currentStatus =
+    activeView === "act1_setup" && !state.progress.eventCreated
+      ? "in_progress"
+      : getActStatus(currentAct, state, publicViewed);
   const metadata = state.metadata;
   const busy = isPending || Boolean(pendingLabel) || buildTransition.active;
 
@@ -494,7 +612,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => void runAct1BuildTransition({ reset: true })}
+                  onClick={() => void startFullStory()}
                   disabled={busy}
                 >
                   Start Full Story
@@ -564,12 +682,178 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   onClick={() => handleActClick(currentAct, currentStatus)}
                   disabled={busy}
                 >
-                  {currentStatus === "locked" ? "Prepare demo state and skip ahead" : currentAct.primaryLabel}
+                  {getActButtonLabel(currentAct, currentStatus, state)}
                 </Button>
               </div>
             </div>
           </div>
         </Surface>
+
+        {activeView === "act1_setup" ? (
+          <Surface variant="panel" density="public" className="space-y-6 border-sky-200 bg-white/95">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-3">
+                <Badge>Act 1 setup review</Badge>
+                <div>
+                  <h2 className="text-3xl font-black tracking-[-0.03em] text-slate-950">
+                    Create the Demo Event
+                  </h2>
+                  <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+                    You are organizing a youth championship at a climbing gym. This preset creates
+                    the category structure, qualifier round, finals rules, and event-day schedule
+                    before the app becomes a live judge station.
+                  </p>
+                  <p className="mt-3 max-w-4xl rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold leading-6 text-emerald-900">
+                    This demo uses a Youth Championship with Finals preset so you can see the full
+                    event lifecycle: setup, qualifier scoring, leaderboard movement, finalist
+                    advancement, finals, and public results.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => void runAct1BuildTransition()}
+                  disabled={busy}
+                >
+                  Finish setup
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => setActiveView("home")}
+                  disabled={busy}
+                >
+                  Back to Demo Home
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">
+                        Preset
+                      </p>
+                      <h3 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+                        {youthChampionshipPreset.name}
+                      </h3>
+                    </div>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-emerald-800">
+                      Required for story
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {youthChampionshipPreset.description}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                    This preset is locked in guided story mode. Use the normal competition setup flow
+                    if you want to explore qualifier-only presets.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-bold text-slate-500">Qualifier problems</p>
+                      <p className="mt-1 text-2xl font-black text-slate-950">
+                        {youthChampionshipPreset.qualifierProblemCount}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-bold text-slate-500">Counting climbs</p>
+                      <p className="mt-1 text-2xl font-black text-slate-950">
+                        {youthChampionshipPreset.countingClimbs}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-bold text-slate-500">Finals cutoff</p>
+                      <p className="mt-1 text-2xl font-black text-slate-950">
+                        Top {youthChampionshipPreset.finalsCutoff}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
+                    <h3 className="font-black text-slate-950">Generated categories</h3>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {youthChampionshipPreset.defaultCategories.flatMap((ageGroup) =>
+                        ACT_1_DIVISIONS.map((division) => (
+                          <span
+                            key={`${division}-${ageGroup}`}
+                            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
+                          >
+                            {division} / {ageGroup}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-3xl border border-emerald-200 bg-emerald-50/80 p-5">
+                    <h3 className="font-black text-emerald-950">Finals eligible</h3>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {youthChampionshipPreset.finalsEligibleCategories.flatMap((ageGroup) =>
+                        ACT_1_DIVISIONS.map((division) => (
+                          <span
+                            key={`${division}-${ageGroup}`}
+                            className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-bold text-emerald-800"
+                          >
+                            {division} / {ageGroup}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-emerald-800">
+                      Youth D and Youth C compete in qualifiers, but they do not advance to finals by default.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-sky-200 bg-sky-50/80 p-5">
+                  <h3 className="font-black text-sky-950">How finals work in this demo</h3>
+                  <div className="mt-4 grid gap-3">
+                    {FINALS_STORY_STEPS.map((step, index) => (
+                      <div key={step.title} className="flex gap-3 rounded-2xl bg-white/80 p-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-black text-white">
+                          {index + 1}
+                        </span>
+                        <div>
+                          <p className="font-black text-slate-950">{step.title}</p>
+                          <p className="mt-1 text-sm leading-5 text-slate-600">{step.body}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-sm font-semibold leading-6 text-sky-900">
+                    The qualifier round ranks climbers inside each category. Youth D and Youth C
+                    compete in qualifiers only; Youth B, Youth A, and Junior are finals-eligible.
+                    After score review, the organizer locks qualifiers, advances the Top{" "}
+                    {youthChampionshipPreset.finalsCutoff}, and makes finals the active scoring stage.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
+                <h3 className="font-black text-slate-950">Schedule and rounds</h3>
+                <ol className="mt-4 space-y-2">
+                  {ACT_1_SCHEDULE_PREVIEW.map((item, index) => (
+                    <li
+                      key={item}
+                      className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700"
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
+                        {index + 1}
+                      </span>
+                      {item}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
 
         {act2CompletionVisible && state.progress.keyScoreCorrected ? (
           <Surface variant="panel" density="judge" className="border-emerald-200 bg-emerald-50/90">
@@ -621,7 +905,11 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
 
         <section className="grid gap-4 lg:grid-cols-4">
           {storyActs.map((act) => {
-            const status = getActStatus(act, state, publicViewed);
+            const computedStatus = getActStatus(act, state, publicViewed);
+            const status =
+              activeView === "act1_setup" && act.id === "create" && !state.progress.eventCreated
+                ? "in_progress"
+                : computedStatus;
             return (
               <Surface key={act.id} variant="row" density="organizer" className="flex h-full flex-col gap-4">
                 <div className="flex items-center justify-between gap-3">
@@ -644,7 +932,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                     onClick={() => handleActClick(act, status)}
                     disabled={busy}
                   >
-                    {status === "locked" ? "Prepare demo state and skip ahead" : act.primaryLabel}
+                    {getActButtonLabel(act, status, state)}
                   </Button>
                   {act.id === "judge" && state.progress.eventCreated && !state.progress.keyScoreCorrected ? (
                     <Button
@@ -662,7 +950,9 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   ) : null}
                   {status === "locked" && (act.id === "organizer" || act.id === "public") ? (
                     <p className="text-xs font-semibold leading-5 text-amber-700">
-                      This skips the hands-on task and prepares only canonical demo data.
+                      {act.id === "organizer" && state.progress.eventCreated && !state.progress.finalsSetupReady
+                        ? "The guided story needs finals setup for Act 3. Reset the demo to restore the finals-capable story preset."
+                        : "This skips the hands-on task and prepares only canonical demo data."}
                     </p>
                   ) : null}
                   {status !== "locked" && act.id === "public" && state.links.leaderboard && (
@@ -701,8 +991,8 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
                 <h3 className="font-black text-slate-950">Generated categories</h3>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {["Men", "Women"].flatMap((division) =>
-                    youthChampionshipPreset.defaultCategories.map((ageGroup) => (
+                  {youthChampionshipPreset.defaultCategories.flatMap((ageGroup) =>
+                    ACT_1_DIVISIONS.map((division) => (
                       <span
                         key={`${division}-${ageGroup}`}
                         className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
@@ -716,8 +1006,8 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
                 <h3 className="font-black text-slate-950">Finals eligible</h3>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {["Men", "Women"].flatMap((division) =>
-                    youthChampionshipPreset.finalsEligibleCategories.map((ageGroup) => (
+                  {youthChampionshipPreset.finalsEligibleCategories.flatMap((ageGroup) =>
+                    ACT_1_DIVISIONS.map((division) => (
                       <span
                         key={`${division}-${ageGroup}`}
                         className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800"

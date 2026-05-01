@@ -1,4 +1,5 @@
 import { normalizeQualifierAttemptInput } from "./attempts";
+import { getGuidedDemoPreset, GUIDED_DEMO_PRESET_ID } from "./competition-presets";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG, isCanonicalDemoCompetitionSlug } from "./demo";
 import { resetDemoCompetition } from "./demo-reset";
 import {
@@ -18,6 +19,7 @@ export type DemoStoryTargetAct =
 
 export type DemoStoryProgress = {
   eventCreated: boolean;
+  finalsSetupReady: boolean;
   keyScoreCorrected: boolean;
   finalistsAdvanced: boolean;
   finalsStarted: boolean;
@@ -36,6 +38,11 @@ export type DemoStoryCompetitionSummary = {
   slug: string;
   name: string;
   is_demo: boolean;
+  has_finals: boolean;
+  finals_cutoff: number | null;
+  finals_tie_advances: boolean | null;
+  finals_problem_count: number | null;
+  finals_eligible_age_groups: string[];
   current_phase: string;
   qualifier_locked_at: string | null;
   finals_started_at: string | null;
@@ -50,10 +57,28 @@ type DemoStoryAttemptSummary = {
   attempts_to_zone: number | null;
 };
 
+type DemoQualifierRoundSummary = {
+  id: string;
+  problem_count: number | null;
+};
+
+type DemoRoundSummary = {
+  id: string;
+  round_type: string | null;
+  scoring_bucket: string | null;
+  problem_count: number | null;
+};
+
+type DemoScheduleBlockSummary = {
+  label: string;
+  phase_type: string;
+};
+
 export type DemoStoryProgressSnapshot = {
   competition: DemoStoryCompetitionSummary | null;
   targetAttempt?: DemoStoryAttemptSummary | null;
   finalistCount?: number | null;
+  finalsSetupReady?: boolean;
   publicViewed?: boolean;
   targetClimberBelongsToCompetition?: boolean;
 };
@@ -78,12 +103,58 @@ export type DemoStoryState = {
 
 const FINAL_PHASES = new Set(["finals_open", "finals_closed", "results"]);
 const EVENT_CREATED_STORY_STEPS = new Set(["event_created", "score_corrected", "finalists_started", "public_ready"]);
+const REQUIRED_FINALS_SCHEDULE_PHASES = new Set(["isolation", "observation", "finals_round"]);
 const ACT_ORDER: DemoStoryTargetAct[] = [
   "event_created",
   "score_corrected",
   "finalists_started",
   "public_ready",
 ];
+
+function stringSetsEqual(left: readonly string[], right: readonly string[]) {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return leftSet.size === rightSet.size && Array.from(leftSet).every((entry) => rightSet.has(entry));
+}
+
+export function deriveDemoFinalsSetupReady(snapshot: {
+  competition: DemoStoryCompetitionSummary | null;
+  rounds?: readonly DemoRoundSummary[] | null;
+  scheduleBlocks?: readonly DemoScheduleBlockSummary[] | null;
+}) {
+  const competition = snapshot.competition;
+  const preset = getGuidedDemoPreset();
+  const rounds = snapshot.rounds ?? [];
+  const scheduleBlocks = snapshot.scheduleBlocks ?? [];
+  const hasQualifierRound = rounds.some(
+    (round) => round.scoring_bucket === "qualifier" || round.round_type === "qualifier"
+  );
+  const hasFinalsRound = rounds.some(
+    (round) =>
+      (round.scoring_bucket === "finals" || round.round_type === "finals") &&
+      (!round.problem_count || round.problem_count >= preset.finalsProblemCount)
+  );
+  const schedulePhases = new Set(scheduleBlocks.map((block) => block.phase_type));
+  const hasFinalsSchedule = Array.from(REQUIRED_FINALS_SCHEDULE_PHASES).every((phase) =>
+    schedulePhases.has(phase)
+  );
+  const hasAwards = scheduleBlocks.some((block) => block.label.toLowerCase().includes("awards"));
+
+  return Boolean(
+    competition &&
+      isCanonicalDemoMutableCompetition(competition) &&
+      competition.has_finals === true &&
+      competition.demo_metadata?.preset_id === GUIDED_DEMO_PRESET_ID &&
+      competition.finals_cutoff === preset.finalsCutoff &&
+      competition.finals_tie_advances === preset.tiesAdvanceDefault &&
+      competition.finals_problem_count === preset.finalsProblemCount &&
+      stringSetsEqual(competition.finals_eligible_age_groups ?? [], preset.finalsEligibleCategories) &&
+      hasQualifierRound &&
+      hasFinalsRound &&
+      hasFinalsSchedule &&
+      hasAwards
+  );
+}
 
 export function isCanonicalDemoMutableCompetition(
   competition: Pick<DemoStoryCompetitionSummary, "slug" | "is_demo"> | null | undefined
@@ -109,6 +180,7 @@ export function deriveDemoStoryProgress(snapshot: DemoStoryProgressSnapshot): De
   const completedZoneAttempt = attempt?.attempts_to_zone ?? attempt?.attempt_count ?? null;
   const targetBelongs = snapshot.targetClimberBelongsToCompetition !== false;
   const storyStep = typeof metadata?.story_step === "string" ? metadata.story_step : "";
+  const finalsSetupReady = snapshot.finalsSetupReady === true;
   const eventCreated =
     isCanonicalDemoMutableCompetition(snapshot.competition) &&
     Boolean(metadata?.scenario_version) &&
@@ -120,14 +192,16 @@ export function deriveDemoStoryProgress(snapshot: DemoStoryProgressSnapshot): De
     (Boolean(attempt?.zone) || Boolean(attempt?.topped)) &&
     completedTopAttempt === expectedAttempts &&
     (completedZoneAttempt === null || completedZoneAttempt === expectedAttempts || completedZoneAttempt === 1);
-  const finalistsAdvanced = eventCreated && (snapshot.finalistCount ?? 0) > 0;
+  const finalistsAdvanced = eventCreated && finalsSetupReady && (snapshot.finalistCount ?? 0) > 0;
   const finalsStarted =
     eventCreated &&
+    finalsSetupReady &&
     (Boolean(snapshot.competition?.finals_started_at) ||
       FINAL_PHASES.has(snapshot.competition?.current_phase ?? ""));
 
   return {
     eventCreated,
+    finalsSetupReady,
     keyScoreCorrected,
     finalistsAdvanced,
     finalsStarted,
@@ -145,6 +219,7 @@ function emptyDemoStoryState(error: string | null = null): DemoStoryState {
     finalistCount: 0,
     progress: {
       eventCreated: false,
+      finalsSetupReady: false,
       keyScoreCorrected: false,
       finalistsAdvanced: false,
       finalsStarted: false,
@@ -168,7 +243,9 @@ function getActIndex(targetAct: DemoStoryTargetAct) {
 async function loadCanonicalDemoCompetition(supabase: ReturnType<typeof createServiceRoleSupabaseClient>) {
   const { data, error } = await supabase
     .from("competitions")
-    .select("id, slug, name, is_demo, current_phase, qualifier_locked_at, finals_started_at, demo_metadata")
+    .select(
+      "id, slug, name, is_demo, has_finals, finals_cutoff, finals_tie_advances, finals_problem_count, finals_eligible_age_groups, current_phase, qualifier_locked_at, finals_started_at, demo_metadata"
+    )
     .eq("slug", DEMO_COMPETITION_SLUG)
     .maybeSingle();
 
@@ -210,6 +287,70 @@ async function loadDemoTargetAttempt(
   }
 
   return (data ?? null) as DemoStoryAttemptSummary | null;
+}
+
+async function loadDemoQualifierRoundSummary(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoStoryCompetitionSummary | null
+) {
+  if (!competition?.id) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("competition_rounds")
+    .select("id, problem_count")
+    .eq("competition_id", competition.id)
+    .or("scoring_bucket.eq.qualifier,round_type.eq.qualifier")
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? null) as DemoQualifierRoundSummary | null;
+}
+
+async function loadDemoRoundSummaries(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoStoryCompetitionSummary | null
+) {
+  if (!competition?.id) {
+    return [] as DemoRoundSummary[];
+  }
+
+  const { data, error } = await supabase
+    .from("competition_rounds")
+    .select("id, round_type, scoring_bucket, problem_count")
+    .eq("competition_id", competition.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as DemoRoundSummary[];
+}
+
+async function loadDemoScheduleBlockSummaries(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoStoryCompetitionSummary | null
+) {
+  if (!competition?.id) {
+    return [] as DemoScheduleBlockSummary[];
+  }
+
+  const { data, error } = await supabase
+    .from("competition_schedule_blocks")
+    .select("label, phase_type")
+    .eq("competition_id", competition.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as DemoScheduleBlockSummary[];
 }
 
 async function loadDemoStoryClimbers(
@@ -361,7 +502,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
         metadata: loadedCompetition.demo_metadata,
         links: {
           setup: "/staff/demo",
-          judge: `/staff/c/${loadedCompetition.slug}/judge?demoStory=act2`,
+          judge: null,
           organizer: `/staff/c/${loadedCompetition.slug}?demoStory=act3`,
           publicEvent: `/c/${loadedCompetition.slug}?demoStory=public`,
           leaderboard: `/c/${loadedCompetition.slug}/leaderboard?demoStory=public`,
@@ -371,17 +512,29 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
     }
 
     const competition = repairResult.competition;
-    const [targetAttempt, finalistCount, scorecard] = await Promise.all([
+    const [targetAttempt, finalistCount, scorecard, qualifierRound, rounds, scheduleBlocks] = await Promise.all([
       loadDemoTargetAttempt(supabase, competition),
       loadDemoFinalistCount(supabase, competition),
       loadDemoScorecardLink(supabase, competition),
+      loadDemoQualifierRoundSummary(supabase, competition),
+      loadDemoRoundSummaries(supabase, competition),
+      loadDemoScheduleBlockSummaries(supabase, competition),
     ]);
+    const targetClimberBelongsToCompetition =
+      repairResult.targetClimber.competition_id === undefined ||
+      repairResult.targetClimber.competition_id === competition.id;
+    const finalsSetupReady = deriveDemoFinalsSetupReady({
+      competition,
+      rounds,
+      scheduleBlocks,
+    });
     const progress = deriveDemoStoryProgress({
       competition,
       targetAttempt,
       finalistCount,
+      finalsSetupReady,
       publicViewed,
-      targetClimberBelongsToCompetition: true,
+      targetClimberBelongsToCompetition,
     });
     const judgeParams = new URLSearchParams({ demoStory: "act2" });
     if (competition.demo_metadata?.drama_target_climber) {
@@ -390,10 +543,25 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
     if (competition.demo_metadata?.drama_target_climb_number) {
       judgeParams.set("boulder", String(competition.demo_metadata.drama_target_climb_number));
     }
+    const targetClimbNumber = competition.demo_metadata?.drama_target_climb_number ?? null;
+    const targetProblemExists =
+      typeof targetClimbNumber === "number" &&
+      targetClimbNumber > 0 &&
+      (!qualifierRound?.problem_count || targetClimbNumber <= qualifierRound.problem_count);
+    const judgeRouteReady =
+      targetClimberBelongsToCompetition && Boolean(qualifierRound?.id) && targetProblemExists;
+    const readinessError = judgeRouteReady
+      ? null
+      : "Demo judge route prerequisites are missing. Repair the demo state to restore the target athlete and qualifier round.";
+    const storyError =
+      readinessError ??
+      (finalsSetupReady
+        ? null
+        : "Demo finals setup is missing. Reset demo and restart Act 1 to restore the Youth Championship with Finals preset.");
 
     return {
       available: true,
-      error: null,
+      error: storyError,
       competition,
       metadata: competition.demo_metadata,
       targetAttempt,
@@ -401,7 +569,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       progress,
       links: {
         setup: "/staff/demo",
-        judge: `/staff/c/${competition.slug}/judge?${judgeParams.toString()}`,
+        judge: judgeRouteReady ? `/staff/c/${competition.slug}/judge?${judgeParams.toString()}` : null,
         organizer: `/staff/c/${competition.slug}?demoStory=act3`,
         publicEvent: `/c/${competition.slug}?demoStory=public`,
         leaderboard: `/c/${competition.slug}/leaderboard?demoStory=public`,

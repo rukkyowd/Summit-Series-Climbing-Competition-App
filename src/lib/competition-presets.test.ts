@@ -3,6 +3,7 @@ import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
   getCompetitionPreset,
+  getGuidedDemoPreset,
   getPresetFinalsEligibleCategories,
 } from "./competition-presets";
 import { DEFAULT_COMPETITION, normalizeCompetition } from "./scoring";
@@ -37,6 +38,33 @@ describe("competition presets", () => {
     );
 
     expect(detectCompetitionPreset(existingCompetition).id).toBe("custom");
+  });
+
+  it("uses a finals-capable preset for the guided demo story", () => {
+    const preset = getGuidedDemoPreset();
+
+    expect(preset.id).toBe("youth_championship_finals");
+    expect(preset.finalsEnabled).toBe(true);
+    expect(preset.finalsCutoff).toBe(6);
+    expect(preset.finalsProblemCount).toBe(4);
+    expect(preset.finalsEligibleCategories).toEqual(["Youth B", "Youth A", "Junior"]);
+    expect(preset.defaultScheduleBlocks.some((block) => block.phase_type === "isolation")).toBe(true);
+    expect(preset.defaultScheduleBlocks.some((block) => block.phase_type === "observation")).toBe(true);
+    expect(preset.defaultScheduleBlocks.some((block) => block.phase_type === "finals_round")).toBe(true);
+  });
+
+  it("does not use qualifier-only presets for the guided demo story", () => {
+    const guidedPreset = getGuidedDemoPreset();
+    const qualifierOnlyPresetIds = COMPETITION_PRESETS.filter((preset) => !preset.finalsEnabled).map(
+      (preset) => preset.id
+    );
+
+    expect(qualifierOnlyPresetIds).toEqual([
+      "community_scramble",
+      "recreational_scramble_awards",
+      "youth_qualifier_day",
+    ]);
+    expect(qualifierOnlyPresetIds).not.toContain(guidedPreset.id);
   });
 
   it("keeps existing demo competitions custom so presets do not regenerate demo data", () => {

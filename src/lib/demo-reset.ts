@@ -1,5 +1,5 @@
 import { buildDisplayCategory, createCategoryKey } from "./scoring";
-import { getCompetitionPreset } from "./competition-presets";
+import { getGuidedDemoPreset } from "./competition-presets";
 import { buildDemoStoryMetadataForClimbers } from "./demo-story-target";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG } from "./demo";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
@@ -7,7 +7,7 @@ import { createServiceRoleSupabaseClient } from "./server-supabase";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEMO_LOCATION = "North Summit Climbing";
 const DEMO_ACTIVE_BLOCK_LABEL = "Youth B qualifier wave";
-const YOUTH_CHAMPIONSHIP_PRESET = getCompetitionPreset("youth_championship_finals");
+const YOUTH_CHAMPIONSHIP_PRESET = getGuidedDemoPreset();
 const OPTIONAL_COMPETITION_LINK_COLUMNS = [
   "official_event_url",
   "official_registration_url",

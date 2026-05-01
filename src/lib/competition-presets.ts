@@ -18,6 +18,8 @@ export type CompetitionPresetId =
   | "training_mock_event"
   | "custom";
 
+export const GUIDED_DEMO_PRESET_ID = "youth_championship_finals" satisfies CompetitionPresetId;
+
 export type JudgeRequirementLevel =
   | "self_scored_ok"
   | "light_staff"
@@ -366,6 +368,16 @@ export const COMPETITION_PRESETS: CompetitionPreset[] = [
 
 export function getCompetitionPreset(presetId: CompetitionPresetId) {
   return COMPETITION_PRESETS.find((preset) => preset.id === presetId) ?? COMPETITION_PRESETS[COMPETITION_PRESETS.length - 1];
+}
+
+export function getGuidedDemoPreset() {
+  const preset = getCompetitionPreset(GUIDED_DEMO_PRESET_ID);
+
+  if (!preset.finalsEnabled) {
+    throw new Error("The guided demo preset must support finals.");
+  }
+
+  return preset;
 }
 
 export function getPresetFinalsEligibleCategories(preset: CompetitionPreset) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveDemoFinalsSetupReady,
   deriveDemoStoryProgress,
   isCanonicalDemoMutableCompetition,
   mergeDemoStoryMetadata,
@@ -19,11 +20,17 @@ function demoCompetition(
     slug: DEMO_COMPETITION_SLUG,
     name: "Demo",
     is_demo: true,
+    has_finals: true,
+    finals_cutoff: 6,
+    finals_tie_advances: true,
+    finals_problem_count: 4,
+    finals_eligible_age_groups: ["Youth B", "Youth A", "Junior"],
     current_phase: "qualifier_open",
     qualifier_locked_at: null,
     finals_started_at: null,
     demo_metadata: {
       scenario_version: "demo-story-v1",
+      preset_id: "youth_championship_finals",
       story_step: "event_created",
       drama_target_climber: "climber-c",
       drama_target_climb_number: 3,
@@ -61,6 +68,7 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 0,
+      finalsSetupReady: true,
     });
 
     expect(progress.eventCreated).toBe(true);
@@ -87,10 +95,69 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 0,
+      finalsSetupReady: true,
     });
 
     expect(progress.eventCreated).toBe(false);
     expect(progress.keyScoreCorrected).toBe(false);
+    expect(progress.finalistsAdvanced).toBe(false);
+    expect(progress.finalsStarted).toBe(false);
+  });
+
+  it("detects the guided demo finals setup contract", () => {
+    expect(
+      deriveDemoFinalsSetupReady({
+        competition: demoCompetition(),
+        rounds: [
+          { id: "qualifier-round", round_type: "qualifier", scoring_bucket: "qualifier", problem_count: 6 },
+          { id: "finals-round", round_type: "finals", scoring_bucket: "finals", problem_count: 4 },
+        ],
+        scheduleBlocks: [
+          { label: "Isolation opens", phase_type: "isolation" },
+          { label: "Observation", phase_type: "observation" },
+          { label: "Finals", phase_type: "finals_round" },
+          { label: "Awards", phase_type: "results" },
+        ],
+      })
+    ).toBe(true);
+  });
+
+  it("reports missing finals setup as not ready for Act 3", () => {
+    expect(
+      deriveDemoFinalsSetupReady({
+        competition: demoCompetition({
+          has_finals: false,
+          demo_metadata: {
+            scenario_version: "demo-story-v1",
+            preset_id: "community_scramble",
+            story_step: "event_created",
+            drama_target_climber: "climber-c",
+            drama_target_climb_number: 3,
+            drama_target_attempts_after: 1,
+          },
+        }),
+        rounds: [{ id: "qualifier-round", round_type: "qualifier", scoring_bucket: "qualifier", problem_count: 30 }],
+        scheduleBlocks: [{ label: "Awards", phase_type: "results" }],
+      })
+    ).toBe(false);
+  });
+
+  it("requires both the key score correction and finals setup before Act 3 can unlock", () => {
+    const progress = deriveDemoStoryProgress({
+      competition: demoCompetition(),
+      targetAttempt: {
+        attempt_count: 1,
+        topped: true,
+        zone: true,
+        attempts_to_top: 1,
+        attempts_to_zone: 1,
+      },
+      finalistCount: 6,
+      finalsSetupReady: false,
+    });
+
+    expect(progress.keyScoreCorrected).toBe(true);
+    expect(progress.finalsSetupReady).toBe(false);
     expect(progress.finalistsAdvanced).toBe(false);
     expect(progress.finalsStarted).toBe(false);
   });
@@ -106,6 +173,7 @@ describe("demo story progress", () => {
         attempts_to_zone: null,
       },
       finalistCount: 0,
+      finalsSetupReady: true,
     });
 
     expect(progress.eventCreated).toBe(true);
@@ -123,6 +191,7 @@ describe("demo story progress", () => {
         attempts_to_zone: 2,
       },
       finalistCount: 0,
+      finalsSetupReady: true,
     });
 
     expect(progress.eventCreated).toBe(true);
@@ -140,6 +209,7 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 0,
+      finalsSetupReady: true,
       targetClimberBelongsToCompetition: false,
     });
 
@@ -161,6 +231,7 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 6,
+      finalsSetupReady: true,
       publicViewed: true,
     });
 
