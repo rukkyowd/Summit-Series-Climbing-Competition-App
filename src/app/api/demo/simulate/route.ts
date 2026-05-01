@@ -53,27 +53,130 @@ function randomItem<T>(items: readonly T[]) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+function hashSeed(value: string) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function seededUnit(seed: string) {
+  return hashSeed(seed) / 4294967295;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function createAccessToken(seed: string) {
   return `demo-${seed.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
 }
 
-function buildAttemptTemplate(seedIndex: number, climbNumber: number) {
-  const variant = (seedIndex + climbNumber) % 6;
-
-  switch (variant) {
-    case 0:
-      return { attempt_count: 1, zone: true, topped: true, attempts_to_top: 1, attempts_to_zone: 1 };
-    case 1:
-      return { attempt_count: 2, zone: true, topped: true, attempts_to_top: 2, attempts_to_zone: 1 };
-    case 2:
-      return { attempt_count: 2, zone: true, topped: false, attempts_to_top: null, attempts_to_zone: 2 };
-    case 3:
-      return { attempt_count: 3, zone: true, topped: false, attempts_to_top: null, attempts_to_zone: 2 };
-    case 4:
-      return { attempt_count: 3, zone: true, topped: true, attempts_to_top: 3, attempts_to_zone: 1 };
+function getCategoryStrength(ageGroup: string) {
+  switch (ageGroup) {
+    case "Open":
+      return 0.08;
+    case "Junior":
+      return 0.05;
+    case "Youth A":
+      return 0.04;
+    case "Youth B":
+      return 0.02;
+    case "Youth C":
+      return -0.02;
+    case "Youth D":
+      return -0.05;
+    case "Masters":
+      return -0.01;
+    case "Rec":
+      return -0.08;
     default:
-      return { attempt_count: 4, zone: false, topped: false, attempts_to_top: null, attempts_to_zone: null };
+      return 0;
   }
+}
+
+function buildRealisticAttempt(
+  competitionId: string,
+  category: DemoCategoryRecord,
+  categoryIndex: number,
+  climberSeed: string,
+  fieldRank: number,
+  fieldSize: number,
+  climbNumber: number,
+  problemCount: number
+) {
+  const normalizedRank = fieldSize <= 1 ? 0 : fieldRank / (fieldSize - 1);
+  const baseSkill = 0.97 - normalizedRank * 0.72;
+  const categoryBoost = getCategoryStrength(category.age_group);
+  const consistency = seededUnit(`${climberSeed}:consistency`) * 0.14 - 0.07;
+  const clutchBoost = seededUnit(`${climberSeed}:clutch:${climbNumber}`) * 0.14 - 0.07;
+  const skill = clamp(baseSkill + categoryBoost + consistency + clutchBoost, 0.12, 1.05);
+
+  const normalizedClimb = problemCount <= 1 ? 0 : (climbNumber - 1) / (problemCount - 1);
+  const categoryDifficultyShift = (categoryIndex % 3) * 0.015;
+  const routeDifficulty =
+    0.22 +
+    normalizedClimb * 0.5 +
+    seededUnit(`${competitionId}:difficulty:${category.id}:${climbNumber}`) * 0.13 +
+    categoryDifficultyShift;
+
+  const attendancePenalty =
+    normalizedClimb > 0.65 && skill < 0.45 && seededUnit(`${climberSeed}:attendance:${climbNumber}`) > 0.84
+      ? 0.2
+      : 0;
+  const performance = skill - routeDifficulty - attendancePenalty;
+  const volatility = seededUnit(`${climberSeed}:volatility:${climbNumber}`) * 0.12 - 0.06;
+  const finalScore = performance + volatility;
+
+  if (finalScore > 0.27) {
+    const attemptsToTop = clamp(1 + Math.floor((0.46 - finalScore) * -4 + seededUnit(`${climberSeed}:top:${climbNumber}`) * 2), 1, 4);
+    const flashBias = seededUnit(`${climberSeed}:flash:${climbNumber}`);
+    const adjustedAttemptsToTop = finalScore > 0.44 && flashBias > 0.32 ? 1 : attemptsToTop;
+    const attemptsToZone = adjustedAttemptsToTop === 1 ? 1 : clamp(adjustedAttemptsToTop - (flashBias > 0.66 ? 1 : 0), 1, adjustedAttemptsToTop);
+
+    return {
+      attempt_count: adjustedAttemptsToTop,
+      zone: true,
+      topped: true,
+      attempts_to_top: adjustedAttemptsToTop,
+      attempts_to_zone: attemptsToZone,
+    };
+  }
+
+  if (finalScore > -0.03) {
+    const attemptsToZone = clamp(
+      1 + Math.floor((0.18 - finalScore) * 6 + seededUnit(`${climberSeed}:zone:${climbNumber}`) * 2),
+      1,
+      4
+    );
+    const extraBurns = seededUnit(`${climberSeed}:zone-burn:${climbNumber}`) > 0.58 ? 1 : 0;
+
+    return {
+      attempt_count: clamp(attemptsToZone + extraBurns, attemptsToZone, 5),
+      zone: true,
+      topped: false,
+      attempts_to_top: null,
+      attempts_to_zone: attemptsToZone,
+    };
+  }
+
+  const workingAttempts = clamp(
+    1 + Math.floor(Math.max(0, routeDifficulty - skill) * 5 + seededUnit(`${climberSeed}:miss:${climbNumber}`) * 2),
+    1,
+    5
+  );
+
+  return {
+    attempt_count: workingAttempts,
+    zone: false,
+    topped: false,
+    attempts_to_top: null,
+    attempts_to_zone: null,
+  };
 }
 
 async function requireCompetition(
@@ -159,8 +262,10 @@ async function hydrateEventCompetition(
   }
 
   const problemCount = Math.max(1, qualifierRound.problem_count ?? competition.total_climbs ?? 5);
-  const climberTarget = Math.min(150, Math.max(24, competition.max_climbers ?? 80));
   const qualifierBlockRows = (qualifierBlocks ?? []) as DemoScheduleBlockRecord[];
+  const baseClimberTarget = Math.max(competition.max_climbers ?? 80, categoryRows.length * 18);
+  const climberTarget = Math.min(240, baseClimberTarget + categoryRows.length * 6);
+  const climbersPerCategory = Math.max(14, Math.floor(climberTarget / categoryRows.length));
 
   const slotByCategory = new Map<string, string | null>();
   categoryRows.forEach((category) => {
@@ -174,26 +279,31 @@ async function hydrateEventCompetition(
   await supabase.from("qualifier_attempts").delete().eq("competition_id", competition.id);
   await supabase.from("climbers").delete().eq("competition_id", competition.id);
 
-  const climberRows = Array.from({ length: climberTarget }, (_, index) => {
-    const category = categoryRows[index % categoryRows.length];
-    const fullName = MOCK_ATHLETE_CURATED_FULL_NAMES[index % MOCK_ATHLETE_CURATED_FULL_NAMES.length] ?? `Demo Climber ${index + 1}`;
-    const displayCategory = buildDisplayCategory(category.gender_division, category.age_group);
-    const climberId = crypto.randomUUID();
+  const climberRows = categoryRows.flatMap((category, categoryIndex) =>
+    Array.from({ length: climbersPerCategory }, (_, categoryClimberIndex) => {
+      const globalIndex = categoryIndex * climbersPerCategory + categoryClimberIndex;
+      const poolIndex =
+        (categoryIndex * 29 + categoryClimberIndex * 7 + Math.floor(seededUnit(`${competition.id}:${category.id}`) * 11)) %
+        MOCK_ATHLETE_CURATED_FULL_NAMES.length;
+      const fullName = MOCK_ATHLETE_CURATED_FULL_NAMES[poolIndex] ?? `Demo Climber ${globalIndex + 1}`;
+      const displayCategory = buildDisplayCategory(category.gender_division, category.age_group);
+      const climberId = crypto.randomUUID();
 
-    return {
-      id: climberId,
-      competition_id: competition.id,
-      name: fullName,
-      climber_number: String(101 + index),
-      province: randomItem(PROVINCES),
-      category_id: category.id,
-      gender_division: category.gender_division,
-      age_group: category.age_group,
-      display_category: displayCategory,
-      time_slot_id: slotByCategory.get(category.id) ?? null,
-      access_token: createAccessToken(`${competition.slug}-${fullName}-${index}`),
-    };
-  });
+      return {
+        id: climberId,
+        competition_id: competition.id,
+        name: fullName,
+        climber_number: String(101 + globalIndex),
+        province: PROVINCES[(globalIndex + categoryIndex) % PROVINCES.length],
+        category_id: category.id,
+        gender_division: category.gender_division,
+        age_group: category.age_group,
+        display_category: displayCategory,
+        time_slot_id: slotByCategory.get(category.id) ?? null,
+        access_token: createAccessToken(`${competition.slug}-${fullName}-${globalIndex}`),
+      };
+    })
+  );
 
   const { error: climberInsertError } = await supabase.from("climbers").insert(climberRows);
   if (climberInsertError) {
@@ -201,10 +311,39 @@ async function hydrateEventCompetition(
   }
 
   const seededAttempts = climberRows.flatMap((climber, climberIndex) => {
-    const seededProblemCount = Math.max(1, Math.min(problemCount, 2 + (climberIndex % Math.max(1, Math.min(problemCount, 3)))));
-    return Array.from({ length: seededProblemCount }, (_, attemptIndex) => {
+    const category = categoryRows.find((row) => row.id === climber.category_id);
+    if (!category) {
+      return [];
+    }
+
+    const categoryIndex = categoryRows.findIndex((row) => row.id === category.id);
+    const fieldRank = climberIndex % climbersPerCategory;
+    const climberSeed = `${competition.id}:${category.id}:${climber.id}:${fieldRank}`;
+
+    return Array.from({ length: problemCount }, (_, attemptIndex) => {
       const climbNumber = attemptIndex + 1;
-      const template = buildAttemptTemplate(climberIndex, climbNumber);
+      const skipProbability =
+        climbNumber >= Math.max(3, problemCount - 1) && fieldRank > Math.floor(climbersPerCategory * 0.75)
+          ? 0.24
+          : climbNumber >= Math.max(4, problemCount)
+            ? 0.08
+            : 0;
+
+      if (skipProbability > 0 && seededUnit(`${climberSeed}:skip:${climbNumber}`) < skipProbability) {
+        return null;
+      }
+
+      const template = buildRealisticAttempt(
+        competition.id,
+        category,
+        categoryIndex,
+        climberSeed,
+        fieldRank,
+        climbersPerCategory,
+        climbNumber,
+        problemCount
+      );
+
       return {
         competition_id: competition.id,
         round_id: qualifierRound.id,
@@ -217,7 +356,7 @@ async function hydrateEventCompetition(
         attempts_to_zone: template.attempts_to_zone,
         entered_by: "staff",
       };
-    });
+    }).filter(Boolean);
   });
 
   if (seededAttempts.length) {

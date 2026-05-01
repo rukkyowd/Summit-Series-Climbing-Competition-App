@@ -20,7 +20,6 @@ import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import {
   isCanonicalDemoCompetitionSlug,
   isDemoCompetitionRecord,
-  isProtectedDemoCompetitionRecord,
 } from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
@@ -71,7 +70,6 @@ import {
   getRegistrationAssignmentLabel,
   getSchedulePhaseDescription,
   isQualifierEligibleCategory,
-  isQualifierStage,
   normalizeCompetition,
   parseScheduleTimeToMinutes,
   slugifyCompetitionName,
@@ -642,7 +640,6 @@ export default function StaffDashboard({
   const [message, setMessage] = useState("");
   const [createName, setCreateName] = useState("");
   const [createFormat, setCreateFormat] = useState<Competition["format"]>("scramble");
-  const [createHasFinals, setCreateHasFinals] = useState(true);
   const [createLocation, setCreateLocation] = useState("");
   const [createStartDate, setCreateStartDate] = useState("");
   const [createEndDate, setCreateEndDate] = useState("");
@@ -850,6 +847,13 @@ export default function StaffDashboard({
     () => visibleSummaries.find((entry) => entry.competition.id === selectedCompetitionId) ?? null,
     [selectedCompetitionId, visibleSummaries]
   );
+  const selectedGuidedSetupPreset =
+    GUIDED_SETUP_PRESETS.find((preset) => preset.id === selectedGuidedSetupPresetId) ?? null;
+  const orderedDraftScheduleBlocks = useMemo(
+    () => (draft ? [...draft.schedule_blocks].sort(compareScheduleBlocks) : []),
+    [draft]
+  );
+  const linkedScheduleBlockCount = orderedDraftScheduleBlocks.filter((block) => Boolean(block.round_id)).length;
   useEffect(() => {
     setSnapshot(null);
     setCurrentSetupStep(0);
@@ -886,16 +890,41 @@ export default function StaffDashboard({
     }
 
     const draftRounds = draft.rounds ?? [];
+    const scoringRounds = draftRounds.filter((round) => round.scoring_bucket !== "none");
+    const qualifierScoringRound = scoringRounds.find((round) => round.scoring_bucket === "qualifier") ?? null;
+    const finalsScoringRound = scoringRounds.find((round) => round.scoring_bucket === "finals") ?? null;
+    const roundsAreValid =
+      scoringRounds.length > 0 &&
+      scoringRounds.every((round) => round.name.trim().length > 0 && round.problem_count > 0);
+    const manualStructureReady =
+      roundsAreValid &&
+      Boolean(qualifierScoringRound) &&
+      (!draft.has_finals || Boolean(finalsScoringRound));
+    const structureReady = Boolean(selectedGuidedSetupPreset) || manualStructureReady;
+    const scheduleReady =
+      draft.schedule_blocks.length > 0 &&
+      linkedScheduleBlockCount > 0 &&
+      structureReady &&
+      scoringRounds.every((round) =>
+        draft.schedule_blocks.some(
+          (block) =>
+            block.round_id === round.id &&
+            (block.phase_type === "qualifier_round" ||
+              block.phase_type === "finals_round" ||
+              block.phase_type === "observation" ||
+              block.phase_type === "isolation")
+        )
+      );
+    const stagesReady = structureReady && scheduleReady;
 
     return [
       Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()),
       draft.qualifier_eligible_age_groups.length > 0,
-      draftRounds.length > 0,
-      draft.schedule_blocks.length > 0,
-      draftRounds.length > 0 &&
-        draftRounds.every((round) => round.name.trim().length > 0 && round.problem_count > 0),
+      structureReady,
+      scheduleReady,
+      stagesReady,
     ];
-  }, [draft]);
+  }, [draft, linkedScheduleBlockCount, selectedGuidedSetupPreset]);
   const setupProgressCount = setupStepCompletion.filter(Boolean).length;
   const setupProgressPercent = Math.round((setupProgressCount / SETUP_WIZARD_STEPS.length) * 100);
   const hasPersistedDraft =
@@ -906,8 +935,6 @@ export default function StaffDashboard({
   const isFirstSetupStep = currentSetupStep === 0;
   const isLastSetupStep = currentSetupStep === SETUP_WIZARD_STEPS.length - 1;
   const demoJudgeReady = demoMode && !!draft && setupProgressCount === SETUP_WIZARD_STEPS.length && hasPersistedDraft;
-  const selectedGuidedSetupPreset =
-    GUIDED_SETUP_PRESETS.find((preset) => preset.id === selectedGuidedSetupPresetId) ?? null;
   const setupSectionAnchors = useMemo(
     () =>
       [
@@ -984,9 +1011,9 @@ export default function StaffDashboard({
   const displayUrl = displayPath ? `${shareOrigin}${displayPath}` : "";
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
-  const selectedCompetitionIsDemo = draft ? isProtectedDemoCompetitionRecord(draft) : false;
-  const canEditPhase = profile?.role === "admin" && !selectedCompetitionIsDemo;
-  const canEditSetup = profile?.role === "admin" && !selectedCompetitionIsDemo;
+  const selectedCompetitionIsDemo = draft ? isDemoCompetitionRecord(draft) : false;
+  const canEditPhase = profile?.role === "admin";
+  const canEditSetup = profile?.role === "admin";
   const canRestoreDemo = false;
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
@@ -1131,10 +1158,6 @@ export default function StaffDashboard({
       },
     ].filter((group) => group.templates.length > 0);
   }, [scheduleTemplates]);
-  const orderedDraftScheduleBlocks = useMemo(
-    () => (draft ? [...draft.schedule_blocks].sort(compareScheduleBlocks) : []),
-    [draft]
-  );
   const qualifierCategories = useMemo(
     () =>
       draft?.categories.filter((category) => isQualifierEligibleCategory(draft, category.age_group)) ?? [],
@@ -1827,8 +1850,6 @@ export default function StaffDashboard({
       compareCompetitionPhases(impliedCompetitionPhase, draft.current_phase) < 0
   );
   const draftHasFinals = draft ? competitionHasFinals(draft) : false;
-  const draftSupportsOptionalFinals = draft ? competitionAllowsOptionalFinals(draft.format) : false;
-  const canDisableFinals = draft ? isQualifierStage(draft) || draft.current_phase === "results" : false;
   const currentPhaseScheduleBlock = draft ? findScheduleBlockForPhase(draft.current_phase, 1) : null;
   const canAdvanceToFinals = draft
     ? draftHasFinals &&
@@ -1838,13 +1859,12 @@ export default function StaffDashboard({
   const demoBanner = demoMode
     ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
     : selectedCompetitionIsDemo
-      ? "This shared demo event allows score submission only. Restore it anytime to return to the seeded walkthrough state."
+      ? "This is a demo event, and admins can edit it here like any other event."
     : "";
   const demoDataExportAllowed = demoMode && isDemoDataSlug(draft?.slug);
   const currentCompetitionStages = useMemo(() => draft?.rounds ?? [], [draft?.rounds]);
   const qualifierStage = currentCompetitionStages.find((round) => round.scoring_bucket === "qualifier") ?? null;
   const finalsStage = currentCompetitionStages.find((round) => round.scoring_bucket === "finals") ?? null;
-  const linkedScheduleBlockCount = orderedDraftScheduleBlocks.filter((block) => Boolean(block.round_id)).length;
   const setupStepSummaries = useMemo(() => {
     if (!draft) {
       return [] as string[];
@@ -1857,15 +1877,17 @@ export default function StaffDashboard({
       setupStepCompletion[1]
         ? `${draft.qualifier_eligible_age_groups.length} qualifier groups selected.`
         : "Choose the age groups that can register.",
-      selectedGuidedSetupPreset
+      setupStepCompletion[2] && selectedGuidedSetupPreset
         ? `${selectedGuidedSetupPreset.title} applied.`
-        : "Choose a structure template or continue with your current rounds.",
-      orderedDraftScheduleBlocks.length
-        ? `${orderedDraftScheduleBlocks.length} schedule blocks planned.`
-        : "Add schedule blocks for the event day.",
-      currentCompetitionStages.length
-        ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} configured.`
-        : "Define at least one scoring stage.",
+        : setupStepCompletion[2]
+          ? "Manual structure is fully configured."
+          : "Apply a preset or fully build the structure manually before this step is complete.",
+      setupStepCompletion[3]
+        ? `${orderedDraftScheduleBlocks.length} schedule blocks planned and linked.`
+        : "Add schedule blocks and link the live scoring ones to real stages.",
+      setupStepCompletion[4]
+        ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} configured and ready.`
+        : "Finish the scoring stages and make sure the schedule points at them correctly.",
     ];
   }, [currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset, setupStepCompletion]);
   const wizardGuardrails = useMemo(() => {
@@ -1888,7 +1910,11 @@ export default function StaffDashboard({
       },
       {
         label: "Scoring blocks linked to a stage",
-        ok: linkedScheduleBlockCount > 0,
+        ok:
+          linkedScheduleBlockCount > 0 &&
+          currentCompetitionStages
+            .filter((round) => round.scoring_bucket !== "none")
+            .every((round) => orderedDraftScheduleBlocks.some((block) => block.round_id === round.id)),
         okMessage: "Live scoring blocks are connected to real competition stages.",
         warningMessage: "Link at least one scoring block to a stage so live results know where to publish.",
       },
@@ -1899,7 +1925,7 @@ export default function StaffDashboard({
         warningMessage: "If this event includes finals, add a real finals scoring stage before using it for finals day.",
       },
     ];
-  }, [draft, draftHasFinals, finalsStage, linkedScheduleBlockCount, orderedDraftScheduleBlocks.length]);
+  }, [currentCompetitionStages, draft, draftHasFinals, finalsStage, linkedScheduleBlockCount, orderedDraftScheduleBlocks]);
   const readyToSaveChecklist = useMemo(() => {
     if (!draft) {
       return [] as { label: string; ok: boolean }[];
@@ -1908,10 +1934,11 @@ export default function StaffDashboard({
     return [
       { label: "Event details filled", ok: Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()) },
       { label: "Categories selected", ok: draft.qualifier_eligible_age_groups.length > 0 },
-      { label: "Schedule exists", ok: orderedDraftScheduleBlocks.length > 0 },
-      { label: "At least one scoring stage exists", ok: currentCompetitionStages.some((round) => round.scoring_bucket !== "none") },
+      { label: "Structure is fully defined", ok: setupStepCompletion[2] },
+      { label: "Schedule is linked to scoring", ok: setupStepCompletion[3] },
+      { label: "Scoring stages are ready", ok: setupStepCompletion[4] },
     ];
-  }, [currentCompetitionStages, draft, orderedDraftScheduleBlocks.length]);
+  }, [draft, setupStepCompletion]);
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
     : "No stage flow yet";
@@ -2898,36 +2925,33 @@ export default function StaffDashboard({
               <>
                 <div className="results-kicker">Create event</div>
                 <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
-                  Set up a competition.
+                  Start a new event.
                 </h1>
                 <div className="results-hero-subline">
-                  Start a new event, pull in official details, and manage registration, schedules, judging, and finals from one place.
+                  Give it a name, pick the format, and set the date. You can choose the full event setup in the next step.
                 </div>
               </>
             )}
             {(!demoMode || !draft) ? (
             <fieldset disabled={!canEditSetup} className={!canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
               <label className="results-field-group" htmlFor="create-event-name">
-                <span className="results-field-label">New event name</span>
-                <input id="create-event-name" aria-label="New event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="New event name" data-demo-anchor="organizer-create-name" />
+                <span className="results-field-label">Event name</span>
+                <input id="create-event-name" aria-label="Event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="Spring Send" data-demo-anchor="organizer-create-name" />
               </label>
               <label className="results-field-group" htmlFor="create-event-slug-preview">
-                <span className="results-field-label">New event slug preview</span>
-                <input id="create-event-slug-preview" aria-label="New event slug preview" value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="new-event-slug" />
+                <span className="results-field-label">Link preview</span>
+                <input id="create-event-slug-preview" aria-label="Event link preview" value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="spring-send" />
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="results-field-group" htmlFor="create-event-format">
-                  <span className="results-field-label">New event format</span>
+                  <span className="results-field-label">Format</span>
                   <select
                     id="create-event-format"
-                    aria-label="New event format"
+                    aria-label="Event format"
                     value={createFormat}
                     onChange={(event) => {
                       const nextFormat = event.target.value as Competition["format"];
                       setCreateFormat(nextFormat);
-                      if (!competitionAllowsOptionalFinals(nextFormat)) {
-                        setCreateHasFinals(true);
-                      }
                     }}
                     className="results-input"
                   >
@@ -2937,26 +2961,26 @@ export default function StaffDashboard({
                   </select>
                 </label>
                 <label className="results-field-group" htmlFor="create-event-location">
-                  <span className="results-field-label">New event location</span>
-                  <input id="create-event-location" aria-label="New event location" value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="New event location" />
+                  <span className="results-field-label">Location</span>
+                  <input id="create-event-location" aria-label="Event location" value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="North Summit Climbing" />
                 </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="results-field-group" htmlFor="create-event-start-date">
-                  <span className="results-field-label">New event start date</span>
-                  <input id="create-event-start-date" aria-label="New event start date" type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
+                  <span className="results-field-label">Start date</span>
+                  <input id="create-event-start-date" aria-label="Event start date" type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
                 </label>
                 <label className="results-field-group" htmlFor="create-event-end-date">
-                  <span className="results-field-label">New event end date</span>
-                  <input id="create-event-end-date" aria-label="New event end date" type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
+                  <span className="results-field-label">End date</span>
+                  <input id="create-event-end-date" aria-label="Event end date" type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
                 </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="results-field-group" htmlFor="create-event-registration-opens">
-                  <span className="results-field-label">New event registration opens</span>
+                  <span className="results-field-label">Registration opens</span>
                   <input
                     id="create-event-registration-opens"
-                    aria-label="New event registration opens"
+                    aria-label="Registration opens"
                     type="datetime-local"
                     value={formatDateTimeLocalInput(createRegistrationOpensAt)}
                     onChange={(event) => setCreateRegistrationOpensAt(parseDateTimeLocalInput(event.target.value))}
@@ -2964,10 +2988,10 @@ export default function StaffDashboard({
                   />
                 </label>
                 <label className="results-field-group" htmlFor="create-event-registration-deadline">
-                  <span className="results-field-label">New event registration deadline</span>
+                  <span className="results-field-label">Registration closes</span>
                   <input
                     id="create-event-registration-deadline"
-                    aria-label="New event registration deadline"
+                    aria-label="Registration closes"
                     type="datetime-local"
                     value={formatDateTimeLocalInput(createRegistrationClosesAt)}
                     onChange={(event) => setCreateRegistrationClosesAt(parseDateTimeLocalInput(event.target.value))}
@@ -2975,36 +2999,15 @@ export default function StaffDashboard({
                   />
                 </label>
               </div>
-              {competitionAllowsOptionalFinals(createFormat) ? (
-                <label className="results-field-group">
-                  <span className="results-field-label">New event finals plan</span>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCreateHasFinals(false)}
-                      className={!createHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
-                    >
-                      Start with qualifier only
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCreateHasFinals(true)}
-                      className={createHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
-                    >
-                      Start with qualifier + finals
-                    </button>
-                  </div>
-                </label>
-              ) : null}
                 <label className="results-field-group" htmlFor="create-event-description">
-                <span className="results-field-label">New event description</span>
+                <span className="results-field-label">Notes</span>
                 <textarea
                   id="create-event-description"
-                  aria-label="New event description"
+                  aria-label="Event notes"
                   value={createDescription}
                   onChange={(event) => setCreateDescription(event.target.value)}
                   className="results-input min-h-[120px] resize-y"
-                  placeholder="New event description"
+                  placeholder="A short note about the day, the crowd, or anything staff should know."
                 />
               </label>
               {createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl ? (
@@ -3025,7 +3028,7 @@ export default function StaffDashboard({
                         const created = await createCompetitionFromTemplate({
                           name: sanitizeDraftText(createName),
                           format: createFormat,
-                          has_finals: competitionAllowsOptionalFinals(createFormat) ? createHasFinals : true,
+                          has_finals: competitionAllowsOptionalFinals(createFormat) ? false : true,
                           is_demo: demoMode,
                           location_name: sanitizeDraftText(createLocation),
                           start_date: sanitizeDraftText(createStartDate) || null,
@@ -3040,7 +3043,6 @@ export default function StaffDashboard({
                           official_schedule_url: sanitizeExternalUrl(createOfficialScheduleUrl) || undefined,
                         });
                         setCreateName("");
-                        setCreateHasFinals(true);
                         setCreateLocation("");
                         setCreateStartDate("");
                         setCreateEndDate("");
@@ -3140,7 +3142,7 @@ export default function StaffDashboard({
               <div id="demo-organizer-setup" className="space-y-6">
                 <div className="results-workspace-hero">
                   <div>
-                    <div className="results-kicker">{demoMode ? "Organizer setup" : "Configure selected event"}</div>
+                    <div className="results-kicker">{demoMode ? "Organizer setup" : "Event setup"}</div>
                     <h2 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">{draft.name}</h2>
                     <div className="results-hero-subline">
                       Build the event structure first, then move into live operations once the setup cards below are ready.
@@ -3202,7 +3204,7 @@ export default function StaffDashboard({
                 <div className="results-section-band">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="results-kicker">Configure selected event</div>
+                      <div className="results-kicker">Event setup</div>
                       <div className="mt-2 text-lg font-semibold tracking-tight text-slate-950">
                         {publicUrl || publicPath}
                       </div>
@@ -3274,7 +3276,7 @@ export default function StaffDashboard({
                       <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
                         <div className="results-kicker">Applied preset</div>
                         <div className="mt-1 text-sm font-semibold text-slate-950">
-                          {selectedGuidedSetupPreset?.title ?? "Manual"}
+                          {selectedGuidedSetupPreset?.title ?? (setupStepCompletion[2] ? "Manual build ready" : "None")}
                         </div>
                       </div>
                       <div className="rounded-[1rem] border border-slate-200 bg-slate-50/80 px-3 py-2.5">
@@ -3591,9 +3593,9 @@ export default function StaffDashboard({
                     "basics_registration",
                   ])}`}
                 >
-                  <div className="results-kicker">Step 1 - Event basics</div>
+                    <div className="results-kicker">Step 1 - Event details</div>
                   <div className="mt-2 text-sm text-slate-600">
-                    Set the basic event details first. These choices shape registration, finals availability, and the guided setup options below.
+                    Start with the basics so the rest of the setup feels like a real comp day, not a blank form.
                   </div>
                 </div>
 
@@ -3603,10 +3605,10 @@ export default function StaffDashboard({
                     htmlFor="current-event-name"
                     data-demo-anchor="organizer-basic-name"
                   >
-                    <span className="results-field-label">Current event name</span>
+                    <span className="results-field-label">Event name</span>
                     <input
                       id="current-event-name"
-                      aria-label="Current event name"
+                      aria-label="Event name"
                       value={draft.name}
                       onChange={(event) => {
                         setOrganizerGuidedBasicsState((current) => ({
@@ -3616,17 +3618,17 @@ export default function StaffDashboard({
                         setDraft({ ...draft, name: event.target.value, slug: slugifyCompetitionName(event.target.value) });
                       }}
                       className="results-input"
-                      placeholder="Current event name"
+                      placeholder="Spring Send"
                     />
                   </label>
                   <label
                     className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_name")}`}
                     htmlFor="current-event-slug"
                   >
-                    <span className="results-field-label">Current event slug</span>
+                    <span className="results-field-label">Event link</span>
                     <input
                       id="current-event-slug"
-                      aria-label="Current event slug"
+                      aria-label="Event link"
                       value={draft.slug}
                       onChange={(event) => {
                         setOrganizerGuidedBasicsState((current) => ({
@@ -3636,7 +3638,7 @@ export default function StaffDashboard({
                         setDraft({ ...draft, slug: slugifyCompetitionName(event.target.value) });
                       }}
                       className="results-input"
-                      placeholder="Current event slug"
+                      placeholder="spring-send"
                     />
                   </label>
                 </div>
@@ -3646,10 +3648,10 @@ export default function StaffDashboard({
                     htmlFor="current-event-format"
                     data-demo-anchor="organizer-basic-format"
                   >
-                    <span className="results-field-label">Current event format</span>
+                    <span className="results-field-label">Format</span>
                     <select
                       id="current-event-format"
-                      aria-label="Current event format"
+                      aria-label="Event format"
                       value={draft.format}
                       onChange={(event) => {
                         setOrganizerGuidedBasicsState((current) => ({
@@ -3689,10 +3691,10 @@ export default function StaffDashboard({
                     className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_name")}`}
                     htmlFor="current-event-location"
                   >
-                    <span className="results-field-label">Current event location</span>
+                    <span className="results-field-label">Location</span>
                     <input
                       id="current-event-location"
-                      aria-label="Current event location"
+                      aria-label="Event location"
                       value={draft.location_name}
                       onChange={(event) => {
                         setOrganizerGuidedBasicsState((current) => ({
@@ -3702,7 +3704,7 @@ export default function StaffDashboard({
                         setDraft({ ...draft, location_name: event.target.value });
                       }}
                       className="results-input"
-                      placeholder="Current event location"
+                      placeholder="North Summit Climbing"
                     />
                   </label>
                 </div>
@@ -3723,10 +3725,10 @@ export default function StaffDashboard({
                   data-demo-anchor="organizer-basic-registration"
                 >
                   <label className="results-field-group" htmlFor="current-event-registration-opens">
-                    <span className="results-field-label">Current event registration opens</span>
+                    <span className="results-field-label">Registration opens</span>
                     <input
                       id="current-event-registration-opens"
-                      aria-label="Current event registration opens"
+                      aria-label="Registration opens"
                       type="datetime-local"
                       value={formatDateTimeLocalInput(draft.registration_opens_at)}
                       onChange={(event) => {
@@ -3743,10 +3745,10 @@ export default function StaffDashboard({
                     />
                   </label>
                   <label className="results-field-group" htmlFor="current-event-registration-deadline">
-                    <span className="results-field-label">Current event registration deadline</span>
+                    <span className="results-field-label">Registration closes</span>
                     <input
                       id="current-event-registration-deadline"
-                      aria-label="Current event registration deadline"
+                      aria-label="Registration closes"
                       type="datetime-local"
                       value={formatDateTimeLocalInput(draft.registration_closes_at)}
                       onChange={(event) => {
@@ -3763,52 +3765,6 @@ export default function StaffDashboard({
                     />
                   </label>
                 </div>
-                {draftSupportsOptionalFinals ? (
-                  <label className="results-field-group">
-                    <span className="results-field-label">Current event finals plan</span>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          updateRounds((current) => current.filter((round) => round.scoring_bucket !== "finals"));
-                          setDraft((currentDraft) =>
-                            currentDraft
-                              ? {
-                                  ...currentDraft,
-                                  has_finals: false,
-                                  schedule_blocks: currentDraft.schedule_blocks.filter(
-                                    (block) => !["isolation", "observation", "finals_round"].includes(block.phase_type)
-                                  ),
-                                }
-                              : currentDraft
-                          );
-                        }}
-                        disabled={!canDisableFinals}
-                        className={!draftHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
-                      >
-                        Qualifier only
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (draft.rounds?.some((round) => round.scoring_bucket === "finals")) {
-                            setDraft({ ...draft, has_finals: true });
-                            return;
-                          }
-                          addRound("finals");
-                        }}
-                        className={draftHasFinals ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
-                      >
-                        Qualifier + finals
-                      </button>
-                    </div>
-                    {!canDisableFinals ? (
-                      <div className="text-sm text-slate-600">
-                        Finals can only be turned off while the competition is still in a qualifier-stage workflow or after results are posted.
-                      </div>
-                    ) : null}
-                  </label>
-                ) : null}
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-2">
                     <span className="text-sm font-medium text-slate-700">Max athletes</span>
@@ -4824,7 +4780,6 @@ export default function StaffDashboard({
                         Restore demo
                       </button>
                     ) : null}
-                    {!selectedCompetitionIsDemo ? (
                     <button type="button" onClick={() => setConfirming({
                       title: "Delete event",
                       description: "This permanently deletes the event and all of its registrations, scores, finalists, and schedule data. This cannot be undone.",
@@ -4840,7 +4795,6 @@ export default function StaffDashboard({
                         setMessage("Competition deleted.");
                       },
                     })} disabled={!canEditSetup} className="results-danger-button">Delete event</button>
-                    ) : null}
                   </div>
                 </div>
                 </fieldset>
