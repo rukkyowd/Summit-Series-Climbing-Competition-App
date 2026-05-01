@@ -31,6 +31,12 @@ import {
   type CompetitionPresetScheduleBlock,
 } from "@/lib/competition-presets";
 import {
+  constrainFinalsEligibleAgeGroupsToSelectedCategories,
+  finalsEligibilityUsesSelectedCategories,
+  getFinalsEligibilityOptions,
+  getSelectedQualifierCategories,
+} from "@/lib/competition-category-eligibility";
+import {
   createCompetitionFromTemplate,
   deleteCompetition,
   getCompetitionSnapshot,
@@ -75,7 +81,6 @@ import {
   getRecommendedQualifierCountingClimbs,
   getRegistrationAssignmentLabel,
   getSchedulePhaseDescription,
-  isQualifierEligibleCategory,
   normalizeCompetition,
   parseScheduleTimeToMinutes,
   slugifyCompetitionName,
@@ -647,6 +652,7 @@ export default function StaffDashboard({
     label: null,
   });
   const organizerAutoplayStartedRef = useRef(false);
+  const skipNextFinalsNormalizationForDraftIdRef = useRef<string | null>(null);
   const [confirming, setConfirming] = useState<null | {
     title: string;
     description: string;
@@ -848,9 +854,7 @@ export default function StaffDashboard({
       (!draft.has_finals || Boolean(finalsScoringRound));
     const presetGeneratedStructureReady = Boolean(selectedGuidedSetupPreset && selectedGuidedSetupPreset.id !== "custom");
     const structureReady = presetGeneratedStructureReady || manualStructureReady;
-    const finalsCategoriesStayInsideQualifiers = draft.finals_eligible_age_groups.every((ageGroup) =>
-      draft.qualifier_eligible_age_groups.includes(ageGroup)
-    );
+    const finalsCategoriesStayInsideQualifiers = finalsEligibilityUsesSelectedCategories(draft);
     const categoriesReady = draft.qualifier_eligible_age_groups.length > 0 && finalsCategoriesStayInsideQualifiers;
     const scheduleReady =
       draft.schedule_blocks.length > 0 &&
@@ -912,6 +916,7 @@ export default function StaffDashboard({
     }
 
     const clonedCompetition = cloneCompetition(selectedSummary.competition);
+    skipNextFinalsNormalizationForDraftIdRef.current = clonedCompetition.id;
     setDraft(clonedCompetition);
     setSelectedGuidedSetupPresetId(detectCompetitionPreset(clonedCompetition).id);
     void getCompetitionSnapshot(selectedSummary.competition.id, { authenticated: true })
@@ -1113,8 +1118,11 @@ export default function StaffDashboard({
     ].filter((group) => group.templates.length > 0);
   }, [scheduleTemplates]);
   const qualifierCategories = useMemo(
-    () =>
-      draft?.categories.filter((category) => isQualifierEligibleCategory(draft, category.age_group)) ?? [],
+    () => (draft ? getSelectedQualifierCategories(draft) : []),
+    [draft]
+  );
+  const finalsEligibilityOptions = useMemo(
+    () => (draft ? getFinalsEligibilityOptions(draft) : []),
     [draft]
   );
   const roundPlanTemplate = useMemo(
@@ -1409,6 +1417,11 @@ export default function StaffDashboard({
 
   useEffect(() => {
     if (!draft) {
+      return;
+    }
+
+    if (skipNextFinalsNormalizationForDraftIdRef.current === draft.id) {
+      skipNextFinalsNormalizationForDraftIdRef.current = null;
       return;
     }
 
@@ -1804,9 +1817,9 @@ export default function StaffDashboard({
       },
       {
         label: "Finals categories are in the qualifier field",
-        ok: draft.finals_eligible_age_groups.every((ageGroup) => draft.qualifier_eligible_age_groups.includes(ageGroup)),
-        okMessage: "Finals eligibility only uses selected registration groups.",
-        warningMessage: "Remove finals-eligible groups that are not selected for qualifiers.",
+        ok: finalsEligibilityUsesSelectedCategories(draft),
+        okMessage: "Finals eligibility only uses selected category records.",
+        warningMessage: "Remove finals-eligible groups that do not map to selected qualifier category records.",
       },
       {
         label: "Schedule blocks added",
@@ -1909,6 +1922,7 @@ export default function StaffDashboard({
     }
 
     const clonedCompetition = cloneCompetition(selectedSummary.competition);
+    skipNextFinalsNormalizationForDraftIdRef.current = clonedCompetition.id;
     setDraft(clonedCompetition);
     setCurrentSetupStep(0);
     setSelectedGuidedSetupPresetId(detectCompetitionPreset(clonedCompetition).id);
@@ -3614,13 +3628,14 @@ export default function StaffDashboard({
                             onClick={() => {
                               updateOrganizerDemoState({ categoriesViewed: true });
                               const nextQualifierAgeGroups = toggleAgeGroup(draft.qualifier_eligible_age_groups, ageGroup);
-                              setSelectedGuidedSetupPresetId("custom");
-                              setDraft({
+                              const nextDraft = {
                                 ...draft,
                                 qualifier_eligible_age_groups: nextQualifierAgeGroups,
-                                finals_eligible_age_groups: draft.finals_eligible_age_groups.filter((entry) =>
-                                  nextQualifierAgeGroups.includes(entry)
-                                ),
+                              };
+                              setSelectedGuidedSetupPresetId("custom");
+                              setDraft({
+                                ...nextDraft,
+                                finals_eligible_age_groups: constrainFinalsEligibleAgeGroupsToSelectedCategories(nextDraft),
                               });
                             }}
                             className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
@@ -3639,20 +3654,26 @@ export default function StaffDashboard({
                       Finals eligibility can only come from the qualifier categories selected on the left.
                     </div>
                       <div className="mt-4 flex flex-wrap gap-2">
-                        {draft.qualifier_eligible_age_groups.length ? draft.qualifier_eligible_age_groups.map((ageGroup) => {
-                          const active = draft.finals_eligible_age_groups.includes(ageGroup);
+                        {finalsEligibilityOptions.length ? finalsEligibilityOptions.map((option) => {
+                          const active = draft.finals_eligible_age_groups.includes(option.ageGroup);
                           return (
                             <button
-                              key={ageGroup}
+                              key={option.ageGroup}
                               type="button"
                               onClick={() => {
                                 updateOrganizerDemoState({ categoriesViewed: true });
                                 setSelectedGuidedSetupPresetId("custom");
-                                setDraft({ ...draft, finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, ageGroup) });
+                                setDraft({
+                                  ...draft,
+                                  finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, option.ageGroup),
+                                });
                               }}
                               className={active ? "finals-category-pill finals-category-pill-active" : "finals-category-pill"}
                             >
-                              {ageGroup}
+                              <span>{option.ageGroup}</span>
+                              <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal opacity-75">
+                                {option.displayCategories.join(", ")}
+                              </span>
                             </button>
                           );
                         }) : (
