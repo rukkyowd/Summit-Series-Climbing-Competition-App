@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { DemoModeBanner } from "@/components/demo/demo-mode-banner";
 import SiteHeader from "@/components/site-header";
 import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
@@ -60,6 +61,7 @@ export default function DemoCompetitorPage() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light />
+        <DemoModeBanner />
         {error ? (
           <Alert variant="error">{error}</Alert>
         ) : (

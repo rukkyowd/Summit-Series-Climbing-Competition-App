@@ -389,6 +389,10 @@ function categorySetsEqual(left: readonly string[], right: readonly string[]) {
 }
 
 export function detectCompetitionPreset(competition: Competition): CompetitionPreset {
+  if (competition.is_demo) {
+    return getCompetitionPreset("custom");
+  }
+
   const matchedPreset = COMPETITION_PRESETS.find((preset) => {
     if (preset.id === "custom") {
       return false;

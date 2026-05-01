@@ -39,6 +39,33 @@ describe("competition presets", () => {
     expect(detectCompetitionPreset(existingCompetition).id).toBe("custom");
   });
 
+  it("keeps existing demo competitions custom so presets do not regenerate demo data", () => {
+    const preset = getCompetitionPreset("training_mock_event");
+    const demoCompetition = normalizeCompetition(
+      {
+        ...DEFAULT_COMPETITION,
+        id: "canonical-demo",
+        name: "Canonical Demo",
+        slug: "spring-open-2026-demo",
+        is_demo: true,
+        format: preset.format,
+        has_finals: preset.finalsEnabled,
+        finals_cutoff: preset.finalsCutoff,
+        finals_tie_advances: preset.tiesAdvanceDefault,
+        total_climbs: preset.qualifierProblemCount,
+        qualifier_counting_climbs: preset.countingClimbs,
+        finals_problem_count: preset.finalsProblemCount,
+        qualifier_eligible_age_groups: [...preset.defaultCategories],
+        finals_eligible_age_groups: getPresetFinalsEligibleCategories(preset),
+      },
+      [],
+      [],
+      []
+    );
+
+    expect(detectCompetitionPreset(demoCompetition).id).toBe("custom");
+  });
+
   it("confidently detects a competition that matches a preset contract", () => {
     const preset = getCompetitionPreset("open_boulder_championship");
     const competition = normalizeCompetition(

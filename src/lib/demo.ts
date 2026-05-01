@@ -1,7 +1,7 @@
 import type { Competition } from "./scoring";
 
 export const DEMO_COMPETITION_SLUG = "spring-open-2026-demo";
-export const DEMO_COMPETITION_NAME = "Spring Open 2026 - Demo";
+export const DEMO_COMPETITION_NAME = "Summit Series Youth Championship - Demo";
 export const LEGACY_DEMO_SLUG_PREFIXES = ["mock-", "spring-send-"] as const;
 export const DEMO_PITCH_CLIMBS = [
   { number: 1, shortLabel: "Blue V6", label: "Blue V6 · JS" },

@@ -1,10 +1,12 @@
 import { buildDisplayCategory, createCategoryKey } from "./scoring";
+import { getCompetitionPreset } from "./competition-presets";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG } from "./demo";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEMO_LOCATION = "North Summit Climbing";
-const DEMO_ACTIVE_BLOCK_LABEL = "Open qualifier rotation";
+const DEMO_ACTIVE_BLOCK_LABEL = "Youth B qualifier wave";
+const YOUTH_CHAMPIONSHIP_PRESET = getCompetitionPreset("youth_championship_finals");
 const OPTIONAL_COMPETITION_LINK_COLUMNS = [
   "official_event_url",
   "official_registration_url",
@@ -67,85 +69,106 @@ const OPTIONAL_QUEUE_COLUMNS = [
   "time_slot_id",
 ] as const;
 
+const DEMO_PROVINCES = ["NS", "NB", "PE", "NL", "QC", "ON"] as const;
+
+function createYouthSeed(ageGroup: string, division: string, startNumber: number, names: string[]): DemoCategorySeed {
+  return {
+    ageGroup,
+    division,
+    climbers: names.map((name, index) => ({
+      name,
+      number: String(startNumber + index),
+      province: DEMO_PROVINCES[index % DEMO_PROVINCES.length],
+      scoredBoulders: Math.max(1, 4 - Math.floor(index / 2)),
+    })),
+  };
+}
+
 const DEMO_CATEGORY_SEEDS: DemoCategorySeed[] = [
-  {
-    ageGroup: "Open",
-    division: "Mixed",
-    climbers: [
-      {
-        name: "Maya Foster",
-        number: "301",
-        province: "NS",
-        scoredBoulders: 2,
-        seededAttempts: [
-          {
-            climbNumber: 3,
-            attemptCount: 1,
-            zone: true,
-            topped: true,
-            attemptsToTop: 1,
-            attemptsToZone: 1,
-          },
-          {
-            climbNumber: 4,
-            attemptCount: 3,
-            zone: true,
-            topped: false,
-            attemptsToTop: null,
-            attemptsToZone: 3,
-          },
-        ],
-      },
-      {
-        name: "Declan White",
-        number: "302",
-        province: "NB",
-        scoredBoulders: 2,
-        seededAttempts: [
-          {
-            climbNumber: 3,
-            attemptCount: 1,
-            zone: true,
-            topped: true,
-            attemptsToTop: 1,
-            attemptsToZone: 1,
-          },
-          {
-            climbNumber: 4,
-            attemptCount: 2,
-            zone: true,
-            topped: false,
-            attemptsToTop: null,
-            attemptsToZone: 2,
-          },
-        ],
-      },
-      { name: "Zoe Gagnon", number: "303", province: "QC", scoredBoulders: 3 },
-      { name: "Caleb King", number: "304", province: "NS", scoredBoulders: 2 },
-      { name: "Nora Walsh", number: "305", province: "NL", scoredBoulders: 2 },
-      { name: "Isaac Green", number: "306", province: "NB", scoredBoulders: 1 },
-      { name: "Sadie Bell", number: "307", province: "NS", scoredBoulders: 1 },
-      { name: "Theo Young", number: "308", province: "PE", scoredBoulders: 0 },
-      { name: "Camille Bouchard", number: "309", province: "QC", scoredBoulders: 0 },
-      { name: "Julian Mercer", number: "310", province: "ON", scoredBoulders: 0 },
-    ],
-  },
-  {
-    ageGroup: "Youth B",
-    division: "Mixed",
-    climbers: [
-      { name: "Avery Chen", number: "201", province: "NS", scoredBoulders: 3 },
-      { name: "Milo Fraser", number: "202", province: "NB", scoredBoulders: 3 },
-      { name: "Sofia Turner", number: "203", province: "PE", scoredBoulders: 2 },
-      { name: "Noah Patel", number: "204", province: "NS", scoredBoulders: 2 },
-      { name: "Emma Brooks", number: "205", province: "NB", scoredBoulders: 2 },
-      { name: "Lucas Martin", number: "206", province: "NS", scoredBoulders: 1 },
-      { name: "Chloe Adams", number: "207", province: "NL", scoredBoulders: 1 },
-      { name: "Ethan Ross", number: "208", province: "PE", scoredBoulders: 0 },
-      { name: "Laurence Cote", number: "209", province: "QC", scoredBoulders: 0 },
-      { name: "Owen Murphy", number: "210", province: "NB", scoredBoulders: 0 },
-    ],
-  },
+  createYouthSeed("Youth D", "Men", 501, [
+    "Eli March",
+    "Kai Bernard",
+    "Theo Watts",
+    "Owen Murphy",
+    "Felix Young",
+    "Remy Scott",
+  ]),
+  createYouthSeed("Youth D", "Women", 551, [
+    "Ruby Walsh",
+    "Iris Martin",
+    "Ella Ross",
+    "Nora Bell",
+    "Ava Doyle",
+    "Mila Green",
+  ]),
+  createYouthSeed("Youth C", "Men", 401, [
+    "Sam Turner",
+    "Leo Fraser",
+    "Hugo King",
+    "Finn Adams",
+    "Caleb White",
+    "Jude Mercer",
+  ]),
+  createYouthSeed("Youth C", "Women", 451, [
+    "Zoe Gagnon",
+    "Sofia Brooks",
+    "Maya Foster",
+    "Chloe Reid",
+    "Emma Cote",
+    "Sadie Bell",
+  ]),
+  createYouthSeed("Youth B", "Men", 102, [
+    "Noah Patel",
+    "Milo Fraser",
+    "Maya Chen",
+    "Declan White",
+    "Lucas Martin",
+    "Isaac Green",
+    "Owen Murphy",
+    "Theo Young",
+  ]),
+  createYouthSeed("Youth B", "Women", 151, [
+    "Avery Chen",
+    "Sofia Turner",
+    "Emma Brooks",
+    "Chloe Adams",
+    "Nora Walsh",
+    "Camille Bouchard",
+    "Ruby King",
+    "Mia Ross",
+  ]),
+  createYouthSeed("Youth A", "Men", 201, [
+    "Julian Mercer",
+    "Caleb King",
+    "Ethan Ross",
+    "Ari Singh",
+    "Miles Grant",
+    "Rowan Doyle",
+  ]),
+  createYouthSeed("Youth A", "Women", 251, [
+    "Maya Foster",
+    "Zoe Gagnon",
+    "Sadie Bell",
+    "Ivy Clarke",
+    "Leah Adams",
+    "June White",
+  ]),
+  createYouthSeed("Junior", "Men", 301, [
+    "Declan White",
+    "Isaac Green",
+    "Theo Young",
+    "Noel Brooks",
+    "Alex Turner",
+    "Jonah Kim",
+  ]),
+  createYouthSeed("Junior", "Women", 351, [
+    "Camille Bouchard",
+    "Nora Walsh",
+    "Avery Chen",
+    "Grace Martin",
+    "Elise Roy",
+    "Hannah Patel",
+  ]),
 ];
 
 function createId() {
@@ -229,15 +252,29 @@ export async function resetDemoCompetition() {
 
   const existingDemoRows = await supabase
     .from("competitions")
-    .select("id")
-    .or(`is_demo.eq.true,slug.eq.${DEMO_COMPETITION_SLUG}`);
+    .select("id, is_demo, slug")
+    .eq("slug", DEMO_COMPETITION_SLUG);
   await requireNoSupabaseError(existingDemoRows, "Unable to load the existing demo competition.");
 
-  const existingDemoIds = (existingDemoRows.data ?? []).map((row) => row.id as string);
+  const existingRows = existingDemoRows.data ?? [];
+  const nonDemoConflict = existingRows.find((row) => row.slug === DEMO_COMPETITION_SLUG && row.is_demo !== true);
+  if (nonDemoConflict) {
+    throw new Error("A real competition already uses the canonical demo slug. Refusing to overwrite it.");
+  }
+
+  const existingDemoIds = existingRows.filter((row) => row.is_demo === true).map((row) => row.id as string);
   if (existingDemoIds.length) {
     const deleteResult = await supabase.from("competitions").delete().in("id", existingDemoIds);
     await requireNoSupabaseError(deleteResult, "Unable to clear the existing demo competition.");
   }
+
+  const initialDemoMetadata = {
+    scenario_version: "demo-story-v1",
+    preset_id: YOUTH_CHAMPIONSHIP_PRESET.id,
+    preset_name: YOUTH_CHAMPIONSHIP_PRESET.name,
+    story_step: "event_created",
+    finals_ineligible_age_groups: ["Youth D", "Youth C"],
+  };
 
   const competitionPayload = {
     id: competitionId,
@@ -245,7 +282,7 @@ export async function resetDemoCompetition() {
     name: DEMO_COMPETITION_NAME,
     is_demo: true,
     status: "active",
-    format: "five_on_five_off",
+    format: YOUTH_CHAMPIONSHIP_PRESET.format,
     current_phase: "qualifier_open",
     discipline_label: "Boulder",
     stage_mode: "qualifier",
@@ -255,22 +292,23 @@ export async function resetDemoCompetition() {
     registration_opens_at: registrationOpensAt,
     registration_closes_at: registrationClosesAt,
     description:
-      "Seeded shared demo event for gym walkthroughs. Judges can submit qualifier scores while setup, deletion, and phase changes stay locked.",
+      "Run a complete youth championship story: create the event, correct a key judge score, advance finalists, and view public results.",
     hero_image_url: "",
     official_event_url: "",
     official_registration_url: "",
     official_schedule_url: "",
-    total_climbs: 4,
-    max_climbers: 24,
-    qualifier_counting_climbs: 4,
-    has_finals: true,
-    finals_cutoff: 6,
-    finals_tie_advances: true,
-    qualifier_eligible_age_groups: DEMO_CATEGORY_SEEDS.map((entry) => entry.ageGroup),
-    finals_eligible_age_groups: DEMO_CATEGORY_SEEDS.map((entry) => entry.ageGroup),
+    total_climbs: YOUTH_CHAMPIONSHIP_PRESET.qualifierProblemCount,
+    max_climbers: DEMO_CATEGORY_SEEDS.reduce((total, entry) => total + entry.climbers.length, 0),
+    qualifier_counting_climbs: YOUTH_CHAMPIONSHIP_PRESET.countingClimbs,
+    has_finals: YOUTH_CHAMPIONSHIP_PRESET.finalsEnabled,
+    finals_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
+    finals_tie_advances: YOUTH_CHAMPIONSHIP_PRESET.tiesAdvanceDefault,
+    qualifier_eligible_age_groups: YOUTH_CHAMPIONSHIP_PRESET.defaultCategories,
+    finals_eligible_age_groups: YOUTH_CHAMPIONSHIP_PRESET.finalsEligibleCategories,
     qualifier_locked_at: null,
     finals_started_at: null,
-    finals_problem_count: 4,
+    finals_problem_count: YOUTH_CHAMPIONSHIP_PRESET.finalsProblemCount,
+    demo_metadata: initialDemoMetadata,
   };
   let competitionInsert = await supabase.from("competitions").insert(competitionPayload);
   if (competitionInsert.error && isMissingCompetitionLinkColumnError(competitionInsert.error)) {
@@ -303,9 +341,9 @@ export async function resetDemoCompetition() {
       is_enabled: true,
       is_active: true,
       activated_at: now.toISOString(),
-      problem_count: 4,
-      counting_climbs: 4,
-      finals_cutoff: 6,
+      problem_count: YOUTH_CHAMPIONSHIP_PRESET.qualifierProblemCount,
+      counting_climbs: YOUTH_CHAMPIONSHIP_PRESET.countingClimbs,
+      finals_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
       eligible_category_ids: categories.map((entry) => entry.id),
       advancement_source_round_id: null,
       advancement_cutoff: null,
@@ -327,12 +365,14 @@ export async function resetDemoCompetition() {
       is_enabled: true,
       is_active: false,
       activated_at: null,
-      problem_count: 4,
+      problem_count: YOUTH_CHAMPIONSHIP_PRESET.finalsProblemCount,
       counting_climbs: null,
-      finals_cutoff: 6,
-      eligible_category_ids: categories.map((entry) => entry.id),
+      finals_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
+      eligible_category_ids: categories
+        .filter((entry) => YOUTH_CHAMPIONSHIP_PRESET.finalsEligibleCategories.includes(entry.age_group))
+        .map((entry) => entry.id),
       advancement_source_round_id: qualifierRoundId,
-      advancement_cutoff: 6,
+      advancement_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
       scoring_bucket: "finals",
       scoring_config: { demo: true },
       started_at: null,
@@ -342,72 +382,164 @@ export async function resetDemoCompetition() {
   const roundInsert = await supabase.from("competition_rounds").insert(rounds);
   await requireNoSupabaseError(roundInsert, "Unable to create demo rounds.");
 
-  const scheduleBlocks: DemoScheduleBlockRow[] = DEMO_CATEGORY_SEEDS.flatMap((entry, index) => {
-    const qualifierBlockId = createId();
-    const qualifierStart = 8 * 60 + index * 135;
-    const qualifierEnd = qualifierStart + 120;
-    return [
-      index === 0
-        ? {
-            id: createId(),
-            competition_id: competitionId,
-            round_id: null,
-            sort_order: 0,
-            label: "Doors / check-in",
-            phase_type: "check_in",
-            audience_label: "All categories",
-            is_active: false,
-            start_time: "7:30 AM",
-            end_time: "8:15 AM",
-            capacity: 80,
-            eligible_category_ids: categories.map((category) => category.id),
-          }
-        : null,
-      {
-        id: qualifierBlockId,
-        competition_id: competitionId,
-        round_id: qualifierRoundId,
-        sort_order: index + 1,
-        label: `${entry.ageGroup} qualifier rotation`,
-        phase_type: "qualifier_round",
-        audience_label: buildDisplayCategory(entry.division, entry.ageGroup),
-        is_active: index === 0,
-        start_time: minutesToLabel(qualifierStart),
-        end_time: minutesToLabel(qualifierEnd),
-        capacity: 12,
-        eligible_category_ids: [createCategoryKey(entry.division, entry.ageGroup)],
-      },
-    ].filter(Boolean) as DemoScheduleBlockRow[];
-  }).concat([
+  const allCategoryIds = categories.map((category) => category.id);
+  const finalsCategoryIds = categories
+    .filter((category) => YOUTH_CHAMPIONSHIP_PRESET.finalsEligibleCategories.includes(category.age_group))
+    .map((category) => category.id);
+  const categoryIdsForAgeGroups = (ageGroups: string[]) =>
+    categories.filter((category) => ageGroups.includes(category.age_group)).map((category) => category.id);
+  const qualifierWaves = [
+    {
+      label: "Youth D / Youth C qualifier wave",
+      audience: "Youth D / Youth C",
+      ageGroups: ["Youth D", "Youth C"],
+      start: "9:00 AM",
+      end: "10:30 AM",
+    },
+    {
+      label: "Youth B qualifier wave",
+      audience: "Youth B",
+      ageGroups: ["Youth B"],
+      start: "10:45 AM",
+      end: "12:15 PM",
+    },
+    {
+      label: "Youth A / Junior qualifier wave",
+      audience: "Youth A / Junior",
+      ageGroups: ["Youth A", "Junior"],
+      start: "12:30 PM",
+      end: "2:00 PM",
+    },
+  ];
+
+  const scheduleBlocks: DemoScheduleBlockRow[] = [
     {
       id: createId(),
       competition_id: competitionId,
       round_id: null,
-      sort_order: DEMO_CATEGORY_SEEDS.length + 1,
-      label: "Projected finals briefing",
-      phase_type: "observation",
-      audience_label: "Top 6 per category",
+      sort_order: 0,
+      label: "Check-in",
+      phase_type: "check_in",
+      audience_label: "All athletes",
       is_active: false,
-      start_time: "2:30 PM",
-      end_time: "3:00 PM",
+      start_time: "7:30 AM",
+      end_time: "8:15 AM",
+      capacity: 80,
+      eligible_category_ids: allCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 1,
+      label: "Judges briefing",
+      phase_type: "technical_meeting",
+      audience_label: "Judges and volunteers",
+      is_active: false,
+      start_time: "8:15 AM",
+      end_time: "8:30 AM",
+      capacity: 30,
+      eligible_category_ids: allCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 2,
+      label: "Technical meeting",
+      phase_type: "technical_meeting",
+      audience_label: "Athletes and coaches",
+      is_active: false,
+      start_time: "8:35 AM",
+      end_time: "8:50 AM",
+      capacity: 80,
+      eligible_category_ids: allCategoryIds,
+    },
+    ...qualifierWaves.map((wave, index) => ({
+      id: createId(),
+      competition_id: competitionId,
+      round_id: qualifierRoundId,
+      sort_order: index + 3,
+      label: wave.label,
+      phase_type: "qualifier_round",
+      audience_label: wave.audience,
+      is_active: index === 1,
+      start_time: wave.start,
+      end_time: wave.end,
       capacity: 24,
-      eligible_category_ids: categories.map((entry) => entry.id),
+      eligible_category_ids: categoryIdsForAgeGroups(wave.ageGroups),
+    })),
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 6,
+      label: "Results review",
+      phase_type: "results",
+      audience_label: "Organizers and coaches",
+      is_active: false,
+      start_time: "2:10 PM",
+      end_time: "2:30 PM",
+      capacity: 30,
+      eligible_category_ids: allCategoryIds,
     },
     {
       id: createId(),
       competition_id: competitionId,
       round_id: finalsRoundId,
-      sort_order: DEMO_CATEGORY_SEEDS.length + 2,
-      label: "Projected finals round",
+      sort_order: 7,
+      label: "Isolation opens",
+      phase_type: "isolation",
+      audience_label: "Youth B / Youth A / Junior finalists",
+      is_active: false,
+      start_time: "2:30 PM",
+      end_time: "3:00 PM",
+      capacity: 36,
+      eligible_category_ids: finalsCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: finalsRoundId,
+      sort_order: 8,
+      label: "Observation",
+      phase_type: "observation",
+      audience_label: "Top 6 per category",
+      is_active: false,
+      start_time: "3:05 PM",
+      end_time: "3:15 PM",
+      capacity: 36,
+      eligible_category_ids: finalsCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: finalsRoundId,
+      sort_order: 9,
+      label: "Finals",
       phase_type: "finals_round",
       audience_label: "Top 6 per category",
       is_active: false,
-      start_time: "3:15 PM",
-      end_time: "4:30 PM",
-      capacity: 24,
-      eligible_category_ids: categories.map((entry) => entry.id),
+      start_time: "3:20 PM",
+      end_time: "4:45 PM",
+      capacity: 36,
+      eligible_category_ids: finalsCategoryIds,
     },
-  ]);
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 10,
+      label: "Awards",
+      phase_type: "results",
+      audience_label: "All athletes and spectators",
+      is_active: false,
+      start_time: "5:00 PM",
+      end_time: "5:30 PM",
+      capacity: 120,
+      eligible_category_ids: allCategoryIds,
+    },
+  ];
   const scheduleInsert = await supabase.from("competition_schedule_blocks").insert(scheduleBlocks);
   await requireNoSupabaseError(scheduleInsert, "Unable to create the demo schedule.");
 
@@ -461,7 +593,7 @@ export async function resetDemoCompetition() {
         }));
       }
 
-      return Array.from({ length: Math.min(seededClimber.scoredBoulders, 4) }, (_, attemptIndex) => {
+      return Array.from({ length: Math.min(seededClimber.scoredBoulders, YOUTH_CHAMPIONSHIP_PRESET.qualifierProblemCount) }, (_, attemptIndex) => {
         const climbNumber = attemptIndex + 1;
         const template = buildAttemptTemplate(climberIndex, climbNumber);
         return {
@@ -507,15 +639,121 @@ export async function resetDemoCompetition() {
     await requireNoSupabaseError(qualifierEventInsert, "Unable to create demo qualifier score events.");
   }
 
-  const activeOpenBlockId =
+  const dramaTrio = climbers
+    .filter((climber) => climber.age_group === "Youth B" && climber.gender_division === "Men")
+    .sort((left, right) => Number(left.climber_number) - Number(right.climber_number))
+    .slice(0, 3);
+
+  if (dramaTrio.length === 3) {
+    const [athleteA, athleteB, athleteC] = dramaTrio;
+    const dramaClimberIds = dramaTrio.map((climber) => climber.id);
+    const deleteDramaAttempts = await supabase
+      .from("qualifier_attempts")
+      .delete()
+      .eq("competition_id", competitionId)
+      .in("climber_id", dramaClimberIds);
+    await requireNoSupabaseError(deleteDramaAttempts, "Unable to reset the demo cut-line score cells.");
+
+    const dramaAttemptRows: Array<[string, number, number, boolean, boolean, number | null, number | null]> = [
+      [athleteA.id, 1, 1, true, true, 1, 1],
+      [athleteA.id, 2, 1, true, true, 1, 1],
+      [athleteA.id, 3, 1, true, true, 1, 1],
+      [athleteA.id, 4, 2, true, false, null, 2],
+      [athleteB.id, 1, 1, true, true, 1, 1],
+      [athleteB.id, 2, 2, true, true, 2, 1],
+      [athleteB.id, 3, 2, true, true, 2, 1],
+      [athleteB.id, 4, 1, true, false, null, 1],
+      [athleteC.id, 1, 1, true, true, 1, 1],
+      [athleteC.id, 2, 2, true, true, 2, 1],
+      [athleteC.id, 3, 3, true, true, 3, 2],
+      [athleteC.id, 4, 1, true, false, null, 1],
+    ];
+    const seededDramaAttempts = dramaAttemptRows.map(
+      ([
+        climberId,
+        climbNumber,
+        attemptCount,
+        zone,
+        topped,
+        attemptsToTop,
+        attemptsToZone,
+      ]) => ({
+        id: createId(),
+        competition_id: competitionId,
+        round_id: qualifierRoundId,
+        climber_id: climberId,
+        climb_number: climbNumber,
+        entered_by: "staff",
+        attempt_count: attemptCount,
+        zone,
+        topped,
+        attempts_to_top: attemptsToTop,
+        attempts_to_zone: attemptsToZone,
+      })
+    );
+
+    const dramaAttemptInsert = await supabase.from("qualifier_attempts").insert(seededDramaAttempts);
+    await requireNoSupabaseError(dramaAttemptInsert, "Unable to create the demo cut-line scenario.");
+
+    const dramaEventInsert = await supabase.from("qualifier_score_events").insert(
+      seededDramaAttempts.map((attempt, index) => ({
+        id: createId(),
+        competition_id: attempt.competition_id,
+        round_id: attempt.round_id,
+        climber_id: attempt.climber_id,
+        climb_number: attempt.climb_number,
+        attempt_count: attempt.attempt_count,
+        zone: attempt.zone,
+        topped: attempt.topped,
+        attempts_to_top: attempt.attempts_to_top,
+        attempts_to_zone: attempt.attempts_to_zone,
+        entered_by: attempt.entered_by,
+        judge_device_id: "demo-story-seed",
+        judge_session_id: "cut-line-scenario",
+        scored_at: new Date(now.getTime() - (seededDramaAttempts.length - index) * 30_000).toISOString(),
+        received_at: new Date(now.getTime() - (seededDramaAttempts.length - index) * 30_000).toISOString(),
+        client_event_id: `demo-drama-seed-${attempt.climber_id}-${attempt.climb_number}`,
+        replayed_from_offline: false,
+        conflict_flag: false,
+        conflict_reason: null,
+        supersedes_event_id: null,
+      }))
+    );
+    await requireNoSupabaseError(dramaEventInsert, "Unable to create the demo cut-line score events.");
+
+    const dramaMetadata = {
+      ...initialDemoMetadata,
+      drama_pair: [athleteB.id, athleteC.id],
+      drama_target_climber: athleteC.id,
+      drama_target_climber_name: athleteC.name,
+      drama_target_climber_number: athleteC.climber_number,
+      drama_target_climb_number: 3,
+      drama_target_attempts_before: 3,
+      drama_target_attempts_after: 1,
+      drama_description: `${athleteC.name} tops Boulder 3 in 1 attempt instead of 3 and jumps past ${athleteB.name} at the finals cut line on attempts.`,
+      drama_affected_climber: athleteB.id,
+      drama_affected_climber_name: athleteB.name,
+    };
+
+    const metadataUpdate = await supabase
+      .from("competitions")
+      .update({ demo_metadata: dramaMetadata })
+      .eq("id", competitionId)
+      .eq("is_demo", true);
+    await requireNoSupabaseError(metadataUpdate, "Unable to save demo story metadata.");
+  }
+
+  const activeDemoBlockId =
     scheduleBlocks.find((entry) => entry.label === DEMO_ACTIVE_BLOCK_LABEL)?.id ?? null;
-  const openQueueClimbers = climbers.filter((entry) => entry.age_group === "Open").slice(0, 3);
-  if (activeOpenBlockId && openQueueClimbers.length) {
-    const queuePayload = openQueueClimbers.map((climber, index) => ({
+  const demoQueueClimbers = climbers
+    .filter((entry) => entry.age_group === "Youth B" && entry.gender_division === "Men")
+    .slice(0, 3);
+  if (activeDemoBlockId && demoQueueClimbers.length) {
+    const queuePayload = demoQueueClimbers.map((climber, index) => ({
       id: createId(),
       competition_id: competitionId,
       climber_id: climber.id,
-      schedule_block_id: activeOpenBlockId,
+      schedule_block_id: activeDemoBlockId,
       climb_number: index + 2,
       checked_in_at: new Date(now.getTime() - (index + 1) * 45 * 1000).toISOString(),
       climber_name: climber.name,
