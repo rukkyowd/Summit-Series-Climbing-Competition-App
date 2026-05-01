@@ -77,6 +77,7 @@ export type DemoStoryState = {
 };
 
 const FINAL_PHASES = new Set(["finals_open", "finals_closed", "results"]);
+const EVENT_CREATED_STORY_STEPS = new Set(["event_created", "score_corrected", "finalists_started", "public_ready"]);
 const ACT_ORDER: DemoStoryTargetAct[] = [
   "event_created",
   "score_corrected",
@@ -102,19 +103,23 @@ export function mergeDemoStoryMetadata(
 
 export function deriveDemoStoryProgress(snapshot: DemoStoryProgressSnapshot): DemoStoryProgress {
   const metadata = snapshot.competition?.demo_metadata ?? null;
-  const expectedAttempts = metadata?.drama_target_attempts_after ?? 1;
+  const expectedAttempts = metadata?.target_attempts_after ?? metadata?.drama_target_attempts_after ?? 1;
   const attempt = snapshot.targetAttempt ?? null;
   const completedTopAttempt = attempt?.attempts_to_top ?? attempt?.attempt_count ?? null;
+  const completedZoneAttempt = attempt?.attempts_to_zone ?? attempt?.attempt_count ?? null;
   const targetBelongs = snapshot.targetClimberBelongsToCompetition !== false;
+  const storyStep = typeof metadata?.story_step === "string" ? metadata.story_step : "";
   const eventCreated =
     isCanonicalDemoMutableCompetition(snapshot.competition) &&
     Boolean(metadata?.scenario_version) &&
-    targetBelongs;
+    targetBelongs &&
+    EVENT_CREATED_STORY_STEPS.has(storyStep);
   const keyScoreCorrected =
     eventCreated &&
     Boolean(attempt?.topped) &&
-    Boolean(attempt?.zone) &&
-    completedTopAttempt === expectedAttempts;
+    (Boolean(attempt?.zone) || Boolean(attempt?.topped)) &&
+    completedTopAttempt === expectedAttempts &&
+    (completedZoneAttempt === null || completedZoneAttempt === expectedAttempts || completedZoneAttempt === 1);
   const finalistsAdvanced = eventCreated && (snapshot.finalistCount ?? 0) > 0;
   const finalsStarted =
     eventCreated &&
@@ -253,7 +258,7 @@ async function repairDemoStoryMetadata(
   const nextMetadata = buildDemoStoryMetadataForClimbers({
     baseMetadata: {
       scenario_version: "demo-story-v1",
-      story_step: "event_created",
+      story_step: metadata?.story_step ?? "reset",
       finals_ineligible_age_groups: ["Youth D", "Youth C"],
       ...(metadata ?? {}),
     },
@@ -452,6 +457,22 @@ async function ensureStoryMetadata(supabase: ReturnType<typeof createServiceRole
   return repairResult.competition;
 }
 
+async function markDemoEventCreated(supabase: ReturnType<typeof createServiceRoleSupabaseClient>) {
+  const competition = await ensureStoryMetadata(supabase);
+  const nextMetadata = mergeDemoStoryMetadata(competition.demo_metadata, {
+    story_step: "event_created",
+  });
+  const update = await supabase
+    .from("competitions")
+    .update({ demo_metadata: nextMetadata })
+    .eq("id", competition.id)
+    .eq("is_demo", true);
+
+  if (update.error) {
+    throw new Error(update.error.message);
+  }
+}
+
 async function applyDemoKeyScoreCorrection(supabase: ReturnType<typeof createServiceRoleSupabaseClient>) {
   const competition = await ensureStoryMetadata(supabase);
   const metadata = competition.demo_metadata!;
@@ -568,7 +589,7 @@ async function ensureFinalistsStarted(supabase: ReturnType<typeof createServiceR
 
 export async function prepareDemoStoryState(
   targetAct: DemoStoryTargetAct,
-  options: { reset?: boolean } = {}
+  options: { reset?: boolean; resetOnly?: boolean } = {}
 ): Promise<DemoStoryState> {
   if (!ACT_ORDER.includes(targetAct)) {
     throw new Error("Invalid demo story target.");
@@ -576,6 +597,12 @@ export async function prepareDemoStoryState(
 
   const supabase = createServiceRoleSupabaseClient();
   await ensureDemoCompetition(supabase, options);
+
+  if (options.resetOnly) {
+    return getDemoStoryState();
+  }
+
+  await markDemoEventCreated(supabase);
 
   if (getActIndex(targetAct) >= getActIndex("score_corrected")) {
     await applyDemoKeyScoreCorrection(supabase);

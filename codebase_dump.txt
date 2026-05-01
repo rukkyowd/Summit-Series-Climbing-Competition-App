@@ -5843,7 +5843,7 @@ type DemoPrepareStateRequest = {
   reset?: boolean;
 };
 
-function isAllowedDemoReferer(request: NextRequest) {
+function isAllowedDemoRequest(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (origin && origin !== request.nextUrl.origin) {
     return false;
@@ -5851,7 +5851,7 @@ function isAllowedDemoReferer(request: NextRequest) {
 
   const referer = request.headers.get("referer");
   if (!referer) {
-    return false;
+    return true;
   }
 
   try {
@@ -5881,7 +5881,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAllowedDemoReferer(request)) {
+  if (!isAllowedDemoRequest(request)) {
     return NextResponse.json(
       { ok: false, error: "Demo state preparation is only available from demo pages." },
       { status: 401 }
@@ -13330,13 +13330,15 @@ export default function StaffJudgePage() {
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const initialStage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
   const initialClimberId = searchParams?.get("climberId") ?? "";
+  const initialBoulder = Math.max(1, Number(searchParams?.get("boulder") ?? 1) || 1);
+  const demoStoryMode = searchParams?.get("demoStory") === "act2";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stage, setStage] = useState<"qualifier" | "finals">(initialStage);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [selectedQualifierClimberId, setSelectedQualifierClimberId] = useState(initialClimberId);
-  const [selectedBoulder, setSelectedBoulder] = useState(1);
+  const [selectedBoulder, setSelectedBoulder] = useState(initialBoulder);
   const [selectedCell, setSelectedCell] = useState<{ climberId: string; climbNumber: number } | null>(null);
   const [qualifierDrafts, setQualifierDrafts] = useState<QualifierDraftState>({});
   const [finalsDrafts, setFinalsDrafts] = useState<FinalsDraftState>({});
@@ -13524,7 +13526,7 @@ export default function StaffJudgePage() {
         setFinalsDrafts(finalsNext);
         if (initialClimberId) {
           setSelectedQualifierClimberId(initialClimberId);
-          setSelectedCell({ climberId: initialClimberId, climbNumber: 1 });
+          setSelectedCell({ climberId: initialClimberId, climbNumber: initialBoulder });
         } else {
           setSelectedQualifierClimberId(nextSnapshot.climbers[0]?.id ?? "");
         }
@@ -13535,7 +13537,7 @@ export default function StaffJudgePage() {
         setError(nextError instanceof Error ? nextError.message : "Unable to load the judge panel.");
       })
       .finally(() => setLoading(false));
-  }, [initialClimberId, slug, syncQueuedState]);
+  }, [initialBoulder, initialClimberId, slug, syncQueuedState]);
 
   useEffect(() => {
     void syncQueuedState();
@@ -14136,6 +14138,19 @@ export default function StaffJudgePage() {
     setFinalsDraft(key, () => EMPTY_FINALS_DRAFT);
   };
 
+  const highlightDemoTarget = () => {
+    setStage("qualifier");
+    setSelectedBoulder(initialBoulder);
+    if (initialClimberId) {
+      setSelectedQualifierClimberId(initialClimberId);
+      setSelectedCell({ climberId: initialClimberId, climbNumber: initialBoulder });
+    }
+    document.querySelector('[data-demo-anchor="judge-entry-cards"]')?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
   if (loading) {
     return (
       <main className="results-page">
@@ -14171,7 +14186,27 @@ export default function StaffJudgePage() {
           detail={saveFeedbackDetail}
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
-        {isDemoCompetitionRecord(snapshot.competition) ? (
+        {isDemoCompetitionRecord(snapshot.competition) && demoStoryMode ? (
+          <section className="results-alert border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.92))] text-slate-800">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <div className="results-kicker text-sky-700">Act 2 - Judge the key climb</div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  Find Athlete C, select B{initialBoulder}, change Top from attempt 3 to attempt 1, then save.
+                </h2>
+                <p className="max-w-4xl text-sm leading-relaxed text-slate-600">
+                  This guide will not click or save for you. Use the athlete picker, the boulder selector,
+                  the Top control, and the attempt controls yourself. After saving, return to the demo guide
+                  and press “I completed this” so it can verify the database state.
+                </p>
+              </div>
+              <Button type="button" variant="secondary" onClick={highlightDemoTarget}>
+                Highlight target
+              </Button>
+            </div>
+          </section>
+        ) : null}
+        {isDemoCompetitionRecord(snapshot.competition) && !demoStoryMode ? (
           <DemoExperience
             enabled
             routeId="judge"
@@ -15286,6 +15321,7 @@ import { Button, buttonStyles } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
 import { getCompetitionPreset } from "@/lib/competition-presets";
+import { clearDemoSalesSession } from "@/lib/demo-sales-session";
 import type { DemoStoryState, DemoStoryTargetAct } from "@/lib/demo-story";
 
 type ActStatus = "locked" | "ready" | "in_progress" | "complete";
@@ -15324,7 +15360,7 @@ const storyActs: StoryAct[] = [
     number: 2,
     title: "Correct Key Score",
     description:
-      "Fix Athlete C's Boulder 3 score from Top in 3 attempts to Top in 1 attempt.",
+      "Find Athlete C, select B3, change Top from attempt 3 to attempt 1, then save.",
     why: "A single judge correction can change the finalist cut line. The demo makes that visible.",
     targetAct: "score_corrected",
     hrefKey: "judge",
@@ -15336,7 +15372,7 @@ const storyActs: StoryAct[] = [
     title: "Advance Finalists / Start Finals",
     description:
       "Review the cut-line movement, lock qualifiers, advance finalists, and open finals.",
-    why: "Organizers need to trust live scoring before locking results and moving the event forward.",
+    why: "Complete the key score correction first, or prepare demo state and skip ahead.",
     targetAct: "finalists_started",
     hrefKey: "organizer",
     primaryLabel: "Open organizer view",
@@ -15431,12 +15467,14 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   const router = useRouter();
   const [state, setState] = useState(initialState);
   const [error, setError] = useState<string | null>(initialState.error);
+  const [notice, setNotice] = useState<string | null>(null);
   const [publicViewed, setPublicViewed] = useState(false);
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setPublicViewed(readLocalPublicViewed());
+    clearDemoSalesSession();
   }, []);
 
   async function prepareState(
@@ -15448,7 +15486,9 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
   ) {
     setError(null);
+    setNotice(null);
     setPendingLabel(options?.reset ? "Resetting demo..." : "Preparing demo...");
+    clearDemoSalesSession();
 
     try {
       const response = await fetch("/api/demo/prepare-state", {
@@ -15483,6 +15523,32 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
   }
 
+  async function refreshStoryState(messageOnIncomplete?: string) {
+    setError(null);
+    setNotice(null);
+    setPendingLabel("Checking demo progress...");
+
+    try {
+      const response = await fetch("/api/demo/prepare-state", {
+        method: "GET",
+      });
+      const payload = (await response.json()) as { ok?: boolean; state?: DemoStoryState; error?: string };
+
+      if (!response.ok || !payload.ok || !payload.state) {
+        throw new Error(payload.error ?? "Unable to refresh demo progress.");
+      }
+
+      setState(payload.state);
+      if (messageOnIncomplete && !payload.state.progress.keyScoreCorrected) {
+        setNotice(messageOnIncomplete);
+      }
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh demo progress.");
+    } finally {
+      setPendingLabel(null);
+    }
+  }
+
   function handleReset() {
     const shouldReset = window.confirm(
       "Reset the canonical demo event? This only affects demo-safe data and will recreate the guided story seed."
@@ -15503,7 +15569,8 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
 
     if (status === "locked" || !href) {
-      void prepareState(act.targetAct, { redirectTo: href, redirectKey: act.hrefKey });
+      const targetAct = act.id === "judge" ? "event_created" : act.targetAct;
+      void prepareState(targetAct, { redirectTo: href, redirectKey: act.hrefKey });
       return;
     }
 
@@ -15576,27 +15643,39 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                 >
                   Use Ready-Made Demo Event
                 </Button>
-                <Button
-                  variant="danger"
-                  size="lg"
-                  onClick={handleReset}
+              <Button
+                variant="danger"
+                size="lg"
+                onClick={handleReset}
                   disabled={isPending || Boolean(pendingLabel)}
                 >
-                  Reset Demo
+                Reset Demo
+              </Button>
+              {error ? (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => prepareState("event_created", { reset: true })}
+                  disabled={isPending || Boolean(pendingLabel)}
+                >
+                  Repair demo state
                 </Button>
+              ) : null}
               </div>
 
-              {(pendingLabel || error) && (
+              {(pendingLabel || error || notice) && (
                 <div
                   className={cn(
                     "rounded-2xl border px-4 py-3 text-sm font-semibold",
                     error
                       ? "border-red-200 bg-red-50 text-red-700"
+                      : notice
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
                       : "border-sky-200 bg-sky-50 text-sky-800"
                   )}
                   role="status"
                 >
-                  {error ?? pendingLabel}
+                  {error ?? notice ?? pendingLabel}
                 </div>
               )}
             </div>
@@ -15655,6 +15734,25 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   >
                     {status === "locked" ? "Prepare demo state and skip ahead" : act.primaryLabel}
                   </Button>
+                  {act.id === "judge" && state.progress.eventCreated && !state.progress.keyScoreCorrected ? (
+                    <Button
+                      variant="secondary"
+                      size="compact"
+                      onClick={() =>
+                        void refreshStoryState(
+                          "Not complete yet. Save Athlete C on B3 as Top on attempt 1, then check again."
+                        )
+                      }
+                      disabled={isPending || Boolean(pendingLabel)}
+                    >
+                      I completed this
+                    </Button>
+                  ) : null}
+                  {status === "locked" && (act.id === "organizer" || act.id === "public") ? (
+                    <p className="text-xs font-semibold leading-5 text-amber-700">
+                      This skips the hands-on task and prepares only canonical demo data.
+                    </p>
+                  ) : null}
                   {status !== "locked" && act.id === "public" && state.links.leaderboard && (
                     <Link
                       href={state.links.leaderboard}
@@ -19394,7 +19492,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 
-const TOUR_STATE_KEY = "organizer_demo_tour_state_v2";
+const TOUR_STATE_KEY = "organizer_demo_tour_state_v3";
 
 export type OrganizerDemoStepId =
   | "overview"
@@ -19406,7 +19504,6 @@ export type OrganizerDemoStepId =
   | "schedule"
   | "stages"
   | "create_event"
-  | "event_name"
   | "event_details"
   | "save_event"
   | "handoff";
@@ -19416,7 +19513,6 @@ export type OrganizerDemoHandoffTarget = "judge" | "leaderboard" | "display";
 type OrganizerDemoTourProps = {
   hasCreatedCompetition: boolean;
   competitionName: string;
-  eventNameEntered: boolean;
   eventDetailsComplete: boolean;
   eventSaved: boolean;
   judgeReady: boolean;
@@ -19439,14 +19535,9 @@ const baseSteps: Array<{
     body: "Start from the empty organizer state and create the competition yourself. This is the first proof point in the story.",
   },
   {
-    id: "event_name",
-    title: "Name the comp",
-    body: "Use the real event name field so the buyer sees a believable setup flow instead of a canned sample.",
-  },
-  {
     id: "event_details",
-    title: "Set the format, dates, and rules",
-    body: "Move through categories, structure, schedule, and stages until the event is fully configured.",
+    title: "Review the generated event",
+    body: "Check the preset, categories, finals eligibility, schedule, and stages so the setup feels like a real comp day.",
   },
   {
     id: "save_event",
@@ -19463,7 +19554,6 @@ const baseSteps: Array<{
 export function OrganizerDemoTour({
   hasCreatedCompetition,
   competitionName,
-  eventNameEntered,
   eventDetailsComplete,
   eventSaved,
   judgeReady,
@@ -19523,21 +19613,12 @@ export function OrganizerDemoTour({
       };
     }
 
-    if (activeStep.id === "event_name") {
-      return {
-        complete: eventNameEntered,
-        label: eventNameEntered
-          ? `${competitionName || "The event"} has a name.`
-          : "Fill in the real event name field first.",
-      };
-    }
-
     if (activeStep.id === "event_details") {
       return {
         complete: eventDetailsComplete,
         label: eventDetailsComplete
           ? "Categories, structure, schedule, and stages are configured."
-          : "Work through the organizer setup cards until all five setup areas show ready.",
+          : "Review the setup cards until the meaningful setup areas show ready.",
       };
     }
 
@@ -19556,7 +19637,7 @@ export function OrganizerDemoTour({
         ? "The judge panel is unlocked and ready to simulate registrations."
         : "The judge panel unlocks after the event is fully configured and saved.",
     };
-  }, [activeStep.id, competitionName, eventDetailsComplete, eventNameEntered, eventSaved, hasCreatedCompetition, judgeReady]);
+  }, [activeStep.id, competitionName, eventDetailsComplete, eventSaved, hasCreatedCompetition, judgeReady]);
 
   if (suppressed) {
     return null;
@@ -19615,20 +19696,6 @@ export function OrganizerDemoTour({
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={onJumpToCreate} className="results-primary-button">
                 Open create form
-              </button>
-            </div>
-          ) : null}
-          {activeStep.id === "event_name" ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onJumpToCreate();
-                  onFocusAnchor("organizer-create-name");
-                }}
-                className="results-primary-button"
-              >
-                Focus event name
               </button>
             </div>
           ) : null}
@@ -21787,6 +21854,7 @@ const ORGANIZER_BUILD_TRANSITION_STEPS = [
   "Launching the live judge panel",
 ] as const;
 
+const DEMO_AUTOPLAY_ENABLED = false;
 
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
@@ -23693,7 +23761,7 @@ export default function StaffDashboard({
         narratorTitle: "Finalizing the event you just built",
         narratorBody:
           "We are saving this exact organizer setup, filling the field, and opening judge mode on the same event.",
-        autoplay: true,
+        autoplay: false,
         organizerCompleted: true,
         judgePending: true,
         persistentCompletion: false,
@@ -23764,7 +23832,7 @@ export default function StaffDashboard({
           narratorTitle: "The event you just built is now powering live judging.",
           narratorBody:
             "Stay with the same event as it moves into one judge save, a live leaderboard reaction, and an offline recovery moment.",
-          autoplay: true,
+          autoplay: false,
           organizerCompleted: true,
           judgePending: true,
           persistentCompletion: false,
@@ -23790,6 +23858,26 @@ export default function StaffDashboard({
       return;
     }
 
+    if (!DEMO_AUTOPLAY_ENABLED) {
+      resetOrganizerDemoWalkthrough();
+      setOrganizerAutoplayRunning(false);
+      setOrganizerPlaybackStep(null);
+      setOrganizerDemoCursor({
+        visible: false,
+        x: 0,
+        y: 0,
+        clicking: false,
+        label: null,
+      });
+      setOrganizerNarration({
+        title: "Guided demo is hands-on now",
+        body:
+          "The autoplay cursor is disabled. Use the setup cards yourself, then open the judge panel when you are ready.",
+      });
+      setMessage("Autoplay is disabled for the guided story. Use the setup cards manually.");
+      return;
+    }
+
     resetOrganizerDemoWalkthrough();
     setOrganizerAutoplayRunning(true);
     setError("");
@@ -23801,7 +23889,7 @@ export default function StaffDashboard({
         narratorTitle: "Start with a comp format, not a blank admin tool",
         narratorBody:
           "This organizer demo shows the setup path a gym owner actually cares about: choose the event shape, generate the day, then hand the same event into live scoring.",
-        autoplay: true,
+        autoplay: false,
         organizerCompleted: false,
         audioEnabled: salesAudioEnabled,
         competitionId: draft.id,
@@ -24195,7 +24283,6 @@ export default function StaffDashboard({
           <OrganizerDemoTour
             hasCreatedCompetition={Boolean(draft)}
             competitionName={draft.name}
-            eventNameEntered={Boolean(createName.trim() || draft.name.trim())}
             eventDetailsComplete={setupProgressCount === SETUP_WIZARD_STEPS.length}
             eventSaved={hasPersistedDraft}
             judgeReady={demoJudgeReady}
@@ -24212,7 +24299,6 @@ export default function StaffDashboard({
           <OrganizerDemoTour
             hasCreatedCompetition={false}
             competitionName=""
-            eventNameEntered={Boolean(createName.trim())}
             eventDetailsComplete={false}
             eventSaved={false}
             judgeReady={false}
@@ -29367,6 +29453,7 @@ export async function updateFinalAttempt(
 
 import { buildDisplayCategory, createCategoryKey } from "./scoring";
 import { getCompetitionPreset } from "./competition-presets";
+import { buildDemoStoryMetadataForClimbers } from "./demo-story-target";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG } from "./demo";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
 
@@ -30088,19 +30175,11 @@ export async function resetDemoCompetition() {
     );
     await requireNoSupabaseError(dramaEventInsert, "Unable to create the demo cut-line score events.");
 
-    const dramaMetadata = {
-      ...initialDemoMetadata,
-      drama_pair: [athleteB.id, athleteC.id],
-      drama_target_climber: athleteC.id,
-      drama_target_climber_name: athleteC.name,
-      drama_target_climber_number: athleteC.climber_number,
-      drama_target_climb_number: 3,
-      drama_target_attempts_before: 3,
-      drama_target_attempts_after: 1,
-      drama_description: `${athleteC.name} tops Boulder 3 in 1 attempt instead of 3 and jumps past ${athleteB.name} at the finals cut line on attempts.`,
-      drama_affected_climber: athleteB.id,
-      drama_affected_climber_name: athleteB.name,
-    };
+    const dramaMetadata = buildDemoStoryMetadataForClimbers({
+      baseMetadata: initialDemoMetadata,
+      targetClimber: athleteC,
+      affectedClimber: athleteB,
+    });
 
     const metadataUpdate = await supabase
       .from("competitions")
@@ -30247,6 +30326,173 @@ export function createDemoSalesSession(
 }
 
 
+--- src\lib\demo-story-target.ts ---
+
+export const DEMO_STORY_TARGET_ROLE_KEY = "athlete_c";
+export const DEMO_STORY_AFFECTED_ROLE_KEY = "athlete_b";
+export const DEMO_STORY_TARGET_CATEGORY = {
+  genderDivision: "Men",
+  ageGroup: "Youth B",
+  displayCategory: "Men / Youth B",
+} as const;
+
+export type DemoStoryClimberIdentity = {
+  id: string;
+  competition_id?: string;
+  name: string;
+  climber_number: string;
+  gender_division?: string | null;
+  age_group?: string | null;
+  display_category?: string | null;
+};
+
+export type DemoStoryTargetMetadata = {
+  scenario_version?: string;
+  preset_id?: string;
+  preset_name?: string;
+  story_step?: string;
+  finals_ineligible_age_groups?: string[];
+  drama_pair?: string[];
+  drama_target_climber?: string;
+  target_climber_id?: string;
+  drama_target_climber_name?: string;
+  target_climber_name?: string;
+  drama_target_climber_number?: string;
+  target_climber_number?: string;
+  drama_target_role?: string;
+  target_role?: string;
+  drama_target_category?: string;
+  target_category?: string;
+  drama_target_climb_number?: number;
+  target_climb_number?: number;
+  drama_target_attempts_before?: number;
+  target_attempts_before?: number;
+  drama_target_attempts_after?: number;
+  target_attempts_after?: number;
+  drama_description?: string;
+  drama_affected_climber?: string;
+  affected_climber_id?: string;
+  drama_affected_climber_name?: string;
+  affected_climber_name?: string;
+  drama_affected_climber_number?: string;
+  affected_climber_number?: string;
+  drama_affected_role?: string;
+  affected_role?: string;
+  [key: string]: unknown;
+};
+
+function normalizeText(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function matchesTargetCategory(climber: DemoStoryClimberIdentity) {
+  return (
+    normalizeText(climber.gender_division) === normalizeText(DEMO_STORY_TARGET_CATEGORY.genderDivision) &&
+    normalizeText(climber.age_group) === normalizeText(DEMO_STORY_TARGET_CATEGORY.ageGroup)
+  );
+}
+
+export function findDemoStoryClimberFromMetadata(
+  climbers: readonly DemoStoryClimberIdentity[],
+  metadata: DemoStoryTargetMetadata | null | undefined,
+  role: "target" | "affected" = "target"
+) {
+  const source = metadata ?? {};
+
+  const id =
+    role === "target"
+      ? source.target_climber_id ?? source.drama_target_climber
+      : source.affected_climber_id ?? source.drama_affected_climber;
+  const byId = id ? climbers.find((climber) => climber.id === id) ?? null : null;
+  if (byId) {
+    return byId;
+  }
+
+  const number =
+    role === "target"
+      ? source.target_climber_number ?? source.drama_target_climber_number
+      : source.affected_climber_number ?? source.drama_affected_climber_number;
+  const name =
+    role === "target"
+      ? source.target_climber_name ?? source.drama_target_climber_name
+      : source.affected_climber_name ?? source.drama_affected_climber_name;
+  const roleKey =
+    role === "target"
+      ? source.target_role ?? source.drama_target_role ?? DEMO_STORY_TARGET_ROLE_KEY
+      : source.affected_role ?? source.drama_affected_role ?? DEMO_STORY_AFFECTED_ROLE_KEY;
+
+  const categoryMatches = climbers.filter(matchesTargetCategory);
+  const scopedClimbers = categoryMatches.length ? categoryMatches : climbers;
+
+  if (number) {
+    const byNumber = scopedClimbers.find((climber) => climber.climber_number === number) ?? null;
+    if (byNumber) {
+      return byNumber;
+    }
+  }
+
+  if (name) {
+    const normalizedName = normalizeText(name);
+    const byName = scopedClimbers.find((climber) => normalizeText(climber.name) === normalizedName) ?? null;
+    if (byName) {
+      return byName;
+    }
+  }
+
+  if (roleKey === DEMO_STORY_TARGET_ROLE_KEY) {
+    return [...scopedClimbers].sort((left, right) =>
+      left.climber_number.localeCompare(right.climber_number, undefined, { numeric: true })
+    )[2] ?? null;
+  }
+
+  if (roleKey === DEMO_STORY_AFFECTED_ROLE_KEY) {
+    return [...scopedClimbers].sort((left, right) =>
+      left.climber_number.localeCompare(right.climber_number, undefined, { numeric: true })
+    )[1] ?? null;
+  }
+
+  return null;
+}
+
+export function buildDemoStoryMetadataForClimbers(input: {
+  baseMetadata: DemoStoryTargetMetadata;
+  targetClimber: DemoStoryClimberIdentity;
+  affectedClimber: DemoStoryClimberIdentity;
+}) {
+  const { baseMetadata, targetClimber, affectedClimber } = input;
+
+  return {
+    ...baseMetadata,
+    drama_pair: [affectedClimber.id, targetClimber.id],
+    drama_target_climber: targetClimber.id,
+    target_climber_id: targetClimber.id,
+    drama_target_climber_name: targetClimber.name,
+    target_climber_name: targetClimber.name,
+    drama_target_climber_number: targetClimber.climber_number,
+    target_climber_number: targetClimber.climber_number,
+    drama_target_role: DEMO_STORY_TARGET_ROLE_KEY,
+    target_role: DEMO_STORY_TARGET_ROLE_KEY,
+    drama_target_category: DEMO_STORY_TARGET_CATEGORY.displayCategory,
+    target_category: DEMO_STORY_TARGET_CATEGORY.displayCategory,
+    drama_target_climb_number: 3,
+    target_climb_number: 3,
+    drama_target_attempts_before: 3,
+    target_attempts_before: 3,
+    drama_target_attempts_after: 1,
+    target_attempts_after: 1,
+    drama_description: `${targetClimber.name} tops Boulder 3 in 1 attempt instead of 3 and jumps past ${affectedClimber.name} at the finals cut line on attempts.`,
+    drama_affected_climber: affectedClimber.id,
+    affected_climber_id: affectedClimber.id,
+    drama_affected_climber_name: affectedClimber.name,
+    affected_climber_name: affectedClimber.name,
+    drama_affected_climber_number: affectedClimber.climber_number,
+    affected_climber_number: affectedClimber.climber_number,
+    drama_affected_role: DEMO_STORY_AFFECTED_ROLE_KEY,
+    affected_role: DEMO_STORY_AFFECTED_ROLE_KEY,
+  } satisfies DemoStoryTargetMetadata;
+}
+
+
 --- src\lib\demo-story.test.ts ---
 
 import { describe, expect, it } from "vitest";
@@ -30256,6 +30502,10 @@ import {
   mergeDemoStoryMetadata,
   type DemoStoryCompetitionSummary,
 } from "./demo-story";
+import {
+  buildDemoStoryMetadataForClimbers,
+  findDemoStoryClimberFromMetadata,
+} from "./demo-story-target";
 import { DEMO_COMPETITION_SLUG } from "./demo";
 
 function demoCompetition(
@@ -30331,6 +30581,24 @@ describe("demo story progress", () => {
     expect(progress.keyScoreCorrected).toBe(false);
   });
 
+  it("does not mark act 2 complete when the target climber is stale or outside the canonical demo", () => {
+    const progress = deriveDemoStoryProgress({
+      competition: demoCompetition(),
+      targetAttempt: {
+        attempt_count: 1,
+        topped: true,
+        zone: true,
+        attempts_to_top: 1,
+        attempts_to_zone: 1,
+      },
+      finalistCount: 0,
+      targetClimberBelongsToCompetition: false,
+    });
+
+    expect(progress.eventCreated).toBe(false);
+    expect(progress.keyScoreCorrected).toBe(false);
+  });
+
   it("detects organizer/public readiness from finalists and finals phase", () => {
     const progress = deriveDemoStoryProgress({
       competition: demoCompetition({
@@ -30374,6 +30642,79 @@ describe("demo story progress", () => {
       key_score_corrected_at: "2026-05-01T12:00:00.000Z",
     });
   });
+
+  it("repairs stale target metadata from stable climber number and category fields", () => {
+    const climbers = [
+      {
+        id: "fresh-a",
+        competition_id: "new-demo",
+        name: "Noah Patel",
+        climber_number: "102",
+        gender_division: "Men",
+        age_group: "Youth B",
+        display_category: "Men / Youth B",
+      },
+      {
+        id: "fresh-b",
+        competition_id: "new-demo",
+        name: "Milo Fraser",
+        climber_number: "103",
+        gender_division: "Men",
+        age_group: "Youth B",
+        display_category: "Men / Youth B",
+      },
+      {
+        id: "fresh-c",
+        competition_id: "new-demo",
+        name: "Maya Chen",
+        climber_number: "104",
+        gender_division: "Men",
+        age_group: "Youth B",
+        display_category: "Men / Youth B",
+      },
+    ];
+
+    const repaired = findDemoStoryClimberFromMetadata(climbers, {
+      drama_target_climber: "stale-climber-id",
+      drama_target_climber_number: "104",
+      drama_target_climber_name: "Maya Chen",
+      drama_target_category: "Men / Youth B",
+    });
+
+    expect(repaired?.id).toBe("fresh-c");
+  });
+
+  it("builds reset metadata with a target climber id from the newly-created demo field", () => {
+    const targetClimber = {
+      id: "new-target-id",
+      competition_id: "new-demo",
+      name: "Maya Chen",
+      climber_number: "104",
+      gender_division: "Men",
+      age_group: "Youth B",
+      display_category: "Men / Youth B",
+    };
+    const affectedClimber = {
+      id: "new-affected-id",
+      competition_id: "new-demo",
+      name: "Milo Fraser",
+      climber_number: "103",
+      gender_division: "Men",
+      age_group: "Youth B",
+      display_category: "Men / Youth B",
+    };
+
+    const metadata = buildDemoStoryMetadataForClimbers({
+      baseMetadata: { scenario_version: "demo-story-v1" },
+      targetClimber,
+      affectedClimber,
+    });
+
+    expect(metadata.target_climber_id).toBe(targetClimber.id);
+    expect(metadata.drama_target_climber).toBe(targetClimber.id);
+    expect(metadata.target_climber_number).toBe("104");
+    expect(metadata.drama_pair).toEqual([affectedClimber.id, targetClimber.id]);
+  });
 });
 
 
@@ -30382,6 +30723,12 @@ describe("demo story progress", () => {
 import { normalizeQualifierAttemptInput } from "./attempts";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG, isCanonicalDemoCompetitionSlug } from "./demo";
 import { resetDemoCompetition } from "./demo-reset";
+import {
+  buildDemoStoryMetadataForClimbers,
+  findDemoStoryClimberFromMetadata,
+  type DemoStoryClimberIdentity,
+  type DemoStoryTargetMetadata,
+} from "./demo-story-target";
 import { handleAdminCompetitionAction } from "./server-admin-competition-actions";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
 
@@ -30399,26 +30746,11 @@ export type DemoStoryProgress = {
   publicViewed: boolean;
 };
 
-export type DemoStoryMetadata = {
-  scenario_version?: string;
-  preset_id?: string;
-  preset_name?: string;
+export type DemoStoryMetadata = DemoStoryTargetMetadata & {
   story_step?: DemoStoryTargetAct | string;
-  finals_ineligible_age_groups?: string[];
-  drama_pair?: string[];
-  drama_target_climber?: string;
-  drama_target_climber_name?: string;
-  drama_target_climber_number?: string;
-  drama_target_climb_number?: number;
-  drama_target_attempts_before?: number;
-  drama_target_attempts_after?: number;
-  drama_description?: string;
-  drama_affected_climber?: string;
-  drama_affected_climber_name?: string;
   key_score_corrected_at?: string;
   finalists_started_at?: string;
   public_ready_at?: string;
-  [key: string]: unknown;
 };
 
 export type DemoStoryCompetitionSummary = {
@@ -30445,6 +30777,7 @@ export type DemoStoryProgressSnapshot = {
   targetAttempt?: DemoStoryAttemptSummary | null;
   finalistCount?: number | null;
   publicViewed?: boolean;
+  targetClimberBelongsToCompetition?: boolean;
 };
 
 export type DemoStoryState = {
@@ -30494,7 +30827,11 @@ export function deriveDemoStoryProgress(snapshot: DemoStoryProgressSnapshot): De
   const expectedAttempts = metadata?.drama_target_attempts_after ?? 1;
   const attempt = snapshot.targetAttempt ?? null;
   const completedTopAttempt = attempt?.attempts_to_top ?? attempt?.attempt_count ?? null;
-  const eventCreated = isCanonicalDemoMutableCompetition(snapshot.competition) && Boolean(metadata?.scenario_version);
+  const targetBelongs = snapshot.targetClimberBelongsToCompetition !== false;
+  const eventCreated =
+    isCanonicalDemoMutableCompetition(snapshot.competition) &&
+    Boolean(metadata?.scenario_version) &&
+    targetBelongs;
   const keyScoreCorrected =
     eventCreated &&
     Boolean(attempt?.topped) &&
@@ -30592,6 +30929,87 @@ async function loadDemoTargetAttempt(
   return (data ?? null) as DemoStoryAttemptSummary | null;
 }
 
+async function loadDemoStoryClimbers(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competitionId: string
+) {
+  const { data, error } = await supabase
+    .from("climbers")
+    .select("id, competition_id, name, climber_number, gender_division, age_group, display_category")
+    .eq("competition_id", competitionId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as DemoStoryClimberIdentity[];
+}
+
+async function repairDemoStoryMetadata(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: DemoStoryCompetitionSummary,
+  options: { resetIfUnrepairable?: boolean } = {}
+) {
+  const metadata = competition.demo_metadata ?? null;
+  const climbers = await loadDemoStoryClimbers(supabase, competition.id);
+  const targetClimber = findDemoStoryClimberFromMetadata(climbers, metadata, "target");
+  const affectedClimber = findDemoStoryClimberFromMetadata(climbers, metadata, "affected");
+
+  if (!targetClimber || !affectedClimber) {
+    if (options.resetIfUnrepairable) {
+      await resetDemoCompetition();
+      const resetCompetition = await loadCanonicalDemoCompetition(supabase);
+      if (!resetCompetition) {
+        throw new Error("Unable to repair the demo state.");
+      }
+      return repairDemoStoryMetadata(supabase, resetCompetition, { resetIfUnrepairable: false });
+    }
+
+    return {
+      competition,
+      targetClimber: null,
+      repaired: false,
+    };
+  }
+
+  const nextMetadata = buildDemoStoryMetadataForClimbers({
+    baseMetadata: {
+      scenario_version: "demo-story-v1",
+      story_step: "event_created",
+      finals_ineligible_age_groups: ["Youth D", "Youth C"],
+      ...(metadata ?? {}),
+    },
+    targetClimber,
+    affectedClimber,
+  });
+  const alreadyFresh =
+    metadata?.drama_target_climber === targetClimber.id &&
+    metadata?.target_climber_id === targetClimber.id &&
+    metadata?.drama_affected_climber === affectedClimber.id &&
+    metadata?.affected_climber_id === affectedClimber.id;
+
+  if (!alreadyFresh) {
+    const update = await supabase
+      .from("competitions")
+      .update({ demo_metadata: nextMetadata })
+      .eq("id", competition.id)
+      .eq("is_demo", true);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+  }
+
+  return {
+    competition: {
+      ...competition,
+      demo_metadata: nextMetadata,
+    },
+    targetClimber,
+    repaired: !alreadyFresh,
+  };
+}
+
 async function loadDemoFinalistCount(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competition: DemoStoryCompetitionSummary | null
@@ -30646,11 +31064,30 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
   }
 
   try {
-    const competition = await loadCanonicalDemoCompetition(supabase);
-    if (!competition) {
+    const loadedCompetition = await loadCanonicalDemoCompetition(supabase);
+    if (!loadedCompetition) {
       return emptyDemoStoryState(null);
     }
 
+    const repairResult = await repairDemoStoryMetadata(supabase, loadedCompetition);
+    if (!repairResult.targetClimber) {
+      return {
+        ...emptyDemoStoryState("Demo target climber is missing. Repair the demo state to regenerate canonical demo metadata."),
+        available: true,
+        competition: loadedCompetition,
+        metadata: loadedCompetition.demo_metadata,
+        links: {
+          setup: "/staff/demo",
+          judge: `/staff/c/${loadedCompetition.slug}/judge?demoStory=act2`,
+          organizer: `/staff/c/${loadedCompetition.slug}?demoStory=act3`,
+          publicEvent: `/c/${loadedCompetition.slug}?demoStory=public`,
+          leaderboard: `/c/${loadedCompetition.slug}/leaderboard?demoStory=public`,
+          scorecard: null,
+        },
+      };
+    }
+
+    const competition = repairResult.competition;
     const [targetAttempt, finalistCount, scorecard] = await Promise.all([
       loadDemoTargetAttempt(supabase, competition),
       loadDemoFinalistCount(supabase, competition),
@@ -30661,7 +31098,15 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       targetAttempt,
       finalistCount,
       publicViewed,
+      targetClimberBelongsToCompetition: true,
     });
+    const judgeParams = new URLSearchParams({ demoStory: "act2" });
+    if (competition.demo_metadata?.drama_target_climber) {
+      judgeParams.set("climberId", competition.demo_metadata.drama_target_climber);
+    }
+    if (competition.demo_metadata?.drama_target_climb_number) {
+      judgeParams.set("boulder", String(competition.demo_metadata.drama_target_climb_number));
+    }
 
     return {
       available: true,
@@ -30673,7 +31118,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       progress,
       links: {
         setup: "/staff/demo",
-        judge: `/staff/c/${competition.slug}/judge?demoStory=act2`,
+        judge: `/staff/c/${competition.slug}/judge?${judgeParams.toString()}`,
         organizer: `/staff/c/${competition.slug}?demoStory=act3`,
         publicEvent: `/c/${competition.slug}?demoStory=public`,
         leaderboard: `/c/${competition.slug}/leaderboard?demoStory=public`,
@@ -30721,7 +31166,12 @@ async function ensureStoryMetadata(supabase: ReturnType<typeof createServiceRole
     throw new Error("Unable to prepare the demo story metadata.");
   }
 
-  return competition;
+  const repairResult = await repairDemoStoryMetadata(supabase, competition, { resetIfUnrepairable: true });
+  if (!repairResult.targetClimber) {
+    throw new Error("Unable to repair the demo target climber.");
+  }
+
+  return repairResult.competition;
 }
 
 async function applyDemoKeyScoreCorrection(supabase: ReturnType<typeof createServiceRoleSupabaseClient>) {

@@ -12,6 +12,11 @@ import { clearDemoSalesSession } from "@/lib/demo-sales-session";
 import type { DemoStoryState, DemoStoryTargetAct } from "@/lib/demo-story";
 
 type ActStatus = "locked" | "ready" | "in_progress" | "complete";
+type BuildTransitionState = {
+  active: boolean;
+  stepIndex: number;
+  complete: boolean;
+};
 
 type StoryAct = {
   id: "create" | "judge" | "organizer" | "public";
@@ -25,6 +30,21 @@ type StoryAct = {
 };
 
 const LOCAL_PROGRESS_KEY = "summit_demo_story_progress_v1";
+const STALE_DEMO_STORAGE_KEYS = [
+  LOCAL_PROGRESS_KEY,
+  "demo_sales_session_v1",
+  "scorecard_demo_tour_step",
+  "scorecard_demo_tour_dismissed",
+  "organizer_demo_tour_state_v2",
+  "organizer_demo_tour_state_v3",
+] as const;
+const ACT_1_BUILD_STEPS = [
+  "Saving event setup",
+  "Simulating 150 climber registrations",
+  "Generating qualifier routes and seeded scores",
+  "Opening judge workspaces",
+  "Launching the live judge panel",
+] as const;
 const youthChampionshipPreset = getCompetitionPreset("youth_championship_finals");
 const DEMO_STORY_COPY = {
   title: "Summit Series Demo",
@@ -100,6 +120,19 @@ function writeLocalPublicViewed() {
   window.localStorage.setItem(LOCAL_PROGRESS_KEY, JSON.stringify({ publicViewed: true }));
 }
 
+function clearDemoStoryLocalProgress() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  STALE_DEMO_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
+  clearDemoSalesSession();
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function getActStatus(act: StoryAct, state: DemoStoryState, publicViewed: boolean): ActStatus {
   const progress = state.progress;
 
@@ -117,7 +150,7 @@ function getActStatus(act: StoryAct, state: DemoStoryState, publicViewed: boolea
     return progress.keyScoreCorrected ? "ready" : "locked";
   }
 
-  if (publicViewed) {
+  if (progress.finalsStarted && publicViewed) {
     return "complete";
   }
 
@@ -156,6 +189,12 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   const [error, setError] = useState<string | null>(initialState.error);
   const [notice, setNotice] = useState<string | null>(null);
   const [publicViewed, setPublicViewed] = useState(false);
+  const [act2CompletionVisible, setAct2CompletionVisible] = useState(initialState.progress.keyScoreCorrected);
+  const [buildTransition, setBuildTransition] = useState<BuildTransitionState>({
+    active: false,
+    stepIndex: 0,
+    complete: false,
+  });
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -164,10 +203,38 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     clearDemoSalesSession();
   }, []);
 
+  async function postPrepareState(
+    targetAct: DemoStoryTargetAct,
+    options?: {
+      reset?: boolean;
+      resetOnly?: boolean;
+    }
+  ) {
+    const response = await fetch("/api/demo/prepare-state", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        targetAct,
+        reset: options?.reset === true,
+        resetOnly: options?.resetOnly === true,
+      }),
+    });
+    const payload = (await response.json()) as { ok?: boolean; state?: DemoStoryState; error?: string };
+
+    if (!response.ok || !payload.ok || !payload.state) {
+      throw new Error(payload.error ?? "Unable to prepare the demo story.");
+    }
+
+    return payload.state;
+  }
+
   async function prepareState(
     targetAct: DemoStoryTargetAct,
     options?: {
       reset?: boolean;
+      resetOnly?: boolean;
       redirectTo?: string | null;
       redirectKey?: keyof DemoStoryState["links"];
     }
@@ -175,29 +242,24 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     setError(null);
     setNotice(null);
     setPendingLabel(options?.reset ? "Resetting demo..." : "Preparing demo...");
-    clearDemoSalesSession();
+    if (options?.reset) {
+      clearDemoStoryLocalProgress();
+      setPublicViewed(false);
+      setAct2CompletionVisible(false);
+    } else {
+      clearDemoSalesSession();
+    }
 
     try {
-      const response = await fetch("/api/demo/prepare-state", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ targetAct, reset: options?.reset === true }),
-      });
-      const payload = (await response.json()) as { ok?: boolean; state?: DemoStoryState; error?: string };
-
-      if (!response.ok || !payload.ok || !payload.state) {
-        throw new Error(payload.error ?? "Unable to prepare the demo story.");
-      }
-
-      setState(payload.state);
-      if (targetAct === "public_ready") {
+      const nextState = await postPrepareState(targetAct, options);
+      setState(nextState);
+      setAct2CompletionVisible(nextState.progress.keyScoreCorrected);
+      if (targetAct === "public_ready" && !options?.resetOnly) {
         writeLocalPublicViewed();
         setPublicViewed(true);
       }
 
-      const redirectHref = options?.redirectTo ?? (options?.redirectKey ? payload.state.links[options.redirectKey] : null);
+      const redirectHref = options?.redirectTo ?? (options?.redirectKey ? nextState.links[options.redirectKey] : null);
       if (redirectHref) {
         startTransition(() => {
           router.push(redirectHref);
@@ -207,6 +269,53 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       setError(prepareError instanceof Error ? prepareError.message : "Unable to prepare the demo story.");
     } finally {
       setPendingLabel(null);
+    }
+  }
+
+  async function runAct1BuildTransition(options?: { reset?: boolean }) {
+    setError(null);
+    setNotice(null);
+    setPendingLabel(null);
+    clearDemoStoryLocalProgress();
+    setPublicViewed(false);
+    setAct2CompletionVisible(false);
+    setBuildTransition({ active: true, stepIndex: 0, complete: false });
+
+    try {
+      const preparePromise = postPrepareState("event_created", { reset: options?.reset === true }).then(
+        (nextState) => ({ nextState, error: null }),
+        (buildError: unknown) => ({ nextState: null, error: buildError })
+      );
+
+      for (let index = 0; index < ACT_1_BUILD_STEPS.length; index += 1) {
+        setBuildTransition({ active: true, stepIndex: index, complete: false });
+        await wait(index === 0 ? 320 : 520);
+      }
+
+      const { nextState, error: prepareError } = await preparePromise;
+      if (prepareError || !nextState) {
+        throw prepareError instanceof Error ? prepareError : new Error("Unable to prepare the judge demo.");
+      }
+
+      setState(nextState);
+      setBuildTransition({
+        active: true,
+        stepIndex: ACT_1_BUILD_STEPS.length - 1,
+        complete: true,
+      });
+      await wait(420);
+
+      const judgeHref = nextState.links.judge;
+      if (!judgeHref) {
+        throw new Error("Demo judge route is not available yet.");
+      }
+
+      startTransition(() => {
+        router.push(judgeHref);
+      });
+    } catch (buildError) {
+      setBuildTransition({ active: false, stepIndex: 0, complete: false });
+      setError(buildError instanceof Error ? buildError.message : "Unable to prepare the judge demo.");
     }
   }
 
@@ -226,6 +335,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       }
 
       setState(payload.state);
+      setAct2CompletionVisible(payload.state.progress.keyScoreCorrected);
       if (messageOnIncomplete && !payload.state.progress.keyScoreCorrected) {
         setNotice(messageOnIncomplete);
       }
@@ -244,20 +354,30 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       return;
     }
 
-    void prepareState("event_created", { reset: true });
+    void prepareState("event_created", { reset: true, resetOnly: true });
   }
 
   function handleActClick(act: StoryAct, status: ActStatus) {
     const href = state.links[act.hrefKey];
 
-    if (act.id === "public") {
+    if (act.id === "create") {
+      void runAct1BuildTransition();
+      return;
+    }
+
+    if (act.id === "public" && status !== "locked" && href) {
       writeLocalPublicViewed();
       setPublicViewed(true);
+      router.push(href);
+      return;
     }
 
     if (status === "locked" || !href) {
-      const targetAct = act.id === "judge" ? "event_created" : act.targetAct;
-      void prepareState(targetAct, { redirectTo: href, redirectKey: act.hrefKey });
+      if (act.id === "judge") {
+        void runAct1BuildTransition();
+        return;
+      }
+      void prepareState(act.targetAct, { redirectTo: href, redirectKey: act.hrefKey });
       return;
     }
 
@@ -269,6 +389,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     storyActs[storyActs.length - 1];
   const currentStatus = getActStatus(currentAct, state, publicViewed);
   const metadata = state.metadata;
+  const busy = isPending || Boolean(pendingLabel) || buildTransition.active;
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,#f8fafc,#eef6ff_46%,#fff7ed)] text-slate-950">
@@ -287,7 +408,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
               <Button size="compact" variant="secondary" onClick={() => router.push("/demo")}>
                 View Guide
               </Button>
-              <Button size="compact" variant="danger" onClick={handleReset} disabled={isPending || Boolean(pendingLabel)}>
+              <Button size="compact" variant="danger" onClick={handleReset} disabled={busy}>
                 Reset Demo
               </Button>
               <Link href="/" className={buttonStyles({ variant: "ghost", size: "compact" })}>
@@ -296,6 +417,62 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
             </div>
           </div>
         </div>
+
+        {buildTransition.active ? (
+          <Surface variant="card" density="public" className="overflow-hidden border-sky-200 bg-white/95">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,0.55fr)] lg:items-center">
+              <div className="space-y-3">
+                <Badge>Launching Act 2</Badge>
+                <h2 className="text-3xl font-black tracking-[-0.03em] text-slate-950 sm:text-4xl">
+                  The organizer setup is becoming a live comp.
+                </h2>
+                <p className="max-w-3xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+                  The demo is restoring a clean, judge-ready event in the background so the next
+                  screen opens on categories, boulders, schedule blocks, and public results that all
+                  line up.
+                </p>
+                {error ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                    {error}
+                  </div>
+                ) : null}
+              </div>
+              <ol className="space-y-2" aria-live="polite">
+                {ACT_1_BUILD_STEPS.map((step, index) => {
+                  const isComplete = buildTransition.complete || index < buildTransition.stepIndex;
+                  const isActive = !buildTransition.complete && index === buildTransition.stepIndex;
+                  return (
+                    <li
+                      key={step}
+                      className={cn(
+                        "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold transition",
+                        isComplete
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : isActive
+                            ? "border-sky-200 bg-sky-50 text-sky-800"
+                            : "border-slate-200 bg-slate-50 text-slate-500"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black",
+                          isComplete
+                            ? "bg-emerald-600 text-white"
+                            : isActive
+                              ? "bg-sky-600 text-white"
+                              : "bg-slate-200 text-slate-600"
+                        )}
+                      >
+                        {isComplete ? "OK" : index + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </Surface>
+        ) : null}
 
         <Surface variant="card" density="public" className="relative overflow-hidden">
           <div className="absolute right-0 top-0 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl" aria-hidden="true" />
@@ -307,7 +484,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   {DEMO_STORY_COPY.title}
                 </h1>
                 <p className="max-w-3xl text-lg leading-8 text-slate-600">
-                  Run a complete youth championship in five minutes. You’ll create the event,
+                  Run a complete youth championship in five minutes. You&apos;ll create the event,
                   correct a key score as a judge, advance finalists as the organizer, and view
                   the public result.
                 </p>
@@ -317,8 +494,8 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => prepareState("event_created", { reset: true })}
-                  disabled={isPending || Boolean(pendingLabel)}
+                  onClick={() => void runAct1BuildTransition({ reset: true })}
+                  disabled={busy}
                 >
                   Start Full Story
                 </Button>
@@ -326,28 +503,28 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   variant="secondary"
                   size="lg"
                   onClick={() => prepareState("event_created")}
-                  disabled={isPending || Boolean(pendingLabel)}
+                  disabled={busy}
                 >
                   Use Ready-Made Demo Event
                 </Button>
-              <Button
-                variant="danger"
-                size="lg"
-                onClick={handleReset}
-                  disabled={isPending || Boolean(pendingLabel)}
-                >
-                Reset Demo
-              </Button>
-              {error ? (
                 <Button
-                  variant="secondary"
+                  variant="danger"
                   size="lg"
-                  onClick={() => prepareState("event_created", { reset: true })}
-                  disabled={isPending || Boolean(pendingLabel)}
+                  onClick={handleReset}
+                  disabled={busy}
                 >
-                  Repair demo state
+                  Reset Demo
                 </Button>
-              ) : null}
+                {error ? (
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    onClick={() => prepareState("event_created", { reset: true })}
+                    disabled={busy}
+                  >
+                    Repair demo state
+                  </Button>
+                ) : null}
               </div>
 
               {(pendingLabel || error || notice) && (
@@ -385,7 +562,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   variant="primary"
                   fullWidth
                   onClick={() => handleActClick(currentAct, currentStatus)}
-                  disabled={isPending || Boolean(pendingLabel)}
+                  disabled={busy}
                 >
                   {currentStatus === "locked" ? "Prepare demo state and skip ahead" : currentAct.primaryLabel}
                 </Button>
@@ -394,6 +571,54 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
           </div>
         </Surface>
 
+        {act2CompletionVisible && state.progress.keyScoreCorrected ? (
+          <Surface variant="panel" density="judge" className="border-emerald-200 bg-emerald-50/90">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">
+                  Act 2 complete
+                </p>
+                <h2 className="text-2xl font-black tracking-tight text-emerald-950">
+                  Act 2 complete: key score corrected.
+                </h2>
+                <p className="max-w-3xl text-sm leading-6 text-emerald-900">
+                  You corrected Athlete C&apos;s B3 score to Top in 1 attempt. That change can move the
+                  finalist cut line, which is what the organizer reviews next.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    const href = state.links.organizer;
+                    if (href) {
+                      router.push(href);
+                    }
+                  }}
+                  disabled={busy || !state.links.organizer}
+                >
+                  Continue to Organizer Demo
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const href = state.links.leaderboard;
+                    if (href) {
+                      router.push(href);
+                    }
+                  }}
+                  disabled={busy || !state.links.leaderboard}
+                >
+                  View leaderboard impact
+                </Button>
+                <Button variant="ghost" onClick={() => router.push("/demo")} disabled={busy}>
+                  Back to Demo Home
+                </Button>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
+
         <section className="grid gap-4 lg:grid-cols-4">
           {storyActs.map((act) => {
             const status = getActStatus(act, state, publicViewed);
@@ -401,7 +626,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
               <Surface key={act.id} variant="row" density="organizer" className="flex h-full flex-col gap-4">
                 <div className="flex items-center justify-between gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white">
-                    {status === "complete" ? "✓" : act.number}
+                    {status === "complete" ? "OK" : act.number}
                   </span>
                   <span className={cn("rounded-full border px-3 py-1 text-xs font-black", statusStyles(status))}>
                     {getStatusLabel(status)}
@@ -417,7 +642,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                     variant={status === "locked" ? "secondary" : "primary"}
                     size="compact"
                     onClick={() => handleActClick(act, status)}
-                    disabled={isPending || Boolean(pendingLabel)}
+                    disabled={busy}
                   >
                     {status === "locked" ? "Prepare demo state and skip ahead" : act.primaryLabel}
                   </Button>
@@ -430,7 +655,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                           "Not complete yet. Save Athlete C on B3 as Top on attempt 1, then check again."
                         )
                       }
-                      disabled={isPending || Boolean(pendingLabel)}
+                      disabled={busy}
                     >
                       I completed this
                     </Button>

@@ -16,6 +16,7 @@ const DEMO_STORY_TARGET_ACTS = [
 type DemoPrepareStateRequest = {
   targetAct?: DemoStoryTargetAct;
   reset?: boolean;
+  resetOnly?: boolean;
 };
 
 function isAllowedDemoRequest(request: NextRequest) {
@@ -76,7 +77,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const state = await prepareDemoStoryState(payload.targetAct, { reset: payload.reset === true });
+    const state = await prepareDemoStoryState(payload.targetAct, {
+      reset: payload.reset === true,
+      resetOnly: payload.resetOnly === true,
+    });
     return NextResponse.json({ ok: true, state });
   } catch (error) {
     return NextResponse.json(

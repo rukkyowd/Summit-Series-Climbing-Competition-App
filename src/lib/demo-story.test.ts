@@ -24,6 +24,7 @@ function demoCompetition(
     finals_started_at: null,
     demo_metadata: {
       scenario_version: "demo-story-v1",
+      story_step: "event_created",
       drama_target_climber: "climber-c",
       drama_target_climb_number: 3,
       drama_target_attempts_after: 1,
@@ -65,6 +66,50 @@ describe("demo story progress", () => {
     expect(progress.eventCreated).toBe(true);
     expect(progress.keyScoreCorrected).toBe(true);
     expect(progress.finalistsAdvanced).toBe(false);
+  });
+
+  it("keeps a freshly reset demo locked until Act 1 is explicitly started", () => {
+    const progress = deriveDemoStoryProgress({
+      competition: demoCompetition({
+        demo_metadata: {
+          scenario_version: "demo-story-v1",
+          story_step: "reset",
+          drama_target_climber: "climber-c",
+          drama_target_climb_number: 3,
+          drama_target_attempts_after: 1,
+        },
+      }),
+      targetAttempt: {
+        attempt_count: 1,
+        topped: true,
+        zone: true,
+        attempts_to_top: 1,
+        attempts_to_zone: 1,
+      },
+      finalistCount: 0,
+    });
+
+    expect(progress.eventCreated).toBe(false);
+    expect(progress.keyScoreCorrected).toBe(false);
+    expect(progress.finalistsAdvanced).toBe(false);
+    expect(progress.finalsStarted).toBe(false);
+  });
+
+  it("accepts the corrected score when top implies zone and attempts are normalized", () => {
+    const progress = deriveDemoStoryProgress({
+      competition: demoCompetition(),
+      targetAttempt: {
+        attempt_count: 1,
+        topped: true,
+        zone: false,
+        attempts_to_top: null,
+        attempts_to_zone: null,
+      },
+      finalistCount: 0,
+    });
+
+    expect(progress.eventCreated).toBe(true);
+    expect(progress.keyScoreCorrected).toBe(true);
   });
 
   it("does not mark the judge act complete while the seeded before-state is still present", () => {

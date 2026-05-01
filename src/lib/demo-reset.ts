@@ -273,7 +273,7 @@ export async function resetDemoCompetition() {
     scenario_version: "demo-story-v1",
     preset_id: YOUTH_CHAMPIONSHIP_PRESET.id,
     preset_name: YOUTH_CHAMPIONSHIP_PRESET.name,
-    story_step: "event_created",
+    story_step: "reset",
     finals_ineligible_age_groups: ["Youth D", "Youth C"],
   };
 
