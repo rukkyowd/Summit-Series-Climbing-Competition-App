@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { GuidedDemoEventSetupFlow } from "@/components/demo/guided-demo-event-setup-flow";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
@@ -46,41 +47,8 @@ const ACT_1_BUILD_STEPS = [
   "Opening judge workspaces",
   "Launching the live judge panel",
 ] as const;
-const ACT_1_SCHEDULE_PREVIEW = [
-  "Check-in",
-  "Judges briefing",
-  "Technical meeting",
-  "Qualifier waves",
-  "Results review",
-  "Isolation",
-  "Observation",
-  "Finals",
-  "Awards",
-] as const;
 const ACT_1_DIVISIONS = ["Men", "Women"] as const;
 const youthChampionshipPreset = getGuidedDemoPreset();
-const FINALS_STORY_STEPS = [
-  {
-    title: "Qualifiers",
-    body: "Judges score climbers during the qualifier round.",
-  },
-  {
-    title: "Cut line",
-    body: "The leaderboard ranks climbers by category. The key score correction can move an athlete above the finals cut line.",
-  },
-  {
-    title: "Advance finalists",
-    body: "The organizer locks qualifiers and advances the eligible categories.",
-  },
-  {
-    title: "Finals",
-    body: "Finalists compete in a finals stage using the configured finals format.",
-  },
-  {
-    title: "Public results",
-    body: "Athletes, coaches, parents, and spectators can view rankings and results publicly.",
-  },
-] as const;
 const DEMO_STORY_COPY = {
   title: "Summit Series Demo",
 } as const;
@@ -194,6 +162,28 @@ function getJudgeRouteReadinessError(state: DemoStoryState) {
   }
 
   return null;
+}
+
+function resetClientStoryState(state: DemoStoryState): DemoStoryState {
+  return {
+    ...state,
+    error: null,
+    targetAttempt: null,
+    finalistCount: 0,
+    progress: {
+      eventCreated: false,
+      finalsSetupReady: false,
+      keyScoreCorrected: false,
+      finalistsAdvanced: false,
+      finalsStarted: false,
+      publicViewed: false,
+    },
+    links: {
+      ...state.links,
+      judge: null,
+      scorecard: null,
+    },
+  };
 }
 
 function getActStatus(act: StoryAct, state: DemoStoryState, publicViewed: boolean): ActStatus {
@@ -346,30 +336,17 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     }
   }
 
-  async function startFullStory() {
+  function startFullStory() {
     setError(null);
     setNotice(null);
-    setPendingLabel("Resetting demo story...");
+    setPendingLabel(null);
     setBuildTransition({ active: false, stepIndex: 0, complete: false });
     clearDemoStoryRuntimeState();
     setPublicViewed(false);
     setAct2CompletionVisible(false);
-
-    try {
-      const nextState = await postPrepareState("event_created", { reset: true, resetOnly: true });
-      setState(nextState);
-      setError(nextState.error);
-      setActiveView("act1_setup");
-      setNotice(
-        nextState.error
-          ? "Act 1 is ready, but the demo state needs repair before the judge panel can open."
-          : "Act 1 is ready. Review the event setup, then finish setup to open the judge panel."
-      );
-    } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "Unable to reset the guided demo story.");
-    } finally {
-      setPendingLabel(null);
-    }
+    setState((current) => resetClientStoryState(current));
+    setActiveView("act1_setup");
+    setNotice("Act 1 is ready. Review the real setup-style flow, then create the demo event.");
   }
 
   function openAct1Setup() {
@@ -690,169 +667,11 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
         </Surface>
 
         {activeView === "act1_setup" ? (
-          <Surface variant="panel" density="public" className="space-y-6 border-sky-200 bg-white/95">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-3">
-                <Badge>Act 1 setup review</Badge>
-                <div>
-                  <h2 className="text-3xl font-black tracking-[-0.03em] text-slate-950">
-                    Create the Demo Event
-                  </h2>
-                  <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-                    You are organizing a youth championship at a climbing gym. This preset creates
-                    the category structure, qualifier round, finals rules, and event-day schedule
-                    before the app becomes a live judge station.
-                  </p>
-                  <p className="mt-3 max-w-4xl rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold leading-6 text-emerald-900">
-                    This demo uses a Youth Championship with Finals preset so you can see the full
-                    event lifecycle: setup, qualifier scoring, leaderboard movement, finalist
-                    advancement, finals, and public results.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => void runAct1BuildTransition()}
-                  disabled={busy}
-                >
-                  Finish setup
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => setActiveView("home")}
-                  disabled={busy}
-                >
-                  Back to Demo Home
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
-              <div className="space-y-4">
-                <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">
-                        Preset
-                      </p>
-                      <h3 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-                        {youthChampionshipPreset.name}
-                      </h3>
-                    </div>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-emerald-800">
-                      Required for story
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {youthChampionshipPreset.description}
-                  </p>
-                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-                    This preset is locked in guided story mode. Use the normal competition setup flow
-                    if you want to explore qualifier-only presets.
-                  </p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl bg-white p-4">
-                      <p className="text-xs font-bold text-slate-500">Qualifier problems</p>
-                      <p className="mt-1 text-2xl font-black text-slate-950">
-                        {youthChampionshipPreset.qualifierProblemCount}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl bg-white p-4">
-                      <p className="text-xs font-bold text-slate-500">Counting climbs</p>
-                      <p className="mt-1 text-2xl font-black text-slate-950">
-                        {youthChampionshipPreset.countingClimbs}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl bg-white p-4">
-                      <p className="text-xs font-bold text-slate-500">Finals cutoff</p>
-                      <p className="mt-1 text-2xl font-black text-slate-950">
-                        Top {youthChampionshipPreset.finalsCutoff}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
-                    <h3 className="font-black text-slate-950">Generated categories</h3>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {youthChampionshipPreset.defaultCategories.flatMap((ageGroup) =>
-                        ACT_1_DIVISIONS.map((division) => (
-                          <span
-                            key={`${division}-${ageGroup}`}
-                            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
-                          >
-                            {division} / {ageGroup}
-                          </span>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  <div className="rounded-3xl border border-emerald-200 bg-emerald-50/80 p-5">
-                    <h3 className="font-black text-emerald-950">Finals eligible</h3>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {youthChampionshipPreset.finalsEligibleCategories.flatMap((ageGroup) =>
-                        ACT_1_DIVISIONS.map((division) => (
-                          <span
-                            key={`${division}-${ageGroup}`}
-                            className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-bold text-emerald-800"
-                          >
-                            {division} / {ageGroup}
-                          </span>
-                        ))
-                      )}
-                    </div>
-                    <p className="mt-3 text-xs leading-5 text-emerald-800">
-                      Youth D and Youth C compete in qualifiers, but they do not advance to finals by default.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-sky-200 bg-sky-50/80 p-5">
-                  <h3 className="font-black text-sky-950">How finals work in this demo</h3>
-                  <div className="mt-4 grid gap-3">
-                    {FINALS_STORY_STEPS.map((step, index) => (
-                      <div key={step.title} className="flex gap-3 rounded-2xl bg-white/80 p-3">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-black text-white">
-                          {index + 1}
-                        </span>
-                        <div>
-                          <p className="font-black text-slate-950">{step.title}</p>
-                          <p className="mt-1 text-sm leading-5 text-slate-600">{step.body}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-4 text-sm font-semibold leading-6 text-sky-900">
-                    The qualifier round ranks climbers inside each category. Youth D and Youth C
-                    compete in qualifiers only; Youth B, Youth A, and Junior are finals-eligible.
-                    After score review, the organizer locks qualifiers, advances the Top{" "}
-                    {youthChampionshipPreset.finalsCutoff}, and makes finals the active scoring stage.
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
-                <h3 className="font-black text-slate-950">Schedule and rounds</h3>
-                <ol className="mt-4 space-y-2">
-                  {ACT_1_SCHEDULE_PREVIEW.map((item, index) => (
-                    <li
-                      key={item}
-                      className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700"
-                    >
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
-                        {index + 1}
-                      </span>
-                      {item}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          </Surface>
+          <GuidedDemoEventSetupFlow
+            busy={busy}
+            onBack={() => setActiveView("home")}
+            onCreateDemoEvent={() => void runAct1BuildTransition({ reset: true })}
+          />
         ) : null}
 
         {act2CompletionVisible && state.progress.keyScoreCorrected ? (
