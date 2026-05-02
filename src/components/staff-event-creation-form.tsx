@@ -33,6 +33,7 @@ type StaffEventCreationFormProps = {
   canSubmit?: boolean;
   mode?: "staff" | "guided-demo";
   lockedPresetLabel?: string;
+  lockFormat?: boolean;
   showCapacity?: boolean;
   showRegistrationStory?: boolean;
   hideSubmit?: boolean;
@@ -89,6 +90,7 @@ export function StaffEventCreationForm({
   canSubmit = true,
   mode = "staff",
   lockedPresetLabel,
+  lockFormat = false,
   showCapacity = false,
   showRegistrationStory = false,
   hideSubmit = false,
@@ -153,7 +155,7 @@ export function StaffEventCreationForm({
             value={values.format}
             onChange={(event) => onChange({ ...values, format: event.target.value as EventFormat })}
             className="results-input"
-            disabled={mode === "guided-demo" || formDisabled}
+            disabled={lockFormat || mode === "guided-demo" || formDisabled}
           >
             {formatOptions.map((template) => (
               <option key={template.value} value={template.value}>
@@ -161,9 +163,11 @@ export function StaffEventCreationForm({
               </option>
             ))}
           </select>
-          {mode === "guided-demo" ? (
+          {mode === "guided-demo" || lockFormat ? (
             <span className="text-xs leading-5 text-slate-500">
-              Qualifier-only formats are disabled in the guided story.
+              {lockedPresetLabel
+                ? `${lockedPresetLabel} is locked for the guided story.`
+                : "Qualifier-only formats are disabled in the guided story."}
             </span>
           ) : null}
         </label>

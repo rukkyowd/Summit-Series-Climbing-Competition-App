@@ -136,7 +136,7 @@ function resetClientStoryState(state: DemoStoryState): DemoStoryState {
       publicViewed: false,
     },
     links: {
-      setup: "/staff/demo/new",
+      setup: "/staff/new?demoStory=act1",
       judge: null,
       organizer: null,
       publicEvent: null,
@@ -284,7 +284,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
 
       setNotice("Opening Act 1 in a clean organizer setup flow.");
       startTransition(() => {
-        router.push("/staff/demo/new");
+        router.push("/staff/new?demoStory=act1");
       });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to clear old demo state.");
@@ -371,7 +371,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
 
   function handleActClick(act: StoryAct, status: ActStatus) {
     if (act.id === "create") {
-      startTransition(() => router.push("/staff/demo/new"));
+      startTransition(() => router.push("/staff/new?demoStory=act1"));
       return;
     }
 

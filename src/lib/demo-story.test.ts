@@ -423,7 +423,7 @@ describe("demo story progress", () => {
       finalistCount: 0,
       progress,
       links: {
-        setup: "/staff/demo/new",
+        setup: "/staff/new?demoStory=act1",
         judge: `/staff/c/${DEMO_COMPETITION_SLUG}/judge?demoStory=act2`,
         organizer: `/staff/c/${DEMO_COMPETITION_SLUG}?demoStory=act3`,
         publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=act4`,
@@ -463,7 +463,7 @@ describe("demo story progress", () => {
         finalsSetupReady: true,
       }),
       links: {
-        setup: "/staff/demo/new",
+        setup: "/staff/new?demoStory=act1",
         judge: null,
         organizer: `/staff/c/${DEMO_COMPETITION_SLUG}?demoStory=act3`,
         publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=act4`,

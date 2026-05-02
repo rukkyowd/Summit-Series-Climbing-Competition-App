@@ -33,7 +33,7 @@ async function deleteCanonicalDemoCompetition() {
   const { data: rows, error: loadError } = await supabase
     .from("competitions")
     .select("id, slug, is_demo")
-    .eq("slug", DEMO_COMPETITION_SLUG);
+    .or(`is_demo.eq.true,slug.eq.${DEMO_COMPETITION_SLUG}`);
 
   if (loadError) {
     console.error("DEMO CREATE ERROR:", loadError);

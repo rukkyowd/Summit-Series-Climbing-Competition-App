@@ -28,7 +28,6 @@ import {
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   COMPETITION_PRESETS,
-  GUIDED_DEMO_PRESET_ID,
   detectCompetitionPreset,
   getGuidedDemoPreset,
   getCompetitionPreset,
@@ -38,8 +37,6 @@ import {
 } from "@/lib/competition-presets";
 import {
   buildDefaultGuidedDemoEventSetup,
-  buildGuidedDemoSetupModel,
-  normalizeGuidedDemoEventSetup,
   type GuidedDemoSetupStepId,
 } from "@/lib/guided-demo-setup";
 import {
@@ -111,7 +108,6 @@ import {
   writeDemoSalesSession,
 } from "@/lib/demo-sales-session";
 import { sanitizeExternalUrl } from "@/lib/security";
-import type { DemoStoryState } from "@/lib/demo-story";
 
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
 
@@ -278,47 +274,6 @@ const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
 ];
 
 type StaffDashboardDemoStoryAct = "act1" | "act3";
-
-type DemoPrepareStateResponse = {
-  ok?: boolean;
-  state?: DemoStoryState;
-  competitionId?: string;
-  slug?: string;
-  isDemo?: boolean;
-  judgeUrl?: string;
-  publicUrl?: string;
-  leaderboardUrl?: string;
-  progress?: DemoStoryState["progress"];
-  error?: string;
-};
-
-function getGuidedDemoJudgeRouteReadinessError(state: DemoStoryState) {
-  if (state.error) {
-    return state.error;
-  }
-
-  if (!state.competition) {
-    return "Create the canonical demo event before opening the judge panel.";
-  }
-
-  if (!state.competition.is_demo) {
-    return "The canonical demo slug is not marked as demo-safe. Refusing to open the judge panel.";
-  }
-
-  if (!state.metadata?.drama_target_climber || !state.metadata.drama_target_climb_number) {
-    return "The demo is missing the target athlete or boulder metadata. Repair the demo state before opening the judge panel.";
-  }
-
-  if (!state.targetAttempt) {
-    return "The demo seeded scores are not ready yet. Repair the demo state before opening the judge panel.";
-  }
-
-  if (!state.links.judge) {
-    return "The demo judge route is missing target athlete or qualifier route prerequisites. Repair the demo state before opening the judge panel.";
-  }
-
-  return null;
-}
 
 function GuidedOrganizerAct1Walkthrough({
   steps,
@@ -875,9 +830,8 @@ export default function StaffDashboard({
     action: () => Promise<void>;
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
-  const isGuidedStoryAct1 = demoMode && demoStoryAct === "act1";
+  const isGuidedStoryAct1 = demoStoryAct === "act1";
   const isGuidedStoryAct3 = demoStoryAct === "act3";
-  const guidedAct1SetupModel = useMemo(() => buildGuidedDemoSetupModel(), []);
   const currentGuidedAct1Step =
     GUIDED_ORGANIZER_ACT_1_STEPS[guidedAct1StepIndex] ?? GUIDED_ORGANIZER_ACT_1_STEPS[0];
 
@@ -2333,130 +2287,6 @@ export default function StaffDashboard({
     [waitForOrganizerPlayback]
   );
 
-  const createGuidedDemoEventFromStaffForm = useCallback(async () => {
-    const setup = normalizeGuidedDemoEventSetup({
-      name: createName,
-      locationName: createLocation,
-      startDate: createStartDate,
-      endDate: createEndDate,
-      description: createDescription,
-      registrationOpensAt: createRegistrationOpensAt,
-      registrationClosesAt: createRegistrationClosesAt,
-      maxClimbers: createMaxClimbers,
-      presetId: GUIDED_DEMO_PRESET_ID,
-    });
-
-    setError("");
-    setMessage("");
-    setBuildTransitionState({
-      active: true,
-      stepIndex: 0,
-      complete: false,
-    });
-    setOrganizerNarration({
-      title: "The organizer setup is becoming a live comp.",
-      body: "The demo is saving your event setup, simulating registrations, generating seeded scores, and opening the judge workspace.",
-    });
-
-    try {
-      const preparePromise = fetch("/api/demo/prepare-state", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          targetAct: "event_created",
-          reset: true,
-          setup,
-        }),
-      }).then(async (response) => {
-        const payload = (await response.json().catch(() => null)) as DemoPrepareStateResponse | null;
-        if (!response.ok || !payload?.ok || !payload.state) {
-          throw new Error(payload?.error ?? "Unable to create the guided demo event.");
-        }
-
-        return {
-          state: payload.state,
-          judgeUrl: payload.judgeUrl ?? payload.state.links.judge,
-          slug: payload.slug ?? payload.state.competition?.slug ?? null,
-        };
-      });
-
-      for (let index = 0; index < ORGANIZER_BUILD_TRANSITION_STEPS.length; index += 1) {
-        setBuildTransitionState({
-          active: true,
-          stepIndex: index,
-          complete: false,
-        });
-        await waitForOrganizerPlayback(index === 0 ? 360 : 620);
-      }
-
-      const { state: nextState, judgeUrl, slug } = await preparePromise;
-      const readinessError = getGuidedDemoJudgeRouteReadinessError(nextState);
-      if (readinessError) {
-        throw new Error(readinessError);
-      }
-
-      if (!judgeUrl) {
-        throw new Error("failed to prepare judge route");
-      }
-
-      if (nextState.competition) {
-        setDemoSessionCompetitionId(nextState.competition.id);
-        writeDemoSalesSession(
-          createDemoSalesSession({
-            mode: "judge",
-            phase: "judge",
-            storyStep: "judge-save",
-            narratorTitle: "The event you built is now live in judge mode.",
-            narratorBody:
-              "Use the real judge screen to correct Athlete C's B3 score. The app will only unlock organizer progression after the database confirms the save.",
-            autoplay: false,
-            organizerCompleted: true,
-            judgePending: true,
-            persistentCompletion: false,
-            audioEnabled: salesAudioEnabled,
-            competitionId: nextState.competition.id,
-            competitionSlug: slug ?? nextState.competition.slug,
-          })
-        );
-      }
-
-      setBuildTransitionState({
-        active: true,
-        stepIndex: ORGANIZER_BUILD_TRANSITION_STEPS.length - 1,
-        complete: true,
-      });
-      setMessage("Demo event created. Opening the real judge station for Act 2.");
-      await waitForOrganizerPlayback(500);
-      router.push(judgeUrl);
-    } catch (nextError) {
-      setBuildTransitionState({
-        active: false,
-        stepIndex: 0,
-        complete: false,
-      });
-      const message = nextError instanceof Error ? nextError.message : "Unable to create the guided demo event.";
-      setError(
-        message.startsWith("Demo event creation failed:")
-          ? message
-          : `Demo event creation failed: ${message}`
-      );
-    }
-  }, [
-    createDescription,
-    createEndDate,
-    createLocation,
-    createMaxClimbers,
-    createName,
-    createRegistrationClosesAt,
-    createRegistrationOpensAt,
-    createStartDate,
-    router,
-    salesAudioEnabled,
-    waitForOrganizerPlayback,
-  ]);
-
   const runOrganizerBuildTransition = useCallback(async () => {
     if (!draft) {
       return;
@@ -3191,13 +3021,13 @@ export default function StaffDashboard({
                 pending={isPending || buildTransitionState.active}
                 submitLabel={isGuidedStoryAct1 ? "Create Demo Event" : demoMode ? "Create event" : "Create new event"}
                 submittingLabel={isGuidedStoryAct1 ? "Creating demo event..." : undefined}
-                canSubmit={Boolean(createName.trim()) && (!isGuidedStoryAct1 || currentGuidedAct1Step.id === "create")}
-                mode={isGuidedStoryAct1 ? "guided-demo" : "staff"}
+                canSubmit={Boolean(createName.trim())}
+                mode="staff"
                 lockedPresetLabel={isGuidedStoryAct1 ? GUIDED_STORY_PRESET.name : undefined}
+                lockFormat={isGuidedStoryAct1}
                 showCapacity={isGuidedStoryAct1}
                 showRegistrationStory={isGuidedStoryAct1}
                 activeGuideStepId={isGuidedStoryAct1 ? currentGuidedAct1Step.id : undefined}
-                guidedSetupModel={isGuidedStoryAct1 ? guidedAct1SetupModel : undefined}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
                     ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${
@@ -3221,31 +3051,52 @@ export default function StaffDashboard({
                   setCreateMaxClimbers(values.maxClimbers ?? createMaxClimbers);
                 }}
                 onSubmit={() => {
-                  if (isGuidedStoryAct1) {
-                    void createGuidedDemoEventFromStaffForm();
-                    return;
-                  }
-
                   startTransition(() => {
                     void (async () => {
                       try {
                         const created = await createCompetitionFromTemplate({
                           name: sanitizeDraftText(createName),
                           format: createFormat,
-                          has_finals: competitionAllowsOptionalFinals(createFormat) ? false : true,
-                          is_demo: demoMode,
+                          has_finals: isGuidedStoryAct1
+                            ? true
+                            : competitionAllowsOptionalFinals(createFormat)
+                              ? false
+                              : true,
+                          is_demo: isGuidedStoryAct1 || demoMode,
                           location_name: sanitizeDraftText(createLocation),
                           start_date: sanitizeDraftText(createStartDate) || null,
                           end_date: sanitizeDraftText(createEndDate) || null,
                           registration_opens_at: sanitizeDraftNullable(createRegistrationOpensAt),
                           registration_closes_at: sanitizeDraftNullable(createRegistrationClosesAt),
                           description: sanitizeDraftText(createDescription),
-                          hero_image_url: sanitizeExternalUrl(createHeroImageUrl) || undefined,
+                          hero_image_url: isGuidedStoryAct1 ? undefined : sanitizeExternalUrl(createHeroImageUrl) || undefined,
                           discipline_label: sanitizeDraftText(createDisciplineLabel) || undefined,
-                          official_event_url: sanitizeExternalUrl(createOfficialEventUrl) || undefined,
-                          official_registration_url: sanitizeExternalUrl(createOfficialRegistrationUrl) || undefined,
-                          official_schedule_url: sanitizeExternalUrl(createOfficialScheduleUrl) || undefined,
+                          ...(isGuidedStoryAct1
+                            ? {}
+                            : {
+                                official_event_url: sanitizeExternalUrl(createOfficialEventUrl) || undefined,
+                                official_registration_url: sanitizeExternalUrl(createOfficialRegistrationUrl) || undefined,
+                                official_schedule_url: sanitizeExternalUrl(createOfficialScheduleUrl) || undefined,
+                              }),
                         });
+                        if (isGuidedStoryAct1) {
+                          setMessage("Event created. Populating demo climbers, seeded scores, and target metadata...");
+                          const response = await fetch("/api/demo/populate", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ competitionId: created.id }),
+                          });
+                          const payload = (await response.json().catch(() => null)) as {
+                            ok?: boolean;
+                            judgeUrl?: string;
+                            error?: string;
+                          } | null;
+                          if (!response.ok || !payload?.ok || !payload.judgeUrl) {
+                            throw new Error(payload?.error ?? "Unable to populate demo data.");
+                          }
+                          router.push(payload.judgeUrl);
+                          return;
+                        }
                         setCreateName("");
                         setCreateLocation("");
                         setCreateStartDate("");

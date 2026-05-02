@@ -11,7 +11,7 @@ export default function StaffDemoPage({
 }) {
   const demoStory = readSearchParam(searchParams?.demoStory);
   if (demoStory === "act1") {
-    redirect("/staff/demo/new");
+    redirect("/staff/new?demoStory=act1");
   }
 
   redirect("/demo");

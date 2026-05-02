@@ -14,15 +14,7 @@ const DEMO_ACTIVE_BLOCK_LABEL = "Youth B qualifier wave";
 const YOUTH_CHAMPIONSHIP_PRESET = getGuidedDemoPreset();
 const DEMO_REGISTRATION_TARGET = 150;
 const DEMO_CLIMBERS_PER_CATEGORY = 15;
-const OPTIONAL_COMPETITION_LINK_COLUMNS = [
-  "official_event_url",
-  "official_registration_url",
-  "official_schedule_url",
-] as const;
-const OPTIONAL_COMPETITION_INSERT_COLUMNS = [
-  ...OPTIONAL_COMPETITION_LINK_COLUMNS,
-  "created_by",
-] as const;
+const OPTIONAL_COMPETITION_INSERT_COLUMNS = ["created_by"] as const;
 
 type DemoCategorySeed = {
   ageGroup: string;
@@ -343,6 +335,234 @@ async function loadDemoCreatedBy(supabase: ReturnType<typeof createServiceRoleSu
   return typeof data?.id === "string" ? data.id : null;
 }
 
+function buildDemoStructureRows(input: {
+  competitionId: string;
+  qualifierRoundId: string;
+  finalsRoundId: string;
+  now: Date;
+}) {
+  const { competitionId, qualifierRoundId, finalsRoundId, now } = input;
+  const categories = DEMO_CATEGORY_SEEDS.map((entry, index) => ({
+    id: createCategoryKey(entry.division, entry.ageGroup),
+    competition_id: competitionId,
+    gender_division: entry.division,
+    age_group: entry.ageGroup,
+    display_name: buildDisplayCategory(entry.division, entry.ageGroup),
+    sort_order: index,
+  }));
+  const rounds = [
+    {
+      id: qualifierRoundId,
+      competition_id: competitionId,
+      round_number: 1,
+      sort_order: 1,
+      name: "Qualifier",
+      round_type: "qualifier",
+      format: "five_on_five_off",
+      status: "active",
+      runtime_phase: "qualifier_open",
+      is_enabled: true,
+      is_active: true,
+      activated_at: now.toISOString(),
+      problem_count: YOUTH_CHAMPIONSHIP_PRESET.qualifierProblemCount,
+      counting_climbs: YOUTH_CHAMPIONSHIP_PRESET.countingClimbs,
+      finals_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
+      eligible_category_ids: categories.map((entry) => entry.id),
+      advancement_source_round_id: null,
+      advancement_cutoff: null,
+      scoring_bucket: "qualifier",
+      scoring_config: { demo: true, mode: "judge" },
+      started_at: now.toISOString(),
+      closed_at: null,
+    },
+    {
+      id: finalsRoundId,
+      competition_id: competitionId,
+      round_number: 2,
+      sort_order: 2,
+      name: "Finals",
+      round_type: "finals",
+      format: "ifsc_finals_format",
+      status: "pending",
+      runtime_phase: "finals_open",
+      is_enabled: true,
+      is_active: false,
+      activated_at: null,
+      problem_count: YOUTH_CHAMPIONSHIP_PRESET.finalsProblemCount,
+      counting_climbs: null,
+      finals_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
+      eligible_category_ids: categories
+        .filter((entry) => YOUTH_CHAMPIONSHIP_PRESET.finalsEligibleCategories.includes(entry.age_group))
+        .map((entry) => entry.id),
+      advancement_source_round_id: qualifierRoundId,
+      advancement_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
+      scoring_bucket: "finals",
+      scoring_config: { demo: true },
+      started_at: null,
+      closed_at: null,
+    },
+  ];
+  const allCategoryIds = categories.map((category) => category.id);
+  const finalsCategoryIds = categories
+    .filter((category) => YOUTH_CHAMPIONSHIP_PRESET.finalsEligibleCategories.includes(category.age_group))
+    .map((category) => category.id);
+  const categoryIdsForAgeGroups = (ageGroups: string[]) =>
+    categories.filter((category) => ageGroups.includes(category.age_group)).map((category) => category.id);
+  const qualifierWaves = [
+    {
+      label: "Youth D / Youth C qualifier wave",
+      audience: "Youth D / Youth C",
+      ageGroups: ["Youth D", "Youth C"],
+      start: "9:00 AM",
+      end: "10:30 AM",
+    },
+    {
+      label: "Youth B qualifier wave",
+      audience: "Youth B",
+      ageGroups: ["Youth B"],
+      start: "10:45 AM",
+      end: "12:15 PM",
+    },
+    {
+      label: "Youth A / Junior qualifier wave",
+      audience: "Youth A / Junior",
+      ageGroups: ["Youth A", "Junior"],
+      start: "12:30 PM",
+      end: "2:00 PM",
+    },
+  ];
+  const scheduleBlocks: DemoScheduleBlockRow[] = [
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 0,
+      label: "Check-in",
+      phase_type: "check_in",
+      audience_label: "All athletes",
+      is_active: false,
+      start_time: "7:30 AM",
+      end_time: "8:15 AM",
+      capacity: 80,
+      eligible_category_ids: allCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 1,
+      label: "Judges briefing",
+      phase_type: "technical_meeting",
+      audience_label: "Judges and volunteers",
+      is_active: false,
+      start_time: "8:15 AM",
+      end_time: "8:30 AM",
+      capacity: 30,
+      eligible_category_ids: allCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 2,
+      label: "Technical meeting",
+      phase_type: "technical_meeting",
+      audience_label: "Athletes and coaches",
+      is_active: false,
+      start_time: "8:35 AM",
+      end_time: "8:50 AM",
+      capacity: 80,
+      eligible_category_ids: allCategoryIds,
+    },
+    ...qualifierWaves.map((wave, index) => ({
+      id: createId(),
+      competition_id: competitionId,
+      round_id: qualifierRoundId,
+      sort_order: index + 3,
+      label: wave.label,
+      phase_type: "qualifier_round",
+      audience_label: wave.audience,
+      is_active: index === 1,
+      start_time: wave.start,
+      end_time: wave.end,
+      capacity: 24,
+      eligible_category_ids: categoryIdsForAgeGroups(wave.ageGroups),
+    })),
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 6,
+      label: "Results review",
+      phase_type: "results",
+      audience_label: "Organizers and coaches",
+      is_active: false,
+      start_time: "2:10 PM",
+      end_time: "2:30 PM",
+      capacity: 30,
+      eligible_category_ids: allCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: finalsRoundId,
+      sort_order: 7,
+      label: "Isolation opens",
+      phase_type: "isolation",
+      audience_label: "Youth B / Youth A / Junior finalists",
+      is_active: false,
+      start_time: "2:30 PM",
+      end_time: "3:00 PM",
+      capacity: 36,
+      eligible_category_ids: finalsCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: finalsRoundId,
+      sort_order: 8,
+      label: "Observation",
+      phase_type: "observation",
+      audience_label: "Top 6 per category",
+      is_active: false,
+      start_time: "3:05 PM",
+      end_time: "3:15 PM",
+      capacity: 36,
+      eligible_category_ids: finalsCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: finalsRoundId,
+      sort_order: 9,
+      label: "Finals",
+      phase_type: "finals_round",
+      audience_label: "Top 6 per category",
+      is_active: false,
+      start_time: "3:20 PM",
+      end_time: "4:45 PM",
+      capacity: 36,
+      eligible_category_ids: finalsCategoryIds,
+    },
+    {
+      id: createId(),
+      competition_id: competitionId,
+      round_id: null,
+      sort_order: 10,
+      label: "Awards",
+      phase_type: "results",
+      audience_label: "All athletes and spectators",
+      is_active: false,
+      start_time: "5:00 PM",
+      end_time: "5:30 PM",
+      capacity: 120,
+      eligible_category_ids: allCategoryIds,
+    },
+  ];
+
+  return { categories, rounds, scheduleBlocks };
+}
+
 export async function createDemoEventFromSetup(options: { setup?: GuidedDemoEventSetupInput } = {}): Promise<CreatedDemoEvent> {
   const supabase = createServiceRoleSupabaseClient();
   const now = new Date();
@@ -404,9 +624,6 @@ export async function createDemoEventFromSetup(options: { setup?: GuidedDemoEven
     registration_closes_at: registrationClosesAt,
     description: setup.description,
     hero_image_url: "",
-    official_event_url: "",
-    official_registration_url: "",
-    official_schedule_url: "",
     total_climbs: YOUTH_CHAMPIONSHIP_PRESET.qualifierProblemCount,
     max_climbers: setup.maxClimbers,
     qualifier_counting_climbs: YOUTH_CHAMPIONSHIP_PRESET.countingClimbs,
@@ -683,7 +900,7 @@ async function loadDemoPopulationContext(
   }
 
   const competitionRow = competition as DemoCompetitionPopulationRow;
-  if (competitionRow.slug !== DEMO_COMPETITION_SLUG || competitionRow.is_demo !== true) {
+  if (competitionRow.is_demo !== true) {
     throw new Error("Refusing to populate demo data for a non-demo competition.");
   }
 
@@ -736,9 +953,126 @@ async function loadDemoPopulationContext(
   };
 }
 
+async function ensureDemoPopulationStructure(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competitionId: string,
+  now: Date
+) {
+  const { data: competition, error: competitionError } = await supabase
+    .from("competitions")
+    .select("id, slug, name, is_demo, demo_metadata")
+    .eq("id", competitionId)
+    .maybeSingle();
+
+  if (competitionError) {
+    logDemoCreateError("load demo competition before population", competitionError);
+    throw new Error(formatSupabaseError(competitionError, "Unable to load the demo competition before population."));
+  }
+
+  if (!competition) {
+    throw new Error("Cannot populate demo data before the competition exists.");
+  }
+
+  if (competition.is_demo !== true) {
+    throw new Error("Refusing to populate demo data for a non-demo competition.");
+  }
+
+  const { data: canonicalSlugRows, error: canonicalSlugError } = await supabase
+    .from("competitions")
+    .select("id, slug, is_demo")
+    .eq("slug", DEMO_COMPETITION_SLUG);
+  await requireNoSupabaseError(canonicalSlugError ? { error: canonicalSlugError } : { error: null }, "Unable to check the canonical demo slug.");
+
+  const canonicalSlugConflicts = canonicalSlugRows ?? [];
+  if (canonicalSlugConflicts.some((row) => row.id !== competitionId && row.is_demo !== true)) {
+    throw new Error("A real competition already uses the canonical demo slug. Refusing to overwrite it.");
+  }
+
+  const staleCanonicalDemoIds = canonicalSlugConflicts
+    .filter((row) => row.id !== competitionId && row.is_demo === true)
+    .map((row) => row.id as string);
+  if (staleCanonicalDemoIds.length) {
+    const deleteStaleCanonical = await supabase.from("competitions").delete().in("id", staleCanonicalDemoIds);
+    await requireNoSupabaseError(deleteStaleCanonical, "Unable to clear the stale canonical demo competition.");
+  }
+
+  const qualifierRoundId = createId();
+  const finalsRoundId = createId();
+  const { categories, rounds, scheduleBlocks } = buildDemoStructureRows({
+    competitionId,
+    qualifierRoundId,
+    finalsRoundId,
+    now,
+  });
+  const nextMetadata = {
+    ...(competition.demo_metadata && typeof competition.demo_metadata === "object" ? competition.demo_metadata : {}),
+    scenario_version: "demo-story-v1",
+    preset_id: YOUTH_CHAMPIONSHIP_PRESET.id,
+    preset_name: YOUTH_CHAMPIONSHIP_PRESET.name,
+    story_step: "event_created",
+    finals_ineligible_age_groups: ["Youth D", "Youth C"],
+    registration_story: {
+      simulated_registrations: DEMO_REGISTRATION_TARGET,
+      generated_after_create: true,
+    },
+  };
+
+  const cleanupTables = [
+    "competition_boulder_queue",
+    "qualifier_score_events",
+    "final_score_events",
+    "final_attempts",
+    "competition_finalists",
+    "qualifier_attempts",
+    "climbers",
+    "competition_schedule_blocks",
+    "competition_rounds",
+    "competition_categories",
+  ] as const;
+
+  for (const table of cleanupTables) {
+    const cleanup = await supabase.from(table).delete().eq("competition_id", competitionId);
+    await requireNoSupabaseError(cleanup, `Unable to clear existing demo ${table}.`);
+  }
+
+  const update = await supabase
+    .from("competitions")
+    .update({
+      slug: DEMO_COMPETITION_SLUG,
+      format: YOUTH_CHAMPIONSHIP_PRESET.format,
+      current_phase: "qualifier_open",
+      stage_mode: "qualifier",
+      total_climbs: YOUTH_CHAMPIONSHIP_PRESET.qualifierProblemCount,
+      max_climbers: DEMO_REGISTRATION_TARGET,
+      qualifier_counting_climbs: YOUTH_CHAMPIONSHIP_PRESET.countingClimbs,
+      has_finals: YOUTH_CHAMPIONSHIP_PRESET.finalsEnabled,
+      finals_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
+      finals_tie_advances: YOUTH_CHAMPIONSHIP_PRESET.tiesAdvanceDefault,
+      qualifier_eligible_age_groups: YOUTH_CHAMPIONSHIP_PRESET.defaultCategories,
+      finals_eligible_age_groups: YOUTH_CHAMPIONSHIP_PRESET.finalsEligibleCategories,
+      qualifier_locked_at: null,
+      finals_started_at: null,
+      finals_problem_count: YOUTH_CHAMPIONSHIP_PRESET.finalsProblemCount,
+      demo_metadata: nextMetadata,
+    })
+    .eq("id", competitionId)
+    .eq("is_demo", true);
+  await requireNoSupabaseError(update, "Unable to prepare demo competition structure.");
+
+  const categoryInsert = await supabase.from("competition_categories").insert(categories);
+  await requireNoSupabaseError(categoryInsert, "Unable to create demo categories.");
+
+  const roundInsert = await supabase.from("competition_rounds").insert(rounds);
+  await requireNoSupabaseError(roundInsert, "Unable to create demo rounds.");
+
+  const scheduleInsert = await supabase.from("competition_schedule_blocks").insert(scheduleBlocks);
+  await requireNoSupabaseError(scheduleInsert, "Unable to create the demo schedule.");
+}
+
 export async function populateDemoEventData(competitionId: string): Promise<CreatedDemoEvent> {
   const supabase = createServiceRoleSupabaseClient();
   const now = new Date();
+  await ensureDemoPopulationStructure(supabase, competitionId, now);
   const {
     competition,
     categories,
@@ -984,7 +1318,7 @@ export async function populateDemoEventData(competitionId: string): Promise<Crea
 
   return {
     competitionId,
-    slug: DEMO_COMPETITION_SLUG,
+    slug: competition.slug,
     name: competition.name || DEMO_COMPETITION_NAME,
   };
 }
