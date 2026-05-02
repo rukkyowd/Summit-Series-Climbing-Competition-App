@@ -5,6 +5,7 @@ import {
   prepareDemoStoryState,
   type DemoStoryTargetAct,
 } from "@/lib/demo-story";
+import { assertSupabaseServiceRoleConfigured } from "@/lib/server-supabase";
 
 type DemoPrepareAct = "act2" | "act3" | "act4";
 
@@ -57,6 +58,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Demo preparation is only available from demo pages." }, { status: 401 });
   }
 
+  try {
+    assertSupabaseServiceRoleConfigured();
+  } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Demo service-role credentials are not configured." },
+      { status: 500 }
+    );
+  }
+
   let payload: DemoPrepareRequest;
   try {
     payload = (await request.json()) as DemoPrepareRequest;
@@ -78,6 +89,7 @@ export async function POST(request: NextRequest) {
       ...(createResponse ?? {}),
     });
   } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "Unable to prepare demo state." },
       { status: 500 }

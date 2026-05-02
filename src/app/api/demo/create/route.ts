@@ -3,6 +3,7 @@ import {
   buildDemoCreateEventResponse,
   prepareDemoStoryState,
 } from "@/lib/demo-story";
+import { assertSupabaseServiceRoleConfigured } from "@/lib/server-supabase";
 import type { GuidedDemoEventSetupInput } from "@/lib/guided-demo-setup";
 
 type DemoCreateRequest = {
@@ -36,6 +37,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Demo creation is only available from demo pages." }, { status: 401 });
   }
 
+  try {
+    assertSupabaseServiceRoleConfigured();
+  } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Demo service-role credentials are not configured." },
+      { status: 500 }
+    );
+  }
+
   let payload: DemoCreateRequest;
   try {
     payload = (await request.json()) as DemoCreateRequest;
@@ -56,6 +67,7 @@ export async function POST(request: NextRequest) {
       state,
     });
   } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
     const message = error instanceof Error ? error.message : "Unable to create the demo event.";
     return NextResponse.json(
       { ok: false, error: `Demo event creation failed: ${message.replace(/^Demo event creation failed:\s*/i, "")}` },

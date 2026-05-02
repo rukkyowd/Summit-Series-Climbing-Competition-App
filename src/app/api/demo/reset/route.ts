@@ -36,6 +36,7 @@ async function deleteCanonicalDemoCompetition() {
     .eq("slug", DEMO_COMPETITION_SLUG);
 
   if (loadError) {
+    console.error("DEMO CREATE ERROR:", loadError);
     throw new Error(loadError.message || "Unable to load the canonical demo competition.");
   }
 
@@ -51,6 +52,7 @@ async function deleteCanonicalDemoCompetition() {
 
   const { error: deleteError } = await supabase.from("competitions").delete().in("id", demoIds);
   if (deleteError) {
+    console.error("DEMO CREATE ERROR:", deleteError);
     throw new Error(deleteError.message || "Unable to reset the canonical demo competition.");
   }
 
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
     const state = await getDemoStoryState();
     return NextResponse.json({ ok: true, deletedCompetitionIds, state });
   } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "Unable to reset demo state." },
       { status: 500 }

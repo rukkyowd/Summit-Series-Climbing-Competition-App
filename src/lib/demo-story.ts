@@ -628,6 +628,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       },
     };
   } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
     return emptyDemoStoryState(error instanceof Error ? error.message : "Unable to load the demo story state.");
   }
 }
@@ -653,7 +654,7 @@ async function ensureDemoCompetition(
 
 export function buildDemoCreateEventResponse(state: DemoStoryState): DemoCreateEventResponse {
   if (!state.competition) {
-    throw new Error("failed to create competition");
+    throw new Error(state.error ? `failed to create competition: ${state.error}` : "failed to create competition");
   }
 
   if (!state.competition.is_demo || !isCanonicalDemoCompetitionSlug(state.competition.slug)) {

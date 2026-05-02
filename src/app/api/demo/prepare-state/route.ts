@@ -6,6 +6,7 @@ import {
   type DemoStoryTargetAct,
 } from "@/lib/demo-story";
 import { DEMO_COMPETITION_SLUG } from "@/lib/demo";
+import { assertSupabaseServiceRoleConfigured } from "@/lib/server-supabase";
 import type { GuidedDemoEventSetupInput } from "@/lib/guided-demo-setup";
 
 const DEMO_STORY_TARGET_ACTS = [
@@ -67,6 +68,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  try {
+    assertSupabaseServiceRoleConfigured();
+  } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Demo service-role credentials are not configured." },
+      { status: 500 }
+    );
+  }
+
   let payload: DemoPrepareStateRequest;
 
   try {
@@ -96,6 +107,7 @@ export async function POST(request: NextRequest) {
       ...(createResponse ?? {}),
     });
   } catch (error) {
+    console.error("DEMO CREATE ERROR:", error);
     const message = error instanceof Error ? error.message : "Unable to prepare the demo story state.";
     const errorMessage = isGuidedEventCreate
       ? `Demo event creation failed: ${message.replace(/^Demo event creation failed:\s*/i, "")}`

@@ -19,6 +19,10 @@ const OPTIONAL_COMPETITION_LINK_COLUMNS = [
   "official_registration_url",
   "official_schedule_url",
 ] as const;
+const OPTIONAL_COMPETITION_INSERT_COLUMNS = [
+  ...OPTIONAL_COMPETITION_LINK_COLUMNS,
+  "created_by",
+] as const;
 
 type DemoCategorySeed = {
   ageGroup: string;
@@ -251,23 +255,63 @@ function buildAttemptTemplate(seedIndex: number, climbNumber: number) {
   }
 }
 
-async function requireNoSupabaseError<T extends { error: { message: string } | null }>(result: T, fallback: string) {
+type SupabaseErrorLike = {
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+};
+
+function formatSupabaseError(error: SupabaseErrorLike | null | undefined, fallback: string) {
+  if (!error) {
+    return fallback;
+  }
+
+  return [
+    error.message || fallback,
+    error.details ? `Details: ${error.details}` : "",
+    error.hint ? `Hint: ${error.hint}` : "",
+    error.code ? `Code: ${error.code}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function logDemoCreateError(stage: string, error: unknown) {
+  console.error("DEMO CREATE ERROR:", {
+    stage,
+    error,
+  });
+}
+
+async function requireNoSupabaseError<T extends { error: SupabaseErrorLike | null }>(
+  result: T,
+  fallback: string,
+  stage = fallback
+) {
   if (result.error) {
-    throw new Error(result.error.message || fallback);
+    logDemoCreateError(stage, result.error);
+    throw new Error(formatSupabaseError(result.error, fallback));
   }
 }
 
-function stripOptionalCompetitionLinkColumns<T extends Record<string, unknown>>(payload: T) {
+function stripMissingCompetitionInsertColumns<T extends Record<string, unknown>>(
+  payload: T,
+  error: { message?: string } | null | undefined
+) {
   const next = { ...payload };
-  OPTIONAL_COMPETITION_LINK_COLUMNS.forEach((column) => {
-    delete next[column];
+  const message = error?.message?.toLowerCase() ?? "";
+  OPTIONAL_COMPETITION_INSERT_COLUMNS.forEach((column) => {
+    if (message.includes(column)) {
+      delete next[column];
+    }
   });
   return next;
 }
 
 function isMissingCompetitionLinkColumnError(error: { message?: string } | null | undefined) {
   const message = error?.message?.toLowerCase() ?? "";
-  return OPTIONAL_COMPETITION_LINK_COLUMNS.some((column) => message.includes(column));
+  return OPTIONAL_COMPETITION_INSERT_COLUMNS.some((column) => message.includes(column));
 }
 
 function stripOptionalQueueColumns<T extends Record<string, unknown>>(payload: T) {
@@ -283,6 +327,22 @@ function isMissingQueueColumnError(error: { message?: string } | null | undefine
   return OPTIONAL_QUEUE_COLUMNS.some((column) => message.includes(column));
 }
 
+async function loadDemoCreatedBy(supabase: ReturnType<typeof createServiceRoleSupabaseClient>) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("role", "admin")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    logDemoCreateError("load demo created_by profile", error);
+    return null;
+  }
+
+  return typeof data?.id === "string" ? data.id : null;
+}
+
 export async function createDemoEventFromSetup(options: { setup?: GuidedDemoEventSetupInput } = {}): Promise<CreatedDemoEvent> {
   const supabase = createServiceRoleSupabaseClient();
   const now = new Date();
@@ -294,6 +354,7 @@ export async function createDemoEventFromSetup(options: { setup?: GuidedDemoEven
   const competitionId = createId();
   const qualifierRoundId = createId();
   const finalsRoundId = createId();
+  const demoCreatedBy = await loadDemoCreatedBy(supabase);
 
   const existingDemoRows = await supabase
     .from("competitions")
@@ -358,10 +419,13 @@ export async function createDemoEventFromSetup(options: { setup?: GuidedDemoEven
     finals_started_at: null,
     finals_problem_count: YOUTH_CHAMPIONSHIP_PRESET.finalsProblemCount,
     demo_metadata: initialDemoMetadata,
+    ...(demoCreatedBy ? { created_by: demoCreatedBy } : {}),
   };
   let competitionInsert = await supabase.from("competitions").insert(competitionPayload);
   if (competitionInsert.error && isMissingCompetitionLinkColumnError(competitionInsert.error)) {
-    competitionInsert = await supabase.from("competitions").insert(stripOptionalCompetitionLinkColumns(competitionPayload));
+    competitionInsert = await supabase
+      .from("competitions")
+      .insert(stripMissingCompetitionInsertColumns(competitionPayload, competitionInsert.error));
   }
   await requireNoSupabaseError(competitionInsert, "Unable to create the demo competition.");
 
@@ -610,7 +674,8 @@ async function loadDemoPopulationContext(
     .maybeSingle();
 
   if (competitionError) {
-    throw new Error(competitionError.message || "Unable to load the created demo competition.");
+    logDemoCreateError("load created demo competition", competitionError);
+    throw new Error(formatSupabaseError(competitionError, "Unable to load the created demo competition."));
   }
 
   if (!competition) {
