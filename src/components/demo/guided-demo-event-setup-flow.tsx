@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import {
+  StaffEventCreationForm,
+  type StaffEventCreationFormValues,
+} from "@/components/staff-event-creation-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
+import { FORMAT_TEMPLATES } from "@/lib/scoring";
 import {
   buildGuidedDemoSetupModel,
+  getInitialGuidedDemoConfirmedSteps,
   normalizeGuidedDemoEventSetup,
   type GuidedDemoEventSetupDraft,
   type GuidedDemoSetupStepId,
@@ -24,36 +30,15 @@ function stepIndex(stepId: GuidedDemoSetupStepId) {
   return setupModel.steps.findIndex((step) => step.id === stepId);
 }
 
-function formatDateTimeLocalInput(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return localDate.toISOString().slice(0, 16);
-}
-
-function parseDateTimeLocalInput(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const date = new Date(trimmed);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 export function GuidedDemoEventSetupFlow({
   busy,
   onBack,
   onCreateDemoEvent,
 }: GuidedDemoEventSetupFlowProps) {
   const [activeStepId, setActiveStepId] = useState<GuidedDemoSetupStepId>("basics");
+  const [visitedStepIds, setVisitedStepIds] = useState<GuidedDemoSetupStepId[]>(() =>
+    getInitialGuidedDemoConfirmedSteps()
+  );
   const [setupDraft, setSetupDraft] = useState<GuidedDemoEventSetupDraft>(() => setupModel.defaultEventSetup);
   const activeStep = setupModel.steps.find((step) => step.id === activeStepId) ?? setupModel.steps[0];
   const activeStepIndex = stepIndex(activeStep.id);
@@ -61,11 +46,48 @@ export function GuidedDemoEventSetupFlow({
   const previousStep = setupModel.steps[activeStepIndex - 1] ?? null;
   const normalizedSetup = normalizeGuidedDemoEventSetup(setupDraft);
   const canCreateDemoEvent = Boolean(normalizedSetup.name && normalizedSetup.locationName && normalizedSetup.startDate);
+  const setupFormValues: StaffEventCreationFormValues = {
+    name: setupDraft.name,
+    format: setupModel.preset.format,
+    location: setupDraft.locationName,
+    startDate: setupDraft.startDate,
+    endDate: setupDraft.endDate,
+    registrationOpensAt: setupDraft.registrationOpensAt,
+    registrationClosesAt: setupDraft.registrationClosesAt,
+    description: setupDraft.description,
+    maxClimbers: setupDraft.maxClimbers,
+  };
+
+  const markStepConfirmed = (stepId: GuidedDemoSetupStepId) => {
+    setVisitedStepIds((current) => (current.includes(stepId) ? current : [...current, stepId]));
+  };
+
+  const moveToStep = (stepId: GuidedDemoSetupStepId) => {
+    markStepConfirmed(activeStepId);
+    setActiveStepId(stepId);
+  };
+
+  const updateSetupFromStaffForm = (values: StaffEventCreationFormValues) => {
+    setSetupDraft({
+      ...setupDraft,
+      name: values.name,
+      locationName: values.location,
+      startDate: values.startDate,
+      endDate: values.endDate,
+      description: values.description,
+      registrationOpensAt: values.registrationOpensAt,
+      registrationClosesAt: values.registrationClosesAt,
+      maxClimbers: values.maxClimbers ?? setupDraft.maxClimbers,
+      presetId: setupModel.defaultEventSetup.presetId,
+    });
+  };
+
   const submitCreateDemoEvent = () => {
     if (!canCreateDemoEvent || busy) {
       return;
     }
 
+    markStepConfirmed(activeStepId);
     onCreateDemoEvent(normalizedSetup);
   };
 
@@ -91,14 +113,6 @@ export function GuidedDemoEventSetupFlow({
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={submitCreateDemoEvent}
-            disabled={busy || !canCreateDemoEvent}
-          >
-            Create Demo Event
-          </Button>
           <Button variant="secondary" size="lg" onClick={onBack} disabled={busy}>
             Back to Demo Home
           </Button>
@@ -109,12 +123,12 @@ export function GuidedDemoEventSetupFlow({
         <nav className="space-y-2" aria-label="Demo setup steps">
           {setupModel.steps.map((step, index) => {
             const isActive = step.id === activeStep.id;
-            const isVisited = index < activeStepIndex;
+            const isVisited = visitedStepIds.includes(step.id) && !isActive;
             return (
               <button
                 key={step.id}
                 type="button"
-                onClick={() => setActiveStepId(step.id)}
+                onClick={() => moveToStep(step.id)}
                 disabled={busy}
                 className={cn(
                   "w-full rounded-2xl border px-4 py-3 text-left transition",
@@ -130,7 +144,7 @@ export function GuidedDemoEventSetupFlow({
                     Step {index + 1}
                   </span>
                   <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em]">
-                    {isActive ? "Active" : isVisited ? "Reviewed" : "Open"}
+                    {isActive ? "Active" : isVisited ? "Confirmed" : "Open"}
                   </span>
                 </div>
                 <div className="mt-2 font-black">{step.title}</div>
@@ -162,80 +176,20 @@ export function GuidedDemoEventSetupFlow({
                 Start Full Story begins here on purpose. No athletes, scores, or leaderboard drama
                 are generated until you create this demo event.
               </p>
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <label className="space-y-2" htmlFor="guided-demo-event-name">
-                  <span className="text-sm font-black text-slate-700">Event name</span>
-                  <input
-                    id="guided-demo-event-name"
-                    value={setupDraft.name}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, name: event.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="Summit Series Youth Championship"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-location">
-                  <span className="text-sm font-black text-slate-700">Location</span>
-                  <input
-                    id="guided-demo-event-location"
-                    value={setupDraft.locationName}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, locationName: event.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="North Summit Climbing"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-start-date">
-                  <span className="text-sm font-black text-slate-700">Start date</span>
-                  <input
-                    id="guided-demo-event-start-date"
-                    type="date"
-                    value={setupDraft.startDate}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        startDate: event.target.value,
-                        endDate: setupDraft.endDate || event.target.value,
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-end-date">
-                  <span className="text-sm font-black text-slate-700">End date</span>
-                  <input
-                    id="guided-demo-event-end-date"
-                    type="date"
-                    value={setupDraft.endDate}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, endDate: event.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-capacity">
-                  <span className="text-sm font-black text-slate-700">Registration capacity</span>
-                  <input
-                    id="guided-demo-event-capacity"
-                    type="number"
-                    min={1}
-                    value={setupDraft.maxClimbers}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        maxClimbers: Number(event.target.value) || setupModel.defaultEventSetup.maxClimbers,
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2 lg:col-span-2" htmlFor="guided-demo-event-description">
-                  <span className="text-sm font-black text-slate-700">Organizer notes</span>
-                  <textarea
-                    id="guided-demo-event-description"
-                    value={setupDraft.description}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, description: event.target.value })}
-                    className="min-h-[7rem] w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="Tell staff what this event is for."
-                  />
-                </label>
-              </div>
+              <StaffEventCreationForm
+                values={setupFormValues}
+                formatOptions={FORMAT_TEMPLATES}
+                mode="guided-demo"
+                lockedPresetLabel={setupModel.preset.name}
+                showCapacity
+                showRegistrationStory
+                hideSubmit
+                disabled={busy}
+                submitLabel="Create Demo Event"
+                canSubmit={canCreateDemoEvent}
+                onChange={updateSetupFromStaffForm}
+                onSubmit={submitCreateDemoEvent}
+              />
             </div>
           ) : null}
 
@@ -449,38 +403,6 @@ export function GuidedDemoEventSetupFlow({
                 simulate 150 registrations after you create the event so the leaderboard and judge
                 screens have realistic data.
               </p>
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <label className="space-y-2" htmlFor="guided-demo-registration-opens">
-                  <span className="text-sm font-black text-slate-700">Registration opens</span>
-                  <input
-                    id="guided-demo-registration-opens"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(setupDraft.registrationOpensAt)}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        registrationOpensAt: parseDateTimeLocalInput(event.target.value),
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-registration-closes">
-                  <span className="text-sm font-black text-slate-700">Registration closes</span>
-                  <input
-                    id="guided-demo-registration-closes"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(setupDraft.registrationClosesAt)}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        registrationClosesAt: parseDateTimeLocalInput(event.target.value),
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-              </div>
               <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {[
                   "Public registration opens",
@@ -541,7 +463,7 @@ export function GuidedDemoEventSetupFlow({
             <Button
               variant="secondary"
               size="compact"
-              onClick={() => previousStep && setActiveStepId(previousStep.id)}
+              onClick={() => previousStep && moveToStep(previousStep.id)}
               disabled={busy || !previousStep}
             >
               Back
@@ -553,10 +475,16 @@ export function GuidedDemoEventSetupFlow({
               <Button
                 variant="primary"
                 size="compact"
-                onClick={() => setActiveStepId(nextStep.id)}
+                onClick={() => moveToStep(nextStep.id)}
                 disabled={busy}
               >
-                Next
+                {activeStep.id === "categories"
+                  ? "Confirm categories"
+                  : activeStep.id === "finals"
+                    ? "Confirm finals setup"
+                    : activeStep.id === "registration"
+                      ? "Confirm registration setup"
+                      : "Continue"}
               </Button>
             ) : (
               <Button

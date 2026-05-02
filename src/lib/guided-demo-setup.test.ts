@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GUIDED_DEMO_PRESET_ID } from "./competition-presets";
 import {
   buildGuidedDemoSetupModel,
+  getInitialGuidedDemoConfirmedSteps,
   normalizeGuidedDemoEventSetup,
 } from "./guided-demo-setup";
 
@@ -40,6 +41,14 @@ describe("guided demo setup model", () => {
       "Men / Junior",
       "Women / Junior",
     ]);
+  });
+
+  it("starts the guided setup with only the real event basics section confirmed", () => {
+    const model = buildGuidedDemoSetupModel();
+    const initialConfirmedSteps = getInitialGuidedDemoConfirmedSteps();
+
+    expect(initialConfirmedSteps).toEqual(["basics"]);
+    expect(initialConfirmedSteps).not.toEqual(model.steps.map((step) => step.id));
   });
 
   it("includes finals-capable rounds and schedule blocks", () => {

@@ -8,6 +8,10 @@ import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
 import {
+  StaffEventCreationForm,
+  type StaffEventCreationFormValues,
+} from "@/components/staff-event-creation-form";
+import {
   OrganizerDemoTour,
   type OrganizerDemoHandoffTarget,
   type OrganizerDemoStepId,
@@ -2742,95 +2746,44 @@ export default function StaffDashboard({
               </>
             )}
             {(!demoMode || !draft) ? (
-            <fieldset disabled={!canEditSetup} className={!canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
-              <label className="results-field-group" htmlFor="create-event-name">
-                <span className="results-field-label">Event name</span>
-                <input id="create-event-name" aria-label="Event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="Spring Send" data-demo-anchor="organizer-create-name" />
-              </label>
-              <label className="results-field-group" htmlFor="create-event-slug-preview">
-                <span className="results-field-label">Link preview</span>
-                <input id="create-event-slug-preview" aria-label="Event link preview" value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="spring-send" />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group" htmlFor="create-event-format">
-                  <span className="results-field-label">Format</span>
-                  <select
-                    id="create-event-format"
-                    aria-label="Event format"
-                    value={createFormat}
-                    onChange={(event) => {
-                      const nextFormat = event.target.value as Competition["format"];
-                      setCreateFormat(nextFormat);
-                    }}
-                    className="results-input"
-                  >
-                    {FORMAT_TEMPLATES.map((template) => (
-                      <option key={template.value} value={template.value}>{template.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="results-field-group" htmlFor="create-event-location">
-                  <span className="results-field-label">Location</span>
-                  <input id="create-event-location" aria-label="Event location" value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="North Summit Climbing" />
-                </label>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group" htmlFor="create-event-start-date">
-                  <span className="results-field-label">Start date</span>
-                  <input id="create-event-start-date" aria-label="Event start date" type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
-                </label>
-                <label className="results-field-group" htmlFor="create-event-end-date">
-                  <span className="results-field-label">End date</span>
-                  <input id="create-event-end-date" aria-label="Event end date" type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
-                </label>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group" htmlFor="create-event-registration-opens">
-                  <span className="results-field-label">Registration opens</span>
-                  <input
-                    id="create-event-registration-opens"
-                    aria-label="Registration opens"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(createRegistrationOpensAt)}
-                    onChange={(event) => setCreateRegistrationOpensAt(parseDateTimeLocalInput(event.target.value))}
-                    className="results-input"
-                  />
-                </label>
-                <label className="results-field-group" htmlFor="create-event-registration-deadline">
-                  <span className="results-field-label">Registration closes</span>
-                  <input
-                    id="create-event-registration-deadline"
-                    aria-label="Registration closes"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(createRegistrationClosesAt)}
-                    onChange={(event) => setCreateRegistrationClosesAt(parseDateTimeLocalInput(event.target.value))}
-                    className="results-input"
-                  />
-                </label>
-              </div>
-                <label className="results-field-group" htmlFor="create-event-description">
-                <span className="results-field-label">Notes</span>
-                <textarea
-                  id="create-event-description"
-                  aria-label="Event notes"
-                  value={createDescription}
-                  onChange={(event) => setCreateDescription(event.target.value)}
-                  className="results-input min-h-[120px] resize-y"
-                  placeholder="A short note about the day, the crowd, or anything staff should know."
-                />
-              </label>
-              {createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl ? (
-                <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                  Imported official links:
-                  {createOfficialEventUrl ? ` event page` : ""}
-                  {createOfficialRegistrationUrl ? `${createOfficialEventUrl ? "," : ""} registration` : ""}
-                  {createOfficialScheduleUrl ? `${createOfficialEventUrl || createOfficialRegistrationUrl ? "," : ""} schedule` : ""}
-                </div>
-              ) : null}
-              <button
-                type="button"
-                disabled={isPending || !createName.trim()}
-                onClick={() => {
+              <StaffEventCreationForm
+                values={{
+                  name: createName,
+                  format: createFormat,
+                  location: createLocation,
+                  startDate: createStartDate,
+                  endDate: createEndDate,
+                  registrationOpensAt: createRegistrationOpensAt,
+                  registrationClosesAt: createRegistrationClosesAt,
+                  description: createDescription,
+                }}
+                formatOptions={FORMAT_TEMPLATES}
+                disabled={!canEditSetup}
+                pending={isPending}
+                submitLabel={demoMode ? "Create event" : "Create new event"}
+                canSubmit={Boolean(createName.trim())}
+                importedLinksSummary={
+                  createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
+                    ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${
+                        createOfficialRegistrationUrl ? `${createOfficialEventUrl ? "," : ""} registration` : ""
+                      }${
+                        createOfficialScheduleUrl
+                          ? `${createOfficialEventUrl || createOfficialRegistrationUrl ? "," : ""} schedule`
+                          : ""
+                      }`
+                    : null
+                }
+                onChange={(values: StaffEventCreationFormValues) => {
+                  setCreateName(values.name);
+                  setCreateFormat(values.format);
+                  setCreateLocation(values.location);
+                  setCreateStartDate(values.startDate);
+                  setCreateEndDate(values.endDate);
+                  setCreateRegistrationOpensAt(values.registrationOpensAt);
+                  setCreateRegistrationClosesAt(values.registrationClosesAt);
+                  setCreateDescription(values.description);
+                }}
+                onSubmit={() => {
                   startTransition(() => {
                     void (async () => {
                       try {
@@ -2896,12 +2849,7 @@ export default function StaffDashboard({
                     })();
                   });
                 }}
-                className="results-primary-button"
-                data-demo-anchor="organizer-create-submit"
-              >
-                  {demoMode ? "Create event" : "Create new event"}
-              </button>
-            </fieldset>
+              />
             ) : null}
             {!demoMode && !canEditSetup ? (
               <div className="mt-4 text-sm text-slate-600">

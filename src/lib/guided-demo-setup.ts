@@ -162,6 +162,10 @@ export function normalizeGuidedDemoEventSetup(
   };
 }
 
+export function getInitialGuidedDemoConfirmedSteps(): GuidedDemoSetupStepId[] {
+  return ["basics"];
+}
+
 export function buildGuidedDemoSetupModel(now = new Date()): GuidedDemoSetupModel {
   const preset = getGuidedDemoPreset();
   const finalsEligibleAgeGroups = getPresetFinalsEligibleCategories(preset);
