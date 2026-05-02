@@ -10,6 +10,7 @@ import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
 import { getGuidedDemoPreset } from "@/lib/competition-presets";
 import { clearDemoSalesSession } from "@/lib/demo-sales-session";
+import type { GuidedDemoEventSetupDraft } from "@/lib/guided-demo-setup";
 import type { DemoStoryState, DemoStoryTargetAct } from "@/lib/demo-story";
 
 type ActStatus = "locked" | "ready" | "in_progress" | "complete";
@@ -161,13 +162,20 @@ function getJudgeRouteReadinessError(state: DemoStoryState) {
     return "The demo judge route is missing target athlete or qualifier route prerequisites. Repair the demo state before opening the judge panel.";
   }
 
+  if (!state.targetAttempt) {
+    return "The demo seeded scores are not ready yet. Repair the demo state before opening the judge panel.";
+  }
+
   return null;
 }
 
 function resetClientStoryState(state: DemoStoryState): DemoStoryState {
   return {
     ...state,
+    available: false,
     error: null,
+    competition: null,
+    metadata: null,
     targetAttempt: null,
     finalistCount: 0,
     progress: {
@@ -179,8 +187,11 @@ function resetClientStoryState(state: DemoStoryState): DemoStoryState {
       publicViewed: false,
     },
     links: {
-      ...state.links,
+      setup: state.links.setup,
       judge: null,
+      organizer: null,
+      publicEvent: null,
+      leaderboard: null,
       scorecard: null,
     },
   };
@@ -270,6 +281,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     options?: {
       reset?: boolean;
       resetOnly?: boolean;
+      setup?: GuidedDemoEventSetupDraft;
     }
   ) {
     const response = await fetch("/api/demo/prepare-state", {
@@ -281,6 +293,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
         targetAct,
         reset: options?.reset === true,
         resetOnly: options?.resetOnly === true,
+        setup: options?.setup,
       }),
     });
     const payload = (await response.json()) as { ok?: boolean; state?: DemoStoryState; error?: string };
@@ -355,7 +368,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     setActiveView("act1_setup");
   }
 
-  async function runAct1BuildTransition(options?: { reset?: boolean }) {
+  async function runAct1BuildTransition(options?: { reset?: boolean; setup?: GuidedDemoEventSetupDraft }) {
     setError(null);
     setNotice(null);
     setPendingLabel(null);
@@ -365,7 +378,10 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     setBuildTransition({ active: true, stepIndex: 0, complete: false });
 
     try {
-      const preparePromise = postPrepareState("event_created", { reset: options?.reset === true }).then(
+      const preparePromise = postPrepareState("event_created", {
+        reset: options?.reset === true,
+        setup: options?.setup,
+      }).then(
         (nextState) => ({ nextState, error: null }),
         (buildError: unknown) => ({ nextState: null, error: buildError })
       );
@@ -589,7 +605,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => void startFullStory()}
+                  onClick={startFullStory}
                   disabled={busy}
                 >
                   Start Full Story
@@ -620,6 +636,16 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                     Repair demo state
                   </Button>
                 ) : null}
+              </div>
+              <div className="grid gap-3 text-sm leading-6 text-slate-600 md:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                  <span className="font-black text-slate-950">Start Full Story:</span> create the
+                  event first, then watch the app populate a live competition.
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                  <span className="font-black text-slate-950">Use Ready-Made Demo Event:</span>{" "}
+                  skip setup and open a prepared canonical demo event for quick testing.
+                </div>
               </div>
 
               {(pendingLabel || error || notice) && (
@@ -670,7 +696,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
           <GuidedDemoEventSetupFlow
             busy={busy}
             onBack={() => setActiveView("home")}
-            onCreateDemoEvent={() => void runAct1BuildTransition({ reset: true })}
+            onCreateDemoEvent={(setup) => void runAct1BuildTransition({ reset: true, setup })}
           />
         ) : null}
 
@@ -792,11 +818,12 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
           })}
         </section>
 
+        {activeView !== "act1_setup" ? (
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.72fr)]">
           <Surface variant="panel" density="public" className="space-y-5">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">
-                Act 1 setup preview
+                Guided story setup
               </p>
               <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
                 Youth Championship with Finals
@@ -885,6 +912,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
             )}
           </Surface>
         </section>
+        ) : null}
       </div>
     </main>
   );

@@ -10,6 +10,7 @@ import {
 } from "./demo-story-target";
 import { handleAdminCompetitionAction } from "./server-admin-competition-actions";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
+import type { GuidedDemoEventSetupInput } from "./guided-demo-setup";
 
 export type DemoStoryTargetAct =
   | "event_created"
@@ -583,12 +584,12 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
 
 async function ensureDemoCompetition(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
-  options: { reset?: boolean }
+  options: { reset?: boolean; setup?: GuidedDemoEventSetupInput }
 ) {
   let competition = await loadCanonicalDemoCompetition(supabase);
 
   if (options.reset || !competition) {
-    await resetDemoCompetition();
+    await resetDemoCompetition({ setup: options.setup });
     competition = await loadCanonicalDemoCompetition(supabase);
   }
 
@@ -757,7 +758,7 @@ async function ensureFinalistsStarted(supabase: ReturnType<typeof createServiceR
 
 export async function prepareDemoStoryState(
   targetAct: DemoStoryTargetAct,
-  options: { reset?: boolean; resetOnly?: boolean } = {}
+  options: { reset?: boolean; resetOnly?: boolean; setup?: GuidedDemoEventSetupInput } = {}
 ): Promise<DemoStoryState> {
   if (!ACT_ORDER.includes(targetAct)) {
     throw new Error("Invalid demo story target.");

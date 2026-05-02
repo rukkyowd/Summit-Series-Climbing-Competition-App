@@ -5,6 +5,7 @@ import {
   type DemoStoryTargetAct,
 } from "@/lib/demo-story";
 import { DEMO_COMPETITION_SLUG } from "@/lib/demo";
+import type { GuidedDemoEventSetupInput } from "@/lib/guided-demo-setup";
 
 const DEMO_STORY_TARGET_ACTS = [
   "event_created",
@@ -17,6 +18,7 @@ type DemoPrepareStateRequest = {
   targetAct?: DemoStoryTargetAct;
   reset?: boolean;
   resetOnly?: boolean;
+  setup?: GuidedDemoEventSetupInput;
 };
 
 function isAllowedDemoRequest(request: NextRequest) {
@@ -80,6 +82,7 @@ export async function POST(request: NextRequest) {
     const state = await prepareDemoStoryState(payload.targetAct, {
       reset: payload.reset === true,
       resetOnly: payload.resetOnly === true,
+      setup: payload.setup,
     });
     return NextResponse.json({ ok: true, state });
   } catch (error) {

@@ -2,12 +2,18 @@ import { buildDisplayCategory, createCategoryKey } from "./scoring";
 import { getGuidedDemoPreset } from "./competition-presets";
 import { buildDemoStoryMetadataForClimbers } from "./demo-story-target";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG } from "./demo";
+import {
+  normalizeGuidedDemoEventSetup,
+  type GuidedDemoEventSetupInput,
+} from "./guided-demo-setup";
 import { createServiceRoleSupabaseClient } from "./server-supabase";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEMO_LOCATION = "North Summit Climbing";
 const DEMO_ACTIVE_BLOCK_LABEL = "Youth B qualifier wave";
 const YOUTH_CHAMPIONSHIP_PRESET = getGuidedDemoPreset();
+const DEMO_REGISTRATION_TARGET = 150;
+const DEMO_CLIMBERS_PER_CATEGORY = 15;
 const OPTIONAL_COMPETITION_LINK_COLUMNS = [
   "official_event_url",
   "official_registration_url",
@@ -73,10 +79,15 @@ const OPTIONAL_QUEUE_COLUMNS = [
 const DEMO_PROVINCES = ["NS", "NB", "PE", "NL", "QC", "ON"] as const;
 
 function createYouthSeed(ageGroup: string, division: string, startNumber: number, names: string[]): DemoCategorySeed {
+  const climberNames = [...names];
+  while (climberNames.length < DEMO_CLIMBERS_PER_CATEGORY) {
+    climberNames.push(`${ageGroup.replace(/\s+/g, "")} ${division} Athlete ${climberNames.length + 1}`);
+  }
+
   return {
     ageGroup,
     division,
-    climbers: names.map((name, index) => ({
+    climbers: climberNames.map((name, index) => ({
       name,
       number: String(startNumber + index),
       province: DEMO_PROVINCES[index % DEMO_PROVINCES.length],
@@ -241,12 +252,14 @@ function isMissingQueueColumnError(error: { message?: string } | null | undefine
   return OPTIONAL_QUEUE_COLUMNS.some((column) => message.includes(column));
 }
 
-export async function resetDemoCompetition() {
+export async function resetDemoCompetition(options: { setup?: GuidedDemoEventSetupInput } = {}) {
   const supabase = createServiceRoleSupabaseClient();
   const now = new Date();
-  const startDate = formatDate(now);
-  const registrationOpensAt = new Date(now.getTime() - 14 * DAY_MS).toISOString();
-  const registrationClosesAt = new Date(now.getTime() + DAY_MS).toISOString();
+  const setup = normalizeGuidedDemoEventSetup(options.setup, now);
+  const startDate = setup.startDate || formatDate(now);
+  const endDate = setup.endDate || startDate;
+  const registrationOpensAt = setup.registrationOpensAt ?? new Date(now.getTime() - 14 * DAY_MS).toISOString();
+  const registrationClosesAt = setup.registrationClosesAt ?? new Date(now.getTime() + DAY_MS).toISOString();
   const competitionId = createId();
   const qualifierRoundId = createId();
   const finalsRoundId = createId();
@@ -275,31 +288,35 @@ export async function resetDemoCompetition() {
     preset_name: YOUTH_CHAMPIONSHIP_PRESET.name,
     story_step: "reset",
     finals_ineligible_age_groups: ["Youth D", "Youth C"],
+    event_setup: setup,
+    registration_story: {
+      simulated_registrations: DEMO_REGISTRATION_TARGET,
+      generated_after_create: true,
+    },
   };
 
   const competitionPayload = {
     id: competitionId,
     slug: DEMO_COMPETITION_SLUG,
-    name: DEMO_COMPETITION_NAME,
+    name: setup.name || DEMO_COMPETITION_NAME,
     is_demo: true,
     status: "active",
     format: YOUTH_CHAMPIONSHIP_PRESET.format,
     current_phase: "qualifier_open",
     discipline_label: "Boulder",
     stage_mode: "qualifier",
-    location_name: DEMO_LOCATION,
+    location_name: setup.locationName || DEMO_LOCATION,
     start_date: startDate,
-    end_date: startDate,
+    end_date: endDate,
     registration_opens_at: registrationOpensAt,
     registration_closes_at: registrationClosesAt,
-    description:
-      "Run a complete youth championship story: create the event, correct a key judge score, advance finalists, and view public results.",
+    description: setup.description,
     hero_image_url: "",
     official_event_url: "",
     official_registration_url: "",
     official_schedule_url: "",
     total_climbs: YOUTH_CHAMPIONSHIP_PRESET.qualifierProblemCount,
-    max_climbers: DEMO_CATEGORY_SEEDS.reduce((total, entry) => total + entry.climbers.length, 0),
+    max_climbers: setup.maxClimbers,
     qualifier_counting_climbs: YOUTH_CHAMPIONSHIP_PRESET.countingClimbs,
     has_finals: YOUTH_CHAMPIONSHIP_PRESET.finalsEnabled,
     finals_cutoff: YOUTH_CHAMPIONSHIP_PRESET.finalsCutoff,
