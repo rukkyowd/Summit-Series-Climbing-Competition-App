@@ -1,7 +1,11 @@
 import { normalizeQualifierAttemptInput } from "./attempts";
 import { getGuidedDemoPreset, GUIDED_DEMO_PRESET_ID } from "./competition-presets";
 import { DEMO_COMPETITION_NAME, DEMO_COMPETITION_SLUG, isCanonicalDemoCompetitionSlug } from "./demo";
-import { resetDemoCompetition } from "./demo-reset";
+import {
+  createDemoEventFromSetup,
+  populateDemoEventData,
+  resetDemoCompetition,
+} from "./demo-reset";
 import {
   buildDemoStoryMetadataForClimbers,
   findDemoStoryClimberFromMetadata,
@@ -100,6 +104,16 @@ export type DemoStoryState = {
     leaderboard: string | null;
     scorecard: string | null;
   };
+};
+
+export type DemoCreateEventResponse = {
+  competitionId: string;
+  slug: string;
+  isDemo: true;
+  judgeUrl: string;
+  publicUrl: string;
+  leaderboardUrl: string;
+  progress: DemoStoryProgress;
 };
 
 const FINAL_PHASES = new Set(["finals_open", "finals_closed", "results"]);
@@ -589,7 +603,8 @@ async function ensureDemoCompetition(
   let competition = await loadCanonicalDemoCompetition(supabase);
 
   if (options.reset || !competition) {
-    await resetDemoCompetition({ setup: options.setup });
+    const created = await createDemoEventFromSetup({ setup: options.setup });
+    await populateDemoEventData(created.competitionId);
     competition = await loadCanonicalDemoCompetition(supabase);
   }
 
@@ -598,6 +613,38 @@ async function ensureDemoCompetition(
   }
 
   return competition;
+}
+
+export function buildDemoCreateEventResponse(state: DemoStoryState): DemoCreateEventResponse {
+  if (!state.competition) {
+    throw new Error("failed to create competition");
+  }
+
+  if (!state.competition.is_demo || !isCanonicalDemoCompetitionSlug(state.competition.slug)) {
+    throw new Error("created competition is not demo-safe");
+  }
+
+  if (!state.links.judge) {
+    throw new Error("failed to prepare judge route");
+  }
+
+  if (!state.links.publicEvent) {
+    throw new Error("failed to prepare public event route");
+  }
+
+  if (!state.links.leaderboard) {
+    throw new Error("failed to prepare leaderboard route");
+  }
+
+  return {
+    competitionId: state.competition.id,
+    slug: state.competition.slug,
+    isDemo: true,
+    judgeUrl: state.links.judge,
+    publicUrl: state.links.publicEvent,
+    leaderboardUrl: state.links.leaderboard,
+    progress: state.progress,
+  };
 }
 
 async function ensureStoryMetadata(supabase: ReturnType<typeof createServiceRoleSupabaseClient>) {

@@ -68,6 +68,37 @@ type DemoClimberRow = {
   access_token: string;
 };
 
+type CreatedDemoEvent = {
+  competitionId: string;
+  slug: string;
+  name: string;
+};
+
+type DemoCompetitionPopulationRow = {
+  id: string;
+  slug: string;
+  name: string;
+  is_demo: boolean;
+  demo_metadata: Record<string, unknown> | null;
+};
+
+type DemoCategoryRow = {
+  id: string;
+  competition_id: string;
+  gender_division: string;
+  age_group: string;
+  display_name: string;
+  sort_order: number;
+};
+
+type DemoRoundRow = {
+  id: string;
+  competition_id: string;
+  round_type: string | null;
+  scoring_bucket: string | null;
+  sort_order: number | null;
+};
+
 const OPTIONAL_QUEUE_COLUMNS = [
   "climber_name",
   "climber_number",
@@ -252,7 +283,7 @@ function isMissingQueueColumnError(error: { message?: string } | null | undefine
   return OPTIONAL_QUEUE_COLUMNS.some((column) => message.includes(column));
 }
 
-export async function resetDemoCompetition(options: { setup?: GuidedDemoEventSetupInput } = {}) {
+export async function createDemoEventFromSetup(options: { setup?: GuidedDemoEventSetupInput } = {}): Promise<CreatedDemoEvent> {
   const supabase = createServiceRoleSupabaseClient();
   const now = new Date();
   const setup = normalizeGuidedDemoEventSetup(options.setup, now);
@@ -561,26 +592,131 @@ export async function resetDemoCompetition(options: { setup?: GuidedDemoEventSet
   const scheduleInsert = await supabase.from("competition_schedule_blocks").insert(scheduleBlocks);
   await requireNoSupabaseError(scheduleInsert, "Unable to create the demo schedule.");
 
-  const qualifierBlocksByCategoryId = new Map(
-    scheduleBlocks
-      .filter((entry) => entry.phase_type === "qualifier_round")
-      .map((entry) => [entry.eligible_category_ids?.[0] as string, entry.id as string])
+  return {
+    competitionId,
+    slug: DEMO_COMPETITION_SLUG,
+    name: setup.name || DEMO_COMPETITION_NAME,
+  };
+}
+
+async function loadDemoPopulationContext(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competitionId: string
+) {
+  const { data: competition, error: competitionError } = await supabase
+    .from("competitions")
+    .select("id, slug, name, is_demo, demo_metadata")
+    .eq("id", competitionId)
+    .maybeSingle();
+
+  if (competitionError) {
+    throw new Error(competitionError.message || "Unable to load the created demo competition.");
+  }
+
+  if (!competition) {
+    throw new Error("Cannot populate demo data before the canonical demo event exists.");
+  }
+
+  const competitionRow = competition as DemoCompetitionPopulationRow;
+  if (competitionRow.slug !== DEMO_COMPETITION_SLUG || competitionRow.is_demo !== true) {
+    throw new Error("Refusing to populate demo data for a non-demo competition.");
+  }
+
+  const [categoryResult, roundResult, scheduleResult] = await Promise.all([
+    supabase
+      .from("competition_categories")
+      .select("id, competition_id, gender_division, age_group, display_name, sort_order")
+      .eq("competition_id", competitionId)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("competition_rounds")
+      .select("id, competition_id, round_type, scoring_bucket, sort_order")
+      .eq("competition_id", competitionId)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("competition_schedule_blocks")
+      .select("id, competition_id, round_id, sort_order, label, phase_type, audience_label, is_active, start_time, end_time, capacity, eligible_category_ids")
+      .eq("competition_id", competitionId)
+      .order("sort_order", { ascending: true }),
+  ]);
+
+  await requireNoSupabaseError(categoryResult, "Unable to load demo categories before population.");
+  await requireNoSupabaseError(roundResult, "Unable to load demo rounds before population.");
+  await requireNoSupabaseError(scheduleResult, "Unable to load demo schedule before population.");
+
+  const categories = (categoryResult.data ?? []) as DemoCategoryRow[];
+  const rounds = (roundResult.data ?? []) as DemoRoundRow[];
+  const scheduleBlocks = (scheduleResult.data ?? []) as DemoScheduleBlockRow[];
+  const qualifierRound = rounds.find(
+    (round) => round.scoring_bucket === "qualifier" || round.round_type === "qualifier"
+  );
+
+  if (!categories.length) {
+    throw new Error("Cannot populate demo data before demo categories exist.");
+  }
+
+  if (!qualifierRound?.id) {
+    throw new Error("Cannot populate demo data before the qualifier round exists.");
+  }
+
+  if (!scheduleBlocks.length) {
+    throw new Error("Cannot populate demo data before demo schedule blocks exist.");
+  }
+
+  return {
+    competition: competitionRow,
+    categories,
+    qualifierRoundId: qualifierRound.id,
+    scheduleBlocks,
+  };
+}
+
+export async function populateDemoEventData(competitionId: string): Promise<CreatedDemoEvent> {
+  const supabase = createServiceRoleSupabaseClient();
+  const now = new Date();
+  const {
+    competition,
+    categories,
+    qualifierRoundId,
+    scheduleBlocks,
+  } = await loadDemoPopulationContext(supabase, competitionId);
+  const initialDemoMetadata = competition.demo_metadata ?? {
+    scenario_version: "demo-story-v1",
+    preset_id: YOUTH_CHAMPIONSHIP_PRESET.id,
+    preset_name: YOUTH_CHAMPIONSHIP_PRESET.name,
+    story_step: "reset",
+    finals_ineligible_age_groups: ["Youth D", "Youth C"],
+  };
+
+  const qualifierBlocksByCategoryId = new Map<string, string>();
+  scheduleBlocks
+    .filter((entry) => entry.phase_type === "qualifier_round")
+    .forEach((entry) => {
+      (entry.eligible_category_ids ?? []).forEach((categoryId) => {
+        qualifierBlocksByCategoryId.set(categoryId, entry.id);
+      });
+    });
+  const categoryByKey = new Map(
+    categories.map((category) => [createCategoryKey(category.gender_division, category.age_group), category])
   );
 
   const climbers: DemoClimberRow[] = DEMO_CATEGORY_SEEDS.flatMap((entry) => {
-    const categoryId = createCategoryKey(entry.division, entry.ageGroup);
-    const displayCategory = buildDisplayCategory(entry.division, entry.ageGroup);
+    const category = categoryByKey.get(createCategoryKey(entry.division, entry.ageGroup));
+    if (!category) {
+      throw new Error(`Cannot populate demo climbers before category exists: ${entry.division} / ${entry.ageGroup}.`);
+    }
+
     return entry.climbers.map((climber) => ({
       id: createId(),
       competition_id: competitionId,
       name: climber.name,
       climber_number: climber.number,
       province: climber.province,
-      category_id: categoryId,
+      category_id: category.id,
       gender_division: entry.division,
       age_group: entry.ageGroup,
-      display_category: displayCategory,
-      time_slot_id: qualifierBlocksByCategoryId.get(categoryId) ?? null,
+      display_category: category.display_name,
+      time_slot_id: qualifierBlocksByCategoryId.get(category.id) ?? null,
       access_token: createAccessToken(`${entry.ageGroup}-${climber.number}`),
     }));
   });
@@ -784,6 +920,11 @@ export async function resetDemoCompetition(options: { setup?: GuidedDemoEventSet
   return {
     competitionId,
     slug: DEMO_COMPETITION_SLUG,
-    name: DEMO_COMPETITION_NAME,
+    name: competition.name || DEMO_COMPETITION_NAME,
   };
+}
+
+export async function resetDemoCompetition(options: { setup?: GuidedDemoEventSetupInput } = {}) {
+  const created = await createDemoEventFromSetup(options);
+  return populateDemoEventData(created.competitionId);
 }

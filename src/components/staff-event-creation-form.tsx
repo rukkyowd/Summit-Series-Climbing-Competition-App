@@ -392,8 +392,9 @@ export function StaffEventCreationForm({
         >
           {mode === "guided-demo" ? (
             <div className="mb-3 text-sm leading-6 text-slate-600">
-              Now create the event. After this, the demo will populate realistic climbers and
-              scores so you can continue to the judge screen.
+              {activeGuideStepId === "create"
+                ? "Now create the event. After this, the demo will populate realistic climbers and scores so you can continue to the judge screen."
+                : "Review the guided setup steps first. The create action unlocks on the final Create Demo Event step."}
             </div>
           ) : null}
           <button

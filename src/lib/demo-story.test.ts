@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDemoCreateEventResponse,
   deriveDemoFinalsSetupReady,
   deriveDemoStoryProgress,
   isCanonicalDemoMutableCompetition,
   mergeDemoStoryMetadata,
+  type DemoStoryState,
   type DemoStoryCompetitionSummary,
 } from "./demo-story";
 import {
@@ -354,5 +356,87 @@ describe("demo story progress", () => {
     expect(metadata.drama_target_climber).toBe(targetClimber.id);
     expect(metadata.target_climber_number).toBe("104");
     expect(metadata.drama_pair).toEqual([affectedClimber.id, targetClimber.id]);
+  });
+
+  it("builds the guided event creation response from the populated server state", () => {
+    const competition = demoCompetition({
+      id: "created-demo-id",
+      slug: DEMO_COMPETITION_SLUG,
+    });
+    const progress = deriveDemoStoryProgress({
+      competition,
+      targetAttempt: {
+        attempt_count: 3,
+        topped: true,
+        zone: true,
+        attempts_to_top: 3,
+        attempts_to_zone: 2,
+      },
+      finalistCount: 0,
+      finalsSetupReady: true,
+    });
+    const state: DemoStoryState = {
+      available: true,
+      error: null,
+      competition,
+      metadata: competition.demo_metadata,
+      targetAttempt: {
+        attempt_count: 3,
+        topped: true,
+        zone: true,
+        attempts_to_top: 3,
+        attempts_to_zone: 2,
+      },
+      finalistCount: 0,
+      progress,
+      links: {
+        setup: "/staff/demo?demoStory=act1",
+        judge: `/staff/c/${DEMO_COMPETITION_SLUG}/judge?demoStory=act2`,
+        organizer: `/staff/c/${DEMO_COMPETITION_SLUG}?demoStory=act3`,
+        publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=public`,
+        leaderboard: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=public`,
+        scorecard: `/c/${DEMO_COMPETITION_SLUG}/scorecard?token=demo`,
+      },
+    };
+
+    expect(buildDemoCreateEventResponse(state)).toEqual({
+      competitionId: "created-demo-id",
+      slug: DEMO_COMPETITION_SLUG,
+      isDemo: true,
+      judgeUrl: `/staff/c/${DEMO_COMPETITION_SLUG}/judge?demoStory=act2`,
+      publicUrl: `/c/${DEMO_COMPETITION_SLUG}?demoStory=public`,
+      leaderboardUrl: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=public`,
+      progress,
+    });
+    expect(progress.eventCreated).toBe(true);
+    expect(progress.keyScoreCorrected).toBe(false);
+  });
+
+  it("refuses to build a guided creation response before the judge route is ready", () => {
+    const competition = demoCompetition();
+    const state: DemoStoryState = {
+      available: true,
+      error: null,
+      competition,
+      metadata: competition.demo_metadata,
+      targetAttempt: null,
+      finalistCount: 0,
+      progress: deriveDemoStoryProgress({
+        competition,
+        targetAttempt: null,
+        finalistCount: 0,
+        finalsSetupReady: true,
+      }),
+      links: {
+        setup: "/staff/demo?demoStory=act1",
+        judge: null,
+        organizer: `/staff/c/${DEMO_COMPETITION_SLUG}?demoStory=act3`,
+        publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=public`,
+        leaderboard: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=public`,
+        scorecard: null,
+      },
+    };
+
+    expect(() => buildDemoCreateEventResponse(state)).toThrow("failed to prepare judge route");
   });
 });

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  buildDemoCreateEventResponse,
   prepareDemoStoryState,
   getDemoStoryState,
   type DemoStoryTargetAct,
@@ -78,18 +79,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid demo story target." }, { status: 400 });
   }
 
+  const isGuidedEventCreate =
+    payload.targetAct === "event_created" && payload.reset === true && Boolean(payload.setup);
+
   try {
     const state = await prepareDemoStoryState(payload.targetAct, {
       reset: payload.reset === true,
       resetOnly: payload.resetOnly === true,
       setup: payload.setup,
     });
-    return NextResponse.json({ ok: true, state });
+    const createResponse = state.competition ? buildDemoCreateEventResponse(state) : null;
+
+    return NextResponse.json({
+      ok: true,
+      state,
+      ...(createResponse ?? {}),
+    });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to prepare the demo story state.";
+    const errorMessage = isGuidedEventCreate
+      ? `Demo event creation failed: ${message.replace(/^Demo event creation failed:\s*/i, "")}`
+      : message;
+
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Unable to prepare the demo story state.",
+        error: errorMessage,
       },
       { status: 500 }
     );
