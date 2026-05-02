@@ -58,18 +58,18 @@ const storyActs: StoryAct[] = [
   {
     id: "create",
     number: 1,
-    title: "Create Event",
+    title: "Organizer: Build Event",
     description:
-      "Create the canonical youth championship demo with presets, categories, rounds, and schedule.",
-    why: "The setup story shows how a real event gets configured before anyone scores a climb.",
+      "Act as the organizer: create the event, lock the Youth Championship preset, review registration, categories, finals, rounds, and schedule.",
+    why: "The organizer setup story shows how a real competition gets configured before anyone scores a climb.",
     targetAct: "event_created",
     hrefKey: "setup",
-    primaryLabel: "Review event setup",
+    primaryLabel: "Start Organizer Setup",
   },
   {
     id: "judge",
     number: 2,
-    title: "Correct Key Score",
+    title: "Judge: Correct Key Score",
     description:
       "Find Athlete C, select B3, change Top from attempt 3 to attempt 1, then save.",
     why: "A single judge correction can change the finalist cut line. The demo makes that visible.",
@@ -80,7 +80,7 @@ const storyActs: StoryAct[] = [
   {
     id: "organizer",
     number: 3,
-    title: "Advance Finalists / Start Finals",
+    title: "Organizer: Advance Finalists",
     description:
       "Review the cut-line movement, lock qualifiers, advance finalists, and open finals.",
     why: "Complete the key score correction first, or prepare demo state and skip ahead.",
@@ -91,7 +91,7 @@ const storyActs: StoryAct[] = [
   {
     id: "public",
     number: 4,
-    title: "View Public Result",
+    title: "Public: View Results",
     description:
       "See the competition as a climber, parent, coach, or spectator on the public event pages.",
     why: "The public view closes the loop: setup, scoring, organizer control, and results all line up.",
@@ -359,7 +359,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     setAct2CompletionVisible(false);
     setState((current) => resetClientStoryState(current));
     setActiveView("act1_setup");
-    setNotice("Act 1 is ready. Review the real setup-style flow, then create the demo event.");
+    setNotice("Act 1 is ready. Start as the organizer, configure the event, then create the demo event.");
   }
 
   function openAct1Setup() {
@@ -595,9 +595,9 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   {DEMO_STORY_COPY.title}
                 </h1>
                 <p className="max-w-3xl text-lg leading-8 text-slate-600">
-                  Run a complete youth championship in five minutes. You&apos;ll create the event,
-                  correct a key score as a judge, advance finalists as the organizer, and view
-                  the public result.
+                  Run a complete youth championship in five minutes. You&apos;ll act as the organizer
+                  to build the event, score a key climb as a judge, return to organizer controls,
+                  and view the public result.
                 </p>
               </div>
 
@@ -640,7 +640,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
               <div className="grid gap-3 text-sm leading-6 text-slate-600 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
                   <span className="font-black text-slate-950">Start Full Story:</span> create the
-                  event first, then watch the app populate a live competition.
+                  event as the organizer first, then watch the app populate a live competition.
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
                   <span className="font-black text-slate-950">Use Ready-Made Demo Event:</span>{" "}

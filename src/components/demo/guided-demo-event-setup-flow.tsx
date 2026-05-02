@@ -95,20 +95,21 @@ export function GuidedDemoEventSetupFlow({
     <Surface variant="panel" density="public" className="space-y-6 border-sky-200 bg-white/95">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-3">
-          <Badge>Act 1 setup flow</Badge>
+          <Badge>Act 1 · Organizer Demo</Badge>
           <div>
             <h2 className="text-3xl font-black tracking-[-0.03em] text-slate-950">
-              Create the Demo Event
+              Organizer Demo: Build the Event
             </h2>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-              Walk through the same setup decisions a real organizer makes: pick the event shape,
-              review categories, confirm finals eligibility, inspect the schedule, then create the
-              canonical demo competition.
+              You are acting as the organizer. First, create the competition using the same staff
+              event creation UI: configure basics, confirm the preset, review registration,
+              categories, finals, rounds, and schedule, then create the canonical demo competition.
             </p>
             <p className="mt-3 max-w-4xl rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold leading-6 text-emerald-900">
-              This demo uses a Youth Championship with Finals preset so you can see the full event
-              lifecycle: setup, qualifier scoring, leaderboard movement, finalist advancement,
-              finals, and public results.
+              This guided story uses Youth Championship with Finals so we can demonstrate qualifier
+              scoring, leaderboard movement, finalist advancement, finals, and public results. After
+              you create the event, we will simulate registrations and seeded scores so the judge
+              and leaderboard screens have realistic data.
             </p>
           </div>
         </div>
@@ -484,7 +485,9 @@ export function GuidedDemoEventSetupFlow({
                     ? "Confirm finals setup"
                     : activeStep.id === "registration"
                       ? "Confirm registration setup"
-                      : "Continue"}
+                      : activeStep.id === "basics"
+                        ? "Continue Setup"
+                        : "Continue Setup"}
               </Button>
             ) : (
               <Button

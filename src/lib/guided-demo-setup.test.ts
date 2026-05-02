@@ -24,11 +24,11 @@ describe("guided demo setup model", () => {
     expect(model.steps.map((step) => step.id)).toEqual([
       "basics",
       "preset",
+      "registration",
       "categories",
       "finals",
       "rounds",
       "schedule",
-      "registration",
       "create",
     ]);
     expect(model.categories.map((category) => category.displayName)).toContain("Men / Youth D");

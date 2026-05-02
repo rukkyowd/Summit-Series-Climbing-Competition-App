@@ -10,11 +10,11 @@ import { DEMO_COMPETITION_NAME } from "./demo";
 export type GuidedDemoSetupStepId =
   | "basics"
   | "preset"
+  | "registration"
   | "categories"
   | "finals"
   | "rounds"
   | "schedule"
-  | "registration"
   | "create";
 
 export type GuidedDemoSetupCategory = {
@@ -187,6 +187,11 @@ export function buildGuidedDemoSetupModel(now = new Date()): GuidedDemoSetupMode
         description: "Start from the required finals-capable story preset.",
       },
       {
+        id: "registration",
+        title: "Registration setup",
+        description: "Review public registration timing and how the demo will simulate athletes.",
+      },
+      {
         id: "categories",
         title: "Category review",
         description: "Review the generated youth competition field.",
@@ -205,11 +210,6 @@ export function buildGuidedDemoSetupModel(now = new Date()): GuidedDemoSetupMode
         id: "schedule",
         title: "Schedule",
         description: "Review the qualifier day, finals logistics, and awards flow.",
-      },
-      {
-        id: "registration",
-        title: "Registration setup",
-        description: "Review public registration timing and how the demo will simulate athletes.",
       },
       {
         id: "create",
