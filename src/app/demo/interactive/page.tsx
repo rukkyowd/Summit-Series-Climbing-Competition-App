@@ -1,5 +1,5 @@
-import { InteractiveDemoClient } from "@/components/demo/interactive-demo-client";
+import { redirect } from "next/navigation";
 
 export default function InteractiveDemoPage() {
-  return <InteractiveDemoClient />;
+  redirect("/demo");
 }

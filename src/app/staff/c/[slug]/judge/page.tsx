@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import DemoExperience from "@/components/demo-experience";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
@@ -512,6 +512,7 @@ function FinalsEditorPanel({
 }
 
 export default function StaffJudgePage() {
+  const router = useRouter();
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
@@ -519,6 +520,9 @@ export default function StaffJudgePage() {
   const initialClimberId = searchParams?.get("climberId") ?? "";
   const initialBoulder = Math.max(1, Number(searchParams?.get("boulder") ?? 1) || 1);
   const demoStoryMode = searchParams?.get("demoStory") === "act2";
+  const [demoCompletionMessage, setDemoCompletionMessage] = useState("");
+  const [demoCompletionReady, setDemoCompletionReady] = useState(false);
+  const [checkingDemoCompletion, setCheckingDemoCompletion] = useState(false);
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stage, setStage] = useState<"qualifier" | "finals">(initialStage);
@@ -1338,6 +1342,45 @@ export default function StaffJudgePage() {
     });
   };
 
+  const checkDemoAct2Completion = async () => {
+    setCheckingDemoCompletion(true);
+    setDemoCompletionMessage("");
+
+    try {
+      const response = await fetch("/api/demo/prepare");
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            state?: {
+              progress: { keyScoreCorrected: boolean };
+              links: { organizer: string | null; leaderboard: string | null };
+            };
+            error?: string;
+          }
+        | null;
+
+      if (!response.ok || !payload?.ok || !payload.state) {
+        throw new Error(payload?.error ?? "Unable to verify the demo score correction.");
+      }
+
+      if (payload.state.progress.keyScoreCorrected) {
+        setDemoCompletionReady(true);
+        setDemoCompletionMessage("Act 2 complete: key score corrected.");
+        return;
+      }
+
+      setDemoCompletionReady(false);
+      setDemoCompletionMessage("The key score has not been corrected yet. Save Athlete C's B3 as Top in 1 attempt.");
+    } catch (nextError) {
+      setDemoCompletionReady(false);
+      setDemoCompletionMessage(
+        nextError instanceof Error ? nextError.message : "Unable to verify the demo score correction."
+      );
+    } finally {
+      setCheckingDemoCompletion(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="results-page">
@@ -1387,10 +1430,39 @@ export default function StaffJudgePage() {
                   and press “I completed this” so it can verify the database state.
                 </p>
               </div>
-              <Button type="button" variant="secondary" onClick={highlightDemoTarget}>
-                Highlight target
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={highlightDemoTarget}>
+                  Highlight target
+                </Button>
+                <Button type="button" variant="primary" onClick={() => void checkDemoAct2Completion()} disabled={checkingDemoCompletion}>
+                  {checkingDemoCompletion ? "Checking..." : "I completed this"}
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => router.push("/demo")}>
+                  Back to Demo Home
+                </Button>
+              </div>
             </div>
+            {demoCompletionMessage ? (
+              <div
+                className={`mt-4 rounded-[1.2rem] border px-4 py-3 text-sm font-semibold ${
+                  demoCompletionReady
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}
+              >
+                {demoCompletionMessage}
+                {demoCompletionReady ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" variant="primary" size="compact" onClick={() => router.push(`/staff/c/${slug}?demoStory=act3`)}>
+                      Continue to Organizer Demo
+                    </Button>
+                    <Button type="button" variant="secondary" size="compact" onClick={() => router.push(`/c/${slug}/leaderboard?demoStory=act4`)}>
+                      View leaderboard impact
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
         ) : null}
         {isDemoCompetitionRecord(snapshot.competition) && !demoStoryMode ? (

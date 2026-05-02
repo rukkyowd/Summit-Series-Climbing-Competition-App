@@ -1,38 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createRouteSupabaseClient, createServiceRoleSupabaseClient } from "@/lib/server-supabase";
+import { DEMO_COMPETITION_SLUG } from "@/lib/demo";
+import { getDemoStoryState } from "@/lib/demo-story";
+import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
-const RESET_SECRET = process.env["CRON_SECRET"] ?? process.env["DEMO_RESET_SECRET"] ?? null;
-const PUBLIC_DEMO_PATH_PREFIXES = ["/demo", "/staff/demo"] as const;
-
-type DemoResetRequest = {
-  mode?: string;
-  competitionId?: string | string[] | null;
-};
-
-async function isAuthorizedAdminRequest(request: NextRequest) {
-  const authorization = request.headers.get("authorization");
-  if (RESET_SECRET && authorization === `Bearer ${RESET_SECRET}`) {
-    return true;
-  }
-
-  const supabase = createRouteSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return false;
-  }
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  return profile?.role === "admin";
-}
-
-function isPublicDemoResetRequest(request: NextRequest, payload: DemoResetRequest | null) {
-  if (request.method !== "POST" || payload?.mode !== "public_demo") {
-    return false;
-  }
-
+function isAllowedDemoMutation(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (origin && origin !== request.nextUrl.origin) {
     return false;
@@ -40,107 +11,65 @@ function isPublicDemoResetRequest(request: NextRequest, payload: DemoResetReques
 
   const referer = request.headers.get("referer");
   if (!referer) {
-    return false;
+    return true;
   }
 
   try {
     const refererUrl = new URL(referer);
     return (
       refererUrl.origin === request.nextUrl.origin &&
-      PUBLIC_DEMO_PATH_PREFIXES.some((prefix) => refererUrl.pathname.startsWith(prefix))
+      (refererUrl.pathname.startsWith("/demo") ||
+        refererUrl.pathname.startsWith("/staff/demo") ||
+        refererUrl.pathname.startsWith(`/staff/c/${DEMO_COMPETITION_SLUG}`) ||
+        refererUrl.pathname.startsWith(`/c/${DEMO_COMPETITION_SLUG}`))
     );
   } catch {
     return false;
   }
 }
 
-function normalizeCompetitionIds(value: DemoResetRequest["competitionId"]) {
-  if (typeof value === "string") {
-    return value.trim() ? [value.trim()] : [];
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-  }
-
-  return [] as string[];
-}
-
-async function clearDemoCompetitions(competitionIds: string[]) {
-  if (!competitionIds.length) {
-    return [];
-  }
-
+async function deleteCanonicalDemoCompetition() {
   const supabase = createServiceRoleSupabaseClient();
   const { data: rows, error: loadError } = await supabase
     .from("competitions")
-    .select("id")
-    .in("id", competitionIds)
-    .eq("is_demo", true);
+    .select("id, slug, is_demo")
+    .eq("slug", DEMO_COMPETITION_SLUG);
 
   if (loadError) {
-    throw new Error(loadError.message || "Unable to load demo competitions.");
+    throw new Error(loadError.message || "Unable to load the canonical demo competition.");
   }
 
-  const idsToDelete = (rows ?? []).map((row) => row.id as string);
-  if (!idsToDelete.length) {
-    return [];
+  const existingRows = rows ?? [];
+  if (existingRows.some((row) => row.slug === DEMO_COMPETITION_SLUG && row.is_demo !== true)) {
+    throw new Error("The canonical demo slug belongs to a real competition. Refusing to reset demo state.");
   }
 
-  const { error: deleteError } = await supabase.from("competitions").delete().in("id", idsToDelete);
+  const demoIds = existingRows.filter((row) => row.is_demo === true).map((row) => row.id as string);
+  if (!demoIds.length) {
+    return [] as string[];
+  }
+
+  const { error: deleteError } = await supabase.from("competitions").delete().in("id", demoIds);
   if (deleteError) {
-    throw new Error(deleteError.message || "Unable to clear demo competitions.");
+    throw new Error(deleteError.message || "Unable to reset the canonical demo competition.");
   }
 
-  return idsToDelete;
-}
-
-async function handleReset(
-  request: NextRequest,
-  payload: DemoResetRequest | null,
-  options?: { publicDemo?: boolean }
-) {
-  const authorized = options?.publicDemo ? true : await isAuthorizedAdminRequest(request);
-  if (!authorized) {
-    return NextResponse.json(
-      { error: "This reset is only available from the live demo or an authorized staff session." },
-      { status: 401 }
-    );
-  }
-
-  try {
-    const deletedCompetitionIds = await clearDemoCompetitions(normalizeCompetitionIds(payload?.competitionId));
-    return NextResponse.json({
-      ok: true,
-      demo: {
-        deletedCompetitionIds,
-      },
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Unable to reset the demo competition.",
-      },
-      { status: 500 }
-    );
-  }
+  return demoIds;
 }
 
 export async function POST(request: NextRequest) {
-  let payload: DemoResetRequest | null = null;
-
-  try {
-    payload = (await request.json()) as DemoResetRequest;
-  } catch {
-    payload = null;
+  if (!isAllowedDemoMutation(request)) {
+    return NextResponse.json({ ok: false, error: "Demo reset is only available from demo pages." }, { status: 401 });
   }
 
-  return handleReset(request, payload, { publicDemo: isPublicDemoResetRequest(request, payload) });
-}
-
-export async function GET(request: NextRequest) {
-  return handleReset(request, null);
+  try {
+    const deletedCompetitionIds = await deleteCanonicalDemoCompetition();
+    const state = await getDemoStoryState();
+    return NextResponse.json({ ok: true, deletedCompetitionIds, state });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Unable to reset demo state." },
+      { status: 500 }
+    );
+  }
 }

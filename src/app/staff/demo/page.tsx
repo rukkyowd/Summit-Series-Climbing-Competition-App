@@ -1,4 +1,4 @@
-import StaffDashboard from "@/components/staff-dashboard";
+import { redirect } from "next/navigation";
 
 function readSearchParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -10,6 +10,9 @@ export default function StaffDemoPage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const demoStory = readSearchParam(searchParams?.demoStory);
+  if (demoStory === "act1") {
+    redirect("/staff/demo/new");
+  }
 
-  return <StaffDashboard demoMode demoStoryAct={demoStory === "act1" ? "act1" : undefined} />;
+  redirect("/demo");
 }

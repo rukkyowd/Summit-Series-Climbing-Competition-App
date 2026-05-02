@@ -70,12 +70,29 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 0,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
     });
 
     expect(progress.eventCreated).toBe(true);
     expect(progress.keyScoreCorrected).toBe(true);
     expect(progress.finalistsAdvanced).toBe(false);
+  });
+
+  it("does not treat the demo as populated until climbers, attempts, and target metadata exist", () => {
+    const progress = deriveDemoStoryProgress({
+      competition: demoCompetition(),
+      targetAttempt: null,
+      finalistCount: 0,
+      climberCount: 0,
+      qualifierAttemptCount: 0,
+      finalsSetupReady: true,
+    });
+
+    expect(progress.eventCreated).toBe(true);
+    expect(progress.dataPopulated).toBe(false);
+    expect(progress.keyScoreCorrected).toBe(false);
   });
 
   it("keeps a freshly reset demo locked until Act 1 is explicitly started", () => {
@@ -97,6 +114,8 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 0,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
     });
 
@@ -155,6 +174,8 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 6,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: false,
     });
 
@@ -175,6 +196,8 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 0,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
     });
 
@@ -196,6 +219,8 @@ describe("demo story progress", () => {
         attempts_to_zone: null,
       },
       finalistCount: 0,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
     });
 
@@ -214,6 +239,8 @@ describe("demo story progress", () => {
         attempts_to_zone: 2,
       },
       finalistCount: 0,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
     });
 
@@ -232,6 +259,8 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 0,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
       targetClimberBelongsToCompetition: false,
     });
@@ -254,6 +283,8 @@ describe("demo story progress", () => {
         attempts_to_zone: 1,
       },
       finalistCount: 6,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
       publicViewed: true,
     });
@@ -373,6 +404,8 @@ describe("demo story progress", () => {
         attempts_to_zone: 2,
       },
       finalistCount: 0,
+      climberCount: 150,
+      qualifierAttemptCount: 400,
       finalsSetupReady: true,
     });
     const state: DemoStoryState = {
@@ -390,11 +423,11 @@ describe("demo story progress", () => {
       finalistCount: 0,
       progress,
       links: {
-        setup: "/staff/demo?demoStory=act1",
+        setup: "/staff/demo/new",
         judge: `/staff/c/${DEMO_COMPETITION_SLUG}/judge?demoStory=act2`,
         organizer: `/staff/c/${DEMO_COMPETITION_SLUG}?demoStory=act3`,
-        publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=public`,
-        leaderboard: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=public`,
+        publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=act4`,
+        leaderboard: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=act4`,
         scorecard: `/c/${DEMO_COMPETITION_SLUG}/scorecard?token=demo`,
       },
     };
@@ -404,8 +437,8 @@ describe("demo story progress", () => {
       slug: DEMO_COMPETITION_SLUG,
       isDemo: true,
       judgeUrl: `/staff/c/${DEMO_COMPETITION_SLUG}/judge?demoStory=act2`,
-      publicUrl: `/c/${DEMO_COMPETITION_SLUG}?demoStory=public`,
-      leaderboardUrl: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=public`,
+      publicUrl: `/c/${DEMO_COMPETITION_SLUG}?demoStory=act4`,
+      leaderboardUrl: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=act4`,
       progress,
     });
     expect(progress.eventCreated).toBe(true);
@@ -425,14 +458,16 @@ describe("demo story progress", () => {
         competition,
         targetAttempt: null,
         finalistCount: 0,
+        climberCount: 150,
+        qualifierAttemptCount: 400,
         finalsSetupReady: true,
       }),
       links: {
-        setup: "/staff/demo?demoStory=act1",
+        setup: "/staff/demo/new",
         judge: null,
         organizer: `/staff/c/${DEMO_COMPETITION_SLUG}?demoStory=act3`,
-        publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=public`,
-        leaderboard: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=public`,
+        publicEvent: `/c/${DEMO_COMPETITION_SLUG}?demoStory=act4`,
+        leaderboard: `/c/${DEMO_COMPETITION_SLUG}/leaderboard?demoStory=act4`,
         scorecard: null,
       },
     };

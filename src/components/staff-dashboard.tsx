@@ -277,7 +277,7 @@ const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
   },
 ];
 
-type StaffDashboardDemoStoryAct = "act1";
+type StaffDashboardDemoStoryAct = "act1" | "act3";
 
 type DemoPrepareStateResponse = {
   ok?: boolean;
@@ -876,6 +876,7 @@ export default function StaffDashboard({
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
   const isGuidedStoryAct1 = demoMode && demoStoryAct === "act1";
+  const isGuidedStoryAct3 = demoStoryAct === "act3";
   const guidedAct1SetupModel = useMemo(() => buildGuidedDemoSetupModel(), []);
   const currentGuidedAct1Step =
     GUIDED_ORGANIZER_ACT_1_STEPS[guidedAct1StepIndex] ?? GUIDED_ORGANIZER_ACT_1_STEPS[0];
@@ -2903,6 +2904,32 @@ export default function StaffDashboard({
 
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
+        {isGuidedStoryAct3 && draft && isDemoCompetitionRecord(draft) ? (
+          <Surface variant="card" className="border-sky-200 bg-sky-50/90">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <div className="results-kicker text-sky-700">Act 3 - Organizer: Advance Finalists</div>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+                  Review the cut line, lock qualifiers, advance finalists, and start finals.
+                </h1>
+                <p className="max-w-4xl text-sm leading-6 text-slate-600">
+                  This is the real organizer workspace. The guide does not auto-lock or auto-advance:
+                  use the existing phase and finals controls so Act 3 teaches the actual operations flow.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {leaderboardPath ? (
+                  <Link href={`${leaderboardPath}?demoStory=act4`} className="results-secondary-button">
+                    View leaderboard impact
+                  </Link>
+                ) : null}
+                <Link href="/demo" className="results-secondary-button">
+                  Back to Demo Home
+                </Link>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
         {demoMode && !isGuidedStoryAct1 ? (
           <DemoSalesShell
             mode="organizer"
