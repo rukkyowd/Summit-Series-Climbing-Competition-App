@@ -38,7 +38,9 @@ import {
 } from "@/lib/competition-presets";
 import {
   buildDefaultGuidedDemoEventSetup,
+  buildGuidedDemoSetupModel,
   normalizeGuidedDemoEventSetup,
+  type GuidedDemoSetupStepId,
 } from "@/lib/guided-demo-setup";
 import {
   constrainFinalsEligibleAgeGroupsToSelectedCategories,
@@ -204,6 +206,77 @@ const ORGANIZER_BUILD_TRANSITION_STEPS = [
 const DEMO_AUTOPLAY_ENABLED = false;
 const GUIDED_STORY_PRESET = getGuidedDemoPreset();
 
+type GuidedOrganizerWalkthroughStep = {
+  id: GuidedDemoSetupStepId;
+  title: string;
+  explanation: string;
+  why: string;
+  anchorId: string;
+};
+
+const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
+  {
+    id: "basics",
+    title: "Event basics",
+    explanation: "Name the event and confirm where and when it runs.",
+    why: "This gives the public page, staff workspace, and judge screens a believable event identity.",
+    anchorId: "guided-act1-basics",
+  },
+  {
+    id: "preset",
+    title: "Preset",
+    explanation:
+      "Youth Championship with Finals is required so the story can demonstrate qualifiers, finalist advancement, finals, and public results.",
+    why: "The preset keeps Act 3 meaningful by guaranteeing finals are configured before scoring starts.",
+    anchorId: "guided-act1-preset",
+  },
+  {
+    id: "registration",
+    title: "Registration",
+    explanation:
+      "In a real event, climbers register through the public page and receive private scorecard links. For the demo, we'll simulate registrations after you create the event.",
+    why: "You configure registration once, then the demo fills the field so judge and leaderboard screens feel alive.",
+    anchorId: "guided-act1-registration",
+  },
+  {
+    id: "categories",
+    title: "Categories",
+    explanation: "These are the divisions athletes register into.",
+    why: "Categories drive registration, standings, finalist cuts, and public leaderboard filters.",
+    anchorId: "guided-act1-categories",
+  },
+  {
+    id: "finals",
+    title: "Finals eligibility",
+    explanation:
+      "Youth B, Youth A, and Junior advance to finals by default. Youth D and Youth C compete in qualifiers only.",
+    why: "Finals eligibility is constrained to the selected categories so the cut line is auditable.",
+    anchorId: "guided-act1-finals",
+  },
+  {
+    id: "rounds",
+    title: "Rounds/scoring",
+    explanation: "The event starts with qualifiers, then advances finalists into a finals round.",
+    why: "The judge screen and organizer controls use this structure to know what can be scored next.",
+    anchorId: "guided-act1-rounds",
+  },
+  {
+    id: "schedule",
+    title: "Schedule",
+    explanation: "This gives organizers, judges, athletes, and spectators the event-day structure.",
+    why: "Public pages and staff controls stay aligned when schedule blocks, rounds, and phases match.",
+    anchorId: "guided-act1-schedule",
+  },
+  {
+    id: "create",
+    title: "Create Demo Event",
+    explanation:
+      "Now create the event. After this, the demo will populate realistic climbers and scores so you can continue to the judge screen.",
+    why: "This is the only step that submits the form and starts server-side demo population.",
+    anchorId: "guided-act1-create",
+  },
+];
+
 type StaffDashboardDemoStoryAct = "act1";
 
 type DemoPrepareStateResponse = {
@@ -238,6 +311,85 @@ function getGuidedDemoJudgeRouteReadinessError(state: DemoStoryState) {
   }
 
   return null;
+}
+
+function GuidedOrganizerAct1Walkthrough({
+  steps,
+  currentStepIndex,
+  onSelectStep,
+}: {
+  steps: readonly GuidedOrganizerWalkthroughStep[];
+  currentStepIndex: number;
+  onSelectStep: (stepIndex: number) => void;
+}) {
+  const currentStep = steps[currentStepIndex] ?? steps[0];
+  const progressPercent = Math.round(((currentStepIndex + 1) / steps.length) * 100);
+  const nextStepIndex = Math.min(steps.length - 1, currentStepIndex + 1);
+
+  return (
+    <Surface variant="card" className="border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,0.95),rgba(255,255,255,0.98))]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start">
+        <div className="space-y-3">
+          <div className="results-kicker text-sky-700">Guided organizer walkthrough</div>
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+            {currentStep.title}
+          </h2>
+          <p className="text-sm leading-6 text-slate-700">{currentStep.explanation}</p>
+          <div className="rounded-[1.2rem] border border-sky-100 bg-white/80 px-4 py-3 text-sm leading-6 text-slate-600">
+            <span className="font-semibold text-slate-950">Why this matters:</span>{" "}
+            {currentStep.why}
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+            <div className="h-full rounded-full bg-sky-600 transition-all" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="results-secondary-button"
+              onClick={() => onSelectStep(nextStepIndex)}
+              disabled={currentStepIndex === steps.length - 1}
+            >
+              Next guide step
+            </button>
+            <button
+              type="button"
+              className="results-secondary-button"
+              onClick={() => onSelectStep(0)}
+            >
+              Restart guide
+            </button>
+          </div>
+          <p className="text-xs leading-5 text-slate-500">
+            Guide navigation only moves the explanation and highlight. It never saves, creates, or
+            populates demo data.
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {steps.map((step, index) => {
+            const isActive = index === currentStepIndex;
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => onSelectStep(index)}
+                className={`rounded-[1.1rem] border px-3 py-3 text-left text-sm transition ${
+                  isActive
+                    ? "border-sky-300 bg-sky-100 text-sky-950 shadow-[0_14px_34px_rgba(14,116,215,0.12)]"
+                    : "border-slate-200 bg-white/75 text-slate-600 hover:border-sky-200 hover:text-sky-900"
+                }`}
+                aria-current={isActive ? "step" : undefined}
+              >
+                <div className="text-xs font-black uppercase tracking-[0.14em]">
+                  Step {index + 1}
+                </div>
+                <div className="mt-1 font-semibold">{step.title}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </Surface>
+  );
 }
 
 function createRoundTemplate(
@@ -664,6 +816,7 @@ export default function StaffDashboard({
   const [expandedRoundId, setExpandedRoundId] = useState<string | null>(null);
   const [expandedScheduleBlockId, setExpandedScheduleBlockId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
+  const [guidedAct1StepIndex, setGuidedAct1StepIndex] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<CompetitionPresetId | null>(null);
   const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
   const [, setOrganizerGuidedBasicsState] = useState({
@@ -716,6 +869,9 @@ export default function StaffDashboard({
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
   const isGuidedStoryAct1 = demoMode && demoStoryAct === "act1";
+  const guidedAct1SetupModel = useMemo(() => buildGuidedDemoSetupModel(), []);
+  const currentGuidedAct1Step =
+    GUIDED_ORGANIZER_ACT_1_STEPS[guidedAct1StepIndex] ?? GUIDED_ORGANIZER_ACT_1_STEPS[0];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -808,6 +964,7 @@ export default function StaffDashboard({
     setSelectedCompetitionId("");
     setSnapshot(null);
     setDraft(null);
+    setGuidedAct1StepIndex(0);
     setCreateName(defaults.name);
     setCreateLocation(defaults.locationName);
     setCreateStartDate(defaults.startDate);
@@ -1969,6 +2126,22 @@ export default function StaffDashboard({
     },
     [demoMode]
   );
+  const goToGuidedAct1Step = useCallback((stepIndex: number) => {
+    const nextIndex = Math.max(0, Math.min(GUIDED_ORGANIZER_ACT_1_STEPS.length - 1, stepIndex));
+    setGuidedAct1StepIndex(nextIndex);
+
+    const anchorId = GUIDED_ORGANIZER_ACT_1_STEPS[nextIndex]?.anchorId;
+    if (!anchorId || typeof window === "undefined") {
+      return;
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(anchorId)?.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+    }, 0);
+  }, []);
   const handleOrganizerPresetSelection = (presetId: CompetitionPresetId) => {
     if (
       draft &&
@@ -2813,13 +2986,14 @@ export default function StaffDashboard({
                   Organizer: Build Event
                 </h1>
                 <p className="max-w-3xl text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">
-                  You are acting as the organizer. First, create the competition in the same staff
-                  setup UI used for real events. After you submit, the demo will simulate
-                  registrations, seeded scores, and judge-ready data.
+                  You are the organizer for a youth championship. Create the event first: choose
+                  the finals-enabled preset, confirm registration, review categories and finals
+                  eligibility, then publish the demo event.
                 </p>
                 <p className="max-w-3xl text-sm leading-6 text-emerald-950">
-                  This guided story locks the Youth Championship with Finals preset so Act 3 can
-                  teach qualifier review, finalist advancement, finals, and public results.
+                  This guided setup uses the same event creation form as the staff dashboard. The
+                  demo locks story-critical settings, but you are still creating the event through
+                  the real organizer workflow.
                 </p>
               </div>
               <div className="rounded-[1.5rem] border border-emerald-200 bg-white/80 p-4 text-sm leading-6 text-slate-700">
@@ -2834,6 +3008,13 @@ export default function StaffDashboard({
               </div>
             </div>
           </Surface>
+        ) : null}
+        {isGuidedStoryAct1 && !draft ? (
+          <GuidedOrganizerAct1Walkthrough
+            steps={GUIDED_ORGANIZER_ACT_1_STEPS}
+            currentStepIndex={guidedAct1StepIndex}
+            onSelectStep={goToGuidedAct1Step}
+          />
         ) : null}
         {demoMode && !isGuidedStoryAct1 && draft ? (
           <OrganizerDemoTour
@@ -2988,6 +3169,8 @@ export default function StaffDashboard({
                 lockedPresetLabel={isGuidedStoryAct1 ? GUIDED_STORY_PRESET.name : undefined}
                 showCapacity={isGuidedStoryAct1}
                 showRegistrationStory={isGuidedStoryAct1}
+                activeGuideStepId={isGuidedStoryAct1 ? currentGuidedAct1Step.id : undefined}
+                guidedSetupModel={isGuidedStoryAct1 ? guidedAct1SetupModel : undefined}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
                     ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${

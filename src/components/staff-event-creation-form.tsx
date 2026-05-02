@@ -1,6 +1,10 @@
 "use client";
 
 import { slugifyCompetitionName, type EventFormat } from "@/lib/scoring";
+import type {
+  GuidedDemoSetupModel,
+  GuidedDemoSetupStepId,
+} from "@/lib/guided-demo-setup";
 
 export type StaffEventCreationFormValues = {
   name: string;
@@ -32,6 +36,8 @@ type StaffEventCreationFormProps = {
   showCapacity?: boolean;
   showRegistrationStory?: boolean;
   hideSubmit?: boolean;
+  activeGuideStepId?: GuidedDemoSetupStepId;
+  guidedSetupModel?: GuidedDemoSetupModel;
   onChange: (values: StaffEventCreationFormValues) => void;
   onSubmit: () => void;
   importedLinksSummary?: string | null;
@@ -62,6 +68,17 @@ function parseDateTimeLocalInput(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function guidedSectionClass(stepId: GuidedDemoSetupStepId, activeGuideStepId?: GuidedDemoSetupStepId) {
+  const isActive = activeGuideStepId === stepId;
+
+  return [
+    "rounded-[1.4rem] border p-4 transition",
+    isActive
+      ? "border-sky-300 bg-sky-50 shadow-[0_18px_40px_-30px_rgba(14,116,215,0.5)]"
+      : "border-slate-200 bg-white/70",
+  ].join(" ");
+}
+
 export function StaffEventCreationForm({
   values,
   formatOptions,
@@ -75,6 +92,8 @@ export function StaffEventCreationForm({
   showCapacity = false,
   showRegistrationStory = false,
   hideSubmit = false,
+  activeGuideStepId,
+  guidedSetupModel,
   onChange,
   onSubmit,
   importedLinksSummary,
@@ -84,13 +103,22 @@ export function StaffEventCreationForm({
   return (
     <fieldset disabled={formDisabled} className={formDisabled ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
       {mode === "guided-demo" && lockedPresetLabel ? (
-        <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
-          <span className="font-semibold">Locked preset:</span> {lockedPresetLabel}. This is the
-          same event creation form staff use, with the preset locked because the guided story needs
-          qualifier scoring, finalist advancement, finals, and public results.
+        <div id="guided-act1-preset" className={guidedSectionClass("preset", activeGuideStepId)}>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+            Required story preset
+          </div>
+          <div className="mt-2 text-sm leading-6 text-emerald-950">
+            <span className="font-semibold">Locked preset:</span> {lockedPresetLabel}. This is the
+            same event creation form staff use, with the preset locked because the guided story needs
+            qualifier scoring, finalist advancement, finals, and public results.
+          </div>
         </div>
       ) : null}
 
+      <div
+        id="guided-act1-basics"
+        className={mode === "guided-demo" ? `${guidedSectionClass("basics", activeGuideStepId)} grid gap-3` : "grid gap-3"}
+      >
       <label className="results-field-group" htmlFor="create-event-name">
         <span className="results-field-label">Event name</span>
         <input
@@ -184,7 +212,12 @@ export function StaffEventCreationForm({
           />
         </label>
       </div>
+      </div>
 
+      <div
+        id="guided-act1-registration"
+        className={mode === "guided-demo" ? `${guidedSectionClass("registration", activeGuideStepId)} grid gap-3` : "grid gap-3"}
+      >
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="results-field-group" htmlFor="create-event-registration-opens">
           <span className="results-field-label">Registration opens</span>
@@ -260,6 +293,91 @@ export function StaffEventCreationForm({
           registrations after creation so the judge screen and leaderboard have realistic data.
         </div>
       ) : null}
+      </div>
+
+      {mode === "guided-demo" && guidedSetupModel ? (
+        <>
+          <div id="guided-act1-categories" className={guidedSectionClass("categories", activeGuideStepId)}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Categories
+                </div>
+                <h3 className="mt-1 text-lg font-semibold text-slate-950">
+                  Athlete registration divisions
+                </h3>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
+                {guidedSetupModel.categories.length} categories
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {guidedSetupModel.categories.map((category) => (
+                <span
+                  key={category.id}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
+                >
+                  {category.displayName}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div id="guided-act1-finals" className={guidedSectionClass("finals", activeGuideStepId)}>
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+              Finals eligibility
+            </div>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">
+              Youth B, Youth A, and Junior advance by default
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Youth D and Youth C compete in qualifiers only. The finals-eligible categories are
+              selected from the generated categories, not free-floating age-group strings.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {guidedSetupModel.finalsEligibleCategories.map((category) => (
+                <span
+                  key={category.id}
+                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800"
+                >
+                  {category.displayName}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div id="guided-act1-rounds" className={guidedSectionClass("rounds", activeGuideStepId)}>
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+              Rounds and scoring
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {guidedSetupModel.rounds.map((round) => (
+                <div key={round.title} className="rounded-[1rem] border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-sm font-semibold text-slate-950">{round.title}</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-600">{round.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div id="guided-act1-schedule" className={guidedSectionClass("schedule", activeGuideStepId)}>
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+              Schedule
+            </div>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">
+              Event-day structure
+            </h3>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {guidedSetupModel.scheduleBlocks.map((block) => (
+                <div key={`${block.label}-${block.phaseType}`} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="text-sm font-semibold text-slate-950">{block.label}</div>
+                  <div className="text-xs text-slate-500">{block.audienceLabel}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {importedLinksSummary ? (
         <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
@@ -268,15 +386,26 @@ export function StaffEventCreationForm({
       ) : null}
 
       {!hideSubmit ? (
-        <button
-          type="button"
-          disabled={formDisabled || !canSubmit}
-          onClick={onSubmit}
-          className="results-primary-button"
-          data-demo-anchor="organizer-create-submit"
+        <div
+          id="guided-act1-create"
+          className={mode === "guided-demo" ? guidedSectionClass("create", activeGuideStepId) : undefined}
         >
-          {pending ? submittingLabel : submitLabel}
-        </button>
+          {mode === "guided-demo" ? (
+            <div className="mb-3 text-sm leading-6 text-slate-600">
+              Now create the event. After this, the demo will populate realistic climbers and
+              scores so you can continue to the judge screen.
+            </div>
+          ) : null}
+          <button
+            type="button"
+            disabled={formDisabled || !canSubmit}
+            onClick={onSubmit}
+            className="results-primary-button"
+            data-demo-anchor="organizer-create-submit"
+          >
+            {pending ? submittingLabel : submitLabel}
+          </button>
+        </div>
       ) : null}
     </fieldset>
   );
