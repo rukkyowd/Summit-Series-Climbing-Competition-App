@@ -162,6 +162,27 @@ describe("demo story progress", () => {
     expect(progress.finalsStarted).toBe(false);
   });
 
+  it("does not require finalists or finals-started state before the organizer act can unlock", () => {
+    const progress = deriveDemoStoryProgress({
+      competition: demoCompetition(),
+      targetAttempt: {
+        attempt_count: 1,
+        topped: true,
+        zone: true,
+        attempts_to_top: 1,
+        attempts_to_zone: 1,
+      },
+      finalistCount: 0,
+      finalsSetupReady: true,
+    });
+
+    expect(progress.eventCreated).toBe(true);
+    expect(progress.keyScoreCorrected).toBe(true);
+    expect(progress.finalsSetupReady).toBe(true);
+    expect(progress.finalistsAdvanced).toBe(false);
+    expect(progress.finalsStarted).toBe(false);
+  });
+
   it("accepts the corrected score when top implies zone and attempts are normalized", () => {
     const progress = deriveDemoStoryProgress({
       competition: demoCompetition(),

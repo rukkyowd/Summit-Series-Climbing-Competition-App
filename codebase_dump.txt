@@ -14851,8 +14851,18 @@ export default async function StaffDashboardPage({
 
 import StaffDashboard from "@/components/staff-dashboard";
 
-export default function StaffDemoPage() {
-  return <StaffDashboard demoMode />;
+function readSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+export default function StaffDemoPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
+  const demoStory = readSearchParam(searchParams?.demoStory);
+
+  return <StaffDashboard demoMode demoStoryAct={demoStory === "act1" ? "act1" : undefined} />;
 }
 
 
@@ -15323,23 +15333,15 @@ export default function ConfirmationModal({
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { GuidedDemoEventSetupFlow } from "@/components/demo/guided-demo-event-setup-flow";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
 import { getGuidedDemoPreset } from "@/lib/competition-presets";
 import { clearDemoSalesSession } from "@/lib/demo-sales-session";
-import type { GuidedDemoEventSetupDraft } from "@/lib/guided-demo-setup";
 import type { DemoStoryState, DemoStoryTargetAct } from "@/lib/demo-story";
 
 type ActStatus = "locked" | "ready" | "in_progress" | "complete";
-type DemoCommandView = "home" | "act1_setup";
-type BuildTransitionState = {
-  active: boolean;
-  stepIndex: number;
-  complete: boolean;
-};
 
 type StoryAct = {
   id: "create" | "judge" | "organizer" | "public";
@@ -15361,13 +15363,6 @@ const STALE_DEMO_STORAGE_KEYS = [
   "organizer_demo_tour_state_v2",
   "organizer_demo_tour_state_v3",
 ] as const;
-const ACT_1_BUILD_STEPS = [
-  "Saving event setup",
-  "Simulating 150 climber registrations",
-  "Generating qualifier routes and seeded scores",
-  "Opening judge workspaces",
-  "Launching the live judge panel",
-] as const;
 const ACT_1_DIVISIONS = ["Men", "Women"] as const;
 const youthChampionshipPreset = getGuidedDemoPreset();
 const DEMO_STORY_COPY = {
@@ -15378,18 +15373,18 @@ const storyActs: StoryAct[] = [
   {
     id: "create",
     number: 1,
-    title: "Create Event",
+    title: "Organizer: Build Event",
     description:
-      "Create the canonical youth championship demo with presets, categories, rounds, and schedule.",
-    why: "The setup story shows how a real event gets configured before anyone scores a climb.",
+      "Act as the organizer: create the event, lock the Youth Championship preset, review registration, categories, finals, rounds, and schedule.",
+    why: "The organizer setup story shows how a real competition gets configured before anyone scores a climb.",
     targetAct: "event_created",
     hrefKey: "setup",
-    primaryLabel: "Review event setup",
+    primaryLabel: "Start Organizer Setup",
   },
   {
     id: "judge",
     number: 2,
-    title: "Correct Key Score",
+    title: "Judge: Correct Key Score",
     description:
       "Find Athlete C, select B3, change Top from attempt 3 to attempt 1, then save.",
     why: "A single judge correction can change the finalist cut line. The demo makes that visible.",
@@ -15400,7 +15395,7 @@ const storyActs: StoryAct[] = [
   {
     id: "organizer",
     number: 3,
-    title: "Advance Finalists / Start Finals",
+    title: "Organizer: Advance Finalists",
     description:
       "Review the cut-line movement, lock qualifiers, advance finalists, and open finals.",
     why: "Complete the key score correction first, or prepare demo state and skip ahead.",
@@ -15411,7 +15406,7 @@ const storyActs: StoryAct[] = [
   {
     id: "public",
     number: 4,
-    title: "View Public Result",
+    title: "Public: View Results",
     description:
       "See the competition as a climber, parent, coach, or spectator on the public event pages.",
     why: "The public view closes the loop: setup, scoring, organizer control, and results all line up.",
@@ -15455,38 +15450,6 @@ function clearDemoStoryLocalProgress() {
 
 function clearDemoStoryRuntimeState() {
   clearDemoStoryLocalProgress();
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function getJudgeRouteReadinessError(state: DemoStoryState) {
-  if (state.error) {
-    return state.error;
-  }
-
-  if (!state.competition) {
-    return "Create the canonical demo event before opening the judge panel.";
-  }
-
-  if (!state.competition.is_demo) {
-    return "The canonical demo slug is not marked as demo-safe. Refusing to open the judge panel.";
-  }
-
-  if (!state.metadata?.drama_target_climber || !state.metadata.drama_target_climb_number) {
-    return "The demo is missing the target athlete or boulder metadata. Repair the demo state before opening the judge panel.";
-  }
-
-  if (!state.links.judge) {
-    return "The demo judge route is missing target athlete or qualifier route prerequisites. Repair the demo state before opening the judge panel.";
-  }
-
-  if (!state.targetAttempt) {
-    return "The demo seeded scores are not ready yet. Repair the demo state before opening the judge panel.";
-  }
-
-  return null;
 }
 
 function resetClientStoryState(state: DemoStoryState): DemoStoryState {
@@ -15582,12 +15545,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   const [notice, setNotice] = useState<string | null>(null);
   const [publicViewed, setPublicViewed] = useState(false);
   const [act2CompletionVisible, setAct2CompletionVisible] = useState(initialState.progress.keyScoreCorrected);
-  const [activeView, setActiveView] = useState<DemoCommandView>("home");
-  const [buildTransition, setBuildTransition] = useState<BuildTransitionState>({
-    active: false,
-    stepIndex: 0,
-    complete: false,
-  });
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -15601,7 +15558,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     options?: {
       reset?: boolean;
       resetOnly?: boolean;
-      setup?: GuidedDemoEventSetupDraft;
     }
   ) {
     const response = await fetch("/api/demo/prepare-state", {
@@ -15613,7 +15569,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
         targetAct,
         reset: options?.reset === true,
         resetOnly: options?.resetOnly === true,
-        setup: options?.setup,
       }),
     });
     const payload = (await response.json()) as { ok?: boolean; state?: DemoStoryState; error?: string };
@@ -15649,7 +15604,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       const nextState = await postPrepareState(targetAct, options);
       setState(nextState);
       setError(nextState.error);
-      setActiveView("home");
       setAct2CompletionVisible(nextState.progress.keyScoreCorrected);
       if (targetAct === "public_ready" && !options?.resetOnly) {
         writeLocalPublicViewed();
@@ -15673,69 +15627,22 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     setError(null);
     setNotice(null);
     setPendingLabel(null);
-    setBuildTransition({ active: false, stepIndex: 0, complete: false });
     clearDemoStoryRuntimeState();
     setPublicViewed(false);
     setAct2CompletionVisible(false);
     setState((current) => resetClientStoryState(current));
-    setActiveView("act1_setup");
-    setNotice("Act 1 is ready. Review the real setup-style flow, then create the demo event.");
+    setNotice("Opening Act 1 in the real organizer setup UI.");
+    startTransition(() => {
+      router.push("/staff/demo?demoStory=act1");
+    });
   }
 
   function openAct1Setup() {
     setError(null);
     setNotice(null);
-    setActiveView("act1_setup");
-  }
-
-  async function runAct1BuildTransition(options?: { reset?: boolean; setup?: GuidedDemoEventSetupDraft }) {
-    setError(null);
-    setNotice(null);
-    setPendingLabel(null);
-    clearDemoStoryRuntimeState();
-    setPublicViewed(false);
-    setAct2CompletionVisible(false);
-    setBuildTransition({ active: true, stepIndex: 0, complete: false });
-
-    try {
-      const preparePromise = postPrepareState("event_created", {
-        reset: options?.reset === true,
-        setup: options?.setup,
-      }).then(
-        (nextState) => ({ nextState, error: null }),
-        (buildError: unknown) => ({ nextState: null, error: buildError })
-      );
-
-      for (let index = 0; index < ACT_1_BUILD_STEPS.length; index += 1) {
-        setBuildTransition({ active: true, stepIndex: index, complete: false });
-        await wait(index === 0 ? 320 : 520);
-      }
-
-      const { nextState, error: prepareError } = await preparePromise;
-      if (prepareError || !nextState) {
-        throw prepareError instanceof Error ? prepareError : new Error("Unable to prepare the judge demo.");
-      }
-
-      const readinessError = getJudgeRouteReadinessError(nextState);
-      if (readinessError) {
-        throw new Error(readinessError);
-      }
-
-      setState(nextState);
-      setBuildTransition({
-        active: true,
-        stepIndex: ACT_1_BUILD_STEPS.length - 1,
-        complete: true,
-      });
-      await wait(420);
-
-      startTransition(() => {
-        router.push(nextState.links.judge!);
-      });
-    } catch (buildError) {
-      setBuildTransition({ active: false, stepIndex: 0, complete: false });
-      setError(buildError instanceof Error ? buildError.message : "Unable to prepare the judge demo.");
-    }
+    startTransition(() => {
+      router.push("/staff/demo?demoStory=act1");
+    });
   }
 
   async function refreshStoryState(messageOnIncomplete?: string) {
@@ -15774,7 +15681,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       return;
     }
 
-    setActiveView("home");
     void prepareState("event_created", { reset: true, resetOnly: true });
   }
 
@@ -15811,16 +15717,11 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   }
 
   const currentAct =
-    activeView === "act1_setup"
-      ? storyActs[0]
-      : storyActs.find((act) => getActStatus(act, state, publicViewed) !== "complete") ??
-        storyActs[storyActs.length - 1];
-  const currentStatus =
-    activeView === "act1_setup" && !state.progress.eventCreated
-      ? "in_progress"
-      : getActStatus(currentAct, state, publicViewed);
+    storyActs.find((act) => getActStatus(act, state, publicViewed) !== "complete") ??
+    storyActs[storyActs.length - 1];
+  const currentStatus = getActStatus(currentAct, state, publicViewed);
   const metadata = state.metadata;
-  const busy = isPending || Boolean(pendingLabel) || buildTransition.active;
+  const busy = isPending || Boolean(pendingLabel);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,#f8fafc,#eef6ff_46%,#fff7ed)] text-slate-950">
@@ -15849,62 +15750,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
           </div>
         </div>
 
-        {buildTransition.active ? (
-          <Surface variant="card" density="public" className="overflow-hidden border-sky-200 bg-white/95">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,0.55fr)] lg:items-center">
-              <div className="space-y-3">
-                <Badge>Launching Act 2</Badge>
-                <h2 className="text-3xl font-black tracking-[-0.03em] text-slate-950 sm:text-4xl">
-                  The organizer setup is becoming a live comp.
-                </h2>
-                <p className="max-w-3xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-                  The demo is restoring a clean, judge-ready event in the background so the next
-                  screen opens on categories, boulders, schedule blocks, and public results that all
-                  line up.
-                </p>
-                {error ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                    {error}
-                  </div>
-                ) : null}
-              </div>
-              <ol className="space-y-2" aria-live="polite">
-                {ACT_1_BUILD_STEPS.map((step, index) => {
-                  const isComplete = buildTransition.complete || index < buildTransition.stepIndex;
-                  const isActive = !buildTransition.complete && index === buildTransition.stepIndex;
-                  return (
-                    <li
-                      key={step}
-                      className={cn(
-                        "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold transition",
-                        isComplete
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                          : isActive
-                            ? "border-sky-200 bg-sky-50 text-sky-800"
-                            : "border-slate-200 bg-slate-50 text-slate-500"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black",
-                          isComplete
-                            ? "bg-emerald-600 text-white"
-                            : isActive
-                              ? "bg-sky-600 text-white"
-                              : "bg-slate-200 text-slate-600"
-                        )}
-                      >
-                        {isComplete ? "OK" : index + 1}
-                      </span>
-                      <span>{step}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-          </Surface>
-        ) : null}
-
         <Surface variant="card" density="public" className="relative overflow-hidden">
           <div className="absolute right-0 top-0 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl" aria-hidden="true" />
           <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)] xl:items-end">
@@ -15915,9 +15760,9 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
                   {DEMO_STORY_COPY.title}
                 </h1>
                 <p className="max-w-3xl text-lg leading-8 text-slate-600">
-                  Run a complete youth championship in five minutes. You&apos;ll create the event,
-                  correct a key score as a judge, advance finalists as the organizer, and view
-                  the public result.
+                  Run a complete youth championship in five minutes. You&apos;ll act as the organizer
+                  to build the event, score a key climb as a judge, return to organizer controls,
+                  and view the public result.
                 </p>
               </div>
 
@@ -15960,7 +15805,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
               <div className="grid gap-3 text-sm leading-6 text-slate-600 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
                   <span className="font-black text-slate-950">Start Full Story:</span> create the
-                  event first, then watch the app populate a live competition.
+                  event as the organizer first, then watch the app populate a live competition.
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
                   <span className="font-black text-slate-950">Use Ready-Made Demo Event:</span>{" "}
@@ -16011,14 +15856,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
             </div>
           </div>
         </Surface>
-
-        {activeView === "act1_setup" ? (
-          <GuidedDemoEventSetupFlow
-            busy={busy}
-            onBack={() => setActiveView("home")}
-            onCreateDemoEvent={(setup) => void runAct1BuildTransition({ reset: true, setup })}
-          />
-        ) : null}
 
         {act2CompletionVisible && state.progress.keyScoreCorrected ? (
           <Surface variant="panel" density="judge" className="border-emerald-200 bg-emerald-50/90">
@@ -16071,10 +15908,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
         <section className="grid gap-4 lg:grid-cols-4">
           {storyActs.map((act) => {
             const computedStatus = getActStatus(act, state, publicViewed);
-            const status =
-              activeView === "act1_setup" && act.id === "create" && !state.progress.eventCreated
-                ? "in_progress"
-                : computedStatus;
+            const status = computedStatus;
             return (
               <Surface key={act.id} variant="row" density="organizer" className="flex h-full flex-col gap-4">
                 <div className="flex items-center justify-between gap-3">
@@ -16138,7 +15972,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
           })}
         </section>
 
-        {activeView !== "act1_setup" ? (
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.72fr)]">
           <Surface variant="panel" density="public" className="space-y-5">
             <div>
@@ -16232,7 +16065,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
             )}
           </Surface>
         </section>
-        ) : null}
       </div>
     </main>
   );
@@ -16535,12 +16367,18 @@ export function DemoToolkit({
 "use client";
 
 import { useState } from "react";
+import {
+  StaffEventCreationForm,
+  type StaffEventCreationFormValues,
+} from "@/components/staff-event-creation-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
+import { FORMAT_TEMPLATES } from "@/lib/scoring";
 import {
   buildGuidedDemoSetupModel,
+  getInitialGuidedDemoConfirmedSteps,
   normalizeGuidedDemoEventSetup,
   type GuidedDemoEventSetupDraft,
   type GuidedDemoSetupStepId,
@@ -16558,36 +16396,15 @@ function stepIndex(stepId: GuidedDemoSetupStepId) {
   return setupModel.steps.findIndex((step) => step.id === stepId);
 }
 
-function formatDateTimeLocalInput(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return localDate.toISOString().slice(0, 16);
-}
-
-function parseDateTimeLocalInput(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const date = new Date(trimmed);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 export function GuidedDemoEventSetupFlow({
   busy,
   onBack,
   onCreateDemoEvent,
 }: GuidedDemoEventSetupFlowProps) {
   const [activeStepId, setActiveStepId] = useState<GuidedDemoSetupStepId>("basics");
+  const [visitedStepIds, setVisitedStepIds] = useState<GuidedDemoSetupStepId[]>(() =>
+    getInitialGuidedDemoConfirmedSteps()
+  );
   const [setupDraft, setSetupDraft] = useState<GuidedDemoEventSetupDraft>(() => setupModel.defaultEventSetup);
   const activeStep = setupModel.steps.find((step) => step.id === activeStepId) ?? setupModel.steps[0];
   const activeStepIndex = stepIndex(activeStep.id);
@@ -16595,11 +16412,48 @@ export function GuidedDemoEventSetupFlow({
   const previousStep = setupModel.steps[activeStepIndex - 1] ?? null;
   const normalizedSetup = normalizeGuidedDemoEventSetup(setupDraft);
   const canCreateDemoEvent = Boolean(normalizedSetup.name && normalizedSetup.locationName && normalizedSetup.startDate);
+  const setupFormValues: StaffEventCreationFormValues = {
+    name: setupDraft.name,
+    format: setupModel.preset.format,
+    location: setupDraft.locationName,
+    startDate: setupDraft.startDate,
+    endDate: setupDraft.endDate,
+    registrationOpensAt: setupDraft.registrationOpensAt,
+    registrationClosesAt: setupDraft.registrationClosesAt,
+    description: setupDraft.description,
+    maxClimbers: setupDraft.maxClimbers,
+  };
+
+  const markStepConfirmed = (stepId: GuidedDemoSetupStepId) => {
+    setVisitedStepIds((current) => (current.includes(stepId) ? current : [...current, stepId]));
+  };
+
+  const moveToStep = (stepId: GuidedDemoSetupStepId) => {
+    markStepConfirmed(activeStepId);
+    setActiveStepId(stepId);
+  };
+
+  const updateSetupFromStaffForm = (values: StaffEventCreationFormValues) => {
+    setSetupDraft({
+      ...setupDraft,
+      name: values.name,
+      locationName: values.location,
+      startDate: values.startDate,
+      endDate: values.endDate,
+      description: values.description,
+      registrationOpensAt: values.registrationOpensAt,
+      registrationClosesAt: values.registrationClosesAt,
+      maxClimbers: values.maxClimbers ?? setupDraft.maxClimbers,
+      presetId: setupModel.defaultEventSetup.presetId,
+    });
+  };
+
   const submitCreateDemoEvent = () => {
     if (!canCreateDemoEvent || busy) {
       return;
     }
 
+    markStepConfirmed(activeStepId);
     onCreateDemoEvent(normalizedSetup);
   };
 
@@ -16607,32 +16461,25 @@ export function GuidedDemoEventSetupFlow({
     <Surface variant="panel" density="public" className="space-y-6 border-sky-200 bg-white/95">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-3">
-          <Badge>Act 1 setup flow</Badge>
+          <Badge>Act 1 · Organizer Demo</Badge>
           <div>
             <h2 className="text-3xl font-black tracking-[-0.03em] text-slate-950">
-              Create the Demo Event
+              Organizer Demo: Build the Event
             </h2>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-              Walk through the same setup decisions a real organizer makes: pick the event shape,
-              review categories, confirm finals eligibility, inspect the schedule, then create the
-              canonical demo competition.
+              You are acting as the organizer. First, create the competition using the same staff
+              event creation UI: configure basics, confirm the preset, review registration,
+              categories, finals, rounds, and schedule, then create the canonical demo competition.
             </p>
             <p className="mt-3 max-w-4xl rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold leading-6 text-emerald-900">
-              This demo uses a Youth Championship with Finals preset so you can see the full event
-              lifecycle: setup, qualifier scoring, leaderboard movement, finalist advancement,
-              finals, and public results.
+              This guided story uses Youth Championship with Finals so we can demonstrate qualifier
+              scoring, leaderboard movement, finalist advancement, finals, and public results. After
+              you create the event, we will simulate registrations and seeded scores so the judge
+              and leaderboard screens have realistic data.
             </p>
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={submitCreateDemoEvent}
-            disabled={busy || !canCreateDemoEvent}
-          >
-            Create Demo Event
-          </Button>
           <Button variant="secondary" size="lg" onClick={onBack} disabled={busy}>
             Back to Demo Home
           </Button>
@@ -16643,12 +16490,12 @@ export function GuidedDemoEventSetupFlow({
         <nav className="space-y-2" aria-label="Demo setup steps">
           {setupModel.steps.map((step, index) => {
             const isActive = step.id === activeStep.id;
-            const isVisited = index < activeStepIndex;
+            const isVisited = visitedStepIds.includes(step.id) && !isActive;
             return (
               <button
                 key={step.id}
                 type="button"
-                onClick={() => setActiveStepId(step.id)}
+                onClick={() => moveToStep(step.id)}
                 disabled={busy}
                 className={cn(
                   "w-full rounded-2xl border px-4 py-3 text-left transition",
@@ -16664,7 +16511,7 @@ export function GuidedDemoEventSetupFlow({
                     Step {index + 1}
                   </span>
                   <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em]">
-                    {isActive ? "Active" : isVisited ? "Reviewed" : "Open"}
+                    {isActive ? "Active" : isVisited ? "Confirmed" : "Open"}
                   </span>
                 </div>
                 <div className="mt-2 font-black">{step.title}</div>
@@ -16696,80 +16543,20 @@ export function GuidedDemoEventSetupFlow({
                 Start Full Story begins here on purpose. No athletes, scores, or leaderboard drama
                 are generated until you create this demo event.
               </p>
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <label className="space-y-2" htmlFor="guided-demo-event-name">
-                  <span className="text-sm font-black text-slate-700">Event name</span>
-                  <input
-                    id="guided-demo-event-name"
-                    value={setupDraft.name}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, name: event.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="Summit Series Youth Championship"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-location">
-                  <span className="text-sm font-black text-slate-700">Location</span>
-                  <input
-                    id="guided-demo-event-location"
-                    value={setupDraft.locationName}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, locationName: event.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="North Summit Climbing"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-start-date">
-                  <span className="text-sm font-black text-slate-700">Start date</span>
-                  <input
-                    id="guided-demo-event-start-date"
-                    type="date"
-                    value={setupDraft.startDate}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        startDate: event.target.value,
-                        endDate: setupDraft.endDate || event.target.value,
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-end-date">
-                  <span className="text-sm font-black text-slate-700">End date</span>
-                  <input
-                    id="guided-demo-event-end-date"
-                    type="date"
-                    value={setupDraft.endDate}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, endDate: event.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-event-capacity">
-                  <span className="text-sm font-black text-slate-700">Registration capacity</span>
-                  <input
-                    id="guided-demo-event-capacity"
-                    type="number"
-                    min={1}
-                    value={setupDraft.maxClimbers}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        maxClimbers: Number(event.target.value) || setupModel.defaultEventSetup.maxClimbers,
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2 lg:col-span-2" htmlFor="guided-demo-event-description">
-                  <span className="text-sm font-black text-slate-700">Organizer notes</span>
-                  <textarea
-                    id="guided-demo-event-description"
-                    value={setupDraft.description}
-                    onChange={(event) => setSetupDraft({ ...setupDraft, description: event.target.value })}
-                    className="min-h-[7rem] w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="Tell staff what this event is for."
-                  />
-                </label>
-              </div>
+              <StaffEventCreationForm
+                values={setupFormValues}
+                formatOptions={FORMAT_TEMPLATES}
+                mode="guided-demo"
+                lockedPresetLabel={setupModel.preset.name}
+                showCapacity
+                showRegistrationStory
+                hideSubmit
+                disabled={busy}
+                submitLabel="Create Demo Event"
+                canSubmit={canCreateDemoEvent}
+                onChange={updateSetupFromStaffForm}
+                onSubmit={submitCreateDemoEvent}
+              />
             </div>
           ) : null}
 
@@ -16983,38 +16770,6 @@ export function GuidedDemoEventSetupFlow({
                 simulate 150 registrations after you create the event so the leaderboard and judge
                 screens have realistic data.
               </p>
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <label className="space-y-2" htmlFor="guided-demo-registration-opens">
-                  <span className="text-sm font-black text-slate-700">Registration opens</span>
-                  <input
-                    id="guided-demo-registration-opens"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(setupDraft.registrationOpensAt)}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        registrationOpensAt: parseDateTimeLocalInput(event.target.value),
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-                <label className="space-y-2" htmlFor="guided-demo-registration-closes">
-                  <span className="text-sm font-black text-slate-700">Registration closes</span>
-                  <input
-                    id="guided-demo-registration-closes"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(setupDraft.registrationClosesAt)}
-                    onChange={(event) =>
-                      setSetupDraft({
-                        ...setupDraft,
-                        registrationClosesAt: parseDateTimeLocalInput(event.target.value),
-                      })
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  />
-                </label>
-              </div>
               <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {[
                   "Public registration opens",
@@ -17075,7 +16830,7 @@ export function GuidedDemoEventSetupFlow({
             <Button
               variant="secondary"
               size="compact"
-              onClick={() => previousStep && setActiveStepId(previousStep.id)}
+              onClick={() => previousStep && moveToStep(previousStep.id)}
               disabled={busy || !previousStep}
             >
               Back
@@ -17087,10 +16842,18 @@ export function GuidedDemoEventSetupFlow({
               <Button
                 variant="primary"
                 size="compact"
-                onClick={() => setActiveStepId(nextStep.id)}
+                onClick={() => moveToStep(nextStep.id)}
                 disabled={busy}
               >
-                Next
+                {activeStep.id === "categories"
+                  ? "Confirm categories"
+                  : activeStep.id === "finals"
+                    ? "Confirm finals setup"
+                    : activeStep.id === "registration"
+                      ? "Confirm registration setup"
+                      : activeStep.id === "basics"
+                        ? "Continue Setup"
+                        : "Continue Setup"}
               </Button>
             ) : (
               <Button
@@ -22621,6 +22384,10 @@ import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
 import {
+  StaffEventCreationForm,
+  type StaffEventCreationFormValues,
+} from "@/components/staff-event-creation-form";
+import {
   OrganizerDemoTour,
   type OrganizerDemoHandoffTarget,
   type OrganizerDemoStepId,
@@ -22637,12 +22404,18 @@ import {
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   COMPETITION_PRESETS,
+  GUIDED_DEMO_PRESET_ID,
   detectCompetitionPreset,
+  getGuidedDemoPreset,
   getCompetitionPreset,
   getPresetFinalsEligibleCategories,
   type CompetitionPresetId,
   type CompetitionPresetScheduleBlock,
 } from "@/lib/competition-presets";
+import {
+  buildDefaultGuidedDemoEventSetup,
+  normalizeGuidedDemoEventSetup,
+} from "@/lib/guided-demo-setup";
 import {
   constrainFinalsEligibleAgeGroupsToSelectedCategories,
   finalsEligibilityUsesSelectedCategories,
@@ -22712,6 +22485,7 @@ import {
   writeDemoSalesSession,
 } from "@/lib/demo-sales-session";
 import { sanitizeExternalUrl } from "@/lib/security";
+import type { DemoStoryState } from "@/lib/demo-story";
 
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
 
@@ -22804,6 +22578,43 @@ const ORGANIZER_BUILD_TRANSITION_STEPS = [
 ] as const;
 
 const DEMO_AUTOPLAY_ENABLED = false;
+const GUIDED_STORY_PRESET = getGuidedDemoPreset();
+
+type StaffDashboardDemoStoryAct = "act1";
+
+type DemoPrepareStateResponse = {
+  ok?: boolean;
+  state?: DemoStoryState;
+  error?: string;
+};
+
+function getGuidedDemoJudgeRouteReadinessError(state: DemoStoryState) {
+  if (state.error) {
+    return state.error;
+  }
+
+  if (!state.competition) {
+    return "Create the canonical demo event before opening the judge panel.";
+  }
+
+  if (!state.competition.is_demo) {
+    return "The canonical demo slug is not marked as demo-safe. Refusing to open the judge panel.";
+  }
+
+  if (!state.metadata?.drama_target_climber || !state.metadata.drama_target_climb_number) {
+    return "The demo is missing the target athlete or boulder metadata. Repair the demo state before opening the judge panel.";
+  }
+
+  if (!state.targetAttempt) {
+    return "The demo seeded scores are not ready yet. Repair the demo state before opening the judge panel.";
+  }
+
+  if (!state.links.judge) {
+    return "The demo judge route is missing target athlete or qualifier route prerequisites. Repair the demo state before opening the judge panel.";
+  }
+
+  return null;
+}
 
 function createRoundTemplate(
   competition: Pick<Competition, "id" | "format" | "total_climbs" | "qualifier_counting_climbs" | "finals_cutoff" | "finals_problem_count">,
@@ -23189,10 +23000,12 @@ export default function StaffDashboard({
   initialCompetitionSlug,
   initialCreateDraft,
   demoMode = false,
+  demoStoryAct,
 }: {
   initialCompetitionSlug?: string;
   initialCreateDraft?: StaffDashboardCreateDraft;
   demoMode?: boolean;
+  demoStoryAct?: StaffDashboardDemoStoryAct;
 }) {
   const router = useRouter();
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
@@ -23210,6 +23023,7 @@ export default function StaffDashboard({
   const [createStartDate, setCreateStartDate] = useState("");
   const [createEndDate, setCreateEndDate] = useState("");
   const [createDescription, setCreateDescription] = useState("");
+  const [createMaxClimbers, setCreateMaxClimbers] = useState(buildDefaultGuidedDemoEventSetup().maxClimbers);
   const [createRegistrationOpensAt, setCreateRegistrationOpensAt] = useState<string | null>(null);
   const [createRegistrationClosesAt, setCreateRegistrationClosesAt] = useState<string | null>(null);
   const [createOfficialEventUrl, setCreateOfficialEventUrl] = useState("");
@@ -23266,6 +23080,7 @@ export default function StaffDashboard({
     label: null,
   });
   const organizerAutoplayStartedRef = useRef(false);
+  const guidedStoryDefaultsAppliedRef = useRef(false);
   const skipNextFinalsNormalizationForDraftIdRef = useRef<string | null>(null);
   const [confirming, setConfirming] = useState<null | {
     title: string;
@@ -23276,6 +23091,7 @@ export default function StaffDashboard({
     action: () => Promise<void>;
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
+  const isGuidedStoryAct1 = demoMode && demoStoryAct === "act1";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -23356,6 +23172,31 @@ export default function StaffDashboard({
     setSalesAudioEnabled(session.audioEnabled);
     setDemoSessionCompetitionId(session.competitionId ?? null);
   }, [demoMode]);
+
+  useEffect(() => {
+    if (!isGuidedStoryAct1 || guidedStoryDefaultsAppliedRef.current) {
+      return;
+    }
+
+    const defaults = buildDefaultGuidedDemoEventSetup();
+    guidedStoryDefaultsAppliedRef.current = true;
+    setDemoSessionCompetitionId(null);
+    setSelectedCompetitionId("");
+    setSnapshot(null);
+    setDraft(null);
+    setCreateName(defaults.name);
+    setCreateLocation(defaults.locationName);
+    setCreateStartDate(defaults.startDate);
+    setCreateEndDate(defaults.endDate);
+    setCreateDescription(defaults.description);
+    setCreateRegistrationOpensAt(defaults.registrationOpensAt);
+    setCreateRegistrationClosesAt(defaults.registrationClosesAt);
+    setCreateMaxClimbers(defaults.maxClimbers);
+    setCreateFormat(GUIDED_STORY_PRESET.format);
+    setMessage(
+      "Act 1: Organizer setup is ready. Review the real event creation form, then create the demo event."
+    );
+  }, [isGuidedStoryAct1]);
 
 
   useEffect(() => {
@@ -23577,7 +23418,7 @@ export default function StaffDashboard({
   const registerPath = draft ? buildCompetitionPath(draft.slug, "register") : "";
   const leaderboardPath = draft ? buildCompetitionPath(draft.slug, "leaderboard") : "";
   const judgeUrl = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "";
-  const demoJudgePath = "/demo/interactive";
+  const demoJudgePath = draft ? `${buildStaffCompetitionPath(draft.slug, "judge")}?demoStory=act2` : "/demo";
   const displayPath = draft ? buildDisplayPath(draft.slug) : "";
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
   const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
@@ -24687,6 +24528,117 @@ export default function StaffDashboard({
     [waitForOrganizerPlayback]
   );
 
+  const createGuidedDemoEventFromStaffForm = useCallback(async () => {
+    const setup = normalizeGuidedDemoEventSetup({
+      name: createName,
+      locationName: createLocation,
+      startDate: createStartDate,
+      endDate: createEndDate,
+      description: createDescription,
+      registrationOpensAt: createRegistrationOpensAt,
+      registrationClosesAt: createRegistrationClosesAt,
+      maxClimbers: createMaxClimbers,
+      presetId: GUIDED_DEMO_PRESET_ID,
+    });
+
+    setError("");
+    setMessage("");
+    setBuildTransitionState({
+      active: true,
+      stepIndex: 0,
+      complete: false,
+    });
+    setOrganizerNarration({
+      title: "The organizer setup is becoming a live comp.",
+      body: "The demo is saving your event setup, simulating registrations, generating seeded scores, and opening the judge workspace.",
+    });
+
+    try {
+      const preparePromise = fetch("/api/demo/prepare-state", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          targetAct: "event_created",
+          reset: true,
+          setup,
+        }),
+      }).then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as DemoPrepareStateResponse | null;
+        if (!response.ok || !payload?.ok || !payload.state) {
+          throw new Error(payload?.error ?? "Unable to create the guided demo event.");
+        }
+
+        return payload.state;
+      });
+
+      for (let index = 0; index < ORGANIZER_BUILD_TRANSITION_STEPS.length; index += 1) {
+        setBuildTransitionState({
+          active: true,
+          stepIndex: index,
+          complete: false,
+        });
+        await waitForOrganizerPlayback(index === 0 ? 360 : 620);
+      }
+
+      const nextState = await preparePromise;
+      const readinessError = getGuidedDemoJudgeRouteReadinessError(nextState);
+      if (readinessError) {
+        throw new Error(readinessError);
+      }
+
+      if (nextState.competition) {
+        setDemoSessionCompetitionId(nextState.competition.id);
+        writeDemoSalesSession(
+          createDemoSalesSession({
+            mode: "judge",
+            phase: "judge",
+            storyStep: "judge-save",
+            narratorTitle: "The event you built is now live in judge mode.",
+            narratorBody:
+              "Use the real judge screen to correct Athlete C's B3 score. The app will only unlock organizer progression after the database confirms the save.",
+            autoplay: false,
+            organizerCompleted: true,
+            judgePending: true,
+            persistentCompletion: false,
+            audioEnabled: salesAudioEnabled,
+            competitionId: nextState.competition.id,
+            competitionSlug: nextState.competition.slug,
+          })
+        );
+      }
+
+      setBuildTransitionState({
+        active: true,
+        stepIndex: ORGANIZER_BUILD_TRANSITION_STEPS.length - 1,
+        complete: true,
+      });
+      setMessage("Demo event created. Opening the real judge station for Act 2.");
+      await waitForOrganizerPlayback(500);
+      router.push(nextState.links.judge!);
+    } catch (nextError) {
+      setBuildTransitionState({
+        active: false,
+        stepIndex: 0,
+        complete: false,
+      });
+      setError(nextError instanceof Error ? nextError.message : "Unable to create the guided demo event.");
+    }
+  }, [
+    createDescription,
+    createEndDate,
+    createLocation,
+    createMaxClimbers,
+    createName,
+    createRegistrationClosesAt,
+    createRegistrationOpensAt,
+    createStartDate,
+    router,
+    salesAudioEnabled,
+    waitForOrganizerPlayback,
+  ]);
+
   const runOrganizerBuildTransition = useCallback(async () => {
     if (!draft) {
       return;
@@ -25134,7 +25086,7 @@ export default function StaffDashboard({
 
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
-        {demoMode ? (
+        {demoMode && !isGuidedStoryAct1 ? (
           <DemoSalesShell
             mode="organizer"
             stepLabel={organizerPlaybackStep ? ORGANIZER_STEP_LABELS[organizerPlaybackStep] : "Organizer · sales intro"}
@@ -25189,7 +25141,7 @@ export default function StaffDashboard({
                   The organizer setup is becoming a live comp.
                 </h2>
                 <p className="max-w-2xl text-base leading-7 text-slate-600">
-                  The demo is restoring a clean, judge-ready event in the background so the next screen opens on categories, boulders, schedule blocks, and public results that all line up.
+                  The demo is saving your event setup, simulating registrations, generating seeded scores, and opening the judge workspace.
                 </p>
                 <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-4 py-2 text-sm font-medium text-sky-800">
                   <span className="demo-live-dot" aria-hidden="true" />
@@ -25228,7 +25180,38 @@ export default function StaffDashboard({
             </div>
           </Surface>
         ) : null}
-        {demoMode && draft ? (
+        {isGuidedStoryAct1 ? (
+          <Surface variant="card" className="border-emerald-200 bg-emerald-50/80">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.55fr)] lg:items-start">
+              <div className="space-y-3">
+                <div className="results-kicker text-emerald-700">Act 1 · Organizer Demo</div>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                  Organizer: Build Event
+                </h1>
+                <p className="max-w-3xl text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">
+                  You are acting as the organizer. First, create the competition in the same staff
+                  setup UI used for real events. After you submit, the demo will simulate
+                  registrations, seeded scores, and judge-ready data.
+                </p>
+                <p className="max-w-3xl text-sm leading-6 text-emerald-950">
+                  This guided story locks the Youth Championship with Finals preset so Act 3 can
+                  teach qualifier review, finalist advancement, finals, and public results.
+                </p>
+              </div>
+              <div className="rounded-[1.5rem] border border-emerald-200 bg-white/80 p-4 text-sm leading-6 text-slate-700">
+                <div className="font-semibold text-slate-950">How finals work in this demo</div>
+                <ol className="mt-2 list-decimal space-y-1 pl-5">
+                  <li>Judges score climbers during qualifiers.</li>
+                  <li>The key score correction can move an athlete above the cut line.</li>
+                  <li>The organizer locks qualifiers and advances eligible categories.</li>
+                  <li>Finalists compete in the configured finals stage.</li>
+                  <li>Public pages show schedule, leaderboard, finalists, and results.</li>
+                </ol>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
+        {demoMode && !isGuidedStoryAct1 && draft ? (
           <OrganizerDemoTour
             hasCreatedCompetition={Boolean(draft)}
             competitionName={draft.name}
@@ -25244,7 +25227,7 @@ export default function StaffDashboard({
             onFocusAnchor={focusOrganizerDemoAnchor}
             onLaunchJudge={() => void runOrganizerBuildTransition()}
           />
-        ) : demoMode ? (
+        ) : demoMode && !isGuidedStoryAct1 ? (
           <OrganizerDemoTour
             hasCreatedCompetition={false}
             competitionName=""
@@ -25355,95 +25338,60 @@ export default function StaffDashboard({
               </>
             )}
             {(!demoMode || !draft) ? (
-            <fieldset disabled={!canEditSetup} className={!canEditSetup ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
-              <label className="results-field-group" htmlFor="create-event-name">
-                <span className="results-field-label">Event name</span>
-                <input id="create-event-name" aria-label="Event name" value={createName} onChange={(event) => setCreateName(event.target.value)} className="results-input" placeholder="Spring Send" data-demo-anchor="organizer-create-name" />
-              </label>
-              <label className="results-field-group" htmlFor="create-event-slug-preview">
-                <span className="results-field-label">Link preview</span>
-                <input id="create-event-slug-preview" aria-label="Event link preview" value={slugifyCompetitionName(createName)} readOnly className="results-input bg-slate-50 text-slate-500" placeholder="spring-send" />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group" htmlFor="create-event-format">
-                  <span className="results-field-label">Format</span>
-                  <select
-                    id="create-event-format"
-                    aria-label="Event format"
-                    value={createFormat}
-                    onChange={(event) => {
-                      const nextFormat = event.target.value as Competition["format"];
-                      setCreateFormat(nextFormat);
-                    }}
-                    className="results-input"
-                  >
-                    {FORMAT_TEMPLATES.map((template) => (
-                      <option key={template.value} value={template.value}>{template.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="results-field-group" htmlFor="create-event-location">
-                  <span className="results-field-label">Location</span>
-                  <input id="create-event-location" aria-label="Event location" value={createLocation} onChange={(event) => setCreateLocation(event.target.value)} className="results-input" placeholder="North Summit Climbing" />
-                </label>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group" htmlFor="create-event-start-date">
-                  <span className="results-field-label">Start date</span>
-                  <input id="create-event-start-date" aria-label="Event start date" type="date" value={createStartDate} onChange={(event) => setCreateStartDate(event.target.value)} className="results-input" />
-                </label>
-                <label className="results-field-group" htmlFor="create-event-end-date">
-                  <span className="results-field-label">End date</span>
-                  <input id="create-event-end-date" aria-label="Event end date" type="date" value={createEndDate} onChange={(event) => setCreateEndDate(event.target.value)} className="results-input" />
-                </label>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="results-field-group" htmlFor="create-event-registration-opens">
-                  <span className="results-field-label">Registration opens</span>
-                  <input
-                    id="create-event-registration-opens"
-                    aria-label="Registration opens"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(createRegistrationOpensAt)}
-                    onChange={(event) => setCreateRegistrationOpensAt(parseDateTimeLocalInput(event.target.value))}
-                    className="results-input"
-                  />
-                </label>
-                <label className="results-field-group" htmlFor="create-event-registration-deadline">
-                  <span className="results-field-label">Registration closes</span>
-                  <input
-                    id="create-event-registration-deadline"
-                    aria-label="Registration closes"
-                    type="datetime-local"
-                    value={formatDateTimeLocalInput(createRegistrationClosesAt)}
-                    onChange={(event) => setCreateRegistrationClosesAt(parseDateTimeLocalInput(event.target.value))}
-                    className="results-input"
-                  />
-                </label>
-              </div>
-                <label className="results-field-group" htmlFor="create-event-description">
-                <span className="results-field-label">Notes</span>
-                <textarea
-                  id="create-event-description"
-                  aria-label="Event notes"
-                  value={createDescription}
-                  onChange={(event) => setCreateDescription(event.target.value)}
-                  className="results-input min-h-[120px] resize-y"
-                  placeholder="A short note about the day, the crowd, or anything staff should know."
-                />
-              </label>
-              {createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl ? (
-                <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                  Imported official links:
-                  {createOfficialEventUrl ? ` event page` : ""}
-                  {createOfficialRegistrationUrl ? `${createOfficialEventUrl ? "," : ""} registration` : ""}
-                  {createOfficialScheduleUrl ? `${createOfficialEventUrl || createOfficialRegistrationUrl ? "," : ""} schedule` : ""}
-                </div>
-              ) : null}
-              <button
-                type="button"
-                disabled={isPending || !createName.trim()}
-                onClick={() => {
+              <StaffEventCreationForm
+                values={{
+                  name: createName,
+                  format: createFormat,
+                  location: createLocation,
+                  startDate: createStartDate,
+                  endDate: createEndDate,
+                  registrationOpensAt: createRegistrationOpensAt,
+                  registrationClosesAt: createRegistrationClosesAt,
+                  description: createDescription,
+                  maxClimbers: createMaxClimbers,
+                }}
+                formatOptions={
+                  isGuidedStoryAct1
+                    ? FORMAT_TEMPLATES.filter((template) => template.value === GUIDED_STORY_PRESET.format)
+                    : FORMAT_TEMPLATES
+                }
+                disabled={!canEditSetup}
+                pending={isPending || buildTransitionState.active}
+                submitLabel={isGuidedStoryAct1 ? "Create Demo Event" : demoMode ? "Create event" : "Create new event"}
+                submittingLabel={isGuidedStoryAct1 ? "Creating demo event..." : undefined}
+                canSubmit={Boolean(createName.trim())}
+                mode={isGuidedStoryAct1 ? "guided-demo" : "staff"}
+                lockedPresetLabel={isGuidedStoryAct1 ? GUIDED_STORY_PRESET.name : undefined}
+                showCapacity={isGuidedStoryAct1}
+                showRegistrationStory={isGuidedStoryAct1}
+                importedLinksSummary={
+                  createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
+                    ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${
+                        createOfficialRegistrationUrl ? `${createOfficialEventUrl ? "," : ""} registration` : ""
+                      }${
+                        createOfficialScheduleUrl
+                          ? `${createOfficialEventUrl || createOfficialRegistrationUrl ? "," : ""} schedule`
+                          : ""
+                      }`
+                    : null
+                }
+                onChange={(values: StaffEventCreationFormValues) => {
+                  setCreateName(values.name);
+                  setCreateFormat(values.format);
+                  setCreateLocation(values.location);
+                  setCreateStartDate(values.startDate);
+                  setCreateEndDate(values.endDate);
+                  setCreateRegistrationOpensAt(values.registrationOpensAt);
+                  setCreateRegistrationClosesAt(values.registrationClosesAt);
+                  setCreateDescription(values.description);
+                  setCreateMaxClimbers(values.maxClimbers ?? createMaxClimbers);
+                }}
+                onSubmit={() => {
+                  if (isGuidedStoryAct1) {
+                    void createGuidedDemoEventFromStaffForm();
+                    return;
+                  }
+
                   startTransition(() => {
                     void (async () => {
                       try {
@@ -25509,12 +25457,7 @@ export default function StaffDashboard({
                     })();
                   });
                 }}
-                className="results-primary-button"
-                data-demo-anchor="organizer-create-submit"
-              >
-                  {demoMode ? "Create event" : "Create new event"}
-              </button>
-            </fieldset>
+              />
             ) : null}
             {!demoMode && !canEditSetup ? (
               <div className="mt-4 text-sm text-slate-600">
@@ -27324,6 +27267,293 @@ export default function StaffDashboard({
         />
       </div>
     </main>
+  );
+}
+
+
+--- src\components\staff-event-creation-form.tsx ---
+
+"use client";
+
+import { slugifyCompetitionName, type EventFormat } from "@/lib/scoring";
+
+export type StaffEventCreationFormValues = {
+  name: string;
+  format: EventFormat;
+  location: string;
+  startDate: string;
+  endDate: string;
+  registrationOpensAt: string | null;
+  registrationClosesAt: string | null;
+  description: string;
+  maxClimbers?: number;
+};
+
+type FormatOption = {
+  value: EventFormat;
+  label: string;
+};
+
+type StaffEventCreationFormProps = {
+  values: StaffEventCreationFormValues;
+  formatOptions: readonly FormatOption[];
+  disabled?: boolean;
+  pending?: boolean;
+  submitLabel: string;
+  submittingLabel?: string;
+  canSubmit?: boolean;
+  mode?: "staff" | "guided-demo";
+  lockedPresetLabel?: string;
+  showCapacity?: boolean;
+  showRegistrationStory?: boolean;
+  hideSubmit?: boolean;
+  onChange: (values: StaffEventCreationFormValues) => void;
+  onSubmit: () => void;
+  importedLinksSummary?: string | null;
+};
+
+function formatDateTimeLocalInput(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    return "";
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function parseDateTimeLocalInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+export function StaffEventCreationForm({
+  values,
+  formatOptions,
+  disabled = false,
+  pending = false,
+  submitLabel,
+  submittingLabel = "Creating...",
+  canSubmit = true,
+  mode = "staff",
+  lockedPresetLabel,
+  showCapacity = false,
+  showRegistrationStory = false,
+  hideSubmit = false,
+  onChange,
+  onSubmit,
+  importedLinksSummary,
+}: StaffEventCreationFormProps) {
+  const formDisabled = disabled || pending;
+
+  return (
+    <fieldset disabled={formDisabled} className={formDisabled ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
+      {mode === "guided-demo" && lockedPresetLabel ? (
+        <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
+          <span className="font-semibold">Locked preset:</span> {lockedPresetLabel}. This is the
+          same event creation form staff use, with the preset locked because the guided story needs
+          qualifier scoring, finalist advancement, finals, and public results.
+        </div>
+      ) : null}
+
+      <label className="results-field-group" htmlFor="create-event-name">
+        <span className="results-field-label">Event name</span>
+        <input
+          id="create-event-name"
+          aria-label="Event name"
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+          className="results-input"
+          placeholder="Spring Send"
+          data-demo-anchor="organizer-create-name"
+        />
+      </label>
+
+      <label className="results-field-group" htmlFor="create-event-slug-preview">
+        <span className="results-field-label">Link preview</span>
+        <input
+          id="create-event-slug-preview"
+          aria-label="Event link preview"
+          value={slugifyCompetitionName(values.name)}
+          readOnly
+          className="results-input bg-slate-50 text-slate-500"
+          placeholder="spring-send"
+        />
+      </label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="results-field-group" htmlFor="create-event-format">
+          <span className="results-field-label">Format</span>
+          <select
+            id="create-event-format"
+            aria-label="Event format"
+            value={values.format}
+            onChange={(event) => onChange({ ...values, format: event.target.value as EventFormat })}
+            className="results-input"
+            disabled={mode === "guided-demo" || formDisabled}
+          >
+            {formatOptions.map((template) => (
+              <option key={template.value} value={template.value}>
+                {template.label}
+              </option>
+            ))}
+          </select>
+          {mode === "guided-demo" ? (
+            <span className="text-xs leading-5 text-slate-500">
+              Qualifier-only formats are disabled in the guided story.
+            </span>
+          ) : null}
+        </label>
+
+        <label className="results-field-group" htmlFor="create-event-location">
+          <span className="results-field-label">Location</span>
+          <input
+            id="create-event-location"
+            aria-label="Event location"
+            value={values.location}
+            onChange={(event) => onChange({ ...values, location: event.target.value })}
+            className="results-input"
+            placeholder="North Summit Climbing"
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="results-field-group" htmlFor="create-event-start-date">
+          <span className="results-field-label">Start date</span>
+          <input
+            id="create-event-start-date"
+            aria-label="Event start date"
+            type="date"
+            value={values.startDate}
+            onChange={(event) =>
+              onChange({
+                ...values,
+                startDate: event.target.value,
+                endDate: values.endDate || event.target.value,
+              })
+            }
+            className="results-input"
+          />
+        </label>
+
+        <label className="results-field-group" htmlFor="create-event-end-date">
+          <span className="results-field-label">End date</span>
+          <input
+            id="create-event-end-date"
+            aria-label="Event end date"
+            type="date"
+            value={values.endDate}
+            onChange={(event) => onChange({ ...values, endDate: event.target.value })}
+            className="results-input"
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="results-field-group" htmlFor="create-event-registration-opens">
+          <span className="results-field-label">Registration opens</span>
+          <input
+            id="create-event-registration-opens"
+            aria-label="Registration opens"
+            type="datetime-local"
+            value={formatDateTimeLocalInput(values.registrationOpensAt)}
+            onChange={(event) =>
+              onChange({
+                ...values,
+                registrationOpensAt: parseDateTimeLocalInput(event.target.value),
+              })
+            }
+            className="results-input"
+          />
+        </label>
+
+        <label className="results-field-group" htmlFor="create-event-registration-deadline">
+          <span className="results-field-label">Registration closes</span>
+          <input
+            id="create-event-registration-deadline"
+            aria-label="Registration closes"
+            type="datetime-local"
+            value={formatDateTimeLocalInput(values.registrationClosesAt)}
+            onChange={(event) =>
+              onChange({
+                ...values,
+                registrationClosesAt: parseDateTimeLocalInput(event.target.value),
+              })
+            }
+            className="results-input"
+          />
+        </label>
+      </div>
+
+      {showCapacity ? (
+        <label className="results-field-group" htmlFor="create-event-capacity">
+          <span className="results-field-label">Max climbers</span>
+          <input
+            id="create-event-capacity"
+            aria-label="Max climbers"
+            type="number"
+            min={1}
+            value={values.maxClimbers ?? ""}
+            onChange={(event) =>
+              onChange({
+                ...values,
+                maxClimbers: Number(event.target.value) || values.maxClimbers,
+              })
+            }
+            className="results-input"
+          />
+        </label>
+      ) : null}
+
+      <label className="results-field-group" htmlFor="create-event-description">
+        <span className="results-field-label">Notes</span>
+        <textarea
+          id="create-event-description"
+          aria-label="Event notes"
+          value={values.description}
+          onChange={(event) => onChange({ ...values, description: event.target.value })}
+          className="results-input min-h-[120px] resize-y"
+          placeholder="A short note about the day, the crowd, or anything staff should know."
+        />
+      </label>
+
+      {showRegistrationStory ? (
+        <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-950">
+          In a real event, athletes register through the public registration page, choose a
+          category, and receive private scorecard links. For this guided demo, we simulate
+          registrations after creation so the judge screen and leaderboard have realistic data.
+        </div>
+      ) : null}
+
+      {importedLinksSummary ? (
+        <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          {importedLinksSummary}
+        </div>
+      ) : null}
+
+      {!hideSubmit ? (
+        <button
+          type="button"
+          disabled={formDisabled || !canSubmit}
+          onClick={onSubmit}
+          className="results-primary-button"
+          data-demo-anchor="organizer-create-submit"
+        >
+          {pending ? submittingLabel : submitLabel}
+        </button>
+      ) : null}
+    </fieldset>
   );
 }
 
@@ -31665,6 +31895,27 @@ describe("demo story progress", () => {
     expect(progress.finalsStarted).toBe(false);
   });
 
+  it("does not require finalists or finals-started state before the organizer act can unlock", () => {
+    const progress = deriveDemoStoryProgress({
+      competition: demoCompetition(),
+      targetAttempt: {
+        attempt_count: 1,
+        topped: true,
+        zone: true,
+        attempts_to_top: 1,
+        attempts_to_zone: 1,
+      },
+      finalistCount: 0,
+      finalsSetupReady: true,
+    });
+
+    expect(progress.eventCreated).toBe(true);
+    expect(progress.keyScoreCorrected).toBe(true);
+    expect(progress.finalsSetupReady).toBe(true);
+    expect(progress.finalistsAdvanced).toBe(false);
+    expect(progress.finalsStarted).toBe(false);
+  });
+
   it("accepts the corrected score when top implies zone and attempts are normalized", () => {
     const progress = deriveDemoStoryProgress({
       competition: demoCompetition(),
@@ -32071,7 +32322,7 @@ function emptyDemoStoryState(error: string | null = null): DemoStoryState {
       publicViewed: false,
     },
     links: {
-      setup: "/staff/demo",
+      setup: "/staff/demo?demoStory=act1",
       judge: null,
       organizer: null,
       publicEvent: null,
@@ -32346,7 +32597,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
         competition: loadedCompetition,
         metadata: loadedCompetition.demo_metadata,
         links: {
-          setup: "/staff/demo",
+          setup: "/staff/demo?demoStory=act1",
           judge: null,
           organizer: `/staff/c/${loadedCompetition.slug}?demoStory=act3`,
           publicEvent: `/c/${loadedCompetition.slug}?demoStory=public`,
@@ -32413,7 +32664,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       finalistCount,
       progress,
       links: {
-        setup: "/staff/demo",
+        setup: "/staff/demo?demoStory=act1",
         judge: judgeRouteReady ? `/staff/c/${competition.slug}/judge?${judgeParams.toString()}` : null,
         organizer: `/staff/c/${competition.slug}?demoStory=act3`,
         publicEvent: `/c/${competition.slug}?demoStory=public`,
@@ -32788,6 +33039,7 @@ import { describe, expect, it } from "vitest";
 import { GUIDED_DEMO_PRESET_ID } from "./competition-presets";
 import {
   buildGuidedDemoSetupModel,
+  getInitialGuidedDemoConfirmedSteps,
   normalizeGuidedDemoEventSetup,
 } from "./guided-demo-setup";
 
@@ -32809,11 +33061,11 @@ describe("guided demo setup model", () => {
     expect(model.steps.map((step) => step.id)).toEqual([
       "basics",
       "preset",
+      "registration",
       "categories",
       "finals",
       "rounds",
       "schedule",
-      "registration",
       "create",
     ]);
     expect(model.categories.map((category) => category.displayName)).toContain("Men / Youth D");
@@ -32826,6 +33078,14 @@ describe("guided demo setup model", () => {
       "Men / Junior",
       "Women / Junior",
     ]);
+  });
+
+  it("starts the guided setup with only the real event basics section confirmed", () => {
+    const model = buildGuidedDemoSetupModel();
+    const initialConfirmedSteps = getInitialGuidedDemoConfirmedSteps();
+
+    expect(initialConfirmedSteps).toEqual(["basics"]);
+    expect(initialConfirmedSteps).not.toEqual(model.steps.map((step) => step.id));
   });
 
   it("includes finals-capable rounds and schedule blocks", () => {
@@ -32871,11 +33131,11 @@ import { DEMO_COMPETITION_NAME } from "./demo";
 export type GuidedDemoSetupStepId =
   | "basics"
   | "preset"
+  | "registration"
   | "categories"
   | "finals"
   | "rounds"
   | "schedule"
-  | "registration"
   | "create";
 
 export type GuidedDemoSetupCategory = {
@@ -33023,6 +33283,10 @@ export function normalizeGuidedDemoEventSetup(
   };
 }
 
+export function getInitialGuidedDemoConfirmedSteps(): GuidedDemoSetupStepId[] {
+  return ["basics"];
+}
+
 export function buildGuidedDemoSetupModel(now = new Date()): GuidedDemoSetupModel {
   const preset = getGuidedDemoPreset();
   const finalsEligibleAgeGroups = getPresetFinalsEligibleCategories(preset);
@@ -33044,6 +33308,11 @@ export function buildGuidedDemoSetupModel(now = new Date()): GuidedDemoSetupMode
         description: "Start from the required finals-capable story preset.",
       },
       {
+        id: "registration",
+        title: "Registration setup",
+        description: "Review public registration timing and how the demo will simulate athletes.",
+      },
+      {
         id: "categories",
         title: "Category review",
         description: "Review the generated youth competition field.",
@@ -33062,11 +33331,6 @@ export function buildGuidedDemoSetupModel(now = new Date()): GuidedDemoSetupMode
         id: "schedule",
         title: "Schedule",
         description: "Review the qualifier day, finals logistics, and awards flow.",
-      },
-      {
-        id: "registration",
-        title: "Registration setup",
-        description: "Review public registration timing and how the demo will simulate athletes.",
       },
       {
         id: "create",

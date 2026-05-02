@@ -3,23 +3,15 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { GuidedDemoEventSetupFlow } from "@/components/demo/guided-demo-event-setup-flow";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/cn";
 import { getGuidedDemoPreset } from "@/lib/competition-presets";
 import { clearDemoSalesSession } from "@/lib/demo-sales-session";
-import type { GuidedDemoEventSetupDraft } from "@/lib/guided-demo-setup";
 import type { DemoStoryState, DemoStoryTargetAct } from "@/lib/demo-story";
 
 type ActStatus = "locked" | "ready" | "in_progress" | "complete";
-type DemoCommandView = "home" | "act1_setup";
-type BuildTransitionState = {
-  active: boolean;
-  stepIndex: number;
-  complete: boolean;
-};
 
 type StoryAct = {
   id: "create" | "judge" | "organizer" | "public";
@@ -40,13 +32,6 @@ const STALE_DEMO_STORAGE_KEYS = [
   "scorecard_demo_tour_dismissed",
   "organizer_demo_tour_state_v2",
   "organizer_demo_tour_state_v3",
-] as const;
-const ACT_1_BUILD_STEPS = [
-  "Saving event setup",
-  "Simulating 150 climber registrations",
-  "Generating qualifier routes and seeded scores",
-  "Opening judge workspaces",
-  "Launching the live judge panel",
 ] as const;
 const ACT_1_DIVISIONS = ["Men", "Women"] as const;
 const youthChampionshipPreset = getGuidedDemoPreset();
@@ -135,38 +120,6 @@ function clearDemoStoryLocalProgress() {
 
 function clearDemoStoryRuntimeState() {
   clearDemoStoryLocalProgress();
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function getJudgeRouteReadinessError(state: DemoStoryState) {
-  if (state.error) {
-    return state.error;
-  }
-
-  if (!state.competition) {
-    return "Create the canonical demo event before opening the judge panel.";
-  }
-
-  if (!state.competition.is_demo) {
-    return "The canonical demo slug is not marked as demo-safe. Refusing to open the judge panel.";
-  }
-
-  if (!state.metadata?.drama_target_climber || !state.metadata.drama_target_climb_number) {
-    return "The demo is missing the target athlete or boulder metadata. Repair the demo state before opening the judge panel.";
-  }
-
-  if (!state.links.judge) {
-    return "The demo judge route is missing target athlete or qualifier route prerequisites. Repair the demo state before opening the judge panel.";
-  }
-
-  if (!state.targetAttempt) {
-    return "The demo seeded scores are not ready yet. Repair the demo state before opening the judge panel.";
-  }
-
-  return null;
 }
 
 function resetClientStoryState(state: DemoStoryState): DemoStoryState {
@@ -262,12 +215,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   const [notice, setNotice] = useState<string | null>(null);
   const [publicViewed, setPublicViewed] = useState(false);
   const [act2CompletionVisible, setAct2CompletionVisible] = useState(initialState.progress.keyScoreCorrected);
-  const [activeView, setActiveView] = useState<DemoCommandView>("home");
-  const [buildTransition, setBuildTransition] = useState<BuildTransitionState>({
-    active: false,
-    stepIndex: 0,
-    complete: false,
-  });
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -281,7 +228,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     options?: {
       reset?: boolean;
       resetOnly?: boolean;
-      setup?: GuidedDemoEventSetupDraft;
     }
   ) {
     const response = await fetch("/api/demo/prepare-state", {
@@ -293,7 +239,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
         targetAct,
         reset: options?.reset === true,
         resetOnly: options?.resetOnly === true,
-        setup: options?.setup,
       }),
     });
     const payload = (await response.json()) as { ok?: boolean; state?: DemoStoryState; error?: string };
@@ -329,7 +274,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       const nextState = await postPrepareState(targetAct, options);
       setState(nextState);
       setError(nextState.error);
-      setActiveView("home");
       setAct2CompletionVisible(nextState.progress.keyScoreCorrected);
       if (targetAct === "public_ready" && !options?.resetOnly) {
         writeLocalPublicViewed();
@@ -353,69 +297,22 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
     setError(null);
     setNotice(null);
     setPendingLabel(null);
-    setBuildTransition({ active: false, stepIndex: 0, complete: false });
     clearDemoStoryRuntimeState();
     setPublicViewed(false);
     setAct2CompletionVisible(false);
     setState((current) => resetClientStoryState(current));
-    setActiveView("act1_setup");
-    setNotice("Act 1 is ready. Start as the organizer, configure the event, then create the demo event.");
+    setNotice("Opening Act 1 in the real organizer setup UI.");
+    startTransition(() => {
+      router.push("/staff/demo?demoStory=act1");
+    });
   }
 
   function openAct1Setup() {
     setError(null);
     setNotice(null);
-    setActiveView("act1_setup");
-  }
-
-  async function runAct1BuildTransition(options?: { reset?: boolean; setup?: GuidedDemoEventSetupDraft }) {
-    setError(null);
-    setNotice(null);
-    setPendingLabel(null);
-    clearDemoStoryRuntimeState();
-    setPublicViewed(false);
-    setAct2CompletionVisible(false);
-    setBuildTransition({ active: true, stepIndex: 0, complete: false });
-
-    try {
-      const preparePromise = postPrepareState("event_created", {
-        reset: options?.reset === true,
-        setup: options?.setup,
-      }).then(
-        (nextState) => ({ nextState, error: null }),
-        (buildError: unknown) => ({ nextState: null, error: buildError })
-      );
-
-      for (let index = 0; index < ACT_1_BUILD_STEPS.length; index += 1) {
-        setBuildTransition({ active: true, stepIndex: index, complete: false });
-        await wait(index === 0 ? 320 : 520);
-      }
-
-      const { nextState, error: prepareError } = await preparePromise;
-      if (prepareError || !nextState) {
-        throw prepareError instanceof Error ? prepareError : new Error("Unable to prepare the judge demo.");
-      }
-
-      const readinessError = getJudgeRouteReadinessError(nextState);
-      if (readinessError) {
-        throw new Error(readinessError);
-      }
-
-      setState(nextState);
-      setBuildTransition({
-        active: true,
-        stepIndex: ACT_1_BUILD_STEPS.length - 1,
-        complete: true,
-      });
-      await wait(420);
-
-      startTransition(() => {
-        router.push(nextState.links.judge!);
-      });
-    } catch (buildError) {
-      setBuildTransition({ active: false, stepIndex: 0, complete: false });
-      setError(buildError instanceof Error ? buildError.message : "Unable to prepare the judge demo.");
-    }
+    startTransition(() => {
+      router.push("/staff/demo?demoStory=act1");
+    });
   }
 
   async function refreshStoryState(messageOnIncomplete?: string) {
@@ -454,7 +351,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
       return;
     }
 
-    setActiveView("home");
     void prepareState("event_created", { reset: true, resetOnly: true });
   }
 
@@ -491,16 +387,11 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
   }
 
   const currentAct =
-    activeView === "act1_setup"
-      ? storyActs[0]
-      : storyActs.find((act) => getActStatus(act, state, publicViewed) !== "complete") ??
-        storyActs[storyActs.length - 1];
-  const currentStatus =
-    activeView === "act1_setup" && !state.progress.eventCreated
-      ? "in_progress"
-      : getActStatus(currentAct, state, publicViewed);
+    storyActs.find((act) => getActStatus(act, state, publicViewed) !== "complete") ??
+    storyActs[storyActs.length - 1];
+  const currentStatus = getActStatus(currentAct, state, publicViewed);
   const metadata = state.metadata;
-  const busy = isPending || Boolean(pendingLabel) || buildTransition.active;
+  const busy = isPending || Boolean(pendingLabel);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,#f8fafc,#eef6ff_46%,#fff7ed)] text-slate-950">
@@ -528,62 +419,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
             </div>
           </div>
         </div>
-
-        {buildTransition.active ? (
-          <Surface variant="card" density="public" className="overflow-hidden border-sky-200 bg-white/95">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,0.55fr)] lg:items-center">
-              <div className="space-y-3">
-                <Badge>Launching Act 2</Badge>
-                <h2 className="text-3xl font-black tracking-[-0.03em] text-slate-950 sm:text-4xl">
-                  The organizer setup is becoming a live comp.
-                </h2>
-                <p className="max-w-3xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-                  The demo is restoring a clean, judge-ready event in the background so the next
-                  screen opens on categories, boulders, schedule blocks, and public results that all
-                  line up.
-                </p>
-                {error ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                    {error}
-                  </div>
-                ) : null}
-              </div>
-              <ol className="space-y-2" aria-live="polite">
-                {ACT_1_BUILD_STEPS.map((step, index) => {
-                  const isComplete = buildTransition.complete || index < buildTransition.stepIndex;
-                  const isActive = !buildTransition.complete && index === buildTransition.stepIndex;
-                  return (
-                    <li
-                      key={step}
-                      className={cn(
-                        "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold transition",
-                        isComplete
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                          : isActive
-                            ? "border-sky-200 bg-sky-50 text-sky-800"
-                            : "border-slate-200 bg-slate-50 text-slate-500"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black",
-                          isComplete
-                            ? "bg-emerald-600 text-white"
-                            : isActive
-                              ? "bg-sky-600 text-white"
-                              : "bg-slate-200 text-slate-600"
-                        )}
-                      >
-                        {isComplete ? "OK" : index + 1}
-                      </span>
-                      <span>{step}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-          </Surface>
-        ) : null}
 
         <Surface variant="card" density="public" className="relative overflow-hidden">
           <div className="absolute right-0 top-0 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl" aria-hidden="true" />
@@ -692,14 +527,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
           </div>
         </Surface>
 
-        {activeView === "act1_setup" ? (
-          <GuidedDemoEventSetupFlow
-            busy={busy}
-            onBack={() => setActiveView("home")}
-            onCreateDemoEvent={(setup) => void runAct1BuildTransition({ reset: true, setup })}
-          />
-        ) : null}
-
         {act2CompletionVisible && state.progress.keyScoreCorrected ? (
           <Surface variant="panel" density="judge" className="border-emerald-200 bg-emerald-50/90">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -751,10 +578,7 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
         <section className="grid gap-4 lg:grid-cols-4">
           {storyActs.map((act) => {
             const computedStatus = getActStatus(act, state, publicViewed);
-            const status =
-              activeView === "act1_setup" && act.id === "create" && !state.progress.eventCreated
-                ? "in_progress"
-                : computedStatus;
+            const status = computedStatus;
             return (
               <Surface key={act.id} variant="row" density="organizer" className="flex h-full flex-col gap-4">
                 <div className="flex items-center justify-between gap-3">
@@ -818,7 +642,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
           })}
         </section>
 
-        {activeView !== "act1_setup" ? (
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.72fr)]">
           <Surface variant="panel" density="public" className="space-y-5">
             <div>
@@ -912,7 +735,6 @@ export function DemoCommandCenter({ initialState }: { initialState: DemoStorySta
             )}
           </Surface>
         </section>
-        ) : null}
       </div>
     </main>
   );

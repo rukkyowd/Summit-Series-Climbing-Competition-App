@@ -227,7 +227,7 @@ function emptyDemoStoryState(error: string | null = null): DemoStoryState {
       publicViewed: false,
     },
     links: {
-      setup: "/staff/demo",
+      setup: "/staff/demo?demoStory=act1",
       judge: null,
       organizer: null,
       publicEvent: null,
@@ -502,7 +502,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
         competition: loadedCompetition,
         metadata: loadedCompetition.demo_metadata,
         links: {
-          setup: "/staff/demo",
+          setup: "/staff/demo?demoStory=act1",
           judge: null,
           organizer: `/staff/c/${loadedCompetition.slug}?demoStory=act3`,
           publicEvent: `/c/${loadedCompetition.slug}?demoStory=public`,
@@ -569,7 +569,7 @@ export async function getDemoStoryState(publicViewed = false): Promise<DemoStory
       finalistCount,
       progress,
       links: {
-        setup: "/staff/demo",
+        setup: "/staff/demo?demoStory=act1",
         judge: judgeRouteReady ? `/staff/c/${competition.slug}/judge?${judgeParams.toString()}` : null,
         organizer: `/staff/c/${competition.slug}?demoStory=act3`,
         publicEvent: `/c/${competition.slug}?demoStory=public`,
