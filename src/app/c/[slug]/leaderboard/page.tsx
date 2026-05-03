@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import { DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
+import { DemoHUD } from "@/components/demo-hud";
 import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
@@ -87,16 +87,15 @@ export default function CompetitionLeaderboardPage() {
         {error ? <Alert variant="error">{error}</Alert> : null}
         {snapshot?.competition.is_demo ? (
           demoGuideActive ? (
-            <DemoGuidePanel
-              eyebrow="Demo leaderboard"
-              title="This leaderboard reads the same scores saved from the judge panel."
-              body="Use this page to verify Maya's corrected score impact, then continue to the public event page or return to the demo workspace."
-            >
-              <DemoGuideLink href={`/c/${slug}?demo=1`} primary>
-                Public event
-              </DemoGuideLink>
-              <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
-            </DemoGuidePanel>
+            <DemoHUD
+              actLabel="Leaderboard"
+              title="Watch the leaderboard update"
+              instruction="Use this page to verify Maya's corrected score impact."
+              why="This is the payoff moment: judge saves and public standings stay connected."
+              completed={Boolean(snapshot)}
+              primaryAction={{ label: "Public event", href: `/c/${slug}?demo=1` }}
+              secondaryActions={[{ label: "Demo home", href: "/demo" }]}
+            />
           ) : (
             <div className="results-alert results-alert-success">
               Demo event: this public leaderboard reads the same scores saved from the real judge panel.

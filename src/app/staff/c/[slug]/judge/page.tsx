@@ -7,7 +7,7 @@ import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import { QualifierScoreEditor } from "@/components/judge/qualifier-score-editor";
 import { RecentScoreFeedback } from "@/components/judge/recent-score-feedback";
-import { DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
+import { DemoHUD } from "@/components/demo-hud";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,6 @@ import {
 } from "@/lib/scoring";
 import {
   DEMO_TARGET_AFTER_LABEL,
-  DEMO_TARGET_BEFORE_LABEL,
   DEMO_TARGET_CLIMB_NUMBER,
   DEMO_TARGET_CLIMBER_NAME,
   DEMO_TARGET_CLIMBER_NUMBER,
@@ -1427,30 +1426,28 @@ export default function StaffJudgePage() {
           detail={saveFeedbackDetail}
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
-        {snapshot.competition.is_demo ? (
-          <DemoGuidePanel
-            eyebrow="Act 2 - Judge: Correct Key Score"
-            title={
+        {demoGuideActive && snapshot.competition.is_demo ? (
+          <DemoHUD
+            actLabel="Act 2 of 4"
+            title={demoTargetCorrected ? "Act 2 complete" : "Correct Maya Chen on B3"}
+            instruction={
               demoTargetCorrected
-                ? "Act 2 complete: Maya Chen is now Top in 1."
-                : "Correct Maya Chen, then watch the real leaderboard respond."
+                ? "Score corrected. Continuing to the organizer workspace..."
+                : `Find #${DEMO_TARGET_CLIMBER_NUMBER} in the picker, set B${DEMO_TARGET_CLIMB_NUMBER} to ${DEMO_TARGET_AFTER_LABEL}, then save.`
             }
-            body={`Find #${DEMO_TARGET_CLIMBER_NUMBER} ${DEMO_TARGET_CLIMBER_NAME}, select B${DEMO_TARGET_CLIMB_NUMBER}, change the result from ${DEMO_TARGET_BEFORE_LABEL} to ${DEMO_TARGET_AFTER_LABEL}, then save. Highlight only focuses the real judge UI; it never writes or completes the task for you.`}
-          >
-            <Button type="button" variant="secondary" onClick={highlightDemoTarget}>
-              Highlight target
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => void checkDemoCorrection()}>
-              I completed this
-            </Button>
-            {demoTargetCorrected ? (
-              <DemoGuideLink href={`/staff/c/${slug}?demo=1`} primary>
-                Continue to Organizer Demo
-              </DemoGuideLink>
-            ) : null}
-            <DemoGuideLink href={`/c/${slug}/leaderboard?demo=1`}>View leaderboard</DemoGuideLink>
-            <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
-          </DemoGuidePanel>
+            why="Shows how a judge corrects a live score. The leaderboard reruns the tiebreaker automatically."
+            completed={demoTargetCorrected}
+            primaryAction={
+              demoTargetCorrected
+                ? { label: "Continue to Act 3", href: `/staff/c/${slug}?demo=1&act=3` }
+                : { label: "Highlight Maya Chen", onClick: highlightDemoTarget }
+            }
+            secondaryActions={[
+              { label: "Check correction", onClick: checkDemoCorrection },
+              { label: "View leaderboard", href: `/c/${slug}/leaderboard?demo=1` },
+              { label: "Demo home", href: "/demo" },
+            ]}
+          />
         ) : null}
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">
           <div className="results-workspace-hero">

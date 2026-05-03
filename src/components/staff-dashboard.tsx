@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
+import { DemoHUD } from "@/components/demo-hud";
 import { DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
 import {
   StaffEventCreationForm,
@@ -865,6 +866,9 @@ export default function StaffDashboard({
       after: string;
     };
   }>(null);
+  const [organizerDemoProgress, setOrganizerDemoProgress] = useState<null | {
+    organizerAdvanced: boolean;
+  }>(null);
   const organizerDemoAutoAdvanceStartedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -954,6 +958,7 @@ export default function StaffDashboard({
 
   useEffect(() => {
     if (!isGuidedStoryAct3 || !draft || !isDemoCompetitionRecord(draft)) {
+      setOrganizerDemoProgress(null);
       return;
     }
 
@@ -969,10 +974,15 @@ export default function StaffDashboard({
         const payload = (await response.json().catch(() => null)) as {
           progress?: { organizerAdvanced?: boolean };
         } | null;
+        const organizerAdvanced = Boolean(payload?.progress?.organizerAdvanced);
+
+        if (!cancelled) {
+          setOrganizerDemoProgress({ organizerAdvanced });
+        }
 
         if (
           !cancelled &&
-          payload?.progress?.organizerAdvanced &&
+          organizerAdvanced &&
           !organizerDemoAutoAdvanceStartedRef.current
         ) {
           organizerDemoAutoAdvanceStartedRef.current = true;
@@ -1231,6 +1241,7 @@ export default function StaffDashboard({
   const leaderboardPath = draft ? buildCompetitionPath(draft.slug, "leaderboard") : "";
   const judgeUrl = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "";
   const demoJudgePath = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "/demo";
+  const organizerDemoAdvanced = Boolean(organizerDemoProgress?.organizerAdvanced);
   const displayPath = draft ? buildDisplayPath(draft.slug) : "";
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
   const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
@@ -2773,17 +2784,26 @@ export default function StaffDashboard({
           </DemoGuidePanel>
         ) : null}
         {isGuidedStoryAct3 && draft && isDemoCompetitionRecord(draft) ? (
-          <DemoGuidePanel
-            eyebrow="Act 3 - Organizer: Advance Finalists"
-            title="Review the cut line, lock qualifiers, advance finalists, and start finals."
-            body="This is the real organizer workspace. The guide does not auto-lock or auto-advance: use the existing phase and finals controls so Act 3 teaches the actual operations flow."
-          >
-            {leaderboardPath ? (
-              <DemoGuideLink href={`${leaderboardPath}?demo=1`}>View leaderboard impact</DemoGuideLink>
-            ) : null}
-            {draft.slug ? <DemoGuideLink href={`/c/${draft.slug}?demo=1`}>Public preview</DemoGuideLink> : null}
-            <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
-          </DemoGuidePanel>
+          <DemoHUD
+            actLabel="Act 3 of 4"
+            title={organizerDemoAdvanced ? "Act 3 complete" : "Advance finalists"}
+            instruction={
+              organizerDemoAdvanced
+                ? "Finalists are advanced. Continuing to the public event..."
+                : "Review the cut line, lock qualifiers, advance finalists, then start finals."
+            }
+            why="Shows how organizers verify live scoring before moving a competition into finals."
+            completed={organizerDemoAdvanced}
+            primaryAction={
+              organizerDemoAdvanced
+                ? { label: "Continue to Act 4", href: `/c/${draft.slug}?demo=1` }
+                : { label: "View leaderboard impact", href: `${leaderboardPath}?demo=1` }
+            }
+            secondaryActions={[
+              { label: "Public preview", href: `/c/${draft.slug}?demo=1` },
+              { label: "Demo home", href: "/demo" },
+            ]}
+          />
         ) : null}
         {demoMode && !isGuidedStoryAct1 ? (
           <DemoSalesShell
