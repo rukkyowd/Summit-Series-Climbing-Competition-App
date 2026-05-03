@@ -20,15 +20,15 @@ export const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
     id: "preset",
     title: "Preset",
     explanation:
-      "Youth Championship with Finals is locked for this story so categories, rounds, schedule, finalist advancement, and public results stay connected.",
-    why: "The preset keeps Act 3 meaningful by guaranteeing a finals-capable event before scoring starts.",
+      "Choose any preset or format that fits the event you want to build. The sandbox explains tradeoffs without forcing the choice.",
+    why: "This keeps the walkthrough honest: users experience the real organizer controls and can deviate safely.",
     anchorId: "guided-act1-preset",
   },
   {
     id: "registration",
     title: "Registration",
     explanation:
-      "Configure the public registration window and capacity. The demo simulates athletes after creation so the real judge and leaderboard screens have data.",
+      "Configure the public registration window and capacity. Sample athletes are added only after you confirm the judge handoff.",
     why: "Registration settings explain where climbers, private scorecards, categories, and judge assignments come from.",
     anchorId: "guided-act1-registration",
   },
@@ -36,8 +36,8 @@ export const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
     id: "create",
     title: "Create Demo Event",
     explanation:
-      "Now submit the real form. After creation, the demo seeds climbers, qualifier scores, Maya's scoring mistake, and finals-ready structure.",
-    why: "This is the only step that creates the event and starts server-side demo population.",
+      "Now submit the real form. After creation, review the generated setup before choosing Go to Judge Panel.",
+    why: "Creation uses the real backend; seeding waits for the explicit judge handoff.",
     anchorId: "guided-act1-create",
   },
 ];

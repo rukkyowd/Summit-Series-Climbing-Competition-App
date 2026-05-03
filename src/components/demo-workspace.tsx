@@ -143,7 +143,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Button type="button" variant="primary" onClick={() => router.push("/staff/new?demo=1")}>
+          <Button type="button" variant="primary" onClick={() => router.push("/staff/new?demo=act1")}>
             Start Demo
           </Button>
           <Button

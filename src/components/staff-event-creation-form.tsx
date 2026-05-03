@@ -115,6 +115,16 @@ export function StaffEventCreationForm({
             rounds, finals cutoff, and event-day schedule after you create the event.
           </div>
         </div>
+      ) : mode === "guided-demo" ? (
+        <div id="guided-act1-preset" className={guidedSectionClass("preset", activeGuideStepId)}>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">
+            Guided sandbox
+          </div>
+          <div className="mt-2 text-sm leading-6 text-slate-700">
+            Choose any format you want. The guide explains the tradeoffs, but it does not lock a
+            preset, auto-fill fields, or create anything until you submit the real staff form.
+          </div>
+        </div>
       ) : null}
 
       <div
@@ -155,7 +165,7 @@ export function StaffEventCreationForm({
             value={values.format}
             onChange={(event) => onChange({ ...values, format: event.target.value as EventFormat })}
             className="results-input"
-            disabled={lockFormat || mode === "guided-demo" || formDisabled}
+            disabled={lockFormat || formDisabled}
           >
             {formatOptions.map((template) => (
               <option key={template.value} value={template.value}>
@@ -163,7 +173,7 @@ export function StaffEventCreationForm({
               </option>
             ))}
           </select>
-          {mode === "guided-demo" || lockFormat ? (
+          {lockFormat ? (
             <span className="text-xs leading-5 text-slate-500">
               {lockedPresetLabel
                 ? `${lockedPresetLabel} is locked for the guided story.`
@@ -293,10 +303,9 @@ export function StaffEventCreationForm({
       {showRegistrationStory ? (
         <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-950">
           In a real event, athletes register through the public registration page, choose a
-          category, and receive private scorecard links. For this guided demo, we simulate
-          registrations after creation so the judge screen and leaderboard have realistic data.
-          Youth B climbers are seeded into a qualifier session so Maya Chen&apos;s scoring correction can
-          move the finals cut line.
+          category, and receive private scorecard links. In this sandbox, sample climbers and
+          scores are added only when you choose <span className="font-semibold">Go to Judge Panel</span>
+          after creating and reviewing the event.
         </div>
       ) : null}
       </div>
@@ -315,8 +324,8 @@ export function StaffEventCreationForm({
           {mode === "guided-demo" ? (
             <div className="mb-3 text-sm leading-6 text-slate-600">
               {activeGuideStepId === "create"
-                ? "Now create the event. After this, the demo will populate realistic climbers, seeded qualifier scores, Maya's scoring mistake, and finals-ready structure."
-                : "Review the guided setup steps first. The create action unlocks on the final Create Demo Event step."}
+                ? "Now create the event with the real staff backend. After creation, review the generated setup before adding sample climbers."
+                : "Review the guidance, then submit when you are ready. This guide never saves or creates anything for you."}
             </div>
           ) : null}
           <button

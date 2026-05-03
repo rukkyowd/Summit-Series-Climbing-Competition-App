@@ -11,5 +11,5 @@ export default function StaffNewCompetitionPage({
 }) {
   const demo = readSingleValue(searchParams?.demo);
 
-  return <StaffDashboard demoSeedOnCreate={demo === "1"} />;
+  return <StaffDashboard demoSeedOnCreate={demo === "act1" || demo === "1"} />;
 }
