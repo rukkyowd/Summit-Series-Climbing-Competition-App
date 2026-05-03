@@ -161,7 +161,9 @@ class SupabaseQueryMock {
         mockState.competitionUpdates.push(this.payload as Record<string, unknown>);
       }
       if (this.table === "competition_rounds" && this.operation === "update") {
-        mockState.roundUpdates.push(this.payload as Record<string, unknown>);
+        const payload = this.payload as Record<string, unknown>;
+        mockState.roundUpdates.push(payload);
+        mockState.operationLog.push(payload.is_active ? "rounds:activate" : "rounds:deactivate");
       }
       return { error: null };
     }
@@ -333,6 +335,17 @@ describe("demo seed route", () => {
         advancement_cutoff: 6,
         problem_count: 4,
       })
+    );
+  });
+
+  it("deactivates existing active rounds before activating the qualifier round", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+
+    expect(response.status).toBe(200);
+    expect(mockState.operationLog.indexOf("rounds:deactivate")).toBeGreaterThan(-1);
+    expect(mockState.operationLog.indexOf("rounds:activate")).toBeGreaterThan(-1);
+    expect(mockState.operationLog.indexOf("rounds:deactivate")).toBeLessThan(
+      mockState.operationLog.indexOf("rounds:activate")
     );
   });
 });

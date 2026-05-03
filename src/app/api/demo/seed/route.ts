@@ -438,21 +438,6 @@ async function resetDemoCompetitionProgress(
     throw new Error(competitionUpdate.error.message);
   }
 
-  const activeRoundUpdate = await supabase
-    .from("competition_rounds")
-    .update({
-      status: "scoring",
-      is_active: true,
-      activated_at: timestamp,
-      started_at: timestamp,
-      closed_at: null,
-    })
-    .eq("competition_id", competitionId)
-    .eq("id", qualifierRoundId);
-  if (activeRoundUpdate.error) {
-    throw new Error(activeRoundUpdate.error.message);
-  }
-
   const inactiveRoundUpdate = await supabase
     .from("competition_rounds")
     .update({
@@ -466,6 +451,21 @@ async function resetDemoCompetitionProgress(
     .neq("id", qualifierRoundId);
   if (inactiveRoundUpdate.error) {
     throw new Error(inactiveRoundUpdate.error.message);
+  }
+
+  const activeRoundUpdate = await supabase
+    .from("competition_rounds")
+    .update({
+      status: "scoring",
+      is_active: true,
+      activated_at: timestamp,
+      started_at: timestamp,
+      closed_at: null,
+    })
+    .eq("competition_id", competitionId)
+    .eq("id", qualifierRoundId);
+  if (activeRoundUpdate.error) {
+    throw new Error(activeRoundUpdate.error.message);
   }
 
   const clearBlocks = await supabase
