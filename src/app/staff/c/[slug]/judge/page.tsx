@@ -587,7 +587,7 @@ export default function StaffJudgePage() {
 
       await syncQueuedState(snapshot);
       if (snapshot) {
-        const refreshed = await getCompetitionSnapshot(snapshot.competition.id);
+        const refreshed = await getCompetitionSnapshot(snapshot.competition.id, { authenticated: true });
         setSnapshot(refreshed);
         await syncQueuedState(refreshed);
       }
@@ -603,14 +603,15 @@ export default function StaffJudgePage() {
 
   useEffect(() => {
     setLoading(true);
-    void Promise.all([getCompetitionSnapshot(slug), getAuthState()])
-      .then(([nextSnapshot, authState]) => {
+    void getAuthState()
+      .then(async (authState) => {
         if (!isStaffRole(authState.profile?.role)) {
           window.location.href = `/staff/login?redirect=${encodeURIComponent(`/staff/c/${slug}/judge`)}`;
           return;
         }
 
         setProfile(authState.profile);
+        const nextSnapshot = await getCompetitionSnapshot(slug, { authenticated: true });
         setSnapshot(nextSnapshot);
         const qualifierNext: QualifierDraftState = {};
         const finalsNext: FinalsDraftState = {};

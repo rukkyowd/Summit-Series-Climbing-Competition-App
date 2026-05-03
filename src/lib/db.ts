@@ -1450,12 +1450,12 @@ export async function updateQualifierAttemptByStaff(
 ) {
   ensureConfigured();
 
-  const competition = await getCompetitionById(competitionId);
+  const competition = await getCompetitionById(competitionId, { authenticated: true });
   if (!competition) {
     throw new Error("Competition not found.");
   }
   assertStaffQualifierWindowOpen(competition);
-  const climber = await fetchClimberRowById(competitionId, climberId);
+  const climber = await fetchClimberRowById(competitionId, climberId, supabase);
   if (!climber) {
     throw new Error("Climber not found.");
   }
@@ -1578,7 +1578,7 @@ export async function updateFinalAttempt(
 ) {
   ensureConfigured();
 
-  const snapshot = await getCompetitionSnapshot(competitionId);
+  const snapshot = await getCompetitionSnapshot(competitionId, { authenticated: true });
   assertFinalsWindowOpen(snapshot.competition);
   requireActiveFinalsRound(snapshot.competition);
   const normalized = normalizeFinalAttemptInput({
