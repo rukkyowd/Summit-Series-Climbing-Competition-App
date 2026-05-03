@@ -26,6 +26,15 @@ type RoundRow = {
   scoring_bucket: string | null;
 };
 
+type ScheduleBlockRow = {
+  id: string;
+  round_id: string | null;
+  phase_type: string;
+  eligible_category_ids: unknown;
+  capacity: number | null;
+  sort_order: number | null;
+};
+
 const SAMPLE_CLIMBERS = [
   { name: "Leo Grant", number: "101", province: "NS" },
   { name: "Noah Patel", number: "102", province: "NB" },
@@ -127,6 +136,85 @@ async function getQualifierRoundId(
   return (data as RoundRow | null)?.id ?? null;
 }
 
+function getEligibleCategoryIds(value: unknown) {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+function blockAllowsCategory(block: ScheduleBlockRow, categoryId: string) {
+  const eligibleCategoryIds = getEligibleCategoryIds(block.eligible_category_ids);
+  return eligibleCategoryIds.length === 0 || eligibleCategoryIds.includes(categoryId);
+}
+
+async function ensureQualifierSession(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competitionId: string,
+  qualifierRoundId: string | null,
+  categoryId: string
+) {
+  if (!qualifierRoundId) {
+    throw new Error("Demo seeding requires a qualifier round before climbers can be assigned to a session.");
+  }
+
+  const { data, error } = await supabase
+    .from("competition_schedule_blocks")
+    .select("id, round_id, phase_type, eligible_category_ids, capacity, sort_order")
+    .eq("competition_id", competitionId)
+    .eq("phase_type", "qualifier_round")
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const blocks = (data ?? []) as ScheduleBlockRow[];
+  const linkedBlock = blocks.find((block) => block.round_id === qualifierRoundId && blockAllowsCategory(block, categoryId));
+  if (linkedBlock) {
+    return linkedBlock.id;
+  }
+
+  const unlinkedBlock = blocks.find((block) => !block.round_id && blockAllowsCategory(block, categoryId));
+  if (unlinkedBlock) {
+    const update = await supabase
+      .from("competition_schedule_blocks")
+      .update({
+        round_id: qualifierRoundId,
+        capacity: Math.max(unlinkedBlock.capacity ?? 0, SAMPLE_CLIMBERS.length),
+      })
+      .eq("id", unlinkedBlock.id);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+
+    return unlinkedBlock.id;
+  }
+
+  const nextSortOrder = blocks.reduce((max, block) => Math.max(max, block.sort_order ?? 0), 0) + 1;
+  const { data: inserted, error: insertError } = await supabase
+    .from("competition_schedule_blocks")
+    .insert({
+      competition_id: competitionId,
+      round_id: qualifierRoundId,
+      sort_order: nextSortOrder,
+      label: "Demo qualifier session",
+      phase_type: "qualifier_round",
+      audience_label: "Demo climbers",
+      is_active: false,
+      start_time: "10:00 AM",
+      end_time: "12:00 PM",
+      capacity: Math.max(SAMPLE_CLIMBERS.length, 20),
+      eligible_category_ids: [categoryId],
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return inserted.id as string;
+}
+
 async function clearPreviousSeed(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competitionId: string
@@ -200,6 +288,12 @@ export async function POST(request: NextRequest) {
 
     const category = await ensureCategory(supabase, competitionRow.id);
     const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow.id);
+    const qualifierSessionId = await ensureQualifierSession(
+      supabase,
+      competitionRow.id,
+      qualifierRoundId,
+      category.id
+    );
     await clearPreviousSeed(supabase, competitionRow.id);
 
     const climberRows = SAMPLE_CLIMBERS.map((climber) => ({
@@ -212,7 +306,7 @@ export async function POST(request: NextRequest) {
       gender_division: category.gender_division,
       age_group: category.age_group,
       display_category: category.display_name,
-      time_slot_id: null,
+      time_slot_id: qualifierSessionId,
       access_token: sampleToken(competitionRow.id, climber.number),
     }));
 
