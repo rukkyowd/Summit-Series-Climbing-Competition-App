@@ -1,12 +1,26 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
-import { buildDisplayCategory, createCategoryKey } from "@/lib/scoring";
+import {
+  CASCADE_CUP_AGE_GROUPS,
+  CASCADE_CUP_DEMO_COUNTING_CLIMBS,
+  CASCADE_CUP_DEMO_FIELD_SIZE,
+  CASCADE_CUP_DEMO_FINALS_CUTOFF,
+  CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
+  CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES,
+  CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+  buildCascadeCupScorecardUrl,
+  getCascadeCupCategoryRows,
+  getCascadeCupSeedClimbers,
+  sampleCascadeCupScorecardToken,
+  type CascadeCupClimberSeed,
+} from "@/lib/cascade-cup-demo";
 import {
   DEMO_TARGET_AFTER_LABEL,
   DEMO_TARGET_BEFORE_LABEL,
   DEMO_TARGET_CLIMB_NUMBER,
   DEMO_TARGET_CLIMBER_NAME,
   DEMO_TARGET_CLIMBER_NUMBER,
+  buildDemoOrganizerUrl,
   buildDemoJudgeUrl,
   buildDemoLeaderboardUrl,
   buildDemoPublicUrl,
@@ -14,6 +28,7 @@ import {
 
 type DemoSeedRequest = {
   competitionId?: string;
+  scenario?: string;
 };
 
 type CompetitionRow = {
@@ -52,28 +67,43 @@ type ScheduleBlockRow = {
   sort_order: number | null;
 };
 
-const SAMPLE_CLIMBERS = [
-  { name: "Leo Grant", number: "101", province: "NS" },
-  { name: "Noah Patel", number: "102", province: "NB" },
-  { name: "Milo Fraser", number: "103", province: "PE" },
-  { name: DEMO_TARGET_CLIMBER_NAME, number: DEMO_TARGET_CLIMBER_NUMBER, province: "NS", target: true },
-  { name: "Declan White", number: "105", province: "NL" },
-  { name: "Isaac Green", number: "106", province: "QC" },
-] as const;
-
-const DEMO_FINALS_CUTOFF = 6;
-const DEMO_FINALS_PROBLEM_COUNT = 4;
-const DEMO_FINALS_ELIGIBLE_AGE_GROUP = "Youth B";
+const SAMPLE_CLIMBERS = getCascadeCupSeedClimbers();
 
 function createId() {
   return crypto.randomUUID();
 }
 
-function sampleToken(competitionId: string, number: string) {
-  return `scorecard-demo-seed-${competitionId}-${number}`;
+function scoreFor(climber: CascadeCupClimberSeed, climbNumber: number) {
+  if (climber.number === DEMO_TARGET_CLIMBER_NUMBER && climbNumber === DEMO_TARGET_CLIMB_NUMBER) {
+    return {
+      attempt_count: 3,
+      zone: true,
+      topped: true,
+      attempts_to_top: 3,
+      attempts_to_zone: 1,
+    };
+  }
+
+  const targetClimbCountBySeed = [20, 19, 18, 17, 16, 15, 15, 14];
+  const topCount = targetClimbCountBySeed[climber.seedIndex] ?? 12;
+  const topped = climbNumber <= topCount;
+  const zone = topped || climbNumber <= Math.min(CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS, topCount + 3);
+  const attemptCount = topped
+    ? 1 + ((climber.seedIndex + climbNumber) % 3)
+    : zone
+      ? 2 + ((climber.seedIndex + climbNumber) % 2)
+      : 0;
+
+  return {
+    attempt_count: attemptCount,
+    zone,
+    topped,
+    attempts_to_top: topped ? attemptCount : null,
+    attempts_to_zone: zone ? Math.max(1, Math.min(attemptCount || 1, 2)) : null,
+  };
 }
 
-function scoreFor(climberNumber: string, climbNumber: number) {
+function legacyScoreFor(climberNumber: string, climbNumber: number) {
   if (climberNumber === DEMO_TARGET_CLIMBER_NUMBER && climbNumber === DEMO_TARGET_CLIMB_NUMBER) {
     return {
       attempt_count: 3,
@@ -98,35 +128,12 @@ function scoreFor(climberNumber: string, climbNumber: number) {
   };
 }
 
-async function ensureCategory(
+async function ensureCascadeCupCategories(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competitionId: string
 ) {
-  const categoryId = createCategoryKey("Men", "Youth B");
-  const { data: existing, error: loadError } = await supabase
-    .from("competition_categories")
-    .select("id, competition_id, gender_division, age_group, display_name")
-    .eq("competition_id", competitionId)
-    .eq("id", categoryId)
-    .maybeSingle();
-
-  if (loadError) {
-    throw new Error(loadError.message);
-  }
-
-  if (existing) {
-    return existing as CategoryRow;
-  }
-
-  const row = {
-    id: categoryId,
-    competition_id: competitionId,
-    gender_division: "Men",
-    age_group: "Youth B",
-    display_name: buildDisplayCategory("Men", "Youth B"),
-    sort_order: 0,
-  };
-  const { error } = await supabase.from("competition_categories").upsert(row, {
+  const rows = getCascadeCupCategoryRows(competitionId);
+  const { error } = await supabase.from("competition_categories").upsert(rows, {
     onConflict: "competition_id,id",
   });
 
@@ -134,7 +141,7 @@ async function ensureCategory(
     throw new Error(error.message);
   }
 
-  return row;
+  return rows;
 }
 
 async function getQualifierRoundId(
@@ -156,6 +163,20 @@ async function getQualifierRoundId(
 
   const existingId = (data as RoundRow | null)?.id ?? null;
   if (existingId) {
+    const update = await supabase
+      .from("competition_rounds")
+      .update({
+        problem_count: CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+        counting_climbs: CASCADE_CUP_DEMO_COUNTING_CLIMBS,
+        finals_cutoff: CASCADE_CUP_DEMO_FINALS_CUTOFF,
+        advancement_cutoff: CASCADE_CUP_DEMO_FINALS_CUTOFF,
+        scoring_bucket: "qualifier",
+      })
+      .eq("competition_id", competition.id)
+      .eq("id", existingId);
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
     return existingId;
   }
 
@@ -173,12 +194,12 @@ async function getQualifierRoundId(
       is_enabled: true,
       is_active: false,
       activated_at: null,
-      problem_count: competition.total_climbs ?? 4,
-      counting_climbs: competition.qualifier_counting_climbs ?? 4,
-      finals_cutoff: DEMO_FINALS_CUTOFF,
+      problem_count: CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+      counting_climbs: CASCADE_CUP_DEMO_COUNTING_CLIMBS,
+      finals_cutoff: CASCADE_CUP_DEMO_FINALS_CUTOFF,
       eligible_category_ids: [],
       advancement_source_round_id: null,
-      advancement_cutoff: DEMO_FINALS_CUTOFF,
+      advancement_cutoff: CASCADE_CUP_DEMO_FINALS_CUTOFF,
       scoring_bucket: "qualifier",
       scoring_config: {},
       started_at: null,
@@ -194,9 +215,9 @@ async function getQualifierRoundId(
   return inserted.id as string;
 }
 
-function ensureYouthBFinalsEligible(value: unknown) {
+function ensureCascadeCupFinalsEligible(value: unknown) {
   const current = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-  return Array.from(new Set([...current, DEMO_FINALS_ELIGIBLE_AGE_GROUP]));
+  return Array.from(new Set([...current, ...CASCADE_CUP_AGE_GROUPS]));
 }
 
 async function ensureDemoFinalsConfiguration(
@@ -207,10 +228,13 @@ async function ensureDemoFinalsConfiguration(
     .from("competitions")
     .update({
       has_finals: true,
-      finals_cutoff: DEMO_FINALS_CUTOFF,
-      finals_tie_advances: false,
-      finals_problem_count: DEMO_FINALS_PROBLEM_COUNT,
-      finals_eligible_age_groups: ensureYouthBFinalsEligible(competition.finals_eligible_age_groups),
+      total_climbs: CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+      qualifier_counting_climbs: CASCADE_CUP_DEMO_COUNTING_CLIMBS,
+      finals_cutoff: CASCADE_CUP_DEMO_FINALS_CUTOFF,
+      finals_tie_advances: CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES,
+      finals_problem_count: CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
+      qualifier_eligible_age_groups: [...CASCADE_CUP_AGE_GROUPS],
+      finals_eligible_age_groups: ensureCascadeCupFinalsEligible(competition.finals_eligible_age_groups),
     })
     .eq("id", competition.id)
     .eq("is_demo", true);
@@ -248,12 +272,12 @@ async function ensureFinalsRound(
     is_enabled: true,
     is_active: false,
     activated_at: null,
-    problem_count: DEMO_FINALS_PROBLEM_COUNT,
+    problem_count: CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
     counting_climbs: null,
-    finals_cutoff: DEMO_FINALS_CUTOFF,
+    finals_cutoff: CASCADE_CUP_DEMO_FINALS_CUTOFF,
     eligible_category_ids: [],
     advancement_source_round_id: qualifierRoundId,
-    advancement_cutoff: DEMO_FINALS_CUTOFF,
+    advancement_cutoff: CASCADE_CUP_DEMO_FINALS_CUTOFF,
     scoring_bucket: "finals",
     scoring_config: {},
     started_at: null,
@@ -296,20 +320,11 @@ async function ensureFinalsRound(
   return inserted.id as string;
 }
 
-function getEligibleCategoryIds(value: unknown) {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-}
-
-function blockAllowsCategory(block: ScheduleBlockRow, categoryId: string) {
-  const eligibleCategoryIds = getEligibleCategoryIds(block.eligible_category_ids);
-  return eligibleCategoryIds.length === 0 || eligibleCategoryIds.includes(categoryId);
-}
-
 async function ensureQualifierSession(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competitionId: string,
   qualifierRoundId: string | null,
-  categoryId: string
+  categoryIds: string[]
 ) {
   if (!qualifierRoundId) {
     throw new Error("Demo seeding requires a qualifier round before climbers can be assigned to a session.");
@@ -327,18 +342,35 @@ async function ensureQualifierSession(
   }
 
   const blocks = (data ?? []) as ScheduleBlockRow[];
-  const linkedBlock = blocks.find((block) => block.round_id === qualifierRoundId && blockAllowsCategory(block, categoryId));
+  const linkedBlock = blocks.find((block) => block.round_id === qualifierRoundId);
   if (linkedBlock) {
+    const update = await supabase
+      .from("competition_schedule_blocks")
+      .update({
+        label: "Cascade Cup qualifier",
+        audience_label: "Youth B, Youth A, and Junior",
+        eligible_category_ids: categoryIds,
+        capacity: Math.max(linkedBlock.capacity ?? 0, CASCADE_CUP_DEMO_FIELD_SIZE),
+      })
+      .eq("id", linkedBlock.id);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+
     return linkedBlock.id;
   }
 
-  const unlinkedBlock = blocks.find((block) => !block.round_id && blockAllowsCategory(block, categoryId));
+  const unlinkedBlock = blocks.find((block) => !block.round_id);
   if (unlinkedBlock) {
     const update = await supabase
       .from("competition_schedule_blocks")
       .update({
+        label: "Cascade Cup qualifier",
+        audience_label: "Youth B, Youth A, and Junior",
         round_id: qualifierRoundId,
-        capacity: Math.max(unlinkedBlock.capacity ?? 0, SAMPLE_CLIMBERS.length),
+        capacity: Math.max(unlinkedBlock.capacity ?? 0, CASCADE_CUP_DEMO_FIELD_SIZE),
+        eligible_category_ids: categoryIds,
       })
       .eq("id", unlinkedBlock.id);
 
@@ -356,14 +388,14 @@ async function ensureQualifierSession(
       competition_id: competitionId,
       round_id: qualifierRoundId,
       sort_order: nextSortOrder,
-      label: "Demo qualifier session",
+      label: "Cascade Cup qualifier",
       phase_type: "qualifier_round",
-      audience_label: "Demo climbers",
+      audience_label: "Youth B, Youth A, and Junior",
       is_active: false,
       start_time: "10:00 AM",
       end_time: "12:00 PM",
-      capacity: Math.max(SAMPLE_CLIMBERS.length, 20),
-      eligible_category_ids: [categoryId],
+      capacity: Math.max(CASCADE_CUP_DEMO_FIELD_SIZE, 20),
+      eligible_category_ids: categoryIds,
     })
     .select("id")
     .single();
@@ -401,7 +433,7 @@ async function ensureLifecycleScheduleBlock(
     label: string;
     audienceLabel: string;
     roundId: string | null;
-    categoryId?: string;
+    categoryIds?: string[];
     startTime: string;
     endTime: string;
     sortOrder: number;
@@ -419,7 +451,7 @@ async function ensureLifecycleScheduleBlock(
   }
 
   const blocks = (data ?? []) as ScheduleBlockRow[];
-  const eligibleCategoryIds = input.categoryId ? [input.categoryId] : [];
+  const eligibleCategoryIds = input.categoryIds ?? [];
   const linkedBlock = blocks.find((block) =>
     input.roundId ? block.round_id === input.roundId : block.label === input.label || !block.round_id
   );
@@ -433,7 +465,7 @@ async function ensureLifecycleScheduleBlock(
         round_id: input.roundId,
         start_time: input.startTime,
         end_time: input.endTime,
-        capacity: Math.max(linkedBlock.capacity ?? 0, SAMPLE_CLIMBERS.length),
+        capacity: Math.max(linkedBlock.capacity ?? 0, CASCADE_CUP_DEMO_FIELD_SIZE),
         eligible_category_ids: eligibleCategoryIds,
       })
       .eq("competition_id", input.competitionId)
@@ -458,7 +490,7 @@ async function ensureLifecycleScheduleBlock(
       is_active: false,
       start_time: input.startTime,
       end_time: input.endTime,
-      capacity: Math.max(SAMPLE_CLIMBERS.length, 20),
+      capacity: Math.max(CASCADE_CUP_DEMO_FIELD_SIZE, 20),
       eligible_category_ids: eligibleCategoryIds,
     })
     .select("id")
@@ -620,7 +652,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const category = await ensureCategory(supabase, competitionRow.id);
+    const categories = await ensureCascadeCupCategories(supabase, competitionRow.id);
+    const categoryIds = categories.map((category) => category.id);
+    const categoryById = new Map(categories.map((category) => [category.id, category]));
     await ensureDemoFinalsConfiguration(supabase, competitionRow);
     const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow);
     const finalsRoundId = await ensureFinalsRound(supabase, competitionRow, qualifierRoundId);
@@ -628,15 +662,15 @@ export async function POST(request: NextRequest) {
       supabase,
       competitionRow.id,
       qualifierRoundId,
-      category.id
+      categoryIds
     );
     await ensureLifecycleScheduleBlock(supabase, {
       competitionId: competitionRow.id,
       phaseType: "finals_round",
-      label: "Demo finals",
+      label: "Cascade Cup finals",
       audienceLabel: "Finalists",
       roundId: finalsRoundId,
-      categoryId: category.id,
+      categoryIds,
       startTime: "2:00 PM",
       endTime: "3:30 PM",
       sortOrder: 5,
@@ -654,19 +688,26 @@ export async function POST(request: NextRequest) {
     await resetDemoCompetitionProgress(supabase, competitionRow.id, qualifierRoundId, qualifierSessionId);
     await clearPreviousSeed(supabase, competitionRow.id);
 
-    const climberRows = SAMPLE_CLIMBERS.map((climber) => ({
-      id: createId(),
-      competition_id: competitionRow.id,
-      name: climber.name,
-      climber_number: climber.number,
-      province: climber.province,
-      category_id: category.id,
-      gender_division: category.gender_division,
-      age_group: category.age_group,
-      display_category: category.display_name,
-      time_slot_id: qualifierSessionId,
-      access_token: sampleToken(competitionRow.id, climber.number),
-    }));
+    const climberRows = SAMPLE_CLIMBERS.map((climber) => {
+      const category = categoryById.get(climber.categoryId);
+      if (!category) {
+        throw new Error(`Missing demo category ${climber.categoryId}.`);
+      }
+
+      return {
+        id: createId(),
+        competition_id: competitionRow.id,
+        name: climber.name,
+        climber_number: climber.number,
+        province: climber.province,
+        category_id: category.id,
+        gender_division: category.gender_division,
+        age_group: category.age_group,
+        display_category: category.display_name,
+        time_slot_id: qualifierSessionId,
+        access_token: sampleCascadeCupScorecardToken(competitionRow.id, climber.number),
+      };
+    });
 
     const { data: insertedClimbers, error: climberError } = await supabase
       .from("climbers")
@@ -677,9 +718,11 @@ export async function POST(request: NextRequest) {
       throw new Error(climberError.message);
     }
 
+    const seedByNumber = new Map(SAMPLE_CLIMBERS.map((climber) => [climber.number, climber]));
     const attempts = (insertedClimbers ?? []).flatMap((climber) =>
-      [1, 2, 3, 4].map((climbNumber) => {
-        const score = scoreFor(climber.climber_number as string, climbNumber);
+      Array.from({ length: CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS }, (_, index) => index + 1).map((climbNumber) => {
+        const seed = seedByNumber.get(climber.climber_number as string);
+        const score = seed ? scoreFor(seed, climbNumber) : legacyScoreFor(climber.climber_number as string, climbNumber);
         return {
           competition_id: competitionRow.id,
           round_id: qualifierRoundId,
@@ -706,6 +749,8 @@ export async function POST(request: NextRequest) {
       judgeUrl: buildDemoJudgeUrl(competitionRow.slug, targetClimberId),
       publicUrl: buildDemoPublicUrl(competitionRow.slug),
       leaderboardUrl: buildDemoLeaderboardUrl(competitionRow.slug),
+      organizerUrl: buildDemoOrganizerUrl(competitionRow.slug),
+      scorecardUrl: buildCascadeCupScorecardUrl(competitionRow.slug, competitionRow.id),
       target: {
         climberId: targetClimberId,
         climberNumber: DEMO_TARGET_CLIMBER_NUMBER,

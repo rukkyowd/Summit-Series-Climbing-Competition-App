@@ -17,6 +17,17 @@ import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
+  CASCADE_CUP_AGE_GROUPS,
+  CASCADE_CUP_DEMO_COUNTING_CLIMBS,
+  CASCADE_CUP_DEMO_FINALS_CUTOFF,
+  CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
+  CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES,
+  CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+  CASCADE_CUP_DEMO_SCENARIO,
+  getCascadeCupCreateFormDefaults,
+  isCascadeCupScenario,
+} from "@/lib/cascade-cup-demo";
+import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
   getCompetitionPreset,
@@ -616,6 +627,8 @@ export default function StaffDashboard({
   const router = useRouter();
   const searchParams = useSearchParams();
   const guidedDemoActive = searchParams?.get("demo") === "1";
+  const demoScenario = searchParams?.get("scenario") ?? "";
+  const cascadeCupDemoActive = demoSeedOnCreate && isCascadeCupScenario(demoScenario);
   const demoMode = false;
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
@@ -807,6 +820,24 @@ export default function StaffDashboard({
 
     setMessage("Guided demo mode: create the event normally, then choose when to add sample climbers.");
   }, [demoSeedOnCreate]);
+
+  useEffect(() => {
+    if (!cascadeCupDemoActive) {
+      return;
+    }
+
+    const defaults = getCascadeCupCreateFormDefaults();
+    setCreateName(defaults.name);
+    setCreateFormat(defaults.format);
+    setCreateLocation(defaults.location);
+    setCreateStartDate(defaults.startDate);
+    setCreateEndDate(defaults.endDate);
+    setCreateDescription(defaults.description);
+    setCreateRegistrationOpensAt(defaults.registrationOpensAt);
+    setCreateRegistrationClosesAt(defaults.registrationClosesAt);
+    setCreateMaxClimbers(defaults.maxClimbers);
+    setMessage("Cascade Cup defaults loaded. Review the real form, create the demo event, then seed sample climbers.");
+  }, [cascadeCupDemoActive]);
 
   useEffect(() => {
     const importedName = sanitizeDraftText(initialCreateDraft?.name);
@@ -1564,11 +1595,15 @@ export default function StaffDashboard({
       const response = await fetch("/api/demo/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ competitionId: draft.id }),
+        body: JSON.stringify({
+          competitionId: draft.id,
+          scenario: cascadeCupDemoActive ? CASCADE_CUP_DEMO_SCENARIO : undefined,
+        }),
       });
       const payload = (await response.json().catch(() => null)) as {
         ok?: boolean;
         judgeUrl?: string;
+        scorecardUrl?: string;
         target?: {
           climberNumber: string;
           name: string;
@@ -1599,7 +1634,7 @@ export default function StaffDashboard({
     } finally {
       setDemoSeedPending(false);
     }
-  }, [demoAct1Ready, draft, router, saveDraftNow]);
+  }, [cascadeCupDemoActive, demoAct1Ready, draft, router, saveDraftNow]);
 
   const resetDemoSessionCompetition = useCallback(async () => {
     setError("");
@@ -3339,14 +3374,27 @@ export default function StaffDashboard({
                         const created = await createCompetitionFromTemplate({
                           name: sanitizeDraftText(createName),
                           format: createFormat,
-                          has_finals: competitionAllowsOptionalFinals(createFormat) ? false : true,
+                          has_finals: cascadeCupDemoActive
+                            ? true
+                            : competitionAllowsOptionalFinals(createFormat)
+                              ? false
+                              : true,
                           is_demo: demoSeedOnCreate,
+                          demo_scenario: cascadeCupDemoActive ? CASCADE_CUP_DEMO_SCENARIO : undefined,
                           location_name: sanitizeDraftText(createLocation),
                           start_date: sanitizeDraftText(createStartDate) || null,
                           end_date: sanitizeDraftText(createEndDate) || null,
                           registration_opens_at: sanitizeDraftNullable(createRegistrationOpensAt),
                           registration_closes_at: sanitizeDraftNullable(createRegistrationClosesAt),
                           description: sanitizeDraftText(createDescription),
+                          max_climbers: cascadeCupDemoActive ? createMaxClimbers : undefined,
+                          total_climbs: cascadeCupDemoActive ? CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS : undefined,
+                          qualifier_counting_climbs: cascadeCupDemoActive ? CASCADE_CUP_DEMO_COUNTING_CLIMBS : undefined,
+                          finals_cutoff: cascadeCupDemoActive ? CASCADE_CUP_DEMO_FINALS_CUTOFF : undefined,
+                          finals_tie_advances: cascadeCupDemoActive ? CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES : undefined,
+                          finals_problem_count: cascadeCupDemoActive ? CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT : undefined,
+                          qualifier_eligible_age_groups: cascadeCupDemoActive ? [...CASCADE_CUP_AGE_GROUPS] : undefined,
+                          finals_eligible_age_groups: cascadeCupDemoActive ? [...CASCADE_CUP_AGE_GROUPS] : undefined,
                           hero_image_url: demoSeedOnCreate ? undefined : sanitizeExternalUrl(createHeroImageUrl) || undefined,
                           discipline_label: sanitizeDraftText(createDisciplineLabel) || undefined,
                           ...(demoSeedOnCreate

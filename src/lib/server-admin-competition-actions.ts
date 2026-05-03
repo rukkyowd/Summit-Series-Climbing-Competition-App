@@ -1,6 +1,19 @@
 import { createServiceRoleSupabaseClient } from "./server-supabase";
 import { sanitizeExternalUrl } from "./security";
 import {
+  CASCADE_CUP_AGE_GROUPS,
+  CASCADE_CUP_DEMO_COUNTING_CLIMBS,
+  CASCADE_CUP_DEMO_FINALS_CUTOFF,
+  CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
+  CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES,
+  CASCADE_CUP_DEMO_MAX_CLIMBERS,
+  CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+  buildCascadeCupRounds,
+  buildCascadeCupScheduleBlocks,
+  getCascadeCupCategoryRows,
+  isCascadeCupScenario,
+} from "./cascade-cup-demo";
+import {
   DEFAULT_COMPETITION,
   buildDisplayCategory,
   createCategoryKey,
@@ -71,12 +84,25 @@ function cleanOptionalExternalUrl(value: unknown) {
   return sanitizeExternalUrl(typeof value === "string" ? value : null) || "";
 }
 
+function cleanPositiveNumber(value: unknown, fallback: number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : fallback;
+}
+
+function cleanFinalsCutoff(value: unknown, fallback: 6 | 8): 6 | 8 {
+  return Number(value) === 8 ? 8 : fallback;
+}
+
 function arrayifyIds(value: unknown) {
   if (!Array.isArray(value)) {
     return [] as string[];
   }
 
   return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function optionalArrayifyIds(value: unknown) {
+  return Array.isArray(value) ? arrayifyIds(value) : undefined;
 }
 
 function isMissingCompetitionLinkColumnError(error: { message?: string } | null | undefined) {
@@ -505,7 +531,8 @@ async function createCompetition(
   supabase: ServiceRoleSupabaseClient,
   input: Record<string, unknown>
 ) {
-  const format = input.format;
+  const cascadeCupDemo = Boolean(input.is_demo) && isCascadeCupScenario(input.demo_scenario);
+  const format = cascadeCupDemo ? "five_on_five_off" : input.format;
   if (!COMPETITION_FORMATS.includes(format as CompetitionFormat)) {
     throw new Error("A valid competition format is required.");
   }
@@ -534,7 +561,7 @@ async function createCompetition(
     name,
     is_demo: Boolean(input.is_demo),
     format: format as CompetitionFormat,
-    has_finals: typeof input.has_finals === "boolean" ? input.has_finals : undefined,
+    has_finals: cascadeCupDemo ? true : typeof input.has_finals === "boolean" ? input.has_finals : undefined,
     current_phase: "qualifier_open",
     discipline_label: cleanString(input.discipline_label) || "Boulder",
     location_name: cleanString(input.location_name),
@@ -549,39 +576,60 @@ async function createCompetition(
     official_schedule_url: cleanOptionalExternalUrl(input.official_schedule_url),
     status: "active",
     stage_mode: "qualifier",
-    total_climbs: getRecommendedQualifierClimbCount(format as CompetitionFormat),
-    qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(format as CompetitionFormat),
-    finals_cutoff: getRecommendedFinalsCutoff(format as CompetitionFormat),
+    max_climbers: cascadeCupDemo ? CASCADE_CUP_DEMO_MAX_CLIMBERS : cleanPositiveNumber(input.max_climbers, DEFAULT_COMPETITION.max_climbers),
+    total_climbs: cascadeCupDemo
+      ? CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS
+      : cleanPositiveNumber(input.total_climbs, getRecommendedQualifierClimbCount(format as CompetitionFormat)),
+    qualifier_counting_climbs: cascadeCupDemo
+      ? CASCADE_CUP_DEMO_COUNTING_CLIMBS
+      : cleanPositiveNumber(input.qualifier_counting_climbs, getRecommendedQualifierCountingClimbs(format as CompetitionFormat)),
+    finals_cutoff: cascadeCupDemo
+      ? CASCADE_CUP_DEMO_FINALS_CUTOFF
+      : cleanFinalsCutoff(input.finals_cutoff, getRecommendedFinalsCutoff(format as CompetitionFormat)),
+    finals_tie_advances: cascadeCupDemo
+      ? CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES
+      : typeof input.finals_tie_advances === "boolean"
+        ? input.finals_tie_advances
+        : undefined,
+    finals_problem_count: cascadeCupDemo
+      ? CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT
+      : cleanPositiveNumber(input.finals_problem_count, DEFAULT_COMPETITION.finals_problem_count),
+    qualifier_eligible_age_groups: cascadeCupDemo ? [...CASCADE_CUP_AGE_GROUPS] : optionalArrayifyIds(input.qualifier_eligible_age_groups),
+    finals_eligible_age_groups: cascadeCupDemo ? [...CASCADE_CUP_AGE_GROUPS] : optionalArrayifyIds(input.finals_eligible_age_groups),
   });
-  const legacyProjection = projectLegacyCompetitionFields(competition, competition.rounds ?? []);
+  const categories = cascadeCupDemo ? getCascadeCupCategoryRows(competition.id) : getDefaultCompetitionCategories(competition.id);
+  const rounds = cascadeCupDemo ? buildCascadeCupRounds(competition) : competition.rounds ?? [];
+  const hydratedCompetition = normalizeCompetition({ ...competition, rounds }, categories, [], rounds);
+  const scheduleBlocks = cascadeCupDemo ? buildCascadeCupScheduleBlocks(hydratedCompetition.id, hydratedCompetition.rounds ?? []) : [];
+  const legacyProjection = projectLegacyCompetitionFields(hydratedCompetition, hydratedCompetition.rounds ?? []);
   const insertPayload = {
-    id: competition.id,
-    slug: competition.slug,
-    name: competition.name,
-    is_demo: competition.is_demo,
-    status: competition.status,
+    id: hydratedCompetition.id,
+    slug: hydratedCompetition.slug,
+    name: hydratedCompetition.name,
+    is_demo: hydratedCompetition.is_demo,
+    status: hydratedCompetition.status,
     format: legacyProjection.format,
-    current_phase: competition.current_phase,
-    discipline_label: competition.discipline_label,
-    stage_mode: competition.stage_mode,
-    location_name: competition.location_name,
-    start_date: competition.start_date,
-    end_date: competition.end_date,
-    registration_opens_at: competition.registration_opens_at,
-    registration_closes_at: competition.registration_closes_at,
-    description: competition.description,
-    hero_image_url: competition.hero_image_url,
-    official_event_url: competition.official_event_url,
-    official_registration_url: competition.official_registration_url,
-    official_schedule_url: competition.official_schedule_url,
+    current_phase: hydratedCompetition.current_phase,
+    discipline_label: hydratedCompetition.discipline_label,
+    stage_mode: hydratedCompetition.stage_mode,
+    location_name: hydratedCompetition.location_name,
+    start_date: hydratedCompetition.start_date,
+    end_date: hydratedCompetition.end_date,
+    registration_opens_at: hydratedCompetition.registration_opens_at,
+    registration_closes_at: hydratedCompetition.registration_closes_at,
+    description: hydratedCompetition.description,
+    hero_image_url: hydratedCompetition.hero_image_url,
+    official_event_url: hydratedCompetition.official_event_url,
+    official_registration_url: hydratedCompetition.official_registration_url,
+    official_schedule_url: hydratedCompetition.official_schedule_url,
     total_climbs: legacyProjection.total_climbs,
-    max_climbers: competition.max_climbers,
+    max_climbers: hydratedCompetition.max_climbers,
     qualifier_counting_climbs: legacyProjection.qualifier_counting_climbs,
     has_finals: legacyProjection.has_finals,
     finals_cutoff: legacyProjection.finals_cutoff,
-    finals_tie_advances: competition.finals_tie_advances,
-    qualifier_eligible_age_groups: competition.qualifier_eligible_age_groups,
-    finals_eligible_age_groups: competition.finals_eligible_age_groups,
+    finals_tie_advances: hydratedCompetition.finals_tie_advances,
+    qualifier_eligible_age_groups: hydratedCompetition.qualifier_eligible_age_groups,
+    finals_eligible_age_groups: hydratedCompetition.finals_eligible_age_groups,
     qualifier_locked_at: null,
     finals_started_at: null,
     finals_problem_count: legacyProjection.finals_problem_count,
@@ -595,11 +643,10 @@ async function createCompetition(
     throw new Error(error.message);
   }
 
-  const categories = getDefaultCompetitionCategories(competition.id);
   const { error: categoryError } = await supabase.from("competition_categories").insert(
     categories.map((category) => ({
       id: category.id,
-      competition_id: competition.id,
+      competition_id: hydratedCompetition.id,
       gender_division: category.gender_division,
       age_group: category.age_group,
       display_name: category.display_name,
@@ -610,8 +657,30 @@ async function createCompetition(
     throw new Error(categoryError.message);
   }
 
-  await persistCompetitionRounds(supabase, competition, competition.rounds ?? []);
-  return { competitionId: competition.id };
+  await persistCompetitionRounds(supabase, hydratedCompetition, hydratedCompetition.rounds ?? []);
+  if (scheduleBlocks.length) {
+    const { error: scheduleError } = await supabase.from("competition_schedule_blocks").insert(
+      scheduleBlocks.map((block, index) => ({
+        id: block.id || createId(),
+        competition_id: hydratedCompetition.id,
+        sort_order: block.sort_order ?? index + 1,
+        label: cleanString(block.label),
+        phase_type: block.phase_type,
+        audience_label: cleanString(block.audience_label),
+        is_active: block.is_active,
+        start_time: block.start_time ? cleanString(block.start_time) : null,
+        end_time: block.end_time ? cleanString(block.end_time) : null,
+        capacity: block.capacity,
+        eligible_category_ids: block.eligible_category_ids,
+        round_id: block.round_id,
+      }))
+    );
+    if (scheduleError) {
+      throw new Error(scheduleError.message);
+    }
+  }
+
+  return { competitionId: hydratedCompetition.id };
 }
 
 async function saveCompetitionConfig(

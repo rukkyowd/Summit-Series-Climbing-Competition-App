@@ -4,6 +4,11 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import {
+  CASCADE_CUP_DEMO_NAME,
+  CASCADE_CUP_DEMO_SCENARIO,
+  buildCascadeCupScorecardUrl,
+} from "@/lib/cascade-cup-demo";
 import { clearOfflineQueueForCompetition } from "@/lib/staff-offline-queue";
 
 type DemoCompetition = {
@@ -18,6 +23,8 @@ type DemoSeedResponse = {
   judgeUrl?: string;
   publicUrl?: string;
   leaderboardUrl?: string;
+  organizerUrl?: string;
+  scorecardUrl?: string;
   error?: string;
   target?: {
     name: string;
@@ -46,7 +53,7 @@ async function seedDemo(competitionId: string) {
   const response = await fetch("/api/demo/seed", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ competitionId }),
+    body: JSON.stringify({ competitionId, scenario: CASCADE_CUP_DEMO_SCENARIO }),
   });
   const payload = (await response.json().catch(() => null)) as DemoSeedResponse | null;
   if (!response.ok || !payload?.ok) {
@@ -117,23 +124,23 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
     <div className="space-y-6">
       <Surface variant="card" className="space-y-6">
         <div className="space-y-3">
-          <div className="results-kicker text-sky-700">Scorecard demo workspace</div>
+          <div className="results-kicker text-sky-700">Cascade Cup demo workspace</div>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
-            Run the real app with sample competition data.
+            Run Cascade Cup through the real app.
           </h1>
           <p className="max-w-3xl text-base leading-7 text-slate-600">
-            Create a demo competition through the normal staff flow, add sample climbers when you
-            are ready for judging, then explore the organizer and public pages without extra
-            walkthrough layers.
+            This workspace supports the sales demo from start to finish: create {CASCADE_CUP_DEMO_NAME}
+            in the real staff flow, add a realistic youth field, correct Maya Chen on B3, advance
+            finalists, publish results, then delete the demo when you are done.
           </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-4">
           {[
-            ["1. Create", "Use the real staff creation form to make a demo event."],
-            ["2. Seed", "Add sample climbers and Maya Chen's intentional B3 mistake."],
-            ["3. Explore", "Open the real judge, organizer, leaderboard, and public pages."],
-            ["4. Clean up", "Delete the demo from this workspace when you are finished."],
+            ["1. Create", "Use the real staff creation form with Cascade Cup defaults preloaded."],
+            ["2. Judge", "Seed 48 youth climbers, then fix Maya Chen #104 on B3."],
+            ["3. Organize", "Review standings, lock qualifiers, advance finalists, and publish results."],
+            ["4. Clean up", "Delete the demo from this workspace when the walkthrough is finished."],
           ].map(([title, body]) => (
             <div key={title} className="rounded-[1.25rem] border border-slate-200 bg-white/75 p-4">
               <div className="text-sm font-semibold text-slate-950">{title}</div>
@@ -143,7 +150,11 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Button type="button" variant="primary" onClick={() => router.push("/staff/new?demo=1")}>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => router.push(`/staff/new?demo=1&scenario=${CASCADE_CUP_DEMO_SCENARIO}`)}
+          >
             Start Demo
           </Button>
           <Button
@@ -172,7 +183,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
 
         {!latestDemo ? (
           <p className="text-sm leading-6 text-slate-500">
-            Start Demo creates the first demo competition. Skip links activate after a demo event exists.
+            Start Demo opens the real staff creation form. Skip links activate after a demo event exists.
           </p>
         ) : null}
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
@@ -197,6 +208,10 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
                   <div>
                     <div className="text-lg font-semibold text-slate-950">{demo.name}</div>
                     <div className="mt-1 text-sm text-slate-500">/{demo.slug}</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-600">
+                      Script path: homepage, staff setup, judge B3 correction, leaderboard cut line,
+                      organizer operations, public results, cleanup.
+                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span className="results-chip">
                         {demoStates[demo.id]?.progress?.dataPopulated ? "Seeded" : "Needs seed"}
@@ -241,11 +256,31 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
                     >
                       Open Judge Demo
                     </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => router.push(`/c/${demo.slug}/leaderboard?demo=1`)}
+                    >
+                      Open Leaderboard
+                    </Button>
                     <Button type="button" variant="secondary" onClick={() => router.push(`/staff/c/${demo.slug}?demo=1`)}>
                       Organizer Demo
                     </Button>
                     <Button type="button" variant="secondary" onClick={() => router.push(`/c/${demo.slug}?demo=1`)}>
                       Public Demo
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isPending}
+                      onClick={() =>
+                        runWithFeedback(async () => {
+                          const payload = await seedDemo(demo.id);
+                          router.push(payload.scorecardUrl ?? buildCascadeCupScorecardUrl(demo.slug, demo.id));
+                        })
+                      }
+                    >
+                      Athlete Scorecard
                     </Button>
                     <Button
                       type="button"

@@ -314,6 +314,10 @@ describe("demo seed route", () => {
     expect(body.judgeUrl).toContain("/staff/c/demo-comp/judge?demo=1");
     expect(body.judgeUrl).toContain("boulder=3");
     expect(body.judgeUrl).toContain(`climberId=${maya?.id}`);
+    expect(body.leaderboardUrl).toBe("/c/demo-comp/leaderboard?demo=1");
+    expect(body.organizerUrl).toBe("/staff/c/demo-comp?demo=1");
+    expect(body.scorecardUrl).toContain("/c/demo-comp/scorecard?");
+    expect(body.inserted).toMatchObject({ climbers: 48, attempts: 960 });
   });
 
   it("repairs finals-capable demo config before inserting climbers and scores", async () => {
@@ -322,10 +326,13 @@ describe("demo seed route", () => {
     expect(response.status).toBe(200);
     expect(mockState.competitionUpdates[0]).toMatchObject({
       has_finals: true,
+      total_climbs: 20,
+      qualifier_counting_climbs: 8,
       finals_cutoff: 6,
       finals_tie_advances: false,
       finals_problem_count: 4,
-      finals_eligible_age_groups: ["Youth B"],
+      qualifier_eligible_age_groups: ["Youth B", "Youth A", "Junior"],
+      finals_eligible_age_groups: ["Youth B", "Youth A", "Junior"],
     });
     expect(mockState.operationLog[0]).toBe("competition:update");
     expect(mockState.operationLog.indexOf("climbers:insert")).toBeGreaterThan(0);
@@ -359,10 +366,17 @@ describe("demo seed route", () => {
       expect.arrayContaining([
         expect.objectContaining({
           competition_id: "competition-1",
-          label: "Demo finals",
+          label: "Cascade Cup finals",
           phase_type: "finals_round",
           round_id: "round-finals",
-          eligible_category_ids: ["Men::Youth B"],
+          eligible_category_ids: [
+            "Men::Youth B",
+            "Men::Youth A",
+            "Men::Junior",
+            "Women::Youth B",
+            "Women::Youth A",
+            "Women::Junior",
+          ],
         }),
         expect.objectContaining({
           competition_id: "competition-1",
