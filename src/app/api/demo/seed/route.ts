@@ -20,6 +20,10 @@ type CompetitionRow = {
   id: string;
   slug: string;
   is_demo: boolean;
+  format: string | null;
+  total_climbs: number | null;
+  qualifier_counting_climbs: number | null;
+  finals_eligible_age_groups: unknown;
 };
 
 type CategoryRow = {
@@ -32,6 +36,8 @@ type CategoryRow = {
 
 type RoundRow = {
   id: string;
+  round_number?: number | null;
+  sort_order?: number | null;
   round_type: string | null;
   scoring_bucket: string | null;
 };
@@ -53,6 +59,10 @@ const SAMPLE_CLIMBERS = [
   { name: "Declan White", number: "105", province: "NL" },
   { name: "Isaac Green", number: "106", province: "QC" },
 ] as const;
+
+const DEMO_FINALS_CUTOFF = 6;
+const DEMO_FINALS_PROBLEM_COUNT = 4;
+const DEMO_FINALS_ELIGIBLE_AGE_GROUP = "Youth B";
 
 function createId() {
   return crypto.randomUUID();
@@ -128,12 +138,12 @@ async function ensureCategory(
 
 async function getQualifierRoundId(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
-  competitionId: string
+  competition: CompetitionRow
 ) {
   const { data, error } = await supabase
     .from("competition_rounds")
     .select("id, round_type, scoring_bucket")
-    .eq("competition_id", competitionId)
+    .eq("competition_id", competition.id)
     .or("round_type.eq.qualifier,scoring_bucket.eq.qualifier")
     .order("sort_order", { ascending: true })
     .limit(1)
@@ -143,7 +153,146 @@ async function getQualifierRoundId(
     throw new Error(error.message);
   }
 
-  return (data as RoundRow | null)?.id ?? null;
+  const existingId = (data as RoundRow | null)?.id ?? null;
+  if (existingId) {
+    return existingId;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("competition_rounds")
+    .insert({
+      competition_id: competition.id,
+      round_number: 1,
+      sort_order: 1,
+      name: "Qualifier",
+      round_type: "qualifier",
+      format: competition.format ?? "five_on_five_off",
+      status: "pending",
+      runtime_phase: "qualifier_open",
+      is_enabled: true,
+      is_active: false,
+      activated_at: null,
+      problem_count: competition.total_climbs ?? 4,
+      counting_climbs: competition.qualifier_counting_climbs ?? 4,
+      finals_cutoff: DEMO_FINALS_CUTOFF,
+      eligible_category_ids: [],
+      advancement_source_round_id: null,
+      advancement_cutoff: DEMO_FINALS_CUTOFF,
+      scoring_bucket: "qualifier",
+      scoring_config: {},
+      started_at: null,
+      closed_at: null,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return inserted.id as string;
+}
+
+function ensureYouthBFinalsEligible(value: unknown) {
+  const current = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.from(new Set([...current, DEMO_FINALS_ELIGIBLE_AGE_GROUP]));
+}
+
+async function ensureDemoFinalsConfiguration(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: CompetitionRow
+) {
+  const { error } = await supabase
+    .from("competitions")
+    .update({
+      has_finals: true,
+      finals_cutoff: DEMO_FINALS_CUTOFF,
+      finals_tie_advances: false,
+      finals_problem_count: DEMO_FINALS_PROBLEM_COUNT,
+      finals_eligible_age_groups: ensureYouthBFinalsEligible(competition.finals_eligible_age_groups),
+    })
+    .eq("id", competition.id)
+    .eq("is_demo", true);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function ensureFinalsRound(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: CompetitionRow,
+  qualifierRoundId: string
+) {
+  const { data, error } = await supabase
+    .from("competition_rounds")
+    .select("id, round_number, sort_order, round_type, scoring_bucket")
+    .eq("competition_id", competition.id)
+    .or("round_type.eq.finals,scoring_bucket.eq.finals")
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const existing = data as RoundRow | null;
+  const row = {
+    name: "Finals",
+    round_type: "finals",
+    format: "ifsc_finals_format",
+    status: "pending",
+    runtime_phase: "finals_open",
+    is_enabled: true,
+    is_active: false,
+    activated_at: null,
+    problem_count: DEMO_FINALS_PROBLEM_COUNT,
+    counting_climbs: null,
+    finals_cutoff: DEMO_FINALS_CUTOFF,
+    eligible_category_ids: [],
+    advancement_source_round_id: qualifierRoundId,
+    advancement_cutoff: DEMO_FINALS_CUTOFF,
+    scoring_bucket: "finals",
+    scoring_config: {},
+    started_at: null,
+    closed_at: null,
+  };
+
+  if (existing?.id) {
+    const update = await supabase
+      .from("competition_rounds")
+      .update({
+        ...row,
+        round_number: existing.round_number ?? 2,
+        sort_order: existing.sort_order ?? 2,
+      })
+      .eq("competition_id", competition.id)
+      .eq("id", existing.id);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+
+    return existing.id;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("competition_rounds")
+    .insert({
+      competition_id: competition.id,
+      round_number: 2,
+      sort_order: 2,
+      ...row,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return inserted.id as string;
 }
 
 function getEligibleCategoryIds(value: unknown) {
@@ -354,7 +503,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceRoleSupabaseClient();
     const { data: competition, error: competitionError } = await supabase
       .from("competitions")
-      .select("id, slug, is_demo")
+      .select("id, slug, is_demo, format, total_climbs, qualifier_counting_climbs, finals_eligible_age_groups")
       .eq("id", body.competitionId)
       .maybeSingle();
 
@@ -375,10 +524,9 @@ export async function POST(request: NextRequest) {
     }
 
     const category = await ensureCategory(supabase, competitionRow.id);
-    const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow.id);
-    if (!qualifierRoundId) {
-      throw new Error("Demo seeding requires a qualifier round before climbers can be assigned to a session.");
-    }
+    await ensureDemoFinalsConfiguration(supabase, competitionRow);
+    const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow);
+    await ensureFinalsRound(supabase, competitionRow, qualifierRoundId);
     const qualifierSessionId = await ensureQualifierSession(
       supabase,
       competitionRow.id,

@@ -7,6 +7,7 @@ import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import { QualifierScoreEditor } from "@/components/judge/qualifier-score-editor";
 import { RecentScoreFeedback } from "@/components/judge/recent-score-feedback";
+import { DemoJudgeSplitPanel } from "@/components/demo-judge-split";
 import { DemoHUD } from "@/components/demo-hud";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
@@ -1411,6 +1412,8 @@ export default function StaffJudgePage() {
     );
   }
 
+  const demoSplitActive = demoGuideActive && snapshot.competition.is_demo;
+
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
@@ -1513,7 +1516,13 @@ export default function StaffJudgePage() {
 
         {stage === "qualifier" ? (
           <section className="results-card" id="judge-demo-score-editor">
-            <div className="grid gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]">
+            <div
+              className={
+                demoSplitActive
+                  ? "grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)_20rem]"
+                  : "grid gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]"
+              }
+            >
               <AthletePicker
                 activeRoundName={activeQualifierRoundName}
                 athletes={qualifierAthleteEntries}
@@ -1593,6 +1602,15 @@ export default function StaffJudgePage() {
                   }))
                 }
               />
+              {demoSplitActive ? (
+                <aside className="hidden xl:block">
+                  <DemoJudgeSplitPanel
+                    competitionId={snapshot.competition.id}
+                    competitionSlug={slug}
+                    initialSnapshot={snapshot}
+                  />
+                </aside>
+              ) : null}
             </div>
           </section>
         ) : (

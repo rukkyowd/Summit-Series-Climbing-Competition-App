@@ -110,6 +110,10 @@ export function StaffEventCreationForm({
             same event creation form staff use, with the preset locked because the guided story needs
             qualifier scoring, finalist advancement, finals, and public results.
           </div>
+          <div className="mt-3 rounded-[1rem] border border-emerald-200 bg-white/70 px-3 py-2 text-xs leading-5 text-emerald-900">
+            The demo seed will prepare the story-critical Youth B category, qualifier and finals
+            rounds, finals cutoff, and event-day schedule after you create the event.
+          </div>
         </div>
       ) : null}
 
@@ -291,6 +295,8 @@ export function StaffEventCreationForm({
           In a real event, athletes register through the public registration page, choose a
           category, and receive private scorecard links. For this guided demo, we simulate
           registrations after creation so the judge screen and leaderboard have realistic data.
+          Youth B climbers are seeded into a qualifier session so Maya Chen&apos;s scoring correction can
+          move the finals cut line.
         </div>
       ) : null}
       </div>
@@ -309,7 +315,7 @@ export function StaffEventCreationForm({
           {mode === "guided-demo" ? (
             <div className="mb-3 text-sm leading-6 text-slate-600">
               {activeGuideStepId === "create"
-                ? "Now create the event. After this, the demo will populate realistic climbers and scores so you can continue to the judge screen."
+                ? "Now create the event. After this, the demo will populate realistic climbers, seeded qualifier scores, Maya's scoring mistake, and finals-ready structure."
                 : "Review the guided setup steps first. The create action unlocks on the final Create Demo Event step."}
             </div>
           ) : null}

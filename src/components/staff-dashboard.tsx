@@ -19,6 +19,12 @@ import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
+  GUIDED_ORGANIZER_ACT_1_STEPS,
+  clampGuidedAct1StepIndex,
+  getGuidedAct1FormStepId,
+  type GuidedOrganizerWalkthroughStep,
+} from "@/lib/demo-act1-guide";
+import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
   getCompetitionPreset,
@@ -212,87 +218,6 @@ function isDemoCompetitionRecord(record: Pick<Competition, "is_demo">) {
 function isDemoDataSlug(_: string | null | undefined) {
   return false;
 }
-
-type GuidedDemoSetupStepId =
-  | "basics"
-  | "preset"
-  | "registration"
-  | "categories"
-  | "finals"
-  | "rounds"
-  | "schedule"
-  | "create";
-
-type GuidedOrganizerWalkthroughStep = {
-  id: GuidedDemoSetupStepId;
-  title: string;
-  explanation: string;
-  why: string;
-  anchorId: string;
-};
-
-const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
-  {
-    id: "basics",
-    title: "Event basics",
-    explanation: "Name the event and confirm where and when it runs.",
-    why: "This gives the public page, staff workspace, and judge screens a believable event identity.",
-    anchorId: "guided-act1-basics",
-  },
-  {
-    id: "preset",
-    title: "Preset",
-    explanation:
-      "Youth Championship with Finals is required so the story can demonstrate qualifiers, finalist advancement, finals, and public results.",
-    why: "The preset keeps Act 3 meaningful by guaranteeing finals are configured before scoring starts.",
-    anchorId: "guided-act1-preset",
-  },
-  {
-    id: "registration",
-    title: "Registration",
-    explanation:
-      "In a real event, climbers register through the public page and receive private scorecard links. For the demo, we'll simulate registrations after you create the event.",
-    why: "You configure registration once, then the demo fills the field so judge and leaderboard screens feel alive.",
-    anchorId: "guided-act1-registration",
-  },
-  {
-    id: "categories",
-    title: "Categories",
-    explanation: "These are the divisions athletes register into.",
-    why: "Categories drive registration, standings, finalist cuts, and public leaderboard filters.",
-    anchorId: "guided-act1-categories",
-  },
-  {
-    id: "finals",
-    title: "Finals eligibility",
-    explanation:
-      "Youth B, Youth A, and Junior advance to finals by default. Youth D and Youth C compete in qualifiers only.",
-    why: "Finals eligibility is constrained to the selected categories so the cut line is auditable.",
-    anchorId: "guided-act1-finals",
-  },
-  {
-    id: "rounds",
-    title: "Rounds/scoring",
-    explanation: "The event starts with qualifiers, then advances finalists into a finals round.",
-    why: "The judge screen and organizer controls use this structure to know what can be scored next.",
-    anchorId: "guided-act1-rounds",
-  },
-  {
-    id: "schedule",
-    title: "Schedule",
-    explanation: "This gives organizers, judges, athletes, and spectators the event-day structure.",
-    why: "Public pages and staff controls stay aligned when schedule blocks, rounds, and phases match.",
-    anchorId: "guided-act1-schedule",
-  },
-  {
-    id: "create",
-    title: "Create Demo Event",
-    explanation:
-      "Now create the event. After this, the demo will populate realistic climbers and scores so you can continue to the judge screen.",
-    why: "This is the only step that submits the form and starts server-side demo population.",
-    anchorId: "guided-act1-create",
-  },
-];
 
 function GuidedOrganizerAct1Walkthrough({
   steps,
@@ -851,9 +776,9 @@ export default function StaffDashboard({
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
   const demoFormat = "five_on_five_off" as Competition["format"];
-  const isGuidedStoryAct1 = false;
+  const isGuidedStoryAct1 = demoSeedOnCreate;
   const isGuidedStoryAct3 = guidedDemoActive;
-  const currentGuidedAct1Step = { id: "basics" as const };
+  const currentGuidedAct1StepId = getGuidedAct1FormStepId(guidedAct1StepIndex);
   const [demoSeedResult, setDemoSeedResult] = useState<null | {
     judgeUrl: string;
     publicUrl: string;
@@ -2024,6 +1949,51 @@ export default function StaffDashboard({
       ["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
       Boolean(snapshot?.finalists.length)
     : false;
+  const demoAct3AdvanceBlockedReason = !draft
+    ? ""
+    : !draftHasFinals
+      ? "Finals are not enabled. Restart the demo so the seed can repair the finals-capable setup."
+      : !["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase)
+        ? `The event is already in ${formatCompetitionPhaseLabel(draft.current_phase).toLowerCase()}.`
+        : !snapshot?.finalists.length
+          ? "No projected finalists are available yet. Restart the demo to repair the Youth B finals setup and seeded scores."
+          : "";
+  const demoAct3PreviewRows = useMemo(() => {
+    if (!snapshot || !draft) {
+      return [] as Array<{
+        climberId: string;
+        name: string;
+        displayCategory: string;
+        rank: number;
+        toppedCount: number | null;
+        zoneCount: number | null;
+      }>;
+    }
+
+    const cutoff = draft.finals_cutoff ?? 6;
+    if (snapshot.finalists.length) {
+      return snapshot.finalists.slice(0, cutoff).map((entry) => ({
+        climberId: entry.climber_id,
+        name: entry.name,
+        displayCategory: entry.display_category,
+        rank: entry.qualifier_rank,
+        toppedCount: null,
+        zoneCount: null,
+      }));
+    }
+
+    return snapshot.qualifierLeaderboard
+      .filter((entry) => entry.age_group === "Youth B")
+      .slice(0, cutoff)
+      .map((entry) => ({
+        climberId: entry.climber_id,
+        name: entry.name,
+        displayCategory: entry.display_category,
+        rank: entry.category_rank,
+        toppedCount: entry.topped_count,
+        zoneCount: entry.zone_count,
+      }));
+  }, [draft, snapshot]);
   const demoBanner = demoMode
     ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
     : selectedCompetitionIsDemo
@@ -2147,7 +2117,7 @@ export default function StaffDashboard({
     [demoMode]
   );
   const goToGuidedAct1Step = useCallback((stepIndex: number) => {
-    const nextIndex = Math.max(0, Math.min(GUIDED_ORGANIZER_ACT_1_STEPS.length - 1, stepIndex));
+    const nextIndex = clampGuidedAct1StepIndex(stepIndex);
     setGuidedAct1StepIndex(nextIndex);
 
     const anchorId = GUIDED_ORGANIZER_ACT_1_STEPS[nextIndex]?.anchorId;
@@ -2805,6 +2775,81 @@ export default function StaffDashboard({
             ]}
           />
         ) : null}
+        {isGuidedStoryAct3 && draft && snapshot && isDemoCompetitionRecord(draft) && !organizerDemoAdvanced ? (
+          <Surface variant="card" className="border-sky-200 bg-sky-50/70">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
+              <div className="space-y-3">
+                <div className="results-kicker text-sky-700">Act 3 - Organizer: Advance Finalists</div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  Review the cut line, then advance the finals field.
+                </h2>
+                <p className="text-sm leading-6 text-slate-600">
+                  This card surfaces the real organizer action. It uses the same confirmation and
+                  finalist-save flow as the normal dashboard; nothing is auto-advanced for the demo.
+                </p>
+                {demoAct3AdvanceBlockedReason ? (
+                  <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                    {demoAct3AdvanceBlockedReason}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`${leaderboardPath}?demo=1`} className="results-secondary-button">
+                    View leaderboard impact
+                  </Link>
+                  <button
+                    type="button"
+                    className="results-primary-button"
+                    disabled={!canAdvanceToFinals || isPending || isPhasePending}
+                    onClick={() =>
+                      setConfirming({
+                        title: "Advance to finals",
+                        description: finalsAdvanceBlock
+                          ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
+                          : `This will create the finals field from the current standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
+                        confirmLabel: "Advance",
+                        expectedValue: draft.name,
+                        action: async () => {
+                          await advanceToFinals();
+                        },
+                      })
+                    }
+                  >
+                    {isPending || isPhasePending ? "Advancing..." : `Advance top ${draft.finals_cutoff ?? 6}`}
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-[1.4rem] border border-slate-200 bg-white/90 p-3 shadow-sm">
+                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Projected cut
+                </div>
+                <div className="mt-3 space-y-2">
+                  {demoAct3PreviewRows.length ? (
+                    demoAct3PreviewRows.map((row) => (
+                      <div key={row.climberId} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-bold text-white">
+                          {row.rank}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-slate-950">{row.name}</div>
+                          <div className="truncate text-xs text-slate-500">{row.displayCategory}</div>
+                        </div>
+                        {row.toppedCount !== null && row.zoneCount !== null ? (
+                          <div className="shrink-0 text-xs font-semibold text-slate-500">
+                            {row.toppedCount}T {row.zoneCount}Z
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-5 text-sm text-slate-500">
+                      Projected finalists will appear here after demo data is repaired and loaded.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
         {demoMode && !isGuidedStoryAct1 ? (
           <DemoSalesShell
             mode="organizer"
@@ -3104,7 +3149,7 @@ export default function StaffDashboard({
                 lockFormat={demoSeedOnCreate}
                 showCapacity={demoSeedOnCreate}
                 showRegistrationStory={demoSeedOnCreate}
-                activeGuideStepId={demoSeedOnCreate ? "basics" : undefined}
+                activeGuideStepId={demoSeedOnCreate ? currentGuidedAct1StepId : undefined}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
                     ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${

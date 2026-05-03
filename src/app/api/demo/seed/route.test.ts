@@ -10,7 +10,31 @@ import {
 type QueryResult = { data?: unknown; error: { message: string } | null };
 
 const mockState = vi.hoisted(() => ({
-  competition: { id: "competition-1", slug: "demo-comp", is_demo: true },
+  competition: {
+    id: "competition-1",
+    slug: "demo-comp",
+    is_demo: true,
+    format: "five_on_five_off",
+    total_climbs: 4,
+    qualifier_counting_climbs: 4,
+    finals_eligible_age_groups: [],
+  },
+  qualifierRound: { id: "round-qualifier", round_type: "qualifier", scoring_bucket: "qualifier" } as {
+    id: string;
+    round_type: string;
+    scoring_bucket: string;
+  } | null,
+  finalsRound: null as {
+    id: string;
+    round_number: number;
+    sort_order: number;
+    round_type: string;
+    scoring_bucket: string;
+  } | null,
+  competitionUpdates: [] as Array<Record<string, unknown>>,
+  roundUpdates: [] as Array<Record<string, unknown>>,
+  roundInserts: [] as Array<Record<string, unknown>>,
+  operationLog: [] as string[],
   insertedClimbers: [] as Array<{ id: string; climber_number: string }>,
   insertedAttempts: [] as Array<{
     climber_id: string;
@@ -27,6 +51,7 @@ const mockState = vi.hoisted(() => ({
 class SupabaseQueryMock {
   private operation: "select" | "insert" | "update" | "delete" | null = null;
   private payload: unknown = null;
+  private orFilter = "";
 
   constructor(private readonly table: string) {}
 
@@ -49,6 +74,12 @@ class SupabaseQueryMock {
     return this;
   }
 
+  upsert(payload: unknown) {
+    this.operation = "insert";
+    this.payload = payload;
+    return this;
+  }
+
   delete() {
     this.operation = "delete";
     return this;
@@ -66,7 +97,8 @@ class SupabaseQueryMock {
     return this;
   }
 
-  or() {
+  or(filter?: string) {
+    this.orFilter = filter ?? "";
     return this;
   }
 
@@ -97,13 +129,21 @@ class SupabaseQueryMock {
     }
 
     if (this.table === "competition_rounds") {
-      return { data: { id: "round-qualifier", round_type: "qualifier", scoring_bucket: "qualifier" }, error: null };
+      if (this.orFilter.includes("finals")) {
+        return { data: mockState.finalsRound, error: null };
+      }
+      return { data: mockState.qualifierRound, error: null };
     }
 
     return { data: null, error: null };
   }
 
   async single(): Promise<QueryResult> {
+    if (this.table === "competition_rounds" && this.operation === "insert") {
+      mockState.roundInserts.push(this.payload as Record<string, unknown>);
+      return { data: { id: "round-finals" }, error: null };
+    }
+
     return { data: { id: "session-1" }, error: null };
   }
 
@@ -116,7 +156,19 @@ class SupabaseQueryMock {
 
   private async resolve(): Promise<QueryResult> {
     if (this.operation === "update" || this.operation === "delete") {
+      if (this.table === "competitions" && this.operation === "update") {
+        mockState.operationLog.push("competition:update");
+        mockState.competitionUpdates.push(this.payload as Record<string, unknown>);
+      }
+      if (this.table === "competition_rounds" && this.operation === "update") {
+        mockState.roundUpdates.push(this.payload as Record<string, unknown>);
+      }
       return { error: null };
+    }
+
+    if (this.table === "competition_rounds" && this.operation === "insert") {
+      mockState.roundInserts.push(this.payload as Record<string, unknown>);
+      return { data: { id: "round-finals" }, error: null };
     }
 
     if (this.table === "competition_schedule_blocks") {
@@ -140,6 +192,7 @@ class SupabaseQueryMock {
     }
 
     if (this.table === "climbers" && this.operation === "insert") {
+      mockState.operationLog.push("climbers:insert");
       const payload = Array.isArray(this.payload)
         ? (this.payload as Array<{ id: string; climber_number: string }>)
         : [];
@@ -151,6 +204,7 @@ class SupabaseQueryMock {
     }
 
     if (this.table === "qualifier_attempts" && this.operation === "insert") {
+      mockState.operationLog.push("attempts:insert");
       mockState.insertedAttempts = Array.isArray(this.payload)
         ? (this.payload as typeof mockState.insertedAttempts)
         : [];
@@ -178,7 +232,21 @@ function jsonRequest(payload: unknown) {
 }
 
 beforeEach(() => {
-  mockState.competition = { id: "competition-1", slug: "demo-comp", is_demo: true };
+  mockState.competition = {
+    id: "competition-1",
+    slug: "demo-comp",
+    is_demo: true,
+    format: "five_on_five_off",
+    total_climbs: 4,
+    qualifier_counting_climbs: 4,
+    finals_eligible_age_groups: [],
+  };
+  mockState.qualifierRound = { id: "round-qualifier", round_type: "qualifier", scoring_bucket: "qualifier" };
+  mockState.finalsRound = null;
+  mockState.competitionUpdates = [];
+  mockState.roundUpdates = [];
+  mockState.roundInserts = [];
+  mockState.operationLog = [];
   mockState.insertedClimbers = [];
   mockState.insertedAttempts = [];
   mockState.from.mockReset();
@@ -187,12 +255,17 @@ beforeEach(() => {
 
 describe("demo seed route", () => {
   it("refuses to seed non-demo competitions", async () => {
-    mockState.competition = { id: "competition-1", slug: "real-comp", is_demo: false };
+    mockState.competition = {
+      ...mockState.competition,
+      slug: "real-comp",
+      is_demo: false,
+    };
 
     const response = await POST(jsonRequest({ competitionId: "competition-1" }));
 
     expect(response.status).toBe(403);
     expect(mockState.insertedAttempts).toEqual([]);
+    expect(mockState.competitionUpdates).toEqual([]);
   });
 
   it("reseeds Maya B3 as Top in 3 and returns a preselected judge URL", async () => {
@@ -226,5 +299,40 @@ describe("demo seed route", () => {
     expect(body.judgeUrl).toContain("/staff/c/demo-comp/judge?demo=1");
     expect(body.judgeUrl).toContain("boulder=3");
     expect(body.judgeUrl).toContain(`climberId=${maya?.id}`);
+  });
+
+  it("repairs finals-capable demo config before inserting climbers and scores", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+
+    expect(response.status).toBe(200);
+    expect(mockState.competitionUpdates[0]).toMatchObject({
+      has_finals: true,
+      finals_cutoff: 6,
+      finals_tie_advances: false,
+      finals_problem_count: 4,
+      finals_eligible_age_groups: ["Youth B"],
+    });
+    expect(mockState.operationLog[0]).toBe("competition:update");
+    expect(mockState.operationLog.indexOf("climbers:insert")).toBeGreaterThan(0);
+    expect(mockState.operationLog.indexOf("attempts:insert")).toBeGreaterThan(
+      mockState.operationLog.indexOf("climbers:insert")
+    );
+  });
+
+  it("creates a finals round linked to the qualifier round when missing", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+
+    expect(response.status).toBe(200);
+    expect(mockState.roundInserts).toContainEqual(
+      expect.objectContaining({
+        competition_id: "competition-1",
+        name: "Finals",
+        round_type: "finals",
+        scoring_bucket: "finals",
+        advancement_source_round_id: "round-qualifier",
+        advancement_cutoff: 6,
+        problem_count: 4,
+      })
+    );
   });
 });
