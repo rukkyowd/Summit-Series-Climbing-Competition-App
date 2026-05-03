@@ -130,8 +130,8 @@ type RegisteredClimberResult = Climber & {
   scorecard_path: string;
 };
 
-type ReadOptions = { authenticated?: boolean };
-type SupabaseReadClient = typeof publicSupabase | typeof supabase;
+type SupabaseReadClient = Pick<typeof publicSupabase, "from" | "rpc">;
+type ReadOptions = { authenticated?: boolean; readClient?: SupabaseReadClient };
 
 const LIVE_BOULDER_QUEUE_STALE_MINUTES = 3;
 
@@ -162,7 +162,7 @@ function ensureConfigured() {
 }
 
 function getReadClient(options?: ReadOptions): SupabaseReadClient {
-  return options?.authenticated ? supabase : publicSupabase;
+  return options?.readClient ?? (options?.authenticated ? supabase : publicSupabase);
 }
 
 async function postAdminCompetitionAction<TResponse extends Record<string, unknown> = Record<string, unknown>>(
@@ -782,8 +782,11 @@ async function fetchProjectedFinalists(
   })));
 }
 
-async function fetchUndoAvailability(competitionId: string): Promise<CompetitionUndoAvailability> {
-  const { data, error } = await supabase
+async function fetchUndoAvailability(
+  competitionId: string,
+  readClient: SupabaseReadClient = supabase
+): Promise<CompetitionUndoAvailability> {
+  const { data, error } = await readClient
     .from("competition_operations")
     .select("operation_type, expires_at")
     .eq("competition_id", competitionId)
@@ -1050,7 +1053,7 @@ export async function getCompetitionSnapshot(
       finalsRound?.advancement_cutoff ?? finalsRound?.finals_cutoff ?? null,
       readClient
     ),
-    fetchUndoAvailability(competition.id).catch(() => ({
+    fetchUndoAvailability(competition.id, readClient).catch(() => ({
       available: false,
       expires_at: null,
       operation_type: null,

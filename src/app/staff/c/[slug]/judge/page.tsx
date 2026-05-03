@@ -13,12 +13,11 @@ import { Button } from "@/components/ui/button";
 import type { SaveStatusState } from "@/components/ui/save-status";
 import {
   getClimberWithAttempts,
-  getCompetitionSnapshot,
   updateFinalAttempt,
   updateQualifierAttemptByStaff,
   type CompetitionSnapshot,
 } from "@/lib/db";
-import { getAuthState, isStaffRole, type Profile } from "@/lib/auth";
+import { getAuthState, type Profile } from "@/lib/auth";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "@/lib/attempts";
 import {
   buildQueueMetadata,
@@ -236,6 +235,7 @@ function formatQueuedAtLabel(scoredAt: string) {
 }
 
 type ConfirmationTone = "pending" | "confirmed" | "dirty";
+type StaffSnapshotFetchError = Error & { status?: number };
 
 function formatQualifierSavedState(attempt?: { attempt_count: number; topped: boolean; zone?: boolean | null } | null) {
   if (!attempt) {
@@ -250,6 +250,26 @@ function formatQualifierSavedState(attempt?: { attempt_count: number; topped: bo
     return `${countLabel}, zone`;
   }
   return `${countLabel}, no hold`;
+}
+
+async function fetchStaffCompetitionSnapshot(identifier: string) {
+  const response = await fetch(
+    `/api/staff/competitions/snapshot?identifier=${encodeURIComponent(identifier)}`,
+    { cache: "no-store" }
+  );
+  const body = (await response.json().catch(() => null)) as {
+    snapshot?: CompetitionSnapshot;
+    error?: unknown;
+  } | null;
+
+  if (!response.ok || !body?.snapshot) {
+    const message = typeof body?.error === "string" ? body.error : "Unable to load the judge panel.";
+    const error = new Error(message) as StaffSnapshotFetchError;
+    error.status = response.status;
+    throw error;
+  }
+
+  return body.snapshot;
 }
 
 function getQualifierPresentation(
@@ -456,6 +476,7 @@ export default function StaffJudgePage() {
   const initialClimberId = searchParams?.get("climberId") ?? "";
   const initialBoulder = Math.max(1, Number(searchParams?.get("boulder") ?? 1) || 1);
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
+  const snapshotRef = useRef<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stage, setStage] = useState<"qualifier" | "finals">(initialStage);
   const [query, setQuery] = useState("");
@@ -473,6 +494,10 @@ export default function StaffJudgePage() {
   const [queuedItems, setQueuedItems] = useState<QueuedScorePreview[]>([]);
   const flushingQueueRef = useRef(false);
   const finalsGridViewportRef = useRef<HTMLDivElement | null>(null);
+  const setResolvedSnapshot = useCallback((nextSnapshot: CompetitionSnapshot | null) => {
+    snapshotRef.current = nextSnapshot;
+    setSnapshot(nextSnapshot);
+  }, []);
   const activeQualifierRoundId = snapshot?.activeQualifierRound?.id ?? getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.id ?? null;
   const activeQualifierRoundName = snapshot?.activeQualifierRound?.name ?? getActiveQualifierStyleRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.name ?? "Qualifier";
   const activeFinalsRoundId = snapshot?.activeFinalsRound?.id ?? getActiveFinalsRound(snapshot?.competition ?? { rounds: [], schedule_blocks: [], current_phase: "qualifier_open" })?.id ?? null;
@@ -482,9 +507,9 @@ export default function StaffJudgePage() {
 
   const syncQueuedState = useCallback(async (nextSnapshot?: CompetitionSnapshot | null) => {
     const queue = await readOfflineQueue();
-    const competitionId = nextSnapshot?.competition.id ?? snapshot?.competition.id ?? null;
+    const sourceSnapshot = nextSnapshot ?? snapshotRef.current;
+    const competitionId = sourceSnapshot?.competition.id ?? null;
     const relevantQueue = competitionId ? queue.filter((item) => item.competitionId === competitionId) : queue;
-    const sourceSnapshot = nextSnapshot ?? snapshot;
 
     setQueuedCount(relevantQueue.length);
     setQueuedItems(
@@ -514,7 +539,7 @@ export default function StaffJudgePage() {
         };
       })
     );
-  }, [snapshot]);
+  }, []);
 
   const flushOfflineQueue = useCallback(async () => {
     if (flushingQueueRef.current) {
@@ -587,8 +612,8 @@ export default function StaffJudgePage() {
 
       await syncQueuedState(snapshot);
       if (snapshot) {
-        const refreshed = await getCompetitionSnapshot(snapshot.competition.id, { authenticated: true });
-        setSnapshot(refreshed);
+        const refreshed = await fetchStaffCompetitionSnapshot(snapshot.competition.id);
+        setResolvedSnapshot(refreshed);
         await syncQueuedState(refreshed);
       }
       if (replayConflictLabel) {
@@ -599,20 +624,19 @@ export default function StaffJudgePage() {
     } finally {
       flushingQueueRef.current = false;
     }
-  }, [snapshot, syncQueuedState]);
+  }, [setResolvedSnapshot, snapshot, syncQueuedState]);
 
   useEffect(() => {
     setLoading(true);
-    void getAuthState()
-      .then(async (authState) => {
-        if (!isStaffRole(authState.profile?.role)) {
-          window.location.href = `/staff/login?redirect=${encodeURIComponent(`/staff/c/${slug}/judge`)}`;
+    let cancelled = false;
+
+    void fetchStaffCompetitionSnapshot(slug)
+      .then((nextSnapshot) => {
+        if (cancelled) {
           return;
         }
 
-        setProfile(authState.profile);
-        const nextSnapshot = await getCompetitionSnapshot(slug, { authenticated: true });
-        setSnapshot(nextSnapshot);
+        setResolvedSnapshot(nextSnapshot);
         const qualifierNext: QualifierDraftState = {};
         const finalsNext: FinalsDraftState = {};
         nextSnapshot.climbers.forEach((climber) => {
@@ -635,10 +659,40 @@ export default function StaffJudgePage() {
         void syncQueuedState(nextSnapshot);
       })
       .catch((nextError) => {
+        if (cancelled) {
+          return;
+        }
+
+        const status = typeof nextError === "object" && nextError ? (nextError as StaffSnapshotFetchError).status : null;
+        if (status === 401 || status === 403) {
+          window.location.href = `/staff/login?redirect=${encodeURIComponent(`/staff/c/${slug}/judge`)}`;
+          return;
+        }
+
         setError(nextError instanceof Error ? nextError.message : "Unable to load the judge panel.");
       })
-      .finally(() => setLoading(false));
-  }, [initialBoulder, initialClimberId, slug, syncQueuedState]);
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    void getAuthState()
+      .then((authState) => {
+        if (!cancelled) {
+          setProfile(authState.profile);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialBoulder, initialClimberId, setResolvedSnapshot, slug, syncQueuedState]);
 
   useEffect(() => {
     void syncQueuedState();
@@ -957,7 +1011,7 @@ export default function StaffJudgePage() {
       return fallbackUpdater ? fallbackUpdater(entry) : entry;
     });
 
-    setSnapshot(updater(nextClimbers));
+    setResolvedSnapshot(updater(nextClimbers));
   };
 
   const setQualifierDraft = useCallback((key: string, updater: (draft: QualifierDraft) => QualifierDraft) => {
