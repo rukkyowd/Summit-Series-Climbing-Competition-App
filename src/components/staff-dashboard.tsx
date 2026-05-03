@@ -31,6 +31,7 @@ import {
   getSelectedQualifierCategories,
 } from "@/lib/competition-category-eligibility";
 import {
+  advanceCompetitionToFinals,
   createCompetitionFromTemplate,
   deleteCompetition,
   getCompetitionSnapshot,
@@ -960,7 +961,6 @@ export default function StaffDashboard({
         { id: "setup-categories", label: "Categories", stepIndex: 2 },
         { id: "setup-schedule", label: "Schedule", stepIndex: 3 },
         { id: "setup-stages", label: "Stages", stepIndex: 4 },
-        { id: "setup-operations", label: "Operations", stepIndex: null },
       ] as const,
     []
   );
@@ -1036,6 +1036,7 @@ export default function StaffDashboard({
   const canEditPhase = profile?.role === "admin";
   const canEditSetup = profile?.role === "admin";
   const canRestoreDemo = false;
+  const showLegacyEventRunner = false;
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
     ? getCompetitionPhaseForSchedulePhase(liveScheduleBlock.phase_type)
@@ -1105,31 +1106,7 @@ export default function StaffDashboard({
       ? "Qualifier wave"
       : "Current block";
   const canEditFinalsOrder = navigationPhase === "observation";
-  const finalsAdvanceBlock = useMemo(() => {
-    const isFinalsAdvanceBlock = (block: CompetitionScheduleBlock) => {
-      const phase = getCompetitionPhaseForSchedulePhase(block.phase_type);
-      return phase === "observation" || phase === "finals_open";
-    };
-
-    const candidateBlocks = orderedScheduleBlocks.filter(isFinalsAdvanceBlock);
-    if (!candidateBlocks.length) {
-      return null;
-    }
-
-    if (!liveScheduleBlock) {
-      return candidateBlocks[0];
-    }
-
-    const liveIndex = orderedScheduleBlocks.findIndex((block) => block.id === liveScheduleBlock.id);
-    if (liveIndex < 0) {
-      return candidateBlocks[0];
-    }
-
-    return orderedScheduleBlocks.slice(liveIndex + 1).find(isFinalsAdvanceBlock) ?? candidateBlocks[0];
-  }, [liveScheduleBlock, orderedScheduleBlocks]);
-  const finalsAdvancePhase =
-    (finalsAdvanceBlock ? getCompetitionPhaseForSchedulePhase(finalsAdvanceBlock.phase_type) : null) ?? "finals_open";
-  const finalsOpenBlock = useMemo(() => {
+  const finalsOperationBlock = useMemo(() => {
     const finalsBlocks = orderedScheduleBlocks.filter(
       (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "finals_open"
     );
@@ -1149,6 +1126,27 @@ export default function StaffDashboard({
     return orderedScheduleBlocks.slice(liveIndex + 1).find(
       (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "finals_open"
     ) ?? finalsBlocks[0];
+  }, [liveScheduleBlock, orderedScheduleBlocks]);
+  const resultsBlock = useMemo(() => {
+    const resultBlocks = orderedScheduleBlocks.filter(
+      (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "results"
+    );
+    if (!resultBlocks.length) {
+      return null;
+    }
+
+    if (!liveScheduleBlock) {
+      return resultBlocks[0];
+    }
+
+    const liveIndex = orderedScheduleBlocks.findIndex((block) => block.id === liveScheduleBlock.id);
+    if (liveIndex < 0) {
+      return resultBlocks[0];
+    }
+
+    return orderedScheduleBlocks.slice(liveIndex + 1).find(
+      (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "results"
+    ) ?? resultBlocks[0];
   }, [liveScheduleBlock, orderedScheduleBlocks]);
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
@@ -1369,49 +1367,6 @@ export default function StaffDashboard({
     }
   };
 
-  const advanceToFinals = async () => {
-    if (!draft || !snapshot) {
-      return;
-    }
-
-    if (!competitionHasFinals(draft)) {
-      throw new Error("Finals are disabled for this competition.");
-    }
-
-    if (!["qualifier_closed", "wall_reset"].includes(draft.current_phase)) {
-      throw new Error("Lock qualifier scoring before advancing finalists.");
-    }
-
-    if (!snapshot.finalists.length) {
-      throw new Error("No finalists are available yet. Close qualifier scoring or check the configured finals age groups and cutoff.");
-    }
-
-    const orderedFinalists = [...snapshot.finalists].sort((left, right) => {
-      const leftOrder = left.climbing_order ?? Number.MAX_SAFE_INTEGER;
-      const rightOrder = right.climbing_order ?? Number.MAX_SAFE_INTEGER;
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
-      }
-
-      if (left.qualifier_rank !== right.qualifier_rank) {
-        return left.qualifier_rank - right.qualifier_rank;
-      }
-
-      return left.name.localeCompare(right.name);
-    });
-
-    await saveFinalistField(draft.id, orderedFinalists);
-    await runPhaseNavigation(
-      draft.id,
-      finalsAdvancePhase,
-      1,
-      finalsAdvanceBlock
-        ? `Finals field created and live block moved to ${finalsAdvanceBlock.label}.`
-        : `Finals field created and competition moved to ${formatCompetitionPhaseLabel(finalsAdvancePhase).toLowerCase()}.`,
-      finalsAdvanceBlock?.id
-    );
-  };
-
   const confirmLockQualifiers = () => {
     if (!draft) {
       return;
@@ -1439,39 +1394,57 @@ export default function StaffDashboard({
     }
 
     setConfirming({
-      title: "Advance to finals",
-      description: finalsAdvanceBlock
-        ? `This will create the finals field from the locked standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
-        : `This will create the finals field from the locked standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
-      confirmLabel: "Advance",
+      title: "Advance and start finals",
+      description: `This locks the current standings, creates the finals field, and opens finals scoring. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
+      confirmLabel: "Advance and start finals",
       expectedValue: draft.name,
       action: async () => {
-        await advanceToFinals();
+        await advanceCompetitionToFinals(draft.id);
+        if (finalsOperationBlock) {
+          await setCompetitionLiveScheduleBlock(draft.id, finalsOperationBlock.id);
+        }
+        await refreshAfterChange(draft.id);
+        setMessage("Finalists advanced and finals are live.");
       },
     });
   };
 
-  const confirmStartFinals = () => {
+  const confirmPublishResults = () => {
     if (!draft) {
       return;
     }
 
     setConfirming({
-      title: "Start finals",
-      description: finalsOpenBlock
-        ? `Move the live event into ${finalsOpenBlock.label} so judges can score finals.`
-        : "Move the live event into finals so judges can score the final round.",
-      confirmLabel: "Start finals",
+      title: "Publish results",
+      description: "Move the event into results so public pages show final standings instead of live scoring.",
+      confirmLabel: "Publish results",
       action: async () => {
         await runPhaseNavigation(
           draft.id,
-          "finals_open",
+          "results",
           1,
-          finalsOpenBlock ? `Finals started at ${finalsOpenBlock.label}.` : "Finals are live.",
-          finalsOpenBlock?.id
+          "Results published.",
+          resultsBlock?.id
         );
       },
     });
+  };
+
+  const undoLastCompetitionOperation = async () => {
+    if (!draft) {
+      return;
+    }
+
+    setIsPhasePending(true);
+    try {
+      await undoCompetitionOperation(draft.id);
+      await refreshAfterChange(draft.id);
+      setMessage("Last competition operation undone.");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to undo the last competition operation.");
+    } finally {
+      setIsPhasePending(false);
+    }
   };
 
   const persistDraft = () => {
@@ -1925,20 +1898,6 @@ export default function StaffDashboard({
     setMergeTargetBlockId(null);
   };
 
-  const setActiveScheduleBlock = (blockId: string) => {
-    if (!draft) {
-      return;
-    }
-
-    setDraft({
-      ...draft,
-      schedule_blocks: draft.schedule_blocks.map((block) => ({
-        ...block,
-        is_active: block.id === blockId,
-      })),
-    });
-  };
-
   const liveBlockRollsBackPhase = Boolean(
     schedulePhaseMismatch &&
       draft &&
@@ -1953,17 +1912,27 @@ export default function StaffDashboard({
   const qualifierLockedForOperations = draft
     ? compareCompetitionPhases(draft.current_phase, "qualifier_closed") >= 0
     : false;
-  const finalsLiveForOperations = draft
+  const resultsPublishedForOperations = draft?.current_phase === "results";
+  const finalsStartedForOperations = draft
     ? compareCompetitionPhases(draft.current_phase, "finals_open") >= 0
+    : false;
+  const finalsLiveForOperations = draft
+    ? draft.current_phase === "finals_open"
     : false;
   const canLockQualifiers = Boolean(draft && canEditPhase && draft.current_phase === "qualifier_open");
   const canAdvanceToFinals = draft
     ? canEditPhase &&
       draftHasFinals &&
+      !finalsStartedForOperations &&
       ["qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
       Boolean(projectedFinalistCount)
     : false;
-  const canStartFinals = Boolean(draft && canEditPhase && draftHasFinals && finalistsPersisted && !finalsLiveForOperations);
+  const canPublishResults = Boolean(
+    draft &&
+      canEditPhase &&
+      !resultsPublishedForOperations &&
+      (draftHasFinals ? finalsStartedForOperations : qualifierLockedForOperations)
+  );
   const lockQualifiersDisabledReason = !draft
     ? ""
     : !canEditPhase
@@ -1976,24 +1945,26 @@ export default function StaffDashboard({
   const advanceFinalistsDisabledReason = !draft
     ? ""
     : !canEditPhase
-      ? "Only admins can advance finalists."
+      ? "Only admins can advance and start finals."
       : !draftHasFinals
         ? "Finals are not enabled for this competition."
+        : finalsStartedForOperations
+          ? "Finals are already running or complete."
         : !qualifierLockedForOperations
           ? "Lock qualifier scoring first so the cut line is stable."
           : !projectedFinalistCount
             ? "No projected finalists yet. Check finals eligibility, cutoff, and qualifier scores."
             : "";
-  const startFinalsDisabledReason = !draft
+  const publishResultsDisabledReason = !draft
     ? ""
     : !canEditPhase
-      ? "Only admins can start finals."
-      : !draftHasFinals
-        ? "Finals are not enabled for this competition."
-        : finalsLiveForOperations
-          ? "Finals are already live or completed."
-          : !finalistsPersisted
-            ? "Advance finalists first so there is a finals field to score."
+      ? "Only admins can publish results."
+      : resultsPublishedForOperations
+        ? "Results are already published."
+        : draftHasFinals && !finalsStartedForOperations
+          ? "Advance and start finals first."
+          : !draftHasFinals && !qualifierLockedForOperations
+            ? "Lock qualifier scoring first."
             : "";
   const demoBanner = demoMode
     ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
@@ -2973,14 +2944,41 @@ export default function StaffDashboard({
                   Run the event day in order.
                 </h2>
                 <p className="text-sm leading-6 text-slate-600">
-                  Review live standings, lock qualifier scoring, create the finals field, then start finals. These actions use the same protected organizer controls as the rest of the dashboard.
+                  Review live standings, lock qualifier scoring, advance and start finals, then publish results. This is the only place to run the live event.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <span className="results-chip">{formatCompetitionPhaseLabel(draft.current_phase)}</span>
+                <span className="results-chip">
+                  {resultsPublishedForOperations
+                    ? "Results published"
+                    : finalsLiveForOperations
+                      ? "Finals live"
+                      : qualifierLockedForOperations
+                        ? "Qualifiers locked"
+                        : "Qualifiers open"}
+                </span>
                 {liveScheduleBlock ? <span className="results-chip">{liveScheduleBlock.label}</span> : null}
               </div>
             </div>
+
+            {snapshot?.undoAvailability?.available ? (
+              <div className="results-undo-banner mt-5">
+                <div>
+                  <div className="results-kicker text-amber-800">Undo available</div>
+                  <div className="mt-2 text-sm text-amber-900">
+                    Undo the last {snapshot.undoAvailability.operation_type} until {formatDateTimeLabel(snapshot.undoAvailability.expires_at)}.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void undoLastCompetitionOperation()}
+                  disabled={!canEditPhase || isPhasePending}
+                  className="results-secondary-button"
+                >
+                  {isPhasePending ? "Undoing..." : "Undo"}
+                </button>
+              </div>
+            ) : null}
 
             <div className="mt-5 grid gap-3 lg:grid-cols-4">
               <div
@@ -3039,7 +3037,7 @@ export default function StaffDashboard({
 
               <div
                 className={`rounded-[1.35rem] border px-4 py-4 ${
-                  finalistsPersisted
+                  finalsStartedForOperations
                     ? "border-emerald-200 bg-emerald-50 text-emerald-950"
                     : qualifierLockedForOperations
                       ? "border-sky-200 bg-white text-slate-900"
@@ -3049,16 +3047,16 @@ export default function StaffDashboard({
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Step 3</div>
                   <span className="results-chip">
-                    {finalistsPersisted
-                      ? "Saved"
+                    {finalsStartedForOperations
+                      ? "Finals live"
                       : projectedFinalistCount
                         ? `${projectedFinalistCount} projected`
                         : "Waiting"}
                   </span>
                 </div>
-                <h3 className="mt-3 text-lg font-semibold">Advance finalists</h3>
+                <h3 className="mt-3 text-lg font-semibold">Advance + start finals</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Seed the finals field from the locked cut line.
+                  Create the finals field and open finals scoring.
                 </p>
                 <button
                   type="button"
@@ -3066,7 +3064,7 @@ export default function StaffDashboard({
                   disabled={!canAdvanceToFinals || isPending || isPhasePending}
                   className="results-primary-button mt-4 w-full justify-center"
                 >
-                  {isPhasePending ? "Advancing..." : "Advance finalists"}
+                  {isPhasePending ? "Advancing..." : "Advance + start finals"}
                 </button>
                 {advanceFinalistsDisabledReason ? (
                   <p className="mt-2 text-xs leading-5 text-slate-500">
@@ -3083,31 +3081,37 @@ export default function StaffDashboard({
 
               <div
                 className={`rounded-[1.35rem] border px-4 py-4 ${
-                  finalsLiveForOperations
+                  resultsPublishedForOperations
                     ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                    : finalistsPersisted
+                    : finalsStartedForOperations || (!draftHasFinals && qualifierLockedForOperations)
                       ? "border-sky-200 bg-white text-slate-900"
                       : "border-slate-200 bg-slate-50 text-slate-600"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Step 4</div>
-                  <span className="results-chip">{finalsLiveForOperations ? "Live" : "Pending"}</span>
+                  <span className="results-chip">{resultsPublishedForOperations ? "Published" : "Pending"}</span>
                 </div>
-                <h3 className="mt-3 text-lg font-semibold">Start finals</h3>
+                <h3 className="mt-3 text-lg font-semibold">Publish results</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Move the event into finals scoring.
+                  Finish live scoring and show final standings publicly.
                 </p>
-                <button
-                  type="button"
-                  onClick={confirmStartFinals}
-                  disabled={!canStartFinals || isPending || isPhasePending}
-                  className="results-secondary-button mt-4 w-full justify-center"
-                >
-                  {isPhasePending ? "Starting..." : "Start finals"}
-                </button>
-                {startFinalsDisabledReason ? (
-                  <p className="mt-2 text-xs leading-5 text-slate-500">{startFinalsDisabledReason}</p>
+                {resultsPublishedForOperations ? (
+                  <Link href={publicPath} className="results-secondary-button mt-4 w-full justify-center">
+                    Open public results
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={confirmPublishResults}
+                    disabled={!canPublishResults || isPending || isPhasePending}
+                    className="results-secondary-button mt-4 w-full justify-center"
+                  >
+                    {isPhasePending ? "Publishing..." : "Publish results"}
+                  </button>
+                )}
+                {publishResultsDisabledReason ? (
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{publishResultsDisabledReason}</p>
                 ) : null}
               </div>
             </div>
@@ -3627,6 +3631,7 @@ export default function StaffDashboard({
                   </div>
                 </div>
 
+                {showLegacyEventRunner ? (
                 <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 <div id="setup-operations" className={`results-workspace-card ${demoMode ? "border-dashed border-slate-200 bg-slate-50/70 shadow-none" : ""}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3870,6 +3875,7 @@ export default function StaffDashboard({
                   ) : null}
                 </div>
                 </fieldset>
+                ) : null}
 
                 <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
                 {currentSetupStep === 0 ? (
@@ -4450,13 +4456,6 @@ export default function StaffDashboard({
                                   className="results-secondary-button"
                                 >
                                   Move down
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setActiveScheduleBlock(block.id)}
-                                  className={block.is_active ? "results-primary-button" : "results-secondary-button"}
-                                >
-                                  {block.is_active ? "Current block" : "Set current"}
                                 </button>
                                 <button
                                   type="button"
@@ -5042,23 +5041,13 @@ export default function StaffDashboard({
                       </button>
                     </>
                   ) : null}
-                  {draftHasFinals ? (
-                    <button
-                      type="button"
-                      onClick={confirmAdvanceToFinals}
-                      className="results-secondary-button"
-                      disabled={!canAdvanceToFinals || isPending || isPhasePending}
-                    >
-                      Advance to finals
-                    </button>
-                  ) : null}
                 </div>
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="results-kicker">Admin controls</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        Keep destructive and live-only actions here so setup stays focused on building the event cleanly.
+                        Keep destructive actions here so setup and live event running stay focused.
                       </div>
                     </div>
                     <div className="results-chip">{stageFlowSummary}</div>
