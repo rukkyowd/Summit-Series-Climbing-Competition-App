@@ -1129,6 +1129,27 @@ export default function StaffDashboard({
   }, [liveScheduleBlock, orderedScheduleBlocks]);
   const finalsAdvancePhase =
     (finalsAdvanceBlock ? getCompetitionPhaseForSchedulePhase(finalsAdvanceBlock.phase_type) : null) ?? "finals_open";
+  const finalsOpenBlock = useMemo(() => {
+    const finalsBlocks = orderedScheduleBlocks.filter(
+      (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "finals_open"
+    );
+    if (!finalsBlocks.length) {
+      return null;
+    }
+
+    if (!liveScheduleBlock) {
+      return finalsBlocks[0];
+    }
+
+    const liveIndex = orderedScheduleBlocks.findIndex((block) => block.id === liveScheduleBlock.id);
+    if (liveIndex < 0) {
+      return finalsBlocks[0];
+    }
+
+    return orderedScheduleBlocks.slice(liveIndex + 1).find(
+      (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "finals_open"
+    ) ?? finalsBlocks[0];
+  }, [liveScheduleBlock, orderedScheduleBlocks]);
   const finalsOrder = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
@@ -1357,6 +1378,10 @@ export default function StaffDashboard({
       throw new Error("Finals are disabled for this competition.");
     }
 
+    if (!["qualifier_closed", "wall_reset"].includes(draft.current_phase)) {
+      throw new Error("Lock qualifier scoring before advancing finalists.");
+    }
+
     if (!snapshot.finalists.length) {
       throw new Error("No finalists are available yet. Close qualifier scoring or check the configured finals age groups and cutoff.");
     }
@@ -1385,6 +1410,68 @@ export default function StaffDashboard({
         : `Finals field created and competition moved to ${formatCompetitionPhaseLabel(finalsAdvancePhase).toLowerCase()}.`,
       finalsAdvanceBlock?.id
     );
+  };
+
+  const confirmLockQualifiers = () => {
+    if (!draft) {
+      return;
+    }
+
+    setConfirming({
+      title: "Lock qualifiers",
+      description:
+        "Close qualifier scoring so the organizer can review a stable cut line before creating the finals field.",
+      confirmLabel: "Lock qualifiers",
+      action: async () => {
+        await runPhaseNavigation(
+          draft.id,
+          "qualifier_closed",
+          1,
+          "Qualifier scoring locked. Review projected finalists before advancing."
+        );
+      },
+    });
+  };
+
+  const confirmAdvanceToFinals = () => {
+    if (!draft) {
+      return;
+    }
+
+    setConfirming({
+      title: "Advance to finals",
+      description: finalsAdvanceBlock
+        ? `This will create the finals field from the locked standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
+        : `This will create the finals field from the locked standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
+      confirmLabel: "Advance",
+      expectedValue: draft.name,
+      action: async () => {
+        await advanceToFinals();
+      },
+    });
+  };
+
+  const confirmStartFinals = () => {
+    if (!draft) {
+      return;
+    }
+
+    setConfirming({
+      title: "Start finals",
+      description: finalsOpenBlock
+        ? `Move the live event into ${finalsOpenBlock.label} so judges can score finals.`
+        : "Move the live event into finals so judges can score the final round.",
+      confirmLabel: "Start finals",
+      action: async () => {
+        await runPhaseNavigation(
+          draft.id,
+          "finals_open",
+          1,
+          finalsOpenBlock ? `Finals started at ${finalsOpenBlock.label}.` : "Finals are live.",
+          finalsOpenBlock?.id
+        );
+      },
+    });
   };
 
   const persistDraft = () => {
@@ -1860,11 +1947,54 @@ export default function StaffDashboard({
   );
   const draftHasFinals = draft ? competitionHasFinals(draft) : false;
   const currentPhaseScheduleBlock = draft ? findScheduleBlockForPhase(draft.current_phase, 1) : null;
-  const canAdvanceToFinals = draft
-    ? draftHasFinals &&
-      ["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
-      Boolean(snapshot?.finalists.length)
+  const qualifierStandingsCount = snapshot?.qualifierLeaderboard.length ?? 0;
+  const projectedFinalistCount = snapshot?.finalists.length ?? 0;
+  const finalistsPersisted = Boolean(snapshot?.finalistsPersisted);
+  const qualifierLockedForOperations = draft
+    ? compareCompetitionPhases(draft.current_phase, "qualifier_closed") >= 0
     : false;
+  const finalsLiveForOperations = draft
+    ? compareCompetitionPhases(draft.current_phase, "finals_open") >= 0
+    : false;
+  const canLockQualifiers = Boolean(draft && canEditPhase && draft.current_phase === "qualifier_open");
+  const canAdvanceToFinals = draft
+    ? canEditPhase &&
+      draftHasFinals &&
+      ["qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
+      Boolean(projectedFinalistCount)
+    : false;
+  const canStartFinals = Boolean(draft && canEditPhase && draftHasFinals && finalistsPersisted && !finalsLiveForOperations);
+  const lockQualifiersDisabledReason = !draft
+    ? ""
+    : !canEditPhase
+      ? "Only admins can lock qualifier scoring."
+      : qualifierLockedForOperations
+        ? "Qualifier scoring is already locked."
+        : draft.current_phase !== "qualifier_open"
+          ? `Move the event to ${formatCompetitionPhaseLabel("qualifier_open").toLowerCase()} before locking.`
+          : "";
+  const advanceFinalistsDisabledReason = !draft
+    ? ""
+    : !canEditPhase
+      ? "Only admins can advance finalists."
+      : !draftHasFinals
+        ? "Finals are not enabled for this competition."
+        : !qualifierLockedForOperations
+          ? "Lock qualifier scoring first so the cut line is stable."
+          : !projectedFinalistCount
+            ? "No projected finalists yet. Check finals eligibility, cutoff, and qualifier scores."
+            : "";
+  const startFinalsDisabledReason = !draft
+    ? ""
+    : !canEditPhase
+      ? "Only admins can start finals."
+      : !draftHasFinals
+        ? "Finals are not enabled for this competition."
+        : finalsLiveForOperations
+          ? "Finals are already live or completed."
+          : !finalistsPersisted
+            ? "Advance finalists first so there is a finals field to score."
+            : "";
   const demoBanner = demoMode
     ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
     : selectedCompetitionIsDemo
@@ -2828,6 +2958,201 @@ export default function StaffDashboard({
                 </Link>
               </div>
             </div>
+          </Surface>
+        ) : null}
+
+        {draft ? (
+          <Surface
+            variant="card"
+            className="border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,0.98))]"
+          >
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="max-w-4xl space-y-2">
+                <div className="results-kicker text-sky-700">Organizer operations</div>
+                <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
+                  Run the event day in order.
+                </h2>
+                <p className="text-sm leading-6 text-slate-600">
+                  Review live standings, lock qualifier scoring, create the finals field, then start finals. These actions use the same protected organizer controls as the rest of the dashboard.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="results-chip">{formatCompetitionPhaseLabel(draft.current_phase)}</span>
+                {liveScheduleBlock ? <span className="results-chip">{liveScheduleBlock.label}</span> : null}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-4">
+              <div
+                className={`rounded-[1.35rem] border px-4 py-4 ${
+                  qualifierStandingsCount
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    : "border-sky-200 bg-white text-slate-900"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Step 1</div>
+                  <span className="results-chip">
+                    {qualifierStandingsCount ? `${qualifierStandingsCount} ranked` : "Open"}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-lg font-semibold">Review standings</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Check the cut line before locking scores.
+                </p>
+                <Link
+                  href={leaderboardPath}
+                  onClick={() => handleOrganizerHandoff("leaderboard")}
+                  className="results-secondary-button mt-4 w-full justify-center"
+                >
+                  Open leaderboard
+                </Link>
+              </div>
+
+              <div
+                className={`rounded-[1.35rem] border px-4 py-4 ${
+                  qualifierLockedForOperations
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    : "border-sky-200 bg-white text-slate-900"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Step 2</div>
+                  <span className="results-chip">{qualifierLockedForOperations ? "Locked" : "Open"}</span>
+                </div>
+                <h3 className="mt-3 text-lg font-semibold">Lock qualifiers</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Freeze qualifier scoring before finalists are selected.
+                </p>
+                <button
+                  type="button"
+                  onClick={confirmLockQualifiers}
+                  disabled={!canLockQualifiers || isPending || isPhasePending}
+                  className="results-secondary-button mt-4 w-full justify-center"
+                >
+                  {isPhasePending ? "Updating..." : "Lock qualifiers"}
+                </button>
+                {lockQualifiersDisabledReason ? (
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{lockQualifiersDisabledReason}</p>
+                ) : null}
+              </div>
+
+              <div
+                className={`rounded-[1.35rem] border px-4 py-4 ${
+                  finalistsPersisted
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    : qualifierLockedForOperations
+                      ? "border-sky-200 bg-white text-slate-900"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Step 3</div>
+                  <span className="results-chip">
+                    {finalistsPersisted
+                      ? "Saved"
+                      : projectedFinalistCount
+                        ? `${projectedFinalistCount} projected`
+                        : "Waiting"}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-lg font-semibold">Advance finalists</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Seed the finals field from the locked cut line.
+                </p>
+                <button
+                  type="button"
+                  onClick={confirmAdvanceToFinals}
+                  disabled={!canAdvanceToFinals || isPending || isPhasePending}
+                  className="results-primary-button mt-4 w-full justify-center"
+                >
+                  {isPhasePending ? "Advancing..." : "Advance finalists"}
+                </button>
+                {advanceFinalistsDisabledReason ? (
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    {advanceFinalistsDisabledReason}
+                    {selectedCompetitionIsDemo && qualifierLockedForOperations && !projectedFinalistCount ? (
+                      <>
+                        {" "}
+                        If this demo looks stuck, restart the scenario from <Link href="/demo" className="font-semibold text-sky-700 underline">Demo Home</Link>.
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+              </div>
+
+              <div
+                className={`rounded-[1.35rem] border px-4 py-4 ${
+                  finalsLiveForOperations
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    : finalistsPersisted
+                      ? "border-sky-200 bg-white text-slate-900"
+                      : "border-slate-200 bg-slate-50 text-slate-600"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Step 4</div>
+                  <span className="results-chip">{finalsLiveForOperations ? "Live" : "Pending"}</span>
+                </div>
+                <h3 className="mt-3 text-lg font-semibold">Start finals</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Move the event into finals scoring.
+                </p>
+                <button
+                  type="button"
+                  onClick={confirmStartFinals}
+                  disabled={!canStartFinals || isPending || isPhasePending}
+                  className="results-secondary-button mt-4 w-full justify-center"
+                >
+                  {isPhasePending ? "Starting..." : "Start finals"}
+                </button>
+                {startFinalsDisabledReason ? (
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{startFinalsDisabledReason}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {draftHasFinals ? (
+              <div className="mt-5 rounded-[1.25rem] border border-slate-200 bg-white/85 px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="results-kicker">Projected cut line</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Top {draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF} per eligible category advance when the finals field is created.
+                    </p>
+                  </div>
+                  <span className="results-chip">
+                    {projectedFinalistCount ? `${projectedFinalistCount} projected finalists` : "No projected field yet"}
+                  </span>
+                </div>
+                {finalsOrder.length ? (
+                  <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {finalsOrder.slice(0, 6).map((entry) => (
+                      <div
+                        key={`operations-finalist-${entry.climber_id}`}
+                        className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 font-semibold text-sky-800">
+                          {entry.qualifier_rank}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-slate-950">{entry.name}</div>
+                          <div className="truncate text-xs text-slate-500">{entry.display_category}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-[1rem] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    Projected finalists appear after qualifier scores exist and the event is ready for finals eligibility.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-5 rounded-[1rem] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Finals are disabled for this competition, so the organizer path stops at qualifier results.
+              </p>
+            )}
           </Surface>
         ) : null}
 
@@ -4720,17 +5045,7 @@ export default function StaffDashboard({
                   {draftHasFinals ? (
                     <button
                       type="button"
-                      onClick={() => setConfirming({
-                        title: "Advance to finals",
-                        description: finalsAdvanceBlock
-                          ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
-                          : `This will create the finals field from the current standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
-                        confirmLabel: "Advance",
-                        expectedValue: draft.name,
-                        action: async () => {
-                          await advanceToFinals();
-                        },
-                      })}
+                      onClick={confirmAdvanceToFinals}
                       className="results-secondary-button"
                       disabled={!canAdvanceToFinals || isPending || isPhasePending}
                     >
