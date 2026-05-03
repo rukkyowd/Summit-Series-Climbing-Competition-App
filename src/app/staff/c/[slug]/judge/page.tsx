@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
@@ -478,6 +478,7 @@ function FinalsEditorPanel({
 }
 
 export default function StaffJudgePage() {
+  const router = useRouter();
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
@@ -503,6 +504,7 @@ export default function StaffJudgePage() {
   const [queuedCount, setQueuedCount] = useState(0);
   const [queuedItems, setQueuedItems] = useState<QueuedScorePreview[]>([]);
   const flushingQueueRef = useRef(false);
+  const demoAutoAdvanceStartedRef = useRef(false);
   const finalsGridViewportRef = useRef<HTMLDivElement | null>(null);
   const setResolvedSnapshot = useCallback((nextSnapshot: CompetitionSnapshot | null) => {
     snapshotRef.current = nextSnapshot;
@@ -881,9 +883,14 @@ export default function StaffJudgePage() {
           statusLabel,
           resultLabel: presentation.dirty ? getQualifierPreviewLabel(selectedBoulder, presentation.normalized) : presentation.savedSummary,
           statusTone,
+          demoTarget:
+            demoGuideActive &&
+            !demoTargetCorrected &&
+            selectedBoulder === DEMO_TARGET_CLIMB_NUMBER &&
+            climber.id === demoTargetClimber?.id,
         };
       }),
-    [activeQualifierRoundId, qualifierClimbers, qualifierDrafts, selectedBoulder]
+    [activeQualifierRoundId, demoGuideActive, demoTargetClimber?.id, demoTargetCorrected, qualifierClimbers, qualifierDrafts, selectedBoulder]
   );
   const finalsScoredCellCount = useMemo(
     () =>
@@ -982,6 +989,22 @@ export default function StaffJudgePage() {
       setStage("qualifier");
     }
   }, [finalsWorkspaceVisible, stage]);
+
+  useEffect(() => {
+    if (!demoGuideActive || !demoTargetCorrected || demoAutoAdvanceStartedRef.current) {
+      return;
+    }
+
+    demoAutoAdvanceStartedRef.current = true;
+    setMessage("Act 2 complete. Opening the organizer workspace in a moment...");
+    const timer = window.setTimeout(() => {
+      router.push(`/staff/c/${slug}?demo=1&act=3`);
+    }, 2500);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [demoGuideActive, demoTargetCorrected, router, slug]);
 
   useEffect(() => {
     if (stage !== "finals" || !finalsReady) {

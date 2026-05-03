@@ -865,6 +865,7 @@ export default function StaffDashboard({
       after: string;
     };
   }>(null);
+  const organizerDemoAutoAdvanceStartedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -950,6 +951,54 @@ export default function StaffDashboard({
       setShareOrigin(window.location.origin);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isGuidedStoryAct3 || !draft || !isDemoCompetitionRecord(draft)) {
+      return;
+    }
+
+    const demoDraft = draft;
+    let cancelled = false;
+    let navigationTimer: number | null = null;
+
+    async function checkOrganizerProgress() {
+      try {
+        const response = await fetch(`/api/demo/state?competitionId=${encodeURIComponent(demoDraft.id)}`, {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          progress?: { organizerAdvanced?: boolean };
+        } | null;
+
+        if (
+          !cancelled &&
+          payload?.progress?.organizerAdvanced &&
+          !organizerDemoAutoAdvanceStartedRef.current
+        ) {
+          organizerDemoAutoAdvanceStartedRef.current = true;
+          setMessage("Act 3 complete. Opening the public event view in a moment...");
+          navigationTimer = window.setTimeout(() => {
+            router.push(`/c/${demoDraft.slug}?demo=1`);
+          }, 2500);
+        }
+      } catch {
+        // The guide is non-critical. If state polling hiccups, the organizer controls still work.
+      }
+    }
+
+    void checkOrganizerProgress();
+    const pollTimer = window.setInterval(() => {
+      void checkOrganizerProgress();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollTimer);
+      if (navigationTimer) {
+        window.clearTimeout(navigationTimer);
+      }
+    };
+  }, [draft, isGuidedStoryAct3, router]);
 
   useEffect(() => {
     if (!demoSeedOnCreate) {

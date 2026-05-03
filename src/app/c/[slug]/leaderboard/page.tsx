@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import { DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
 import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 
 export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
@@ -16,14 +17,56 @@ export default function CompetitionLeaderboardPage() {
   const demoGuideActive = searchParams?.get("demo") === "1";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [error, setError] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(0);
+
+  const refresh = useCallback(async () => {
+    if (!slug) {
+      return;
+    }
+
+    try {
+      const nextSnapshot = await getCompetitionSnapshot(slug);
+      setSnapshot(nextSnapshot);
+      setLastUpdatedAt(Date.now());
+      setError("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to load rankings.");
+    }
+  }, [slug]);
 
   useEffect(() => {
-    void getCompetitionSnapshot(slug)
-      .then((nextSnapshot) => setSnapshot(nextSnapshot))
-      .catch((nextError) =>
-        setError(nextError instanceof Error ? nextError.message : "Unable to load rankings.")
-      );
-  }, [slug]);
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!supabaseConfigured || !snapshot) {
+      return;
+    }
+
+    const competitionId = snapshot.competition.id;
+    const refreshLeaderboard = () => {
+      void refresh();
+    };
+    const channel = publicSupabase
+      .channel(`leaderboard-${competitionId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "qualifier_attempts", filter: `competition_id=eq.${competitionId}` },
+        refreshLeaderboard
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "competition_finalists", filter: `competition_id=eq.${competitionId}` },
+        refreshLeaderboard
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "competitions", filter: `id=eq.${competitionId}` }, refreshLeaderboard)
+      .subscribe();
+
+    return () => {
+      publicSupabase.removeChannel(channel);
+    };
+  }, [refresh, snapshot]);
+
   const qualifierGroups = snapshot
     ? Array.from(
         snapshot.qualifierLeaderboard.reduce((groups, row) => {
@@ -34,6 +77,7 @@ export default function CompetitionLeaderboardPage() {
         }, new Map<string, CompetitionSnapshot["qualifierLeaderboard"]>())
       ).map(([category, rows]) => ({ category, rows }))
     : [];
+  const rowAnimationKey = useMemo(() => (demoGuideActive ? lastUpdatedAt : 0), [demoGuideActive, lastUpdatedAt]);
 
   return (
     <main className="results-page">
@@ -95,7 +139,12 @@ export default function CompetitionLeaderboardPage() {
                       </thead>
                       <tbody className="divide-y divide-slate-200">
                         {group.rows.map((row) => (
-                          <tr key={row.climber_id}>
+                          <tr
+                            key={`${row.climber_id}:${rowAnimationKey}`}
+                            className={demoGuideActive ? "demo-leaderboard-row-update" : undefined}
+                            style={demoGuideActive ? { animationDelay: `${Math.min(0.45, row.category_rank * 0.035)}s` } : undefined}
+                            data-update-key={rowAnimationKey}
+                          >
                             <td className="py-3 pr-3 font-semibold text-slate-950">#{row.category_rank}</td>
                             <td className="py-3 pr-3">
                               <div className="font-medium text-slate-950">{row.name}</div>

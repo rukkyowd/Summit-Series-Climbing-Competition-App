@@ -13,6 +13,7 @@ export type AthletePickerEntry = {
   statusLabel: string;
   resultLabel: string;
   statusTone: AthletePickerStatusTone;
+  demoTarget?: boolean;
 };
 
 type AthletePickerProps = {
@@ -100,6 +101,7 @@ export function AthletePicker({
               <button
                 key={athlete.id}
                 type="button"
+                data-demo-target={athlete.demoTarget ? "true" : undefined}
                 onClick={() => onSelectAthlete(athlete.id)}
                 className={cn(
                   "w-full rounded-[1.2rem] border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:ring-offset-2",

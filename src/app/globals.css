@@ -2098,6 +2098,61 @@ body[data-demo-tour-active="true"] .results-kicker {
   }
 }
 
+[data-demo-target="true"] {
+  position: relative;
+  border-color: rgba(56, 189, 248, 0.8) !important;
+  background:
+    linear-gradient(135deg, rgba(240, 249, 255, 0.98), rgba(255, 255, 255, 0.94)),
+    #fff;
+  animation: demo-athlete-target-pulse 2s ease-in-out infinite;
+}
+
+[data-demo-target="true"]::after {
+  content: "Demo target";
+  position: absolute;
+  right: 0.85rem;
+  bottom: 0.75rem;
+  border-radius: 9999px;
+  background: rgba(2, 132, 199, 0.1);
+  color: #0369a1;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+@keyframes demo-athlete-target-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(56, 189, 248, 0.62),
+      0 0 18px 4px rgba(186, 230, 253, 0.82),
+      0 16px 34px rgba(14, 116, 215, 0.1);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(2, 132, 199, 0.68),
+      0 0 30px 8px rgba(125, 211, 252, 0.9),
+      0 20px 42px rgba(14, 116, 215, 0.16);
+  }
+}
+
+.demo-leaderboard-row-update {
+  animation: demo-leaderboard-row-flash 1.15s ease-out both;
+}
+
+@keyframes demo-leaderboard-row-flash {
+  0% {
+    background-color: rgba(186, 230, 253, 0.42);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
 .demo-live-badge {
   @apply inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800;
 }
