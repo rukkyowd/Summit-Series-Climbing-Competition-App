@@ -37,6 +37,12 @@ export default function PwaProvider() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const demoContext = window.location.pathname.startsWith("/demo") || window.location.search.includes("demo=");
+    if (demoContext) {
+      setDismissed(true);
+      return;
+    }
+
     setDismissed(window.localStorage.getItem(INSTALL_DISMISSED_KEY) === "true");
     setInstalled(window.matchMedia("(display-mode: standalone)").matches);
 

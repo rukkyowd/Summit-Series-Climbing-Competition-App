@@ -348,7 +348,7 @@ export interface FinalsSummary {
   attempts_to_zone: number;
 }
 
-export type CompetitionLifecycleLabel = "Live / Ongoing" | "Upcoming" | "Future" | "Past";
+export type CompetitionLifecycleLabel = "Live / Ongoing" | "Results published" | "Upcoming" | "Future" | "Past";
 
 export function createCategoryKey(genderDivision: string, ageGroup: string) {
   return `${genderDivision}::${ageGroup}`;
@@ -1483,6 +1483,10 @@ export function isCompetitionLiveNow(
     return false;
   }
 
+  if (competition.current_phase === "results") {
+    return false;
+  }
+
   if (competition.current_phase === "qualifier_open" || competition.current_phase === "finals_open") {
     return true;
   }
@@ -1505,6 +1509,35 @@ function parseDateOnlyBoundary(value: string | null | undefined, endOfDay = fals
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function parseDateOnlyParts(value: string | null | undefined) {
+  const match = typeof value === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day };
+}
+
+function formatDateOnlyParts(parts: { year: number; month: number; day: number }) {
+  return new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function getCompetitionLifecycleLabel(
   competition: Pick<Competition, "status" | "current_phase" | "start_date" | "end_date"> & {
     schedule_blocks?: Pick<CompetitionScheduleBlock, "phase_type" | "is_active">[];
@@ -1513,6 +1546,10 @@ export function getCompetitionLifecycleLabel(
   const now = new Date();
   const start = parseDateOnlyBoundary(competition.start_date, false);
   const end = parseDateOnlyBoundary(competition.end_date ?? competition.start_date, true);
+
+  if (competition.current_phase === "results") {
+    return "Results published";
+  }
 
   if (isCompetitionLiveNow(competition)) {
     return "Live / Ongoing";
@@ -2127,6 +2164,11 @@ export function formatDateLabel(value: string | null | undefined) {
     return "Date TBD";
   }
 
+  const dateOnly = parseDateOnlyParts(value);
+  if (dateOnly) {
+    return formatDateOnlyParts(dateOnly);
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
@@ -2137,17 +2179,32 @@ export function formatDateLabel(value: string | null | undefined) {
 
 export function formatDateRange(startDate: string | null, endDate: string | null) {
   if (startDate && endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const startDateOnly = parseDateOnlyParts(startDate);
+    const endDateOnly = parseDateOnlyParts(endDate);
 
     if (
-      !Number.isNaN(start.getTime()) &&
-      !Number.isNaN(end.getTime()) &&
-      start.getFullYear() === end.getFullYear() &&
-      start.getMonth() === end.getMonth() &&
-      start.getDate() === end.getDate()
+      startDateOnly &&
+      endDateOnly &&
+      startDateOnly.year === endDateOnly.year &&
+      startDateOnly.month === endDateOnly.month &&
+      startDateOnly.day === endDateOnly.day
     ) {
       return formatDateLabel(startDate);
+    }
+
+    if (!startDateOnly || !endDateOnly) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      if (
+        !Number.isNaN(start.getTime()) &&
+        !Number.isNaN(end.getTime()) &&
+        start.getFullYear() === end.getFullYear() &&
+        start.getMonth() === end.getMonth() &&
+        start.getDate() === end.getDate()
+      ) {
+        return formatDateLabel(startDate);
+      }
     }
 
     return `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
@@ -2177,6 +2234,25 @@ export function formatDateTimeLabel(value: string | null | undefined) {
 export function formatCompetitionDateBadge(competition: Pick<Competition, "start_date" | "end_date">) {
   if (!competition.start_date) {
     return { month: "TBD", day: "--" };
+  }
+
+  const startDateOnly = parseDateOnlyParts(competition.start_date);
+  if (startDateOnly) {
+    const endDateOnly = parseDateOnlyParts(competition.end_date);
+    const sameValidEndDate =
+      endDateOnly &&
+      startDateOnly.year === endDateOnly.year &&
+      startDateOnly.month === endDateOnly.month &&
+      startDateOnly.day === endDateOnly.day;
+    const month = new Date(startDateOnly.year, startDateOnly.month - 1, startDateOnly.day)
+      .toLocaleDateString(undefined, { month: "short" })
+      .toUpperCase();
+    const day =
+      endDateOnly && !sameValidEndDate
+        ? `${startDateOnly.day} - ${endDateOnly.day}`
+        : `${startDateOnly.day}`;
+
+    return { month, day };
   }
 
   const start = new Date(competition.start_date);

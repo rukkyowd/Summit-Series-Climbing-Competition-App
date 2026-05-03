@@ -34,6 +34,8 @@ const mockState = vi.hoisted(() => ({
   competitionUpdates: [] as Array<Record<string, unknown>>,
   roundUpdates: [] as Array<Record<string, unknown>>,
   roundInserts: [] as Array<Record<string, unknown>>,
+  scheduleUpdates: [] as Array<Record<string, unknown>>,
+  scheduleInserts: [] as Array<Record<string, unknown>>,
   operationLog: [] as string[],
   insertedClimbers: [] as Array<{ id: string; climber_number: string }>,
   insertedAttempts: [] as Array<{
@@ -144,6 +146,11 @@ class SupabaseQueryMock {
       return { data: { id: "round-finals" }, error: null };
     }
 
+    if (this.table === "competition_schedule_blocks" && this.operation === "insert") {
+      mockState.scheduleInserts.push(this.payload as Record<string, unknown>);
+      return { data: { id: `schedule-${mockState.scheduleInserts.length}` }, error: null };
+    }
+
     return { data: { id: "session-1" }, error: null };
   }
 
@@ -164,6 +171,10 @@ class SupabaseQueryMock {
         const payload = this.payload as Record<string, unknown>;
         mockState.roundUpdates.push(payload);
         mockState.operationLog.push(payload.is_active ? "rounds:activate" : "rounds:deactivate");
+      }
+      if (this.table === "competition_schedule_blocks" && this.operation === "update") {
+        mockState.scheduleUpdates.push(this.payload as Record<string, unknown>);
+        mockState.operationLog.push("schedule:update");
       }
       return { error: null };
     }
@@ -248,6 +259,8 @@ beforeEach(() => {
   mockState.competitionUpdates = [];
   mockState.roundUpdates = [];
   mockState.roundInserts = [];
+  mockState.scheduleUpdates = [];
+  mockState.scheduleInserts = [];
   mockState.operationLog = [];
   mockState.insertedClimbers = [];
   mockState.insertedAttempts = [];
@@ -335,6 +348,29 @@ describe("demo seed route", () => {
         advancement_cutoff: 6,
         problem_count: 4,
       })
+    );
+  });
+
+  it("creates finals and results schedule blocks for demo lifecycle handoff", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+
+    expect(response.status).toBe(200);
+    expect(mockState.scheduleInserts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          competition_id: "competition-1",
+          label: "Demo finals",
+          phase_type: "finals_round",
+          round_id: "round-finals",
+          eligible_category_ids: ["Men::Youth B"],
+        }),
+        expect.objectContaining({
+          competition_id: "competition-1",
+          label: "Awards and public results",
+          phase_type: "results",
+          round_id: null,
+        }),
+      ])
     );
   });
 

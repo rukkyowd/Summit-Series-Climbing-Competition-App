@@ -1209,6 +1209,20 @@ export async function undoCompetitionOperation(competitionId: string) {
   return getCompetitionSnapshot(competitionId, { authenticated: true });
 }
 
+export async function getCompetitionUndoAvailabilityAdmin(competitionId: string) {
+  ensureConfigured();
+  const result = await postAdminCompetitionAction<{ undoAvailability?: CompetitionUndoAvailability }>({
+    action: "get_undo_availability",
+    competitionId,
+  });
+
+  return result.undoAvailability ?? {
+    available: false,
+    expires_at: null,
+    operation_type: null,
+  };
+}
+
 export async function deleteCompetition(competitionId: string) {
   ensureConfigured();
   await postAdminCompetitionAction({

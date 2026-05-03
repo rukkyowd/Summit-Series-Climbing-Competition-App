@@ -7,7 +7,11 @@ import {
   canRegisterDuringCompetition,
   canUseLiveBoulderQueue,
   DEFAULT_COMPETITION,
+  formatCompetitionDateBadge,
+  formatDateLabel,
+  formatDateRange,
   getActiveQueueSessionBlock,
+  getCompetitionLifecycleLabel,
   getCompetitionPhaseSequenceFromScheduleBlocks,
   getCompetitionPhaseForSchedulePhase,
   getFormatCapabilities,
@@ -138,6 +142,33 @@ describe("competition phases", () => {
         format: "flash_format",
       })
     ).toBe(false);
+  });
+
+  it("reports results before live schedule state when results are published", () => {
+    expect(
+      getCompetitionLifecycleLabel({
+        status: "active",
+        current_phase: "results",
+        start_date: "2026-05-10",
+        end_date: "2026-05-10",
+        schedule_blocks: [
+          {
+            phase_type: "qualifier_round",
+            is_active: true,
+          },
+        ],
+      })
+    ).toBe("Results published");
+  });
+
+  it("formats date-only values without timezone day shifts", () => {
+    expect(formatDateLabel("2026-05-10")).toContain("May");
+    expect(formatDateLabel("2026-05-10")).toContain("10");
+    expect(formatDateRange("2026-05-10", "2026-05-10")).toBe(formatDateLabel("2026-05-10"));
+    expect(formatCompetitionDateBadge({ start_date: "2026-05-10", end_date: "2026-05-11" })).toEqual({
+      month: "MAY",
+      day: "10 - 11",
+    });
   });
 });
 

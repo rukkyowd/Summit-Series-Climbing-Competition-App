@@ -44,6 +44,7 @@ type RoundRow = {
 
 type ScheduleBlockRow = {
   id: string;
+  label?: string | null;
   round_id: string | null;
   phase_type: string;
   eligible_category_ids: unknown;
@@ -374,6 +375,102 @@ async function ensureQualifierSession(
   return inserted.id as string;
 }
 
+async function nextScheduleSortOrder(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competitionId: string,
+  fallback: number
+) {
+  const { data, error } = await supabase
+    .from("competition_schedule_blocks")
+    .select("sort_order")
+    .eq("competition_id", competitionId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const currentMax = (data ?? []).reduce((max, row) => Math.max(max, Number(row.sort_order ?? 0)), 0);
+  return Math.max(currentMax + 1, fallback);
+}
+
+async function ensureLifecycleScheduleBlock(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  input: {
+    competitionId: string;
+    phaseType: "finals_round" | "results";
+    label: string;
+    audienceLabel: string;
+    roundId: string | null;
+    categoryId?: string;
+    startTime: string;
+    endTime: string;
+    sortOrder: number;
+  }
+) {
+  const { data, error } = await supabase
+    .from("competition_schedule_blocks")
+    .select("id, label, round_id, phase_type, eligible_category_ids, capacity, sort_order")
+    .eq("competition_id", input.competitionId)
+    .eq("phase_type", input.phaseType)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const blocks = (data ?? []) as ScheduleBlockRow[];
+  const eligibleCategoryIds = input.categoryId ? [input.categoryId] : [];
+  const linkedBlock = blocks.find((block) =>
+    input.roundId ? block.round_id === input.roundId : block.label === input.label || !block.round_id
+  );
+
+  if (linkedBlock) {
+    const update = await supabase
+      .from("competition_schedule_blocks")
+      .update({
+        label: input.label,
+        audience_label: input.audienceLabel,
+        round_id: input.roundId,
+        start_time: input.startTime,
+        end_time: input.endTime,
+        capacity: Math.max(linkedBlock.capacity ?? 0, SAMPLE_CLIMBERS.length),
+        eligible_category_ids: eligibleCategoryIds,
+      })
+      .eq("competition_id", input.competitionId)
+      .eq("id", linkedBlock.id);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+
+    return linkedBlock.id;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("competition_schedule_blocks")
+    .insert({
+      competition_id: input.competitionId,
+      round_id: input.roundId,
+      sort_order: await nextScheduleSortOrder(supabase, input.competitionId, input.sortOrder),
+      label: input.label,
+      phase_type: input.phaseType,
+      audience_label: input.audienceLabel,
+      is_active: false,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      capacity: Math.max(SAMPLE_CLIMBERS.length, 20),
+      eligible_category_ids: eligibleCategoryIds,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return inserted.id as string;
+}
+
 async function clearPreviousSeed(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competitionId: string
@@ -526,13 +623,34 @@ export async function POST(request: NextRequest) {
     const category = await ensureCategory(supabase, competitionRow.id);
     await ensureDemoFinalsConfiguration(supabase, competitionRow);
     const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow);
-    await ensureFinalsRound(supabase, competitionRow, qualifierRoundId);
+    const finalsRoundId = await ensureFinalsRound(supabase, competitionRow, qualifierRoundId);
     const qualifierSessionId = await ensureQualifierSession(
       supabase,
       competitionRow.id,
       qualifierRoundId,
       category.id
     );
+    await ensureLifecycleScheduleBlock(supabase, {
+      competitionId: competitionRow.id,
+      phaseType: "finals_round",
+      label: "Demo finals",
+      audienceLabel: "Finalists",
+      roundId: finalsRoundId,
+      categoryId: category.id,
+      startTime: "2:00 PM",
+      endTime: "3:30 PM",
+      sortOrder: 5,
+    });
+    await ensureLifecycleScheduleBlock(supabase, {
+      competitionId: competitionRow.id,
+      phaseType: "results",
+      label: "Awards and public results",
+      audienceLabel: "Athletes and spectators",
+      roundId: null,
+      startTime: "4:00 PM",
+      endTime: "4:30 PM",
+      sortOrder: 6,
+    });
     await resetDemoCompetitionProgress(supabase, competitionRow.id, qualifierRoundId, qualifierSessionId);
     await clearPreviousSeed(supabase, competitionRow.id);
 

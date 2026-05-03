@@ -34,6 +34,7 @@ import {
   advanceCompetitionToFinals,
   createCompetitionFromTemplate,
   deleteCompetition,
+  getCompetitionUndoAvailabilityAdmin,
   getCompetitionSnapshot,
   listCompetitionSummaries,
   saveCompetitionConfig,
@@ -1254,8 +1255,17 @@ export default function StaffDashboard({
 
   const refreshSelectedSnapshot = useCallback(async (competitionId: string) => {
     const nextSnapshot = await getCompetitionSnapshot(competitionId, { authenticated: true });
+    if (profile?.role === "admin") {
+      const undoAvailability = await getCompetitionUndoAvailabilityAdmin(competitionId).catch(() => nextSnapshot.undoAvailability);
+      setSnapshot({
+        ...nextSnapshot,
+        undoAvailability,
+      });
+      return;
+    }
+
     setSnapshot(nextSnapshot);
-  }, []);
+  }, [profile?.role]);
 
   const refreshAfterChange = useCallback(async (competitionId?: string) => {
     await load();
@@ -1263,6 +1273,35 @@ export default function StaffDashboard({
       await refreshSelectedSnapshot(competitionId);
     }
   }, [load, refreshSelectedSnapshot]);
+
+  useEffect(() => {
+    if (profile?.role !== "admin" || !draft?.id || snapshot?.competition.id !== draft.id) {
+      return;
+    }
+
+    let cancelled = false;
+    void getCompetitionUndoAvailabilityAdmin(draft.id)
+      .then((undoAvailability) => {
+        if (cancelled) {
+          return;
+        }
+        setSnapshot((current) =>
+          current?.competition.id === draft.id
+            ? {
+                ...current,
+                undoAvailability,
+              }
+            : current
+        );
+      })
+      .catch(() => {
+        // The normal snapshot path remains usable if the protected undo probe fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft?.id, profile?.role, snapshot?.competition.id]);
 
   const runPhaseChange = async (competitionId: string, nextPhaseValue: Competition["current_phase"], successMessage: string) => {
     setError("");
@@ -1409,6 +1448,19 @@ export default function StaffDashboard({
     });
   };
 
+  const seedDemoFinalsResults = async (competitionId: string) => {
+    const response = await fetch("/api/demo/finals-results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ competitionId }),
+    });
+    const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error ?? "Unable to seed demo finals results.");
+    }
+  };
+
   const confirmPublishResults = () => {
     if (!draft) {
       return;
@@ -1426,6 +1478,12 @@ export default function StaffDashboard({
           "Results published.",
           resultsBlock?.id
         );
+        if (selectedCompetitionIsDemo) {
+          setMessage("Results published. Adding demo finals scores...");
+          await seedDemoFinalsResults(draft.id);
+          await refreshAfterChange(draft.id);
+          setMessage("Results published with demo finals scores.");
+        }
       },
     });
   };
@@ -1919,6 +1977,11 @@ export default function StaffDashboard({
   const finalsLiveForOperations = draft
     ? draft.current_phase === "finals_open"
     : false;
+  const operationsScheduleBlockLabel = resultsPublishedForOperations
+    ? resultsBlock?.label ?? currentPhaseBlockLabel
+    : finalsStartedForOperations
+      ? finalsOperationBlock?.label ?? currentPhaseBlockLabel
+      : currentPhaseBlockLabel;
   const canLockQualifiers = Boolean(draft && canEditPhase && draft.current_phase === "qualifier_open");
   const canAdvanceToFinals = draft
     ? canEditPhase &&
@@ -2932,7 +2995,7 @@ export default function StaffDashboard({
           </Surface>
         ) : null}
 
-        {draft ? (
+        {draft && !demoAct1CreatedForCurrentDraft ? (
           <Surface
             variant="card"
             className="border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,0.98))]"
@@ -2957,7 +3020,7 @@ export default function StaffDashboard({
                         ? "Qualifiers locked"
                         : "Qualifiers open"}
                 </span>
-                {liveScheduleBlock ? <span className="results-chip">{liveScheduleBlock.label}</span> : null}
+                {operationsScheduleBlockLabel ? <span className="results-chip">{operationsScheduleBlockLabel}</span> : null}
               </div>
             </div>
 

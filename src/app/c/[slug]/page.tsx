@@ -70,6 +70,7 @@ export default function CompetitionOverviewPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "competition_boulder_queue", filter: `competition_id=eq.${competitionId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "climbers", filter: `competition_id=eq.${competitionId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "competition_finalists", filter: `competition_id=eq.${competitionId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "final_attempts", filter: `competition_id=eq.${competitionId}` }, refresh)
       .subscribe();
 
     return () => {
@@ -162,6 +163,7 @@ export default function CompetitionOverviewPage() {
     snapshot?.competition.current_phase === "finals_open" ||
     snapshot?.competition.current_phase === "finals_closed" ||
     snapshot?.competition.current_phase === "results";
+  const resultsPublished = snapshot?.competition.current_phase === "results";
   const liveCategoryCount = activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids).length : 0;
   const overviewNavItems = useMemo(
     () => [
@@ -248,8 +250,18 @@ export default function CompetitionOverviewPage() {
               <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
                 <SectionHeader
                   kicker="What should I do now?"
-                  title={activeBlock ? `${activeBlock.label} is the current focus.` : "The event page is ready even before the first live block starts."}
-                  description="Open the action you need first, then use the schedule and start list below for the deeper event details."
+                  title={
+                    resultsPublished
+                      ? "Final results are published."
+                      : activeBlock
+                        ? `${activeBlock.label} is the current focus.`
+                        : "The event page is ready even before the first live block starts."
+                  }
+                  description={
+                    resultsPublished
+                      ? "Athletes, coaches, parents, and spectators can review the final standings below."
+                      : "Open the action you need first, then use the schedule and start list below for the deeper event details."
+                  }
                 />
                 <div className="results-link-list">
                   <Link href={buildCompetitionPath(slug, "register")} className={buttonStyles({ variant: "primary", fullWidth: true })}>
@@ -280,7 +292,7 @@ export default function CompetitionOverviewPage() {
                   </div>
                 </div>
                 <div className="rounded-[1rem] border border-slate-200 bg-white/85 px-4 py-3">
-                  <div className="results-kicker">Live block</div>
+                  <div className="results-kicker">{resultsPublished ? "Results block" : "Live block"}</div>
                   <div className="mt-2 text-base font-semibold text-slate-950">
                     {activeBlock ? formatTimeRange(activeBlock.start_time, activeBlock.end_time) : "Waiting"}
                   </div>

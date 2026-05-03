@@ -786,6 +786,35 @@ export async function handleAdminCompetitionAction(payload: AdminCompetitionActi
       await syncCompetitionRoundRuntimeState(supabase, id);
       return { competitionId: id };
     }
+    case "get_undo_availability": {
+      const id = requireString(competitionId, "Competition id");
+      await loadCompetitionRecord(supabase, id);
+      const { data, error } = await supabase
+        .from("competition_operations")
+        .select("operation_type, expires_at")
+        .eq("competition_id", id)
+        .is("consumed_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+
+      return {
+        competitionId: id,
+        undoAvailability: data
+          ? {
+              available: true,
+              expires_at: data.expires_at ?? null,
+              operation_type: (data.operation_type as "advance" | "reset") ?? null,
+            }
+          : {
+              available: false,
+              expires_at: null,
+              operation_type: null,
+            },
+      };
+    }
     case "delete": {
       const id = requireString(competitionId, "Competition id");
       await loadCompetitionRecord(supabase, id);
