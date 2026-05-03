@@ -1,6 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 import { buildDisplayCategory, createCategoryKey } from "@/lib/scoring";
+import {
+  DEMO_TARGET_AFTER_LABEL,
+  DEMO_TARGET_BEFORE_LABEL,
+  DEMO_TARGET_CLIMB_NUMBER,
+  DEMO_TARGET_CLIMBER_NAME,
+  DEMO_TARGET_CLIMBER_NUMBER,
+  buildDemoJudgeUrl,
+  buildDemoLeaderboardUrl,
+  buildDemoPublicUrl,
+} from "@/lib/demo-scenario";
 
 type DemoSeedRequest = {
   competitionId?: string;
@@ -39,7 +49,7 @@ const SAMPLE_CLIMBERS = [
   { name: "Leo Grant", number: "101", province: "NS" },
   { name: "Noah Patel", number: "102", province: "NB" },
   { name: "Milo Fraser", number: "103", province: "PE" },
-  { name: "Maya Chen", number: "104", province: "NS", target: true },
+  { name: DEMO_TARGET_CLIMBER_NAME, number: DEMO_TARGET_CLIMBER_NUMBER, province: "NS", target: true },
   { name: "Declan White", number: "105", province: "NL" },
   { name: "Isaac Green", number: "106", province: "QC" },
 ] as const;
@@ -53,7 +63,7 @@ function sampleToken(competitionId: string, number: string) {
 }
 
 function scoreFor(climberNumber: string, climbNumber: number) {
-  if (climberNumber === "104" && climbNumber === 3) {
+  if (climberNumber === DEMO_TARGET_CLIMBER_NUMBER && climbNumber === DEMO_TARGET_CLIMB_NUMBER) {
     return {
       attempt_count: 3,
       zone: true,
@@ -249,6 +259,84 @@ async function clearPreviousSeed(
   }
 }
 
+async function resetDemoCompetitionProgress(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competitionId: string,
+  qualifierRoundId: string,
+  qualifierSessionId: string
+) {
+  const timestamp = new Date().toISOString();
+  const finalistDelete = await supabase.from("competition_finalists").delete().eq("competition_id", competitionId);
+  if (finalistDelete.error) {
+    throw new Error(finalistDelete.error.message);
+  }
+
+  const finalAttemptDelete = await supabase.from("final_attempts").delete().eq("competition_id", competitionId);
+  if (finalAttemptDelete.error) {
+    throw new Error(finalAttemptDelete.error.message);
+  }
+
+  const competitionUpdate = await supabase
+    .from("competitions")
+    .update({
+      current_phase: "qualifier_open",
+      stage_mode: "qualifier",
+      qualifier_locked_at: null,
+      finals_started_at: null,
+    })
+    .eq("id", competitionId);
+  if (competitionUpdate.error) {
+    throw new Error(competitionUpdate.error.message);
+  }
+
+  const activeRoundUpdate = await supabase
+    .from("competition_rounds")
+    .update({
+      status: "scoring",
+      is_active: true,
+      activated_at: timestamp,
+      started_at: timestamp,
+      closed_at: null,
+    })
+    .eq("competition_id", competitionId)
+    .eq("id", qualifierRoundId);
+  if (activeRoundUpdate.error) {
+    throw new Error(activeRoundUpdate.error.message);
+  }
+
+  const inactiveRoundUpdate = await supabase
+    .from("competition_rounds")
+    .update({
+      status: "pending",
+      is_active: false,
+      activated_at: null,
+      started_at: null,
+      closed_at: null,
+    })
+    .eq("competition_id", competitionId)
+    .neq("id", qualifierRoundId);
+  if (inactiveRoundUpdate.error) {
+    throw new Error(inactiveRoundUpdate.error.message);
+  }
+
+  const clearBlocks = await supabase
+    .from("competition_schedule_blocks")
+    .update({ is_active: false })
+    .eq("competition_id", competitionId);
+  if (clearBlocks.error) {
+    throw new Error(clearBlocks.error.message);
+  }
+
+  const activateBlock = await supabase
+    .from("competition_schedule_blocks")
+    .update({ is_active: true })
+    .eq("competition_id", competitionId)
+    .eq("id", qualifierSessionId);
+  if (activateBlock.error) {
+    throw new Error(activateBlock.error.message);
+  }
+}
+
 export async function POST(request: NextRequest) {
   let body: DemoSeedRequest;
 
@@ -288,12 +376,16 @@ export async function POST(request: NextRequest) {
 
     const category = await ensureCategory(supabase, competitionRow.id);
     const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow.id);
+    if (!qualifierRoundId) {
+      throw new Error("Demo seeding requires a qualifier round before climbers can be assigned to a session.");
+    }
     const qualifierSessionId = await ensureQualifierSession(
       supabase,
       competitionRow.id,
       qualifierRoundId,
       category.id
     );
+    await resetDemoCompetitionProgress(supabase, competitionRow.id, qualifierRoundId, qualifierSessionId);
     await clearPreviousSeed(supabase, competitionRow.id);
 
     const climberRows = SAMPLE_CLIMBERS.map((climber) => ({
@@ -338,22 +430,23 @@ export async function POST(request: NextRequest) {
       throw new Error(attemptError.message);
     }
 
-    const target = (insertedClimbers ?? []).find((climber) => climber.climber_number === "104");
+    const target = (insertedClimbers ?? []).find((climber) => climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER);
+    const targetClimberId = typeof target?.id === "string" ? target.id : null;
 
     return NextResponse.json({
       ok: true,
       competitionId: competitionRow.id,
       slug: competitionRow.slug,
-      judgeUrl: `/staff/c/${competitionRow.slug}/judge`,
-      publicUrl: `/c/${competitionRow.slug}`,
-      leaderboardUrl: `/c/${competitionRow.slug}/leaderboard`,
+      judgeUrl: buildDemoJudgeUrl(competitionRow.slug, targetClimberId),
+      publicUrl: buildDemoPublicUrl(competitionRow.slug),
+      leaderboardUrl: buildDemoLeaderboardUrl(competitionRow.slug),
       target: {
-        climberId: target?.id ?? null,
-        climberNumber: "104",
-        name: "Maya Chen",
-        climbNumber: 3,
-        before: "Top in 3 attempts",
-        after: "Top in 1 attempt",
+        climberId: targetClimberId,
+        climberNumber: DEMO_TARGET_CLIMBER_NUMBER,
+        name: DEMO_TARGET_CLIMBER_NAME,
+        climbNumber: DEMO_TARGET_CLIMB_NUMBER,
+        before: DEMO_TARGET_BEFORE_LABEL,
+        after: DEMO_TARGET_AFTER_LABEL,
       },
       inserted: {
         climbers: insertedClimbers?.length ?? 0,

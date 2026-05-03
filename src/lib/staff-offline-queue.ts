@@ -131,6 +131,11 @@ export async function writeOfflineQueue(items: OfflineQueueItem[]) {
   await queueStore.setItem(STORAGE_KEY, items);
 }
 
+export async function clearOfflineQueueForCompetition(competitionId: string) {
+  const queue = await readOfflineQueue();
+  await writeOfflineQueue(queue.filter((entry) => entry.competitionId !== competitionId));
+}
+
 export async function enqueueOfflineItem(item: OfflineQueueItem) {
   const queue = await readOfflineQueue();
   const deduped = queue.filter(

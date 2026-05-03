@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import { QualifierScoreEditor } from "@/components/judge/qualifier-score-editor";
 import { RecentScoreFeedback } from "@/components/judge/recent-score-feedback";
+import { DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { getAuthState, type Profile } from "@/lib/auth";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "@/lib/attempts";
 import {
   buildQueueMetadata,
+  clearOfflineQueueForCompetition,
   enqueueOfflineItem,
   markOfflineItemRetried,
   readOfflineQueue,
@@ -44,6 +46,14 @@ import {
   type FinalAttempt,
   type QualifierAttempt,
 } from "@/lib/scoring";
+import {
+  DEMO_TARGET_AFTER_LABEL,
+  DEMO_TARGET_BEFORE_LABEL,
+  DEMO_TARGET_CLIMB_NUMBER,
+  DEMO_TARGET_CLIMBER_NAME,
+  DEMO_TARGET_CLIMBER_NUMBER,
+  isDemoTargetCorrected,
+} from "@/lib/demo-scenario";
 
 type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
 type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
@@ -468,13 +478,13 @@ function FinalsEditorPanel({
 }
 
 export default function StaffJudgePage() {
-  const router = useRouter();
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const initialStage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
   const initialClimberId = searchParams?.get("climberId") ?? "";
   const initialBoulder = Math.max(1, Number(searchParams?.get("boulder") ?? 1) || 1);
+  const demoGuideActive = searchParams?.get("demo") === "1";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const snapshotRef = useRef<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -631,9 +641,16 @@ export default function StaffJudgePage() {
     let cancelled = false;
 
     void fetchStaffCompetitionSnapshot(slug)
-      .then((nextSnapshot) => {
+      .then(async (nextSnapshot) => {
         if (cancelled) {
           return;
+        }
+
+        if (demoGuideActive && nextSnapshot.competition.is_demo) {
+          await clearOfflineQueueForCompetition(nextSnapshot.competition.id);
+          if (cancelled) {
+            return;
+          }
         }
 
         setResolvedSnapshot(nextSnapshot);
@@ -692,9 +709,13 @@ export default function StaffJudgePage() {
     return () => {
       cancelled = true;
     };
-  }, [initialBoulder, initialClimberId, setResolvedSnapshot, slug, syncQueuedState]);
+  }, [demoGuideActive, initialBoulder, initialClimberId, setResolvedSnapshot, slug, syncQueuedState]);
 
   useEffect(() => {
+    if (demoGuideActive && !snapshot) {
+      return;
+    }
+
     void syncQueuedState();
     void (async () => {
       const queue = await readOfflineQueue();
@@ -717,7 +738,7 @@ export default function StaffJudgePage() {
       window.removeEventListener("online", onOnline);
       window.clearInterval(retryTimer);
     };
-  }, [flushOfflineQueue, syncQueuedState]);
+  }, [demoGuideActive, flushOfflineQueue, snapshot, syncQueuedState]);
 
   const qualifierClimbers = useMemo(() => {
     if (!snapshot) {
@@ -762,6 +783,25 @@ export default function StaffJudgePage() {
         : null,
     [activeQualifierRoundId, selectedBoulder, selectedQualifierClimber]
   );
+  const demoTargetClimber = useMemo(
+    () =>
+      snapshot?.climbers.find(
+        (climber) =>
+          climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
+          climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
+      ) ?? null,
+    [snapshot]
+  );
+  const demoTargetAttempt = useMemo(
+    () =>
+      demoTargetClimber
+        ? filterAttemptsForRound(demoTargetClimber.qualifier_attempts, activeQualifierRoundId).find(
+            (attempt) => attempt.climb_number === DEMO_TARGET_CLIMB_NUMBER
+          ) ?? null
+        : null,
+    [activeQualifierRoundId, demoTargetClimber]
+  );
+  const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
 
   const selectedQualifierDraftKey = selectedQualifierClimber ? `${selectedQualifierClimber.id}:${selectedBoulder}` : "";
   const selectedQualifierDraft = selectedQualifierClimber
@@ -1276,6 +1316,59 @@ export default function StaffJudgePage() {
     setFinalsDraft(key, () => EMPTY_FINALS_DRAFT);
   };
 
+  const highlightDemoTarget = () => {
+    if (!demoTargetClimber) {
+      setMessage("Demo target is not loaded yet. Restart the scenario from the demo workspace if Maya Chen is missing.");
+      return;
+    }
+
+    setStage("qualifier");
+    setQuery("");
+    setSelectedQualifierClimberId(demoTargetClimber.id);
+    setSelectedBoulder(DEMO_TARGET_CLIMB_NUMBER);
+    setSelectedCell({ climberId: demoTargetClimber.id, climbNumber: DEMO_TARGET_CLIMB_NUMBER });
+    setMessage(
+      `Highlighted #${DEMO_TARGET_CLIMBER_NUMBER} ${DEMO_TARGET_CLIMBER_NAME} on B${DEMO_TARGET_CLIMB_NUMBER}. The guide did not save anything.`
+    );
+    window.requestAnimationFrame(() => {
+      document.getElementById("judge-demo-score-editor")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
+
+  const checkDemoCorrection = async () => {
+    if (!snapshot) {
+      return;
+    }
+
+    try {
+      const refreshed = await fetchStaffCompetitionSnapshot(snapshot.competition.id);
+      setResolvedSnapshot(refreshed);
+      await syncQueuedState(refreshed);
+      const targetClimber =
+        refreshed.climbers.find((climber) => climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER) ??
+        refreshed.climbers.find((climber) => climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()) ??
+        null;
+      const targetAttempt = targetClimber
+        ? filterAttemptsForRound(targetClimber.qualifier_attempts, refreshed.activeQualifierRound?.id).find(
+            (attempt) => attempt.climb_number === DEMO_TARGET_CLIMB_NUMBER
+          ) ?? null
+        : null;
+
+      if (isDemoTargetCorrected(targetAttempt)) {
+        setError("");
+        setMessage(
+          `Act 2 complete: #${DEMO_TARGET_CLIMBER_NUMBER} ${DEMO_TARGET_CLIMBER_NAME} B${DEMO_TARGET_CLIMB_NUMBER} is now ${DEMO_TARGET_AFTER_LABEL}.`
+        );
+      } else {
+        setMessage(
+          `The key score is not corrected yet. Save #${DEMO_TARGET_CLIMBER_NUMBER} ${DEMO_TARGET_CLIMBER_NAME} B${DEMO_TARGET_CLIMB_NUMBER} as ${DEMO_TARGET_AFTER_LABEL}.`
+        );
+      }
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to verify the demo correction.");
+    }
+  };
+
   if (loading) {
     return (
       <main className="results-page">
@@ -1312,28 +1405,29 @@ export default function StaffJudgePage() {
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
         {snapshot.competition.is_demo ? (
-          <section className="results-alert border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.92))] text-slate-800">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-2">
-                <div className="results-kicker text-sky-700">Demo judge task</div>
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-                  Correct the seeded mistake, then watch the real leaderboard respond.
-                </h2>
-                <p className="max-w-4xl text-sm leading-relaxed text-slate-600">
-                  Find #104 Maya Chen, select B3, change the result from Top in 3 attempts
-                  to Top in 1 attempt, then save. This banner does not click, score, or complete anything for you.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={() => router.push(`/c/${slug}/leaderboard`)}>
-                  View leaderboard
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => router.push("/demo")}>
-                  Back to Demo Home
-                </Button>
-              </div>
-            </div>
-          </section>
+          <DemoGuidePanel
+            eyebrow="Act 2 - Judge: Correct Key Score"
+            title={
+              demoTargetCorrected
+                ? "Act 2 complete: Maya Chen is now Top in 1."
+                : "Correct Maya Chen, then watch the real leaderboard respond."
+            }
+            body={`Find #${DEMO_TARGET_CLIMBER_NUMBER} ${DEMO_TARGET_CLIMBER_NAME}, select B${DEMO_TARGET_CLIMB_NUMBER}, change the result from ${DEMO_TARGET_BEFORE_LABEL} to ${DEMO_TARGET_AFTER_LABEL}, then save. Highlight only focuses the real judge UI; it never writes or completes the task for you.`}
+          >
+            <Button type="button" variant="secondary" onClick={highlightDemoTarget}>
+              Highlight target
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => void checkDemoCorrection()}>
+              I completed this
+            </Button>
+            {demoTargetCorrected ? (
+              <DemoGuideLink href={`/staff/c/${slug}?demo=1`} primary>
+                Continue to Organizer Demo
+              </DemoGuideLink>
+            ) : null}
+            <DemoGuideLink href={`/c/${slug}/leaderboard?demo=1`}>View leaderboard</DemoGuideLink>
+            <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
+          </DemoGuidePanel>
         ) : null}
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">
           <div className="results-workspace-hero">
@@ -1398,7 +1492,7 @@ export default function StaffJudgePage() {
         </section>
 
         {stage === "qualifier" ? (
-          <section className="results-card">
+          <section className="results-card" id="judge-demo-score-editor">
             <div className="grid gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]">
               <AthletePicker
                 activeRoundName={activeQualifierRoundName}

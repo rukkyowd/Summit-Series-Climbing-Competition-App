@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
 import FinalsResultsTable from "@/components/finals-results-table";
+import { DemoFinishButton, DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
 import { Alert } from "@/components/ui/alert";
 import { buttonStyles } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -27,7 +28,9 @@ import {
 
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
+  const demoGuideActive = searchParams?.get("demo") === "1";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -237,10 +240,24 @@ export default function CompetitionOverviewPage() {
         {snapshot ? (
           <>
             {snapshot.competition.is_demo ? (
-              <div className="results-alert results-alert-success">
-                Demo event: use this page to view the public schedule, leaderboard links, and results exactly
-                as competitors and spectators would see them.
-              </div>
+              demoGuideActive ? (
+                <DemoGuidePanel
+                  eyebrow="Act 4 - Public: View Results"
+                  title="View the event like an athlete, parent, coach, or spectator."
+                  body="This is the real public event page. Schedule, start list, leaderboard links, and results all read from the same demo competition. Finish Demo deletes the sample event when you are done."
+                >
+                  <DemoGuideLink href={`/c/${slug}/leaderboard?demo=1`} primary>
+                    View leaderboard
+                  </DemoGuideLink>
+                  <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
+                  <DemoFinishButton competitionId={snapshot.competition.id} />
+                </DemoGuidePanel>
+              ) : (
+                <div className="results-alert results-alert-success">
+                  Demo event: use this page to view the public schedule, leaderboard links, and results exactly
+                  as competitors and spectators would see them.
+                </div>
+              )
             ) : null}
             <CompetitionHero competition={snapshot.competition} />
 

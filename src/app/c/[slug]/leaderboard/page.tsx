@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
+import { DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
 import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
@@ -12,6 +13,7 @@ export default function CompetitionLeaderboardPage() {
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const presentationMode = searchParams?.get("presentation") === "1";
+  const demoGuideActive = searchParams?.get("demo") === "1";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [error, setError] = useState("");
 
@@ -40,9 +42,22 @@ export default function CompetitionLeaderboardPage() {
 
         {error ? <Alert variant="error">{error}</Alert> : null}
         {snapshot?.competition.is_demo ? (
-          <div className="results-alert results-alert-success">
-            Demo event: this public leaderboard reads the same scores saved from the real judge panel.
-          </div>
+          demoGuideActive ? (
+            <DemoGuidePanel
+              eyebrow="Demo leaderboard"
+              title="This leaderboard reads the same scores saved from the judge panel."
+              body="Use this page to verify Maya's corrected score impact, then continue to the public event page or return to the demo workspace."
+            >
+              <DemoGuideLink href={`/c/${slug}?demo=1`} primary>
+                Public event
+              </DemoGuideLink>
+              <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
+            </DemoGuidePanel>
+          ) : (
+            <div className="results-alert results-alert-success">
+              Demo event: this public leaderboard reads the same scores saved from the real judge panel.
+            </div>
+          )
         ) : null}
 
         {snapshot ? (

@@ -91,7 +91,7 @@ export default function HomePage() {
             };
           }),
       ]);
-      setSummaries(nextSummaries);
+      setSummaries(nextSummaries.filter((summary) => !summary.competition.is_demo));
       setOfficialEvents(officialEventsResponse.events);
       setProfile(authState.profile);
       setError("");

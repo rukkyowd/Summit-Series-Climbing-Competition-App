@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
+import { DemoGuideLink, DemoGuidePanel } from "@/components/demo-guide-panel";
 import {
   StaffEventCreationForm,
   type StaffEventCreationFormValues,
@@ -761,6 +762,8 @@ export default function StaffDashboard({
   demoSeedOnCreate?: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const guidedDemoActive = searchParams?.get("demo") === "1";
   const demoMode = false;
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
@@ -848,14 +851,14 @@ export default function StaffDashboard({
   const [shareOrigin, setShareOrigin] = useState("");
   const demoFormat = "five_on_five_off" as Competition["format"];
   const isGuidedStoryAct1 = false;
-  const isGuidedStoryAct3 = false;
+  const isGuidedStoryAct3 = guidedDemoActive;
   const currentGuidedAct1Step = { id: "basics" as const };
   const [demoSeedResult, setDemoSeedResult] = useState<null | {
     judgeUrl: string;
     publicUrl: string;
     leaderboardUrl: string;
     target?: {
-      climberNumber: number;
+      climberNumber: string;
       name: string;
       climbNumber: number;
       before: string;
@@ -867,6 +870,13 @@ export default function StaffDashboard({
     setLoading(true);
     try {
       const summaries = await listCompetitionSummaries(true, { authenticated: true });
+      const summariesVisibleInThisContext = summaries.filter((entry) => {
+        if (demoSeedOnCreate || guidedDemoActive) {
+          return entry.competition.is_demo || entry.competition.slug === initialCompetitionSlug;
+        }
+
+        return !entry.competition.is_demo || entry.competition.slug === initialCompetitionSlug;
+      });
       setAllSummaries(summaries);
       setProfile(
         demoMode
@@ -882,7 +892,7 @@ export default function StaffDashboard({
           return "";
         }
 
-        if (current && summaries.some((entry) => entry.competition.id === current)) {
+        if (current && summariesVisibleInThisContext.some((entry) => entry.competition.id === current)) {
           return current;
         }
 
@@ -897,7 +907,7 @@ export default function StaffDashboard({
           return initialMatch?.competition.id ?? preferredDemoSummary?.competition.id ?? "";
         }
 
-        return initialMatch?.competition.id ?? summaries[0]?.competition.id ?? "";
+        return initialMatch?.competition.id ?? summariesVisibleInThisContext[0]?.competition.id ?? "";
       });
       setError("");
     } catch (nextError) {
@@ -905,15 +915,23 @@ export default function StaffDashboard({
     } finally {
       setLoading(false);
     }
-  }, [demoMode, demoSeedOnCreate, demoSessionCompetitionId, initialCompetitionSlug]);
+  }, [demoMode, demoSeedOnCreate, demoSessionCompetitionId, guidedDemoActive, initialCompetitionSlug]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const visibleSummaries = useMemo(() => {
+    if (demoSeedOnCreate || guidedDemoActive) {
+      return allSummaries.filter(
+        (entry) => entry.competition.is_demo || entry.competition.slug === initialCompetitionSlug
+      );
+    }
+
     if (!demoMode) {
-      return allSummaries;
+      return allSummaries.filter(
+        (entry) => !entry.competition.is_demo || entry.competition.slug === initialCompetitionSlug
+      );
     }
 
     if (!demoSessionCompetitionId) {
@@ -925,7 +943,7 @@ export default function StaffDashboard({
         entry.competition.id === demoSessionCompetitionId &&
         (entry.competition.is_demo || isDemoDataSlug(entry.competition.slug))
     );
-  }, [allSummaries, demoMode, demoSessionCompetitionId]);
+  }, [allSummaries, demoMode, demoSeedOnCreate, demoSessionCompetitionId, guidedDemoActive, initialCompetitionSlug]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2362,7 +2380,7 @@ export default function StaffDashboard({
       });
       setError(nextError instanceof Error ? nextError.message : "Unable to launch the judge demo.");
     }
-  }, [demoJudgePath, draft, refreshAfterChange, router, salesAudioEnabled, saveDraftNow, waitForOrganizerPlayback]);
+  }, [demoJudgePath, draft, router, salesAudioEnabled, saveDraftNow, waitForOrganizerPlayback]);
 
   const runOrganizerDemo = useCallback(async () => {
     if (!demoMode || organizerAutoplayRunning || !draft) {
@@ -2697,36 +2715,26 @@ export default function StaffDashboard({
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
         {demoSeedOnCreate ? (
-          <Alert>
-            Demo mode uses the real staff creation form. The finals-capable preset is locked, and
-            sample climbers are added only after this event is created.
-          </Alert>
+          <DemoGuidePanel
+            eyebrow="Act 1 - Organizer: Build Event"
+            title="Create the demo event through the real staff form."
+            body="Use the normal organizer creation workflow. The finals-capable preset is locked for the story, and sample climbers/scores are added only after this event is created."
+          >
+            <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
+          </DemoGuidePanel>
         ) : null}
         {isGuidedStoryAct3 && draft && isDemoCompetitionRecord(draft) ? (
-          <Surface variant="card" className="border-sky-200 bg-sky-50/90">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-2">
-                <div className="results-kicker text-sky-700">Act 3 - Organizer: Advance Finalists</div>
-                <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-                  Review the cut line, lock qualifiers, advance finalists, and start finals.
-                </h1>
-                <p className="max-w-4xl text-sm leading-6 text-slate-600">
-                  This is the real organizer workspace. The guide does not auto-lock or auto-advance:
-                  use the existing phase and finals controls so Act 3 teaches the actual operations flow.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {leaderboardPath ? (
-                  <Link href={leaderboardPath} className="results-secondary-button">
-                    View leaderboard impact
-                  </Link>
-                ) : null}
-                <Link href="/demo" className="results-secondary-button">
-                  Back to Demo Home
-                </Link>
-              </div>
-            </div>
-          </Surface>
+          <DemoGuidePanel
+            eyebrow="Act 3 - Organizer: Advance Finalists"
+            title="Review the cut line, lock qualifiers, advance finalists, and start finals."
+            body="This is the real organizer workspace. The guide does not auto-lock or auto-advance: use the existing phase and finals controls so Act 3 teaches the actual operations flow."
+          >
+            {leaderboardPath ? (
+              <DemoGuideLink href={`${leaderboardPath}?demo=1`}>View leaderboard impact</DemoGuideLink>
+            ) : null}
+            {draft.slug ? <DemoGuideLink href={`/c/${draft.slug}?demo=1`}>Public preview</DemoGuideLink> : null}
+            <DemoGuideLink href="/demo">Back to Demo Home</DemoGuideLink>
+          </DemoGuidePanel>
         ) : null}
         {demoMode && !isGuidedStoryAct1 ? (
           <DemoSalesShell
@@ -3092,7 +3100,7 @@ export default function StaffDashboard({
                             publicUrl?: string;
                             leaderboardUrl?: string;
                             target?: {
-                              climberNumber: number;
+                              climberNumber: string;
                               name: string;
                               climbNumber: number;
                               before: string;
