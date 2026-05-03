@@ -5960,7 +5960,31 @@ import {
 type QueryResult = { data?: unknown; error: { message: string } | null };
 
 const mockState = vi.hoisted(() => ({
-  competition: { id: "competition-1", slug: "demo-comp", is_demo: true },
+  competition: {
+    id: "competition-1",
+    slug: "demo-comp",
+    is_demo: true,
+    format: "five_on_five_off",
+    total_climbs: 4,
+    qualifier_counting_climbs: 4,
+    finals_eligible_age_groups: [],
+  },
+  qualifierRound: { id: "round-qualifier", round_type: "qualifier", scoring_bucket: "qualifier" } as {
+    id: string;
+    round_type: string;
+    scoring_bucket: string;
+  } | null,
+  finalsRound: null as {
+    id: string;
+    round_number: number;
+    sort_order: number;
+    round_type: string;
+    scoring_bucket: string;
+  } | null,
+  competitionUpdates: [] as Array<Record<string, unknown>>,
+  roundUpdates: [] as Array<Record<string, unknown>>,
+  roundInserts: [] as Array<Record<string, unknown>>,
+  operationLog: [] as string[],
   insertedClimbers: [] as Array<{ id: string; climber_number: string }>,
   insertedAttempts: [] as Array<{
     climber_id: string;
@@ -5977,6 +6001,7 @@ const mockState = vi.hoisted(() => ({
 class SupabaseQueryMock {
   private operation: "select" | "insert" | "update" | "delete" | null = null;
   private payload: unknown = null;
+  private orFilter = "";
 
   constructor(private readonly table: string) {}
 
@@ -5999,6 +6024,12 @@ class SupabaseQueryMock {
     return this;
   }
 
+  upsert(payload: unknown) {
+    this.operation = "insert";
+    this.payload = payload;
+    return this;
+  }
+
   delete() {
     this.operation = "delete";
     return this;
@@ -6016,7 +6047,8 @@ class SupabaseQueryMock {
     return this;
   }
 
-  or() {
+  or(filter?: string) {
+    this.orFilter = filter ?? "";
     return this;
   }
 
@@ -6047,13 +6079,21 @@ class SupabaseQueryMock {
     }
 
     if (this.table === "competition_rounds") {
-      return { data: { id: "round-qualifier", round_type: "qualifier", scoring_bucket: "qualifier" }, error: null };
+      if (this.orFilter.includes("finals")) {
+        return { data: mockState.finalsRound, error: null };
+      }
+      return { data: mockState.qualifierRound, error: null };
     }
 
     return { data: null, error: null };
   }
 
   async single(): Promise<QueryResult> {
+    if (this.table === "competition_rounds" && this.operation === "insert") {
+      mockState.roundInserts.push(this.payload as Record<string, unknown>);
+      return { data: { id: "round-finals" }, error: null };
+    }
+
     return { data: { id: "session-1" }, error: null };
   }
 
@@ -6066,7 +6106,19 @@ class SupabaseQueryMock {
 
   private async resolve(): Promise<QueryResult> {
     if (this.operation === "update" || this.operation === "delete") {
+      if (this.table === "competitions" && this.operation === "update") {
+        mockState.operationLog.push("competition:update");
+        mockState.competitionUpdates.push(this.payload as Record<string, unknown>);
+      }
+      if (this.table === "competition_rounds" && this.operation === "update") {
+        mockState.roundUpdates.push(this.payload as Record<string, unknown>);
+      }
       return { error: null };
+    }
+
+    if (this.table === "competition_rounds" && this.operation === "insert") {
+      mockState.roundInserts.push(this.payload as Record<string, unknown>);
+      return { data: { id: "round-finals" }, error: null };
     }
 
     if (this.table === "competition_schedule_blocks") {
@@ -6090,6 +6142,7 @@ class SupabaseQueryMock {
     }
 
     if (this.table === "climbers" && this.operation === "insert") {
+      mockState.operationLog.push("climbers:insert");
       const payload = Array.isArray(this.payload)
         ? (this.payload as Array<{ id: string; climber_number: string }>)
         : [];
@@ -6101,6 +6154,7 @@ class SupabaseQueryMock {
     }
 
     if (this.table === "qualifier_attempts" && this.operation === "insert") {
+      mockState.operationLog.push("attempts:insert");
       mockState.insertedAttempts = Array.isArray(this.payload)
         ? (this.payload as typeof mockState.insertedAttempts)
         : [];
@@ -6128,7 +6182,21 @@ function jsonRequest(payload: unknown) {
 }
 
 beforeEach(() => {
-  mockState.competition = { id: "competition-1", slug: "demo-comp", is_demo: true };
+  mockState.competition = {
+    id: "competition-1",
+    slug: "demo-comp",
+    is_demo: true,
+    format: "five_on_five_off",
+    total_climbs: 4,
+    qualifier_counting_climbs: 4,
+    finals_eligible_age_groups: [],
+  };
+  mockState.qualifierRound = { id: "round-qualifier", round_type: "qualifier", scoring_bucket: "qualifier" };
+  mockState.finalsRound = null;
+  mockState.competitionUpdates = [];
+  mockState.roundUpdates = [];
+  mockState.roundInserts = [];
+  mockState.operationLog = [];
   mockState.insertedClimbers = [];
   mockState.insertedAttempts = [];
   mockState.from.mockReset();
@@ -6137,12 +6205,17 @@ beforeEach(() => {
 
 describe("demo seed route", () => {
   it("refuses to seed non-demo competitions", async () => {
-    mockState.competition = { id: "competition-1", slug: "real-comp", is_demo: false };
+    mockState.competition = {
+      ...mockState.competition,
+      slug: "real-comp",
+      is_demo: false,
+    };
 
     const response = await POST(jsonRequest({ competitionId: "competition-1" }));
 
     expect(response.status).toBe(403);
     expect(mockState.insertedAttempts).toEqual([]);
+    expect(mockState.competitionUpdates).toEqual([]);
   });
 
   it("reseeds Maya B3 as Top in 3 and returns a preselected judge URL", async () => {
@@ -6177,6 +6250,41 @@ describe("demo seed route", () => {
     expect(body.judgeUrl).toContain("boulder=3");
     expect(body.judgeUrl).toContain(`climberId=${maya?.id}`);
   });
+
+  it("repairs finals-capable demo config before inserting climbers and scores", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+
+    expect(response.status).toBe(200);
+    expect(mockState.competitionUpdates[0]).toMatchObject({
+      has_finals: true,
+      finals_cutoff: 6,
+      finals_tie_advances: false,
+      finals_problem_count: 4,
+      finals_eligible_age_groups: ["Youth B"],
+    });
+    expect(mockState.operationLog[0]).toBe("competition:update");
+    expect(mockState.operationLog.indexOf("climbers:insert")).toBeGreaterThan(0);
+    expect(mockState.operationLog.indexOf("attempts:insert")).toBeGreaterThan(
+      mockState.operationLog.indexOf("climbers:insert")
+    );
+  });
+
+  it("creates a finals round linked to the qualifier round when missing", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+
+    expect(response.status).toBe(200);
+    expect(mockState.roundInserts).toContainEqual(
+      expect.objectContaining({
+        competition_id: "competition-1",
+        name: "Finals",
+        round_type: "finals",
+        scoring_bucket: "finals",
+        advancement_source_round_id: "round-qualifier",
+        advancement_cutoff: 6,
+        problem_count: 4,
+      })
+    );
+  });
 });
 
 
@@ -6204,6 +6312,10 @@ type CompetitionRow = {
   id: string;
   slug: string;
   is_demo: boolean;
+  format: string | null;
+  total_climbs: number | null;
+  qualifier_counting_climbs: number | null;
+  finals_eligible_age_groups: unknown;
 };
 
 type CategoryRow = {
@@ -6216,6 +6328,8 @@ type CategoryRow = {
 
 type RoundRow = {
   id: string;
+  round_number?: number | null;
+  sort_order?: number | null;
   round_type: string | null;
   scoring_bucket: string | null;
 };
@@ -6237,6 +6351,10 @@ const SAMPLE_CLIMBERS = [
   { name: "Declan White", number: "105", province: "NL" },
   { name: "Isaac Green", number: "106", province: "QC" },
 ] as const;
+
+const DEMO_FINALS_CUTOFF = 6;
+const DEMO_FINALS_PROBLEM_COUNT = 4;
+const DEMO_FINALS_ELIGIBLE_AGE_GROUP = "Youth B";
 
 function createId() {
   return crypto.randomUUID();
@@ -6312,12 +6430,12 @@ async function ensureCategory(
 
 async function getQualifierRoundId(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
-  competitionId: string
+  competition: CompetitionRow
 ) {
   const { data, error } = await supabase
     .from("competition_rounds")
     .select("id, round_type, scoring_bucket")
-    .eq("competition_id", competitionId)
+    .eq("competition_id", competition.id)
     .or("round_type.eq.qualifier,scoring_bucket.eq.qualifier")
     .order("sort_order", { ascending: true })
     .limit(1)
@@ -6327,7 +6445,146 @@ async function getQualifierRoundId(
     throw new Error(error.message);
   }
 
-  return (data as RoundRow | null)?.id ?? null;
+  const existingId = (data as RoundRow | null)?.id ?? null;
+  if (existingId) {
+    return existingId;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("competition_rounds")
+    .insert({
+      competition_id: competition.id,
+      round_number: 1,
+      sort_order: 1,
+      name: "Qualifier",
+      round_type: "qualifier",
+      format: competition.format ?? "five_on_five_off",
+      status: "pending",
+      runtime_phase: "qualifier_open",
+      is_enabled: true,
+      is_active: false,
+      activated_at: null,
+      problem_count: competition.total_climbs ?? 4,
+      counting_climbs: competition.qualifier_counting_climbs ?? 4,
+      finals_cutoff: DEMO_FINALS_CUTOFF,
+      eligible_category_ids: [],
+      advancement_source_round_id: null,
+      advancement_cutoff: DEMO_FINALS_CUTOFF,
+      scoring_bucket: "qualifier",
+      scoring_config: {},
+      started_at: null,
+      closed_at: null,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return inserted.id as string;
+}
+
+function ensureYouthBFinalsEligible(value: unknown) {
+  const current = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.from(new Set([...current, DEMO_FINALS_ELIGIBLE_AGE_GROUP]));
+}
+
+async function ensureDemoFinalsConfiguration(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: CompetitionRow
+) {
+  const { error } = await supabase
+    .from("competitions")
+    .update({
+      has_finals: true,
+      finals_cutoff: DEMO_FINALS_CUTOFF,
+      finals_tie_advances: false,
+      finals_problem_count: DEMO_FINALS_PROBLEM_COUNT,
+      finals_eligible_age_groups: ensureYouthBFinalsEligible(competition.finals_eligible_age_groups),
+    })
+    .eq("id", competition.id)
+    .eq("is_demo", true);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function ensureFinalsRound(
+  supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
+  competition: CompetitionRow,
+  qualifierRoundId: string
+) {
+  const { data, error } = await supabase
+    .from("competition_rounds")
+    .select("id, round_number, sort_order, round_type, scoring_bucket")
+    .eq("competition_id", competition.id)
+    .or("round_type.eq.finals,scoring_bucket.eq.finals")
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const existing = data as RoundRow | null;
+  const row = {
+    name: "Finals",
+    round_type: "finals",
+    format: "ifsc_finals_format",
+    status: "pending",
+    runtime_phase: "finals_open",
+    is_enabled: true,
+    is_active: false,
+    activated_at: null,
+    problem_count: DEMO_FINALS_PROBLEM_COUNT,
+    counting_climbs: null,
+    finals_cutoff: DEMO_FINALS_CUTOFF,
+    eligible_category_ids: [],
+    advancement_source_round_id: qualifierRoundId,
+    advancement_cutoff: DEMO_FINALS_CUTOFF,
+    scoring_bucket: "finals",
+    scoring_config: {},
+    started_at: null,
+    closed_at: null,
+  };
+
+  if (existing?.id) {
+    const update = await supabase
+      .from("competition_rounds")
+      .update({
+        ...row,
+        round_number: existing.round_number ?? 2,
+        sort_order: existing.sort_order ?? 2,
+      })
+      .eq("competition_id", competition.id)
+      .eq("id", existing.id);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+
+    return existing.id;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("competition_rounds")
+    .insert({
+      competition_id: competition.id,
+      round_number: 2,
+      sort_order: 2,
+      ...row,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return inserted.id as string;
 }
 
 function getEligibleCategoryIds(value: unknown) {
@@ -6538,7 +6795,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceRoleSupabaseClient();
     const { data: competition, error: competitionError } = await supabase
       .from("competitions")
-      .select("id, slug, is_demo")
+      .select("id, slug, is_demo, format, total_climbs, qualifier_counting_climbs, finals_eligible_age_groups")
       .eq("id", body.competitionId)
       .maybeSingle();
 
@@ -6559,10 +6816,9 @@ export async function POST(request: NextRequest) {
     }
 
     const category = await ensureCategory(supabase, competitionRow.id);
-    const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow.id);
-    if (!qualifierRoundId) {
-      throw new Error("Demo seeding requires a qualifier round before climbers can be assigned to a session.");
-    }
+    await ensureDemoFinalsConfiguration(supabase, competitionRow);
+    const qualifierRoundId = await getQualifierRoundId(supabase, competitionRow);
+    await ensureFinalsRound(supabase, competitionRow, qualifierRoundId);
     const qualifierSessionId = await ensureQualifierSession(
       supabase,
       competitionRow.id,
@@ -12525,6 +12781,7 @@ import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import { QualifierScoreEditor } from "@/components/judge/qualifier-score-editor";
 import { RecentScoreFeedback } from "@/components/judge/recent-score-feedback";
+import { DemoJudgeSplitPanel } from "@/components/demo-judge-split";
 import { DemoHUD } from "@/components/demo-hud";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
@@ -13929,6 +14186,8 @@ export default function StaffJudgePage() {
     );
   }
 
+  const demoSplitActive = demoGuideActive && snapshot.competition.is_demo;
+
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
@@ -14031,7 +14290,13 @@ export default function StaffJudgePage() {
 
         {stage === "qualifier" ? (
           <section className="results-card" id="judge-demo-score-editor">
-            <div className="grid gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]">
+            <div
+              className={
+                demoSplitActive
+                  ? "grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)_20rem]"
+                  : "grid gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]"
+              }
+            >
               <AthletePicker
                 activeRoundName={activeQualifierRoundName}
                 athletes={qualifierAthleteEntries}
@@ -14111,6 +14376,15 @@ export default function StaffJudgePage() {
                   }))
                 }
               />
+              {demoSplitActive ? (
+                <aside className="hidden xl:block">
+                  <DemoJudgeSplitPanel
+                    competitionId={snapshot.competition.id}
+                    competitionSlug={slug}
+                    initialSnapshot={snapshot}
+                  />
+                </aside>
+              ) : null}
             </div>
           </section>
         ) : (
@@ -15357,6 +15631,169 @@ export function DemoHUD({
           </motion.button>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+
+--- src\components\demo-judge-split.test.ts ---
+
+import { describe, expect, it } from "vitest";
+import { getChangedDemoClimberId } from "@/lib/demo-judge-split";
+
+describe("demo judge split helpers", () => {
+  it("extracts the changed climber id from realtime new rows", () => {
+    expect(getChangedDemoClimberId({ new: { climber_id: "climber-104" } })).toBe("climber-104");
+  });
+
+  it("falls back to realtime old rows for deletes", () => {
+    expect(getChangedDemoClimberId({ old: { climber_id: "climber-104" } })).toBe("climber-104");
+  });
+
+  it("ignores malformed realtime payloads without mutating anything", () => {
+    expect(getChangedDemoClimberId({ new: { climber_id: 104 }, old: null })).toBeNull();
+  });
+});
+
+
+--- src\components\demo-judge-split.tsx ---
+
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import { getChangedDemoClimberId, type RealtimeScorePayload } from "@/lib/demo-judge-split";
+import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
+
+type DemoJudgeSplitPanelProps = {
+  competitionId: string;
+  competitionSlug: string;
+  initialSnapshot: CompetitionSnapshot;
+};
+
+export function DemoJudgeSplitPanel({
+  competitionId,
+  competitionSlug,
+  initialSnapshot,
+}: DemoJudgeSplitPanelProps) {
+  const [snapshot, setSnapshot] = useState(initialSnapshot);
+  const [flashedClimberIds, setFlashedClimberIds] = useState<Set<string>>(() => new Set());
+  const flashTimersRef = useRef<Record<string, number>>({});
+  const finalsCutoff = snapshot.competition.finals_cutoff ?? 6;
+
+  useEffect(() => {
+    setSnapshot(initialSnapshot);
+  }, [initialSnapshot]);
+
+  useEffect(() => {
+    const timers = flashTimersRef.current;
+    return () => {
+      Object.values(timers).forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseConfigured) {
+      return;
+    }
+
+    let cancelled = false;
+    const flashClimber = (climberId: string) => {
+      window.clearTimeout(flashTimersRef.current[climberId]);
+      setFlashedClimberIds((current) => {
+        const next = new Set(current);
+        next.add(climberId);
+        return next;
+      });
+      flashTimersRef.current[climberId] = window.setTimeout(() => {
+        setFlashedClimberIds((current) => {
+          const next = new Set(current);
+          next.delete(climberId);
+          return next;
+        });
+        delete flashTimersRef.current[climberId];
+      }, 1800);
+    };
+
+    const refreshLeaderboard = async (payload: RealtimeScorePayload) => {
+      const changedClimberId = getChangedDemoClimberId(payload);
+      const refreshed = await getCompetitionSnapshot(competitionSlug).catch(() => null);
+      if (cancelled || !refreshed) {
+        return;
+      }
+
+      setSnapshot(refreshed);
+      if (changedClimberId) {
+        flashClimber(changedClimberId);
+      }
+    };
+
+    const channel = publicSupabase
+      .channel(`demo-judge-leaderboard-${competitionId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "qualifier_attempts", filter: `competition_id=eq.${competitionId}` },
+        (payload) => {
+          void refreshLeaderboard(payload);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      publicSupabase.removeChannel(channel);
+    };
+  }, [competitionId, competitionSlug]);
+
+  return (
+    <div className="sticky top-6 space-y-3 rounded-[1.5rem] border border-sky-200 bg-white/95 p-4 shadow-[0_22px_60px_rgba(15,23,42,0.14)]">
+      <div>
+        <div className="results-kicker text-sky-700">Live leaderboard</div>
+        <h2 className="mt-2 text-lg font-semibold text-slate-950">Watch the cut line move</h2>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          This panel refreshes when the judge save writes to qualifier attempts.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {snapshot.qualifierLeaderboard.map((entry) => {
+          const isFinalsCut = entry.category_rank <= finalsCutoff;
+          const isFlashing = flashedClimberIds.has(entry.climber_id);
+          return (
+            <div
+              key={entry.climber_id}
+              className={[
+                "flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm transition-colors duration-700",
+                isFlashing
+                  ? "border-sky-300 bg-sky-100"
+                  : isFinalsCut
+                    ? "border-slate-200 bg-white"
+                    : "border-transparent bg-slate-50/80",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                  isFinalsCut ? "bg-sky-600 text-white" : "bg-slate-200 text-slate-500",
+                ].join(" ")}
+              >
+                {entry.category_rank}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-semibold text-slate-950">{entry.name}</div>
+                <div className="truncate text-xs text-slate-500">{entry.display_category}</div>
+              </div>
+              <div className="shrink-0 text-xs font-semibold tabular-nums text-slate-500">
+                {entry.topped_count}T {entry.zone_count}Z
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-dashed border-slate-300 pt-3 text-xs leading-5 text-slate-500">
+        Cut line: top {finalsCutoff} in each finals-eligible category advance.
+      </div>
     </div>
   );
 }
@@ -16666,6 +17103,12 @@ import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
+  GUIDED_ORGANIZER_ACT_1_STEPS,
+  clampGuidedAct1StepIndex,
+  getGuidedAct1FormStepId,
+  type GuidedOrganizerWalkthroughStep,
+} from "@/lib/demo-act1-guide";
+import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
   getCompetitionPreset,
@@ -16859,87 +17302,6 @@ function isDemoCompetitionRecord(record: Pick<Competition, "is_demo">) {
 function isDemoDataSlug(_: string | null | undefined) {
   return false;
 }
-
-type GuidedDemoSetupStepId =
-  | "basics"
-  | "preset"
-  | "registration"
-  | "categories"
-  | "finals"
-  | "rounds"
-  | "schedule"
-  | "create";
-
-type GuidedOrganizerWalkthroughStep = {
-  id: GuidedDemoSetupStepId;
-  title: string;
-  explanation: string;
-  why: string;
-  anchorId: string;
-};
-
-const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
-  {
-    id: "basics",
-    title: "Event basics",
-    explanation: "Name the event and confirm where and when it runs.",
-    why: "This gives the public page, staff workspace, and judge screens a believable event identity.",
-    anchorId: "guided-act1-basics",
-  },
-  {
-    id: "preset",
-    title: "Preset",
-    explanation:
-      "Youth Championship with Finals is required so the story can demonstrate qualifiers, finalist advancement, finals, and public results.",
-    why: "The preset keeps Act 3 meaningful by guaranteeing finals are configured before scoring starts.",
-    anchorId: "guided-act1-preset",
-  },
-  {
-    id: "registration",
-    title: "Registration",
-    explanation:
-      "In a real event, climbers register through the public page and receive private scorecard links. For the demo, we'll simulate registrations after you create the event.",
-    why: "You configure registration once, then the demo fills the field so judge and leaderboard screens feel alive.",
-    anchorId: "guided-act1-registration",
-  },
-  {
-    id: "categories",
-    title: "Categories",
-    explanation: "These are the divisions athletes register into.",
-    why: "Categories drive registration, standings, finalist cuts, and public leaderboard filters.",
-    anchorId: "guided-act1-categories",
-  },
-  {
-    id: "finals",
-    title: "Finals eligibility",
-    explanation:
-      "Youth B, Youth A, and Junior advance to finals by default. Youth D and Youth C compete in qualifiers only.",
-    why: "Finals eligibility is constrained to the selected categories so the cut line is auditable.",
-    anchorId: "guided-act1-finals",
-  },
-  {
-    id: "rounds",
-    title: "Rounds/scoring",
-    explanation: "The event starts with qualifiers, then advances finalists into a finals round.",
-    why: "The judge screen and organizer controls use this structure to know what can be scored next.",
-    anchorId: "guided-act1-rounds",
-  },
-  {
-    id: "schedule",
-    title: "Schedule",
-    explanation: "This gives organizers, judges, athletes, and spectators the event-day structure.",
-    why: "Public pages and staff controls stay aligned when schedule blocks, rounds, and phases match.",
-    anchorId: "guided-act1-schedule",
-  },
-  {
-    id: "create",
-    title: "Create Demo Event",
-    explanation:
-      "Now create the event. After this, the demo will populate realistic climbers and scores so you can continue to the judge screen.",
-    why: "This is the only step that submits the form and starts server-side demo population.",
-    anchorId: "guided-act1-create",
-  },
-];
 
 function GuidedOrganizerAct1Walkthrough({
   steps,
@@ -17498,9 +17860,9 @@ export default function StaffDashboard({
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
   const demoFormat = "five_on_five_off" as Competition["format"];
-  const isGuidedStoryAct1 = false;
+  const isGuidedStoryAct1 = demoSeedOnCreate;
   const isGuidedStoryAct3 = guidedDemoActive;
-  const currentGuidedAct1Step = { id: "basics" as const };
+  const currentGuidedAct1StepId = getGuidedAct1FormStepId(guidedAct1StepIndex);
   const [demoSeedResult, setDemoSeedResult] = useState<null | {
     judgeUrl: string;
     publicUrl: string;
@@ -18671,6 +19033,51 @@ export default function StaffDashboard({
       ["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase) &&
       Boolean(snapshot?.finalists.length)
     : false;
+  const demoAct3AdvanceBlockedReason = !draft
+    ? ""
+    : !draftHasFinals
+      ? "Finals are not enabled. Restart the demo so the seed can repair the finals-capable setup."
+      : !["qualifier_open", "qualifier_closed", "wall_reset"].includes(draft.current_phase)
+        ? `The event is already in ${formatCompetitionPhaseLabel(draft.current_phase).toLowerCase()}.`
+        : !snapshot?.finalists.length
+          ? "No projected finalists are available yet. Restart the demo to repair the Youth B finals setup and seeded scores."
+          : "";
+  const demoAct3PreviewRows = useMemo(() => {
+    if (!snapshot || !draft) {
+      return [] as Array<{
+        climberId: string;
+        name: string;
+        displayCategory: string;
+        rank: number;
+        toppedCount: number | null;
+        zoneCount: number | null;
+      }>;
+    }
+
+    const cutoff = draft.finals_cutoff ?? 6;
+    if (snapshot.finalists.length) {
+      return snapshot.finalists.slice(0, cutoff).map((entry) => ({
+        climberId: entry.climber_id,
+        name: entry.name,
+        displayCategory: entry.display_category,
+        rank: entry.qualifier_rank,
+        toppedCount: null,
+        zoneCount: null,
+      }));
+    }
+
+    return snapshot.qualifierLeaderboard
+      .filter((entry) => entry.age_group === "Youth B")
+      .slice(0, cutoff)
+      .map((entry) => ({
+        climberId: entry.climber_id,
+        name: entry.name,
+        displayCategory: entry.display_category,
+        rank: entry.category_rank,
+        toppedCount: entry.topped_count,
+        zoneCount: entry.zone_count,
+      }));
+  }, [draft, snapshot]);
   const demoBanner = demoMode
     ? "You're viewing a sample event walkthrough. Editing and staff-only actions stay protected in the public demo."
     : selectedCompetitionIsDemo
@@ -18794,7 +19201,7 @@ export default function StaffDashboard({
     [demoMode]
   );
   const goToGuidedAct1Step = useCallback((stepIndex: number) => {
-    const nextIndex = Math.max(0, Math.min(GUIDED_ORGANIZER_ACT_1_STEPS.length - 1, stepIndex));
+    const nextIndex = clampGuidedAct1StepIndex(stepIndex);
     setGuidedAct1StepIndex(nextIndex);
 
     const anchorId = GUIDED_ORGANIZER_ACT_1_STEPS[nextIndex]?.anchorId;
@@ -19452,6 +19859,81 @@ export default function StaffDashboard({
             ]}
           />
         ) : null}
+        {isGuidedStoryAct3 && draft && snapshot && isDemoCompetitionRecord(draft) && !organizerDemoAdvanced ? (
+          <Surface variant="card" className="border-sky-200 bg-sky-50/70">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
+              <div className="space-y-3">
+                <div className="results-kicker text-sky-700">Act 3 - Organizer: Advance Finalists</div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  Review the cut line, then advance the finals field.
+                </h2>
+                <p className="text-sm leading-6 text-slate-600">
+                  This card surfaces the real organizer action. It uses the same confirmation and
+                  finalist-save flow as the normal dashboard; nothing is auto-advanced for the demo.
+                </p>
+                {demoAct3AdvanceBlockedReason ? (
+                  <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                    {demoAct3AdvanceBlockedReason}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`${leaderboardPath}?demo=1`} className="results-secondary-button">
+                    View leaderboard impact
+                  </Link>
+                  <button
+                    type="button"
+                    className="results-primary-button"
+                    disabled={!canAdvanceToFinals || isPending || isPhasePending}
+                    onClick={() =>
+                      setConfirming({
+                        title: "Advance to finals",
+                        description: finalsAdvanceBlock
+                          ? `This will create the finals field from the current standings and move the event into ${finalsAdvanceBlock.label}. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`
+                          : `This will create the finals field from the current standings and move the event into finals. You can undo it for ${COMPETITION_UNDO_WINDOW_LABEL}.`,
+                        confirmLabel: "Advance",
+                        expectedValue: draft.name,
+                        action: async () => {
+                          await advanceToFinals();
+                        },
+                      })
+                    }
+                  >
+                    {isPending || isPhasePending ? "Advancing..." : `Advance top ${draft.finals_cutoff ?? 6}`}
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-[1.4rem] border border-slate-200 bg-white/90 p-3 shadow-sm">
+                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Projected cut
+                </div>
+                <div className="mt-3 space-y-2">
+                  {demoAct3PreviewRows.length ? (
+                    demoAct3PreviewRows.map((row) => (
+                      <div key={row.climberId} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-bold text-white">
+                          {row.rank}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-slate-950">{row.name}</div>
+                          <div className="truncate text-xs text-slate-500">{row.displayCategory}</div>
+                        </div>
+                        {row.toppedCount !== null && row.zoneCount !== null ? (
+                          <div className="shrink-0 text-xs font-semibold text-slate-500">
+                            {row.toppedCount}T {row.zoneCount}Z
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-5 text-sm text-slate-500">
+                      Projected finalists will appear here after demo data is repaired and loaded.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
         {demoMode && !isGuidedStoryAct1 ? (
           <DemoSalesShell
             mode="organizer"
@@ -19751,7 +20233,7 @@ export default function StaffDashboard({
                 lockFormat={demoSeedOnCreate}
                 showCapacity={demoSeedOnCreate}
                 showRegistrationStory={demoSeedOnCreate}
-                activeGuideStepId={demoSeedOnCreate ? "basics" : undefined}
+                activeGuideStepId={demoSeedOnCreate ? currentGuidedAct1StepId : undefined}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
                     ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${
@@ -21817,6 +22299,10 @@ export function StaffEventCreationForm({
             same event creation form staff use, with the preset locked because the guided story needs
             qualifier scoring, finalist advancement, finals, and public results.
           </div>
+          <div className="mt-3 rounded-[1rem] border border-emerald-200 bg-white/70 px-3 py-2 text-xs leading-5 text-emerald-900">
+            The demo seed will prepare the story-critical Youth B category, qualifier and finals
+            rounds, finals cutoff, and event-day schedule after you create the event.
+          </div>
         </div>
       ) : null}
 
@@ -21998,6 +22484,8 @@ export function StaffEventCreationForm({
           In a real event, athletes register through the public registration page, choose a
           category, and receive private scorecard links. For this guided demo, we simulate
           registrations after creation so the judge screen and leaderboard have realistic data.
+          Youth B climbers are seeded into a qualifier session so Maya Chen&apos;s scoring correction can
+          move the finals cut line.
         </div>
       ) : null}
       </div>
@@ -22016,7 +22504,7 @@ export function StaffEventCreationForm({
           {mode === "guided-demo" ? (
             <div className="mb-3 text-sm leading-6 text-slate-600">
               {activeGuideStepId === "create"
-                ? "Now create the event. After this, the demo will populate realistic climbers and scores so you can continue to the judge screen."
+                ? "Now create the event. After this, the demo will populate realistic climbers, seeded qualifier scores, Maya's scoring mistake, and finals-ready structure."
                 : "Review the guided setup steps first. The create action unlocks on the final Create Demo Event step."}
             </div>
           ) : null}
@@ -25141,6 +25629,110 @@ export async function updateFinalAttempt(
     judgeSessionId: cleanOptionalString(options?.judgeSessionId),
     replayedFromOffline: options?.replayedFromOffline ?? false,
   });
+}
+
+
+--- src\lib\demo-act1-guide.test.ts ---
+
+import { describe, expect, it } from "vitest";
+import {
+  GUIDED_ORGANIZER_ACT_1_STEPS,
+  clampGuidedAct1StepIndex,
+  getGuidedAct1FormStepId,
+} from "./demo-act1-guide";
+
+describe("guided Act 1 guide mapping", () => {
+  it("keeps the guide aligned to real StaffEventCreationForm sections only", () => {
+    expect(GUIDED_ORGANIZER_ACT_1_STEPS.map((step) => step.id)).toEqual([
+      "basics",
+      "preset",
+      "registration",
+      "create",
+    ]);
+  });
+
+  it("maps out-of-range guide indexes to valid form highlights", () => {
+    expect(clampGuidedAct1StepIndex(-1)).toBe(0);
+    expect(clampGuidedAct1StepIndex(99)).toBe(GUIDED_ORGANIZER_ACT_1_STEPS.length - 1);
+    expect(getGuidedAct1FormStepId(99)).toBe("create");
+  });
+
+  it("documents that guide navigation is not a create or seed trigger", () => {
+    expect(GUIDED_ORGANIZER_ACT_1_STEPS[0].anchorId).toBe("guided-act1-basics");
+    expect(GUIDED_ORGANIZER_ACT_1_STEPS.at(-1)?.anchorId).toBe("guided-act1-create");
+  });
+});
+
+
+--- src\lib\demo-act1-guide.ts ---
+
+export type GuidedDemoSetupStepId = "basics" | "preset" | "registration" | "create";
+
+export type GuidedOrganizerWalkthroughStep = {
+  id: GuidedDemoSetupStepId;
+  title: string;
+  explanation: string;
+  why: string;
+  anchorId: string;
+};
+
+export const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
+  {
+    id: "basics",
+    title: "Event basics",
+    explanation: "Name the event and confirm where and when it runs.",
+    why: "This gives the public page, staff workspace, and judge screens a believable event identity.",
+    anchorId: "guided-act1-basics",
+  },
+  {
+    id: "preset",
+    title: "Preset",
+    explanation:
+      "Youth Championship with Finals is locked for this story so categories, rounds, schedule, finalist advancement, and public results stay connected.",
+    why: "The preset keeps Act 3 meaningful by guaranteeing a finals-capable event before scoring starts.",
+    anchorId: "guided-act1-preset",
+  },
+  {
+    id: "registration",
+    title: "Registration",
+    explanation:
+      "Configure the public registration window and capacity. The demo simulates athletes after creation so the real judge and leaderboard screens have data.",
+    why: "Registration settings explain where climbers, private scorecards, categories, and judge assignments come from.",
+    anchorId: "guided-act1-registration",
+  },
+  {
+    id: "create",
+    title: "Create Demo Event",
+    explanation:
+      "Now submit the real form. After creation, the demo seeds climbers, qualifier scores, Maya's scoring mistake, and finals-ready structure.",
+    why: "This is the only step that creates the event and starts server-side demo population.",
+    anchorId: "guided-act1-create",
+  },
+];
+
+export function clampGuidedAct1StepIndex(stepIndex: number) {
+  return Math.max(0, Math.min(GUIDED_ORGANIZER_ACT_1_STEPS.length - 1, stepIndex));
+}
+
+export function getGuidedAct1FormStepId(stepIndex: number): GuidedDemoSetupStepId {
+  return GUIDED_ORGANIZER_ACT_1_STEPS[clampGuidedAct1StepIndex(stepIndex)].id;
+}
+
+
+--- src\lib\demo-judge-split.ts ---
+
+export type RealtimeScorePayload = {
+  new?: unknown;
+  old?: unknown;
+};
+
+export function getChangedDemoClimberId(payload: RealtimeScorePayload) {
+  const next = payload.new && typeof payload.new === "object" ? payload.new : null;
+  const previous = payload.old && typeof payload.old === "object" ? payload.old : null;
+  const nextId = next && "climber_id" in next ? next.climber_id : null;
+  const previousId = previous && "climber_id" in previous ? previous.climber_id : null;
+
+  return typeof nextId === "string" ? nextId : typeof previousId === "string" ? previousId : null;
 }
 
 

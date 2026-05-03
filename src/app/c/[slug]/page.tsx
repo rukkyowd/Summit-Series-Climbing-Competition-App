@@ -2,17 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
 import FinalsResultsTable from "@/components/finals-results-table";
-import { DemoHUD } from "@/components/demo-hud";
 import { Alert } from "@/components/ui/alert";
 import { buttonStyles } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
-import { clearOfflineQueueForCompetition } from "@/lib/staff-offline-queue";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
@@ -29,35 +27,11 @@ import {
 
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
-  const demoGuideActive = searchParams?.get("demo") === "1";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
-
-  const finishDemo = useCallback(async () => {
-    if (!snapshot?.competition.id) {
-      throw new Error("Demo competition is not loaded yet.");
-    }
-
-    const competitionId = snapshot.competition.id;
-    const response = await fetch("/api/demo/complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ competitionId }),
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    if (!response.ok) {
-      throw new Error(payload?.error ?? "Unable to finish the demo.");
-    }
-
-    await clearOfflineQueueForCompetition(competitionId);
-    router.push("/demo");
-    router.refresh();
-  }, [router, snapshot]);
 
   const refresh = useCallback(async () => {
     if (!slug) {
@@ -263,25 +237,10 @@ export default function CompetitionOverviewPage() {
         {snapshot ? (
           <>
             {snapshot.competition.is_demo ? (
-              demoGuideActive ? (
-                <DemoHUD
-                  actLabel="Act 4 of 4"
-                  title="View public results"
-                  instruction="Review the public event page, schedule, leaderboard, and results."
-                  why="This is what athletes, parents, coaches, and spectators see after staff operations."
-                  completed
-                  primaryAction={{ label: "Finish Demo", onClick: finishDemo }}
-                  secondaryActions={[
-                    { label: "View leaderboard", href: `/c/${slug}/leaderboard?demo=1` },
-                    { label: "Demo home", href: "/demo" },
-                  ]}
-                />
-              ) : (
-                <div className="results-alert results-alert-success">
-                  Demo event: use this page to view the public schedule, leaderboard links, and results exactly
-                  as competitors and spectators would see them.
-                </div>
-              )
+              <div className="results-alert results-alert-success">
+                Demo event: use this page to view the public schedule, leaderboard links, and results exactly
+                as competitors and spectators would see them.
+              </div>
             ) : null}
             <CompetitionHero competition={snapshot.competition} />
 
