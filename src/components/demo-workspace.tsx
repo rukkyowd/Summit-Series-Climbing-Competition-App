@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { GuidedDemoWalkthrough } from "@/components/guided-demo-walkthrough";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { clearOfflineQueueForCompetition } from "@/lib/staff-offline-queue";
@@ -75,7 +74,6 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [demoStates, setDemoStates] = useState<Record<string, DemoStateResponse>>({});
-  const [guideStepIndex, setGuideStepIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,24 +119,31 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
         <div className="space-y-3">
           <div className="results-kicker text-sky-700">Scorecard demo workspace</div>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
-            Run the real app with a guided overlay.
+            Run the real app with sample competition data.
           </h1>
           <p className="max-w-3xl text-base leading-7 text-slate-600">
-            Create a real demo competition, seed a field with one intentional scoring mistake,
-            correct Maya Chen on the real judge panel, advance finalists, then finish the demo to
-            delete the sample event.
+            Create a demo competition through the normal staff flow, add sample climbers when you
+            are ready for judging, then explore the organizer and public pages without extra
+            walkthrough layers.
           </p>
         </div>
 
-        <GuidedDemoWalkthrough
-          currentStepIndex={guideStepIndex}
-          onSelectStep={setGuideStepIndex}
-          onRestart={() => setGuideStepIndex(0)}
-          storyConnection="Start with real organizer setup, then use the same demo event for judging, organizer controls, public results, and cleanup."
-        />
+        <div className="grid gap-3 md:grid-cols-4">
+          {[
+            ["1. Create", "Use the real staff creation form to make a demo event."],
+            ["2. Seed", "Add sample climbers and Maya Chen's intentional B3 mistake."],
+            ["3. Explore", "Open the real judge, organizer, leaderboard, and public pages."],
+            ["4. Clean up", "Delete the demo from this workspace when you are finished."],
+          ].map(([title, body]) => (
+            <div key={title} className="rounded-[1.25rem] border border-slate-200 bg-white/75 p-4">
+              <div className="text-sm font-semibold text-slate-950">{title}</div>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{body}</p>
+            </div>
+          ))}
+        </div>
 
         <div className="flex flex-wrap gap-3">
-          <Button type="button" variant="primary" onClick={() => router.push("/staff/new?demo=act1")}>
+          <Button type="button" variant="primary" onClick={() => router.push("/staff/new?demo=1")}>
             Start Demo
           </Button>
           <Button

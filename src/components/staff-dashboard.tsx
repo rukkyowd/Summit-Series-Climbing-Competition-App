@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
-import { GuidedDemoWalkthrough } from "@/components/guided-demo-walkthrough";
 import {
   StaffEventCreationForm,
   type StaffEventCreationFormValues,
@@ -17,12 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
-import {
-  GUIDED_ORGANIZER_ACT_1_STEPS,
-  clampGuidedAct1StepIndex,
-  getGuidedAct1FormStepId,
-  type GuidedOrganizerWalkthroughStep,
-} from "@/lib/demo-act1-guide";
 import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
@@ -216,85 +209,6 @@ function isDemoCompetitionRecord(record: Pick<Competition, "is_demo">) {
 
 function isDemoDataSlug(_: string | null | undefined) {
   return false;
-}
-
-function GuidedOrganizerAct1Walkthrough({
-  steps,
-  currentStepIndex,
-  onSelectStep,
-}: {
-  steps: readonly GuidedOrganizerWalkthroughStep[];
-  currentStepIndex: number;
-  onSelectStep: (stepIndex: number) => void;
-}) {
-  const currentStep = steps[currentStepIndex] ?? steps[0];
-  const progressPercent = Math.round(((currentStepIndex + 1) / steps.length) * 100);
-  const nextStepIndex = Math.min(steps.length - 1, currentStepIndex + 1);
-
-  return (
-    <div className="space-y-5">
-      <div className="space-y-3">
-        <div className="results-kicker text-sky-700">Guided organizer walkthrough</div>
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-          {currentStep.title}
-        </h2>
-        <p className="text-sm leading-6 text-slate-700">{currentStep.explanation}</p>
-        <div className="rounded-[1.2rem] border border-sky-100 bg-sky-50/80 px-4 py-3 text-sm leading-6 text-slate-600">
-          <span className="font-semibold text-slate-950">Why this matters:</span>{" "}
-          {currentStep.why}
-        </div>
-        <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-          <div className="h-full rounded-full bg-sky-600 transition-all" style={{ width: `${progressPercent}%` }} />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="results-secondary-button"
-            onClick={() => onSelectStep(nextStepIndex)}
-            disabled={currentStepIndex === steps.length - 1}
-          >
-            Next guide step
-          </button>
-          <button
-            type="button"
-            className="results-secondary-button"
-            onClick={() => onSelectStep(0)}
-          >
-            Restart guide
-          </button>
-        </div>
-        <p className="text-xs leading-5 text-slate-500">
-          Guide navigation only moves the explanation and highlight. It never saves, creates, or
-          populates demo data.
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {steps.map((step, index) => {
-          const isActive = index === currentStepIndex;
-          return (
-            <button
-              key={step.id}
-              type="button"
-              onClick={() => onSelectStep(index)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                isActive
-                  ? "border-sky-300 bg-sky-100 text-sky-950"
-                  : "border-slate-200 bg-white/75 text-slate-600 hover:border-sky-200 hover:text-sky-900"
-              }`}
-              aria-current={isActive ? "step" : undefined}
-            >
-              {step.title}
-            </button>
-          );
-        })}
-      </div>
-      <div className="rounded-[1.2rem] border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm leading-6 text-emerald-950">
-        <span className="font-semibold">Story connection:</span> this setup creates the event
-        shell. After you submit, the demo seeds realistic climbers, qualifier scores, and finals-ready
-        structure so the rest of the story has real data to work with.
-      </div>
-    </div>
-  );
 }
 
 function createRoundTemplate(
@@ -733,8 +647,6 @@ export default function StaffDashboard({
   const [expandedRoundId, setExpandedRoundId] = useState<string | null>(null);
   const [expandedScheduleBlockId, setExpandedScheduleBlockId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
-  const [guidedAct1StepIndex, setGuidedAct1StepIndex] = useState(0);
-  const [demoStoryGuideStepIndex, setDemoStoryGuideStepIndex] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<CompetitionPresetId | null>(null);
   const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
   const [, setOrganizerGuidedBasicsState] = useState({
@@ -787,7 +699,6 @@ export default function StaffDashboard({
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
   const isGuidedStoryAct1 = demoSeedOnCreate;
-  const currentGuidedAct1StepId = getGuidedAct1FormStepId(guidedAct1StepIndex);
   const [demoAct1Ready, setDemoAct1Ready] = useState<null | {
     competitionId: string;
     slug: string;
@@ -894,13 +805,6 @@ export default function StaffDashboard({
 
     setMessage("Guided demo mode: create the event normally, then choose when to add sample climbers.");
   }, [demoSeedOnCreate]);
-
-  useEffect(() => {
-    if (guidedDemoActive && !demoSeedOnCreate) {
-      setDemoStoryGuideStepIndex(3);
-    }
-  }, [demoSeedOnCreate, guidedDemoActive]);
-
 
   useEffect(() => {
     const importedName = sanitizeDraftText(initialCreateDraft?.name);
@@ -1570,7 +1474,6 @@ export default function StaffDashboard({
             }
           : current
       );
-      setDemoStoryGuideStepIndex(2);
       router.push(payload.judgeUrl ?? demoAct1Ready.judgeUrl);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to open the judge panel.");
@@ -2113,22 +2016,6 @@ export default function StaffDashboard({
     },
     [demoMode]
   );
-  const goToGuidedAct1Step = useCallback((stepIndex: number) => {
-    const nextIndex = clampGuidedAct1StepIndex(stepIndex);
-    setGuidedAct1StepIndex(nextIndex);
-
-    const anchorId = GUIDED_ORGANIZER_ACT_1_STEPS[nextIndex]?.anchorId;
-    if (!anchorId || typeof window === "undefined") {
-      return;
-    }
-
-    window.setTimeout(() => {
-      document.getElementById(anchorId)?.scrollIntoView({
-        block: "center",
-        behavior: "smooth",
-      });
-    }, 0);
-  }, []);
   const handleOrganizerPresetSelection = (presetId: CompetitionPresetId) => {
     if (
       draft &&
@@ -2835,22 +2722,6 @@ export default function StaffDashboard({
             </div>
           </Surface>
         ) : null}
-        {isGuidedStoryAct1 ? (
-          <GuidedDemoWalkthrough
-            currentStepIndex={demoStoryGuideStepIndex}
-            onSelectStep={setDemoStoryGuideStepIndex}
-            onRestart={() => setDemoStoryGuideStepIndex(0)}
-            storyConnection="this setup creates the event shell. After you submit and choose Go to Judge Panel, the demo seeds realistic climbers, qualifier scores, and finals-ready structure so the rest of the story has real data to work with."
-          />
-        ) : null}
-        {guidedDemoActive && !isGuidedStoryAct1 ? (
-          <GuidedDemoWalkthrough
-            currentStepIndex={demoStoryGuideStepIndex}
-            onSelectStep={setDemoStoryGuideStepIndex}
-            onRestart={() => setDemoStoryGuideStepIndex(0)}
-            storyConnection="the judge correction flows back into the real staff dashboard. Review the leaderboard impact here, then use normal organizer controls to advance the event."
-          />
-        ) : null}
         {demoMode && !isGuidedStoryAct1 && draft ? (
           <OrganizerDemoTour
             hasCreatedCompetition={Boolean(draft)}
@@ -3045,11 +2916,8 @@ export default function StaffDashboard({
                 submitLabel={demoSeedOnCreate ? "Create demo event" : "Create new event"}
                 submittingLabel={demoSeedOnCreate ? "Creating demo event..." : undefined}
                 canSubmit={Boolean(createName.trim())}
-                mode={demoSeedOnCreate ? "guided-demo" : "staff"}
-                lockFormat={false}
                 showCapacity={demoSeedOnCreate}
                 showRegistrationStory={demoSeedOnCreate}
-                activeGuideStepId={demoSeedOnCreate ? currentGuidedAct1StepId : undefined}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
                     ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${
@@ -3103,7 +2971,6 @@ export default function StaffDashboard({
                             slug: created.slug,
                             judgeUrl: `${buildStaffCompetitionPath(created.slug, "judge")}?demo=1`,
                           });
-                          setDemoStoryGuideStepIndex(1);
                           await refreshAfterChange(created.id);
                           setSelectedCompetitionId(created.id);
                           setMessage("Your event is ready. Next, you'll score athletes as a judge.");
@@ -3201,11 +3068,20 @@ export default function StaffDashboard({
 
           <section className="results-card">
             {isGuidedStoryAct1 && !draft ? (
-              <GuidedOrganizerAct1Walkthrough
-                steps={GUIDED_ORGANIZER_ACT_1_STEPS}
-                currentStepIndex={guidedAct1StepIndex}
-                onSelectStep={goToGuidedAct1Step}
-              />
+              <div className="space-y-4">
+                <div className="results-kicker text-sky-700">Demo mode</div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  Create the event first.
+                </h2>
+                <p className="text-sm leading-6 text-slate-600">
+                  This is the normal staff creation flow. The demo will not add climbers or scores
+                  until the event exists and you choose <span className="font-semibold">Go to Judge Panel</span>.
+                </p>
+                <div className="rounded-[1.2rem] border border-sky-100 bg-sky-50/80 px-4 py-3 text-sm leading-6 text-sky-950">
+                  After creation, this page shows a simple success card with the handoff to the real
+                  judge panel.
+                </div>
+              </div>
             ) : draft ? (
               <div id="demo-organizer-setup" className="space-y-6">
                 <div className={`results-workspace-hero ${demoMode ? "border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-[0_12px_32px_rgba(15,23,42,0.04)]" : ""}`}>

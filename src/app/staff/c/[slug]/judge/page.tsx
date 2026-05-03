@@ -7,7 +7,6 @@ import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import { QualifierScoreEditor } from "@/components/judge/qualifier-score-editor";
 import { RecentScoreFeedback } from "@/components/judge/recent-score-feedback";
-import { GuidedDemoWalkthrough } from "@/components/guided-demo-walkthrough";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import { Button } from "@/components/ui/button";
@@ -500,7 +499,6 @@ export default function StaffJudgePage() {
   const [message, setMessage] = useState("");
   const [queuedCount, setQueuedCount] = useState(0);
   const [queuedItems, setQueuedItems] = useState<QueuedScorePreview[]>([]);
-  const [demoStoryGuideStepIndex, setDemoStoryGuideStepIndex] = useState(2);
   const flushingQueueRef = useRef(false);
   const finalsGridViewportRef = useRef<HTMLDivElement | null>(null);
   const setResolvedSnapshot = useCallback((nextSnapshot: CompetitionSnapshot | null) => {
@@ -1355,14 +1353,6 @@ export default function StaffJudgePage() {
           detail={saveFeedbackDetail}
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
-        {demoGuideActive && snapshot.competition.is_demo ? (
-          <GuidedDemoWalkthrough
-            currentStepIndex={demoTargetCorrected ? Math.max(demoStoryGuideStepIndex, 3) : demoStoryGuideStepIndex}
-            onSelectStep={setDemoStoryGuideStepIndex}
-            onRestart={() => setDemoStoryGuideStepIndex(0)}
-            storyConnection="the organizer-built event is now live in the real judge panel. Correct Maya Chen on B3, then the same score data can drive organizer review and public results."
-          />
-        ) : null}
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">
           <div className="results-workspace-hero">
             <div>

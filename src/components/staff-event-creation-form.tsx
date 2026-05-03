@@ -2,8 +2,6 @@
 
 import { slugifyCompetitionName, type EventFormat } from "@/lib/scoring";
 
-type CreationGuideStepId = "basics" | "preset" | "registration" | "create";
-
 export type StaffEventCreationFormValues = {
   name: string;
   format: EventFormat;
@@ -29,13 +27,9 @@ type StaffEventCreationFormProps = {
   submitLabel: string;
   submittingLabel?: string;
   canSubmit?: boolean;
-  mode?: "staff" | "guided-demo";
-  lockedPresetLabel?: string;
-  lockFormat?: boolean;
   showCapacity?: boolean;
   showRegistrationStory?: boolean;
   hideSubmit?: boolean;
-  activeGuideStepId?: CreationGuideStepId;
   onChange: (values: StaffEventCreationFormValues) => void;
   onSubmit: () => void;
   importedLinksSummary?: string | null;
@@ -66,17 +60,6 @@ function parseDateTimeLocalInput(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function guidedSectionClass(stepId: CreationGuideStepId, activeGuideStepId?: CreationGuideStepId) {
-  const isActive = activeGuideStepId === stepId;
-
-  return [
-    "rounded-[1.4rem] border p-4 transition",
-    isActive
-      ? "border-sky-300 bg-sky-50 shadow-[0_18px_40px_-30px_rgba(14,116,215,0.5)]"
-      : "border-slate-200 bg-white/70",
-  ].join(" ");
-}
-
 export function StaffEventCreationForm({
   values,
   formatOptions,
@@ -85,13 +68,9 @@ export function StaffEventCreationForm({
   submitLabel,
   submittingLabel = "Creating...",
   canSubmit = true,
-  mode = "staff",
-  lockedPresetLabel,
-  lockFormat = false,
   showCapacity = false,
   showRegistrationStory = false,
   hideSubmit = false,
-  activeGuideStepId,
   onChange,
   onSubmit,
   importedLinksSummary,
@@ -100,37 +79,7 @@ export function StaffEventCreationForm({
 
   return (
     <fieldset disabled={formDisabled} className={formDisabled ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
-      {mode === "guided-demo" && lockedPresetLabel ? (
-        <div id="guided-act1-preset" className={guidedSectionClass("preset", activeGuideStepId)}>
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-            Required story preset
-          </div>
-          <div className="mt-2 text-sm leading-6 text-emerald-950">
-            <span className="font-semibold">Locked preset:</span> {lockedPresetLabel}. This is the
-            same event creation form staff use, with the preset locked because the guided story needs
-            qualifier scoring, finalist advancement, finals, and public results.
-          </div>
-          <div className="mt-3 rounded-[1rem] border border-emerald-200 bg-white/70 px-3 py-2 text-xs leading-5 text-emerald-900">
-            The demo seed will prepare the story-critical Youth B category, qualifier and finals
-            rounds, finals cutoff, and event-day schedule after you create the event.
-          </div>
-        </div>
-      ) : mode === "guided-demo" ? (
-        <div id="guided-act1-preset" className={guidedSectionClass("preset", activeGuideStepId)}>
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">
-            Guided sandbox
-          </div>
-          <div className="mt-2 text-sm leading-6 text-slate-700">
-            Choose any format you want. The guide explains the tradeoffs, but it does not lock a
-            preset, auto-fill fields, or create anything until you submit the real staff form.
-          </div>
-        </div>
-      ) : null}
-
-      <div
-        id="guided-act1-basics"
-        className={mode === "guided-demo" ? `${guidedSectionClass("basics", activeGuideStepId)} grid gap-3` : "grid gap-3"}
-      >
+      <div className="grid gap-3">
       <label className="results-field-group" htmlFor="create-event-name">
         <span className="results-field-label">Event name</span>
         <input
@@ -165,7 +114,7 @@ export function StaffEventCreationForm({
             value={values.format}
             onChange={(event) => onChange({ ...values, format: event.target.value as EventFormat })}
             className="results-input"
-            disabled={lockFormat || formDisabled}
+            disabled={formDisabled}
           >
             {formatOptions.map((template) => (
               <option key={template.value} value={template.value}>
@@ -173,13 +122,6 @@ export function StaffEventCreationForm({
               </option>
             ))}
           </select>
-          {lockFormat ? (
-            <span className="text-xs leading-5 text-slate-500">
-              {lockedPresetLabel
-                ? `${lockedPresetLabel} is locked for the guided story.`
-                : "Qualifier-only formats are disabled in the guided story."}
-            </span>
-          ) : null}
         </label>
 
         <label className="results-field-group" htmlFor="create-event-location">
@@ -228,10 +170,7 @@ export function StaffEventCreationForm({
       </div>
       </div>
 
-      <div
-        id="guided-act1-registration"
-        className={mode === "guided-demo" ? `${guidedSectionClass("registration", activeGuideStepId)} grid gap-3` : "grid gap-3"}
-      >
+      <div className="grid gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="results-field-group" htmlFor="create-event-registration-opens">
           <span className="results-field-label">Registration opens</span>
@@ -317,17 +256,7 @@ export function StaffEventCreationForm({
       ) : null}
 
       {!hideSubmit ? (
-        <div
-          id="guided-act1-create"
-          className={mode === "guided-demo" ? guidedSectionClass("create", activeGuideStepId) : undefined}
-        >
-          {mode === "guided-demo" ? (
-            <div className="mb-3 text-sm leading-6 text-slate-600">
-              {activeGuideStepId === "create"
-                ? "Now create the event with the real staff backend. After creation, review the generated setup before adding sample climbers."
-                : "Review the guidance, then submit when you are ready. This guide never saves or creates anything for you."}
-            </div>
-          ) : null}
+        <div>
           <button
             type="button"
             disabled={formDisabled || !canSubmit}
