@@ -1,5 +1,4 @@
 import { assertSupabaseConfigured, publicSupabase, supabase } from "./supabase";
-import { isDemoCompetitionRecord } from "./demo";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "./attempts";
 import {
   DEFAULT_COMPETITION,
@@ -686,10 +685,6 @@ async function fetchBoulderQueueRows(
   }));
 }
 
-function isDemoCompetitionSlug(slug: string) {
-  return isDemoCompetitionRecord({ slug, is_demo: false });
-}
-
 async function fetchBoulderQueueRowsForCompetition(
   competition: Competition,
   scheduleBlockId: string | null,
@@ -697,7 +692,7 @@ async function fetchBoulderQueueRowsForCompetition(
 ) {
   const freshRows = await fetchBoulderQueueRows(competition.id, scheduleBlockId, readClient);
 
-  if (freshRows.length || !scheduleBlockId || !isDemoCompetitionSlug(competition.slug)) {
+  if (freshRows.length || !scheduleBlockId || !competition.is_demo) {
     return freshRows;
   }
 

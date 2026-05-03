@@ -1,10 +1,8 @@
 "use client";
 
 import { slugifyCompetitionName, type EventFormat } from "@/lib/scoring";
-import type {
-  GuidedDemoSetupModel,
-  GuidedDemoSetupStepId,
-} from "@/lib/guided-demo-setup";
+
+type CreationGuideStepId = "basics" | "preset" | "registration" | "create";
 
 export type StaffEventCreationFormValues = {
   name: string;
@@ -37,8 +35,7 @@ type StaffEventCreationFormProps = {
   showCapacity?: boolean;
   showRegistrationStory?: boolean;
   hideSubmit?: boolean;
-  activeGuideStepId?: GuidedDemoSetupStepId;
-  guidedSetupModel?: GuidedDemoSetupModel;
+  activeGuideStepId?: CreationGuideStepId;
   onChange: (values: StaffEventCreationFormValues) => void;
   onSubmit: () => void;
   importedLinksSummary?: string | null;
@@ -69,7 +66,7 @@ function parseDateTimeLocalInput(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function guidedSectionClass(stepId: GuidedDemoSetupStepId, activeGuideStepId?: GuidedDemoSetupStepId) {
+function guidedSectionClass(stepId: CreationGuideStepId, activeGuideStepId?: CreationGuideStepId) {
   const isActive = activeGuideStepId === stepId;
 
   return [
@@ -95,7 +92,6 @@ export function StaffEventCreationForm({
   showRegistrationStory = false,
   hideSubmit = false,
   activeGuideStepId,
-  guidedSetupModel,
   onChange,
   onSubmit,
   importedLinksSummary,
@@ -298,90 +294,6 @@ export function StaffEventCreationForm({
         </div>
       ) : null}
       </div>
-
-      {mode === "guided-demo" && guidedSetupModel ? (
-        <>
-          <div id="guided-act1-categories" className={guidedSectionClass("categories", activeGuideStepId)}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                  Categories
-                </div>
-                <h3 className="mt-1 text-lg font-semibold text-slate-950">
-                  Athlete registration divisions
-                </h3>
-              </div>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-                {guidedSetupModel.categories.length} categories
-              </span>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {guidedSetupModel.categories.map((category) => (
-                <span
-                  key={category.id}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700"
-                >
-                  {category.displayName}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div id="guided-act1-finals" className={guidedSectionClass("finals", activeGuideStepId)}>
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-              Finals eligibility
-            </div>
-            <h3 className="mt-1 text-lg font-semibold text-slate-950">
-              Youth B, Youth A, and Junior advance by default
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Youth D and Youth C compete in qualifiers only. The finals-eligible categories are
-              selected from the generated categories, not free-floating age-group strings.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {guidedSetupModel.finalsEligibleCategories.map((category) => (
-                <span
-                  key={category.id}
-                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800"
-                >
-                  {category.displayName}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div id="guided-act1-rounds" className={guidedSectionClass("rounds", activeGuideStepId)}>
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-              Rounds and scoring
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {guidedSetupModel.rounds.map((round) => (
-                <div key={round.title} className="rounded-[1rem] border border-slate-200 bg-slate-50 p-3">
-                  <div className="text-sm font-semibold text-slate-950">{round.title}</div>
-                  <div className="mt-1 text-xs leading-5 text-slate-600">{round.description}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div id="guided-act1-schedule" className={guidedSectionClass("schedule", activeGuideStepId)}>
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-              Schedule
-            </div>
-            <h3 className="mt-1 text-lg font-semibold text-slate-950">
-              Event-day structure
-            </h3>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {guidedSetupModel.scheduleBlocks.map((block) => (
-                <div key={`${block.label}-${block.phaseType}`} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="text-sm font-semibold text-slate-950">{block.label}</div>
-                  <div className="text-xs text-slate-500">{block.audienceLabel}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      ) : null}
 
       {importedLinksSummary ? (
         <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">

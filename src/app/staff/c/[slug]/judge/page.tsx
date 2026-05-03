@@ -2,7 +2,6 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import DemoExperience from "@/components/demo-experience";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
@@ -12,7 +11,6 @@ import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import { Button } from "@/components/ui/button";
 import type { SaveStatusState } from "@/components/ui/save-status";
-import { isDemoCompetitionRecord } from "@/lib/demo";
 import {
   getClimberWithAttempts,
   getCompetitionSnapshot,
@@ -63,68 +61,6 @@ type QueuedScorePreview = {
 
 const EMPTY_QUALIFIER_DRAFT: QualifierDraft = { attemptCount: 0, topped: false, zone: false };
 const EMPTY_FINALS_DRAFT: FinalsDraft = { top: false, zone: false, attemptsToTop: 0, attemptsToZone: 0 };
-
-async function saveDemoQualifierAttempt(
-  competitionId: string,
-  climberId: string,
-  climbNumber: number,
-  attemptCount: number,
-  topped: boolean,
-  options?: {
-    zone?: boolean;
-    attemptsToTop?: number | null;
-    attemptsToZone?: number | null;
-    clientEventId?: string;
-    scoredAt?: string;
-    judgeDeviceId?: string | null;
-    judgeSessionId?: string | null;
-    replayedFromOffline?: boolean;
-  }
-) {
-  const response = await fetch("/api/demo/qualifier-attempt", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      competitionId,
-      climberId,
-      climbNumber,
-      attemptCount,
-      topped,
-      zone: options?.zone,
-      attemptsToTop: options?.attemptsToTop,
-      attemptsToZone: options?.attemptsToZone,
-      clientEventId: options?.clientEventId,
-      scoredAt: options?.scoredAt,
-      judgeDeviceId: options?.judgeDeviceId,
-      judgeSessionId: options?.judgeSessionId,
-      replayedFromOffline: options?.replayedFromOffline,
-    }),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | {
-        error?: string;
-        attempt?: QualifierAttempt;
-        status?: "accepted" | "projected" | "conflicted" | "ignored_as_stale";
-        conflictReason?: string | null;
-        clientEventId?: string | null;
-        scoredAt?: string | null;
-      }
-    | null;
-
-  if (!response.ok || !payload?.attempt) {
-    throw new Error(payload?.error || "Unable to save the demo qualifier score.");
-  }
-
-  return {
-    attempt: payload.attempt,
-    status: payload.status ?? "accepted",
-    conflictReason: payload.conflictReason ?? null,
-    clientEventId: payload.clientEventId ?? null,
-    scoredAt: payload.scoredAt ?? null,
-  };
-}
 
 function mergeQualifierAttempt(attempts: QualifierAttempt[], nextAttempt: QualifierAttempt) {
   const remaining = attempts.filter(
@@ -519,10 +455,6 @@ export default function StaffJudgePage() {
   const initialStage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
   const initialClimberId = searchParams?.get("climberId") ?? "";
   const initialBoulder = Math.max(1, Number(searchParams?.get("boulder") ?? 1) || 1);
-  const demoStoryMode = searchParams?.get("demoStory") === "act2";
-  const [demoCompletionMessage, setDemoCompletionMessage] = useState("");
-  const [demoCompletionReady, setDemoCompletionReady] = useState(false);
-  const [checkingDemoCompletion, setCheckingDemoCompletion] = useState(false);
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stage, setStage] = useState<"qualifier" | "finals">(initialStage);
@@ -611,31 +543,17 @@ export default function StaffJudgePage() {
                 attemptsToZone: item.attemptsToZone,
               })
             );
-            if (snapshot?.competition.id === item.competitionId && isDemoCompetitionRecord(snapshot.competition)) {
-              const result = await saveDemoQualifierAttempt(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
-                zone: item.zone,
-                attemptsToTop: item.attemptsToTop,
-                attemptsToZone: item.attemptsToZone,
-                clientEventId: item.clientEventId,
-                scoredAt: item.scoredAt,
-                judgeDeviceId: item.judgeDeviceId,
-                judgeSessionId: item.judgeSessionId,
-                replayedFromOffline: true,
-              });
-              resultStatus = result.status;
-            } else {
-              const result = await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
-                zone: item.zone,
-                attemptsToTop: item.attemptsToTop,
-                attemptsToZone: item.attemptsToZone,
-                clientEventId: item.clientEventId,
-                scoredAt: item.scoredAt,
-                judgeDeviceId: item.judgeDeviceId,
-                judgeSessionId: item.judgeSessionId,
-                replayedFromOffline: true,
-              });
-              resultStatus = result.status;
-            }
+            const result = await updateQualifierAttemptByStaff(item.competitionId, item.climberId, item.climbNumber, item.attemptCount, item.topped, {
+              zone: item.zone,
+              attemptsToTop: item.attemptsToTop,
+              attemptsToZone: item.attemptsToZone,
+              clientEventId: item.clientEventId,
+              scoredAt: item.scoredAt,
+              judgeDeviceId: item.judgeDeviceId,
+              judgeSessionId: item.judgeSessionId,
+              replayedFromOffline: true,
+            });
+            resultStatus = result.status;
           } else {
             resultLabel = buildAthleteScoreLabel(
               climber,
@@ -687,21 +605,12 @@ export default function StaffJudgePage() {
     setLoading(true);
     void Promise.all([getCompetitionSnapshot(slug), getAuthState()])
       .then(([nextSnapshot, authState]) => {
-        const allowPublicDemoJudge = isDemoCompetitionRecord(nextSnapshot.competition);
-        if (!isStaffRole(authState.profile?.role) && !allowPublicDemoJudge) {
+        if (!isStaffRole(authState.profile?.role)) {
           window.location.href = `/staff/login?redirect=${encodeURIComponent(`/staff/c/${slug}/judge`)}`;
           return;
         }
 
-        setProfile(
-          isStaffRole(authState.profile?.role)
-            ? authState.profile
-            : {
-                id: "demo-judge",
-                role: "judge",
-                display_name: "Demo judge",
-              }
-        );
+        setProfile(authState.profile);
         setSnapshot(nextSnapshot);
         const qualifierNext: QualifierDraftState = {};
         const finalsNext: FinalsDraftState = {};
@@ -1087,39 +996,22 @@ export default function StaffJudgePage() {
     setMessage("");
     try {
       const metadata = await buildQueueMetadata();
-      const savedAttempt = isDemoCompetitionRecord(snapshot.competition)
-        ? await saveDemoQualifierAttempt(
-            snapshot.competition.id,
-            climberId,
-            selectedBoulder,
-            normalized.attemptCount,
-            normalized.topped,
-            {
-              zone: normalized.zone,
-              attemptsToTop: normalized.attemptsToTop,
-              attemptsToZone: normalized.attemptsToZone,
-              clientEventId: metadata.clientEventId,
-              scoredAt: metadata.scoredAt,
-              judgeDeviceId: metadata.judgeDeviceId,
-              judgeSessionId: metadata.judgeSessionId,
-            }
-          )
-        : await updateQualifierAttemptByStaff(
-            snapshot.competition.id,
-            climberId,
-            selectedBoulder,
-            normalized.attemptCount,
-            normalized.topped,
-            {
-              zone: normalized.zone,
-              attemptsToTop: normalized.attemptsToTop,
-              attemptsToZone: normalized.attemptsToZone,
-              clientEventId: metadata.clientEventId,
-              scoredAt: metadata.scoredAt,
-              judgeDeviceId: metadata.judgeDeviceId,
-              judgeSessionId: metadata.judgeSessionId,
-            }
-          );
+      const savedAttempt = await updateQualifierAttemptByStaff(
+        snapshot.competition.id,
+        climberId,
+        selectedBoulder,
+        normalized.attemptCount,
+        normalized.topped,
+        {
+          zone: normalized.zone,
+          attemptsToTop: normalized.attemptsToTop,
+          attemptsToZone: normalized.attemptsToZone,
+          clientEventId: metadata.clientEventId,
+          scoredAt: metadata.scoredAt,
+          judgeDeviceId: metadata.judgeDeviceId,
+          judgeSessionId: metadata.judgeSessionId,
+        }
+      );
       await updateClimberInSnapshot(
         climberId,
         (nextClimbers) => ({
@@ -1329,58 +1221,6 @@ export default function StaffJudgePage() {
     setFinalsDraft(key, () => EMPTY_FINALS_DRAFT);
   };
 
-  const highlightDemoTarget = () => {
-    setStage("qualifier");
-    setSelectedBoulder(initialBoulder);
-    if (initialClimberId) {
-      setSelectedQualifierClimberId(initialClimberId);
-      setSelectedCell({ climberId: initialClimberId, climbNumber: initialBoulder });
-    }
-    document.querySelector('[data-demo-anchor="judge-entry-cards"]')?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
-  };
-
-  const checkDemoAct2Completion = async () => {
-    setCheckingDemoCompletion(true);
-    setDemoCompletionMessage("");
-
-    try {
-      const response = await fetch("/api/demo/prepare");
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            ok?: boolean;
-            state?: {
-              progress: { keyScoreCorrected: boolean };
-              links: { organizer: string | null; leaderboard: string | null };
-            };
-            error?: string;
-          }
-        | null;
-
-      if (!response.ok || !payload?.ok || !payload.state) {
-        throw new Error(payload?.error ?? "Unable to verify the demo score correction.");
-      }
-
-      if (payload.state.progress.keyScoreCorrected) {
-        setDemoCompletionReady(true);
-        setDemoCompletionMessage("Act 2 complete: key score corrected.");
-        return;
-      }
-
-      setDemoCompletionReady(false);
-      setDemoCompletionMessage("The key score has not been corrected yet. Save Athlete C's B3 as Top in 1 attempt.");
-    } catch (nextError) {
-      setDemoCompletionReady(false);
-      setDemoCompletionMessage(
-        nextError instanceof Error ? nextError.message : "Unable to verify the demo score correction."
-      );
-    } finally {
-      setCheckingDemoCompletion(false);
-    }
-  };
-
   if (loading) {
     return (
       <main className="results-page">
@@ -1416,66 +1256,30 @@ export default function StaffJudgePage() {
           detail={saveFeedbackDetail}
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
-        {isDemoCompetitionRecord(snapshot.competition) && demoStoryMode ? (
+        {snapshot.competition.is_demo ? (
           <section className="results-alert border border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(255,255,255,0.92))] text-slate-800">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
-                <div className="results-kicker text-sky-700">Act 2 - Judge the key climb</div>
+                <div className="results-kicker text-sky-700">Demo judge task</div>
                 <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-                  Find Athlete C, select B{initialBoulder}, change Top from attempt 3 to attempt 1, then save.
+                  Correct the seeded mistake, then watch the real leaderboard respond.
                 </h2>
                 <p className="max-w-4xl text-sm leading-relaxed text-slate-600">
-                  This guide will not click or save for you. Use the athlete picker, the boulder selector,
-                  the Top control, and the attempt controls yourself. After saving, return to the demo guide
-                  and press “I completed this” so it can verify the database state.
+                  Find #104 Maya Chen, select B3, change the result from Top in 3 attempts
+                  to Top in 1 attempt, then save. This banner does not click, score, or complete anything for you.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={highlightDemoTarget}>
-                  Highlight target
-                </Button>
-                <Button type="button" variant="primary" onClick={() => void checkDemoAct2Completion()} disabled={checkingDemoCompletion}>
-                  {checkingDemoCompletion ? "Checking..." : "I completed this"}
+                <Button type="button" variant="secondary" onClick={() => router.push(`/c/${slug}/leaderboard`)}>
+                  View leaderboard
                 </Button>
                 <Button type="button" variant="ghost" onClick={() => router.push("/demo")}>
                   Back to Demo Home
                 </Button>
               </div>
             </div>
-            {demoCompletionMessage ? (
-              <div
-                className={`mt-4 rounded-[1.2rem] border px-4 py-3 text-sm font-semibold ${
-                  demoCompletionReady
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border-amber-200 bg-amber-50 text-amber-800"
-                }`}
-              >
-                {demoCompletionMessage}
-                {demoCompletionReady ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" variant="primary" size="compact" onClick={() => router.push(`/staff/c/${slug}?demoStory=act3`)}>
-                      Continue to Organizer Demo
-                    </Button>
-                    <Button type="button" variant="secondary" size="compact" onClick={() => router.push(`/c/${slug}/leaderboard?demoStory=act4`)}>
-                      View leaderboard impact
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
           </section>
         ) : null}
-        {isDemoCompetitionRecord(snapshot.competition) && !demoStoryMode ? (
-          <DemoExperience
-            enabled
-            routeId="judge"
-            competitionSlug={snapshot.competition.slug}
-            bannerTitle="Judge station demo"
-            bannerDescription="This is the live scoring surface a judge would use on a phone or tablet. Every save here updates the official qualifier result for that climber and boulder."
-            bannerTip="Record one boulder score, then switch to the live leaderboard to show the live standings response."
-          />
-        ) : null}
-
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">
           <div className="results-workspace-hero">
             <div>

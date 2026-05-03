@@ -11,34 +11,19 @@ import {
   StaffEventCreationForm,
   type StaffEventCreationFormValues,
 } from "@/components/staff-event-creation-form";
-import {
-  OrganizerDemoTour,
-  type OrganizerDemoHandoffTarget,
-  type OrganizerDemoStepId,
-} from "@/components/demo/organizer-demo-tour";
-import { DemoSalesShell } from "@/components/demo/demo-sales-shell";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
-import {
-  isCanonicalDemoCompetitionSlug,
-  isDemoCompetitionRecord,
-} from "@/lib/demo";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
 import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
-  getGuidedDemoPreset,
   getCompetitionPreset,
   getPresetFinalsEligibleCategories,
   type CompetitionPresetId,
   type CompetitionPresetScheduleBlock,
 } from "@/lib/competition-presets";
-import {
-  buildDefaultGuidedDemoEventSetup,
-  type GuidedDemoSetupStepId,
-} from "@/lib/guided-demo-setup";
 import {
   constrainFinalsEligibleAgeGroupsToSelectedCategories,
   finalsEligibilityUsesSelectedCategories,
@@ -101,19 +86,9 @@ import {
   type SchedulePhaseType,
 } from "@/lib/scoring";
 import { normalizeCompetitionFinalsSetup } from "@/lib/competition-structure";
-import {
-  createDemoSalesSession,
-  patchDemoSalesSession,
-  readDemoSalesSession,
-  writeDemoSalesSession,
-} from "@/lib/demo-sales-session";
 import { sanitizeExternalUrl } from "@/lib/security";
 
 const COMPETITION_UNDO_WINDOW_LABEL = "5 minutes";
-
-function isDemoDataSlug(slug: string | null | undefined) {
-  return isCanonicalDemoCompetitionSlug(slug);
-}
 
 function cloneCompetition(competition: Competition): Competition {
   return {
@@ -155,34 +130,7 @@ type ScheduleTemplateGroup = {
   templates: ScheduleBlockTemplate[];
 };
 
-type OrganizerPlaybackStep =
-  | "intro"
-  | "preset"
-  | "categories"
-  | "schedule"
-  | "stages"
-  | "handoff";
-
-type OrganizerNarration = {
-  title: string;
-  body: string;
-};
-
-type OrganizerDemoCursorState = {
-  visible: boolean;
-  x: number;
-  y: number;
-  clicking: boolean;
-  label: string | null;
-};
-
-type OrganizerBuildTransitionState = {
-  active: boolean;
-  stepIndex: number;
-  complete: boolean;
-};
-
-const ORGANIZER_STEP_LABELS: Record<OrganizerPlaybackStep, string> = {
+const unusedOrganizerStepLabels = {
   intro: "Organizer · introduction",
   preset: "Organizer · format template",
   categories: "Organizer · categories",
@@ -191,16 +139,87 @@ const ORGANIZER_STEP_LABELS: Record<OrganizerPlaybackStep, string> = {
   handoff: "Organizer · handoff to judge",
 };
 
+type OrganizerPlaybackStep = keyof typeof unusedOrganizerStepLabels;
+type OrganizerNarration = {
+  title: string;
+  body: string;
+};
+type OrganizerDemoStepId =
+  | "overview"
+  | "basics_name"
+  | "basics_format"
+  | "basics_registration"
+  | "preset"
+  | "categories"
+  | "schedule"
+  | "stages"
+  | "handoff";
+type OrganizerDemoHandoffTarget = "judge" | "leaderboard" | "display";
+type OrganizerDemoCursorState = {
+  visible: boolean;
+  x: number;
+  y: number;
+  clicking: boolean;
+  label: string | null;
+};
+type OrganizerBuildTransitionState = {
+  active: boolean;
+  stepIndex: number;
+  complete: boolean;
+};
+
 const ORGANIZER_BUILD_TRANSITION_STEPS = [
   "Saving event setup",
-  "Simulating 150 climber registrations",
-  "Generating qualifier routes and seeded scores",
-  "Opening judge workspaces",
-  "Launching the live judge panel",
+  "Adding sample climbers",
+  "Seeding practice scores",
+  "Opening judge workspace",
 ] as const;
 
+const ORGANIZER_STEP_LABELS = unusedOrganizerStepLabels;
 const DEMO_AUTOPLAY_ENABLED = false;
-const GUIDED_STORY_PRESET = getGuidedDemoPreset();
+
+function DemoSalesShell(_: Record<string, unknown>) {
+  return null;
+}
+
+function OrganizerDemoTour(_: Record<string, unknown>) {
+  return null;
+}
+
+function readDemoSalesSession() {
+  return null as null | {
+    audioEnabled: boolean;
+    competitionId: string | null;
+    mode?: string;
+    autoplay?: boolean;
+  };
+}
+
+function writeDemoSalesSession(_: unknown) {}
+
+function patchDemoSalesSession(_: unknown) {}
+
+function createDemoSalesSession<T>(session: T) {
+  return session;
+}
+
+function isDemoCompetitionRecord(record: Pick<Competition, "is_demo">) {
+  return record.is_demo;
+}
+
+function isDemoDataSlug(_: string | null | undefined) {
+  return false;
+}
+
+type GuidedDemoSetupStepId =
+  | "basics"
+  | "preset"
+  | "registration"
+  | "categories"
+  | "finals"
+  | "rounds"
+  | "schedule"
+  | "create";
 
 type GuidedOrganizerWalkthroughStep = {
   id: GuidedDemoSetupStepId;
@@ -272,8 +291,6 @@ const GUIDED_ORGANIZER_ACT_1_STEPS: GuidedOrganizerWalkthroughStep[] = [
     anchorId: "guided-act1-create",
   },
 ];
-
-type StaffDashboardDemoStoryAct = "act1" | "act3";
 
 function GuidedOrganizerAct1Walkthrough({
   steps,
@@ -737,15 +754,14 @@ function buildGuidedQualifierSessionTemplates(competition: Competition): Schedul
 export default function StaffDashboard({
   initialCompetitionSlug,
   initialCreateDraft,
-  demoMode = false,
-  demoStoryAct,
+  demoSeedOnCreate = false,
 }: {
   initialCompetitionSlug?: string;
   initialCreateDraft?: StaffDashboardCreateDraft;
-  demoMode?: boolean;
-  demoStoryAct?: StaffDashboardDemoStoryAct;
+  demoSeedOnCreate?: boolean;
 }) {
   const router = useRouter();
+  const demoMode = false;
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
   const [draft, setDraft] = useState<Competition | null>(null);
@@ -761,7 +777,7 @@ export default function StaffDashboard({
   const [createStartDate, setCreateStartDate] = useState("");
   const [createEndDate, setCreateEndDate] = useState("");
   const [createDescription, setCreateDescription] = useState("");
-  const [createMaxClimbers, setCreateMaxClimbers] = useState(buildDefaultGuidedDemoEventSetup().maxClimbers);
+  const [createMaxClimbers, setCreateMaxClimbers] = useState(DEFAULT_MAX_CLIMBERS);
   const [createRegistrationOpensAt, setCreateRegistrationOpensAt] = useState<string | null>(null);
   const [createRegistrationClosesAt, setCreateRegistrationClosesAt] = useState<string | null>(null);
   const [createOfficialEventUrl, setCreateOfficialEventUrl] = useState("");
@@ -830,10 +846,22 @@ export default function StaffDashboard({
     action: () => Promise<void>;
   }>(null);
   const [shareOrigin, setShareOrigin] = useState("");
-  const isGuidedStoryAct1 = demoStoryAct === "act1";
-  const isGuidedStoryAct3 = demoStoryAct === "act3";
-  const currentGuidedAct1Step =
-    GUIDED_ORGANIZER_ACT_1_STEPS[guidedAct1StepIndex] ?? GUIDED_ORGANIZER_ACT_1_STEPS[0];
+  const demoFormat = "five_on_five_off" as Competition["format"];
+  const isGuidedStoryAct1 = false;
+  const isGuidedStoryAct3 = false;
+  const currentGuidedAct1Step = { id: "basics" as const };
+  const [demoSeedResult, setDemoSeedResult] = useState<null | {
+    judgeUrl: string;
+    publicUrl: string;
+    leaderboardUrl: string;
+    target?: {
+      climberNumber: number;
+      name: string;
+      climbNumber: number;
+      before: string;
+      after: string;
+    };
+  }>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -850,6 +878,10 @@ export default function StaffDashboard({
           : (await getAuthState()).profile
       );
       setSelectedCompetitionId((current) => {
+        if (demoSeedOnCreate) {
+          return "";
+        }
+
         if (current && summaries.some((entry) => entry.competition.id === current)) {
           return current;
         }
@@ -873,7 +905,7 @@ export default function StaffDashboard({
     } finally {
       setLoading(false);
     }
-  }, [demoMode, demoSessionCompetitionId, initialCompetitionSlug]);
+  }, [demoMode, demoSeedOnCreate, demoSessionCompetitionId, initialCompetitionSlug]);
 
   useEffect(() => {
     void load();
@@ -902,44 +934,14 @@ export default function StaffDashboard({
   }, []);
 
   useEffect(() => {
-    if (!demoMode) {
+    if (!demoSeedOnCreate) {
       return;
     }
 
-    const session = readDemoSalesSession();
-    if (!session) {
-      return;
-    }
-
-    setSalesAudioEnabled(session.audioEnabled);
-    setDemoSessionCompetitionId(session.competitionId ?? null);
-  }, [demoMode]);
-
-  useEffect(() => {
-    if (!isGuidedStoryAct1 || guidedStoryDefaultsAppliedRef.current) {
-      return;
-    }
-
-    const defaults = buildDefaultGuidedDemoEventSetup();
-    guidedStoryDefaultsAppliedRef.current = true;
-    setDemoSessionCompetitionId(null);
-    setSelectedCompetitionId("");
-    setSnapshot(null);
-    setDraft(null);
-    setGuidedAct1StepIndex(0);
-    setCreateName(defaults.name);
-    setCreateLocation(defaults.locationName);
-    setCreateStartDate(defaults.startDate);
-    setCreateEndDate(defaults.endDate);
-    setCreateDescription(defaults.description);
-    setCreateRegistrationOpensAt(defaults.registrationOpensAt);
-    setCreateRegistrationClosesAt(defaults.registrationClosesAt);
-    setCreateMaxClimbers(defaults.maxClimbers);
-    setCreateFormat(GUIDED_STORY_PRESET.format);
-    setMessage(
-      "Act 1: Organizer setup is ready. Review the real event creation form, then create the demo event."
-    );
-  }, [isGuidedStoryAct1]);
+    setCreateFormat(demoFormat);
+    setCreateMaxClimbers(150);
+    setMessage("Demo mode: create the event normally, then sample climbers will be added.");
+  }, [demoFormat, demoSeedOnCreate]);
 
 
   useEffect(() => {
@@ -1161,7 +1163,7 @@ export default function StaffDashboard({
   const registerPath = draft ? buildCompetitionPath(draft.slug, "register") : "";
   const leaderboardPath = draft ? buildCompetitionPath(draft.slug, "leaderboard") : "";
   const judgeUrl = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "";
-  const demoJudgePath = draft ? `${buildStaffCompetitionPath(draft.slug, "judge")}?demoStory=act2` : "/demo";
+  const demoJudgePath = draft ? buildStaffCompetitionPath(draft.slug, "judge") : "/demo";
   const displayPath = draft ? buildDisplayPath(draft.slug) : "";
   const publicUrl = publicPath ? `${shareOrigin}${publicPath}` : "";
   const registerUrl = registerPath ? `${shareOrigin}${registerPath}` : "";
@@ -1565,34 +1567,12 @@ export default function StaffDashboard({
   const resetDemoSessionCompetition = useCallback(async () => {
     setError("");
     setMessage("");
-
-    const response = await fetch("/api/demo/reset", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        mode: "public_demo",
-        competitionId: demoSessionCompetitionId,
-      }),
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-
-    if (!response.ok) {
-      throw new Error(payload?.error || "Unable to reset the demo session.");
-    }
-
-    patchDemoSalesSession({
-      competitionId: null,
-      competitionSlug: null,
-    });
-    setDemoSessionCompetitionId(null);
     await load();
     setSelectedCompetitionId("");
     setSnapshot(null);
     setDraft(null);
-    setMessage("Demo reset. The organizer flow is back to a clean slate.");
-  }, [demoSessionCompetitionId, load]);
+    setMessage("Demo state cleared locally. Create another demo event when ready.");
+  }, [load]);
 
   const updateRounds = (updater: (rounds: CompetitionRound[]) => CompetitionRound[]) => {
     if (!draft) {
@@ -2347,24 +2327,6 @@ export default function StaffDashboard({
               : "Judge mode is ready. You are still on the same event, now with a full field and live scoring.",
         });
 
-        if (index === 1) {
-          const response = await fetch("/api/demo/simulate", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              mode: "hydrate_event",
-              competitionId: draft.id,
-            }),
-          });
-          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-          if (!response.ok) {
-            throw new Error(payload?.error || "Unable to simulate the organizer demo event.");
-          }
-          await refreshAfterChange(draft.id);
-        }
-
         await waitForOrganizerPlayback(900);
       }
 
@@ -2734,6 +2696,12 @@ export default function StaffDashboard({
 
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
+        {demoSeedOnCreate ? (
+          <Alert>
+            Demo mode uses the real staff creation form. The finals-capable preset is locked, and
+            sample climbers are added only after this event is created.
+          </Alert>
+        ) : null}
         {isGuidedStoryAct3 && draft && isDemoCompetitionRecord(draft) ? (
           <Surface variant="card" className="border-sky-200 bg-sky-50/90">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -2749,7 +2717,7 @@ export default function StaffDashboard({
               </div>
               <div className="flex flex-wrap gap-2">
                 {leaderboardPath ? (
-                  <Link href={`${leaderboardPath}?demoStory=act4`} className="results-secondary-button">
+                  <Link href={leaderboardPath} className="results-secondary-button">
                     View leaderboard impact
                   </Link>
                 ) : null}
@@ -2936,6 +2904,36 @@ export default function StaffDashboard({
             </div>
           </Surface>
         ) : null}
+        {demoSeedResult ? (
+          <Surface variant="card" className="border-emerald-200 bg-emerald-50/90">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <div className="results-kicker text-emerald-700">Demo event ready</div>
+                <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
+                  Your event is ready. We have added sample climbers.
+                </h2>
+                <p className="max-w-3xl text-sm leading-6 text-slate-700">
+                  Go to the real judge panel and correct the seeded mistake:
+                  {demoSeedResult.target
+                    ? ` #${demoSeedResult.target.climberNumber} ${demoSeedResult.target.name}, B${demoSeedResult.target.climbNumber}, ${demoSeedResult.target.before} to ${demoSeedResult.target.after}.`
+                    : " find the marked sample athlete and fix the intentional scoring mistake."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="results-primary-button"
+                  onClick={() => router.push(demoSeedResult.judgeUrl)}
+                >
+                  Go to Judge Panel
+                </button>
+                <Link href={demoSeedResult.publicUrl} className="results-secondary-button">
+                  View public page
+                </Link>
+              </div>
+            </div>
+          </Surface>
+        ) : null}
 
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="results-card">
@@ -2990,12 +2988,14 @@ export default function StaffDashboard({
               </div>
             ) : (
               <>
-                <div className="results-kicker">Create event</div>
+                <div className="results-kicker">{demoSeedOnCreate ? "Demo setup" : "Create event"}</div>
                 <h1 className="results-editorial-title mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
-                  Start a new event.
+                  {demoSeedOnCreate ? "Create a demo event." : "Start a new event."}
                 </h1>
                 <div className="results-hero-subline">
-                  Give it a name, pick the format, and set the date. You can choose the full event setup in the next step.
+                  {demoSeedOnCreate
+                    ? "Use the same organizer form, then add sample climbers and move into the real judge panel."
+                    : "Give it a name, pick the format, and set the date. You can choose the full event setup in the next step."}
                 </div>
               </>
             )}
@@ -3013,21 +3013,21 @@ export default function StaffDashboard({
                   maxClimbers: createMaxClimbers,
                 }}
                 formatOptions={
-                  isGuidedStoryAct1
-                    ? FORMAT_TEMPLATES.filter((template) => template.value === GUIDED_STORY_PRESET.format)
+                  demoSeedOnCreate
+                    ? FORMAT_TEMPLATES.filter((template) => template.value === demoFormat)
                     : FORMAT_TEMPLATES
                 }
                 disabled={!canEditSetup}
-                pending={isPending || buildTransitionState.active}
-                submitLabel={isGuidedStoryAct1 ? "Create Demo Event" : demoMode ? "Create event" : "Create new event"}
-                submittingLabel={isGuidedStoryAct1 ? "Creating demo event..." : undefined}
+                pending={isPending}
+                submitLabel={demoSeedOnCreate ? "Create demo event" : "Create new event"}
+                submittingLabel={demoSeedOnCreate ? "Creating demo event..." : undefined}
                 canSubmit={Boolean(createName.trim())}
-                mode="staff"
-                lockedPresetLabel={isGuidedStoryAct1 ? GUIDED_STORY_PRESET.name : undefined}
-                lockFormat={isGuidedStoryAct1}
-                showCapacity={isGuidedStoryAct1}
-                showRegistrationStory={isGuidedStoryAct1}
-                activeGuideStepId={isGuidedStoryAct1 ? currentGuidedAct1Step.id : undefined}
+                mode={demoSeedOnCreate ? "guided-demo" : "staff"}
+                lockedPresetLabel={demoSeedOnCreate ? "Youth Championship with Finals" : undefined}
+                lockFormat={demoSeedOnCreate}
+                showCapacity={demoSeedOnCreate}
+                showRegistrationStory={demoSeedOnCreate}
+                activeGuideStepId={demoSeedOnCreate ? "basics" : undefined}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
                     ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${
@@ -3056,22 +3056,22 @@ export default function StaffDashboard({
                       try {
                         const created = await createCompetitionFromTemplate({
                           name: sanitizeDraftText(createName),
-                          format: createFormat,
-                          has_finals: isGuidedStoryAct1
+                          format: demoSeedOnCreate ? demoFormat : createFormat,
+                          has_finals: demoSeedOnCreate
                             ? true
                             : competitionAllowsOptionalFinals(createFormat)
                               ? false
                               : true,
-                          is_demo: isGuidedStoryAct1 || demoMode,
+                          is_demo: demoSeedOnCreate,
                           location_name: sanitizeDraftText(createLocation),
                           start_date: sanitizeDraftText(createStartDate) || null,
                           end_date: sanitizeDraftText(createEndDate) || null,
                           registration_opens_at: sanitizeDraftNullable(createRegistrationOpensAt),
                           registration_closes_at: sanitizeDraftNullable(createRegistrationClosesAt),
                           description: sanitizeDraftText(createDescription),
-                          hero_image_url: isGuidedStoryAct1 ? undefined : sanitizeExternalUrl(createHeroImageUrl) || undefined,
+                          hero_image_url: demoSeedOnCreate ? undefined : sanitizeExternalUrl(createHeroImageUrl) || undefined,
                           discipline_label: sanitizeDraftText(createDisciplineLabel) || undefined,
-                          ...(isGuidedStoryAct1
+                          ...(demoSeedOnCreate
                             ? {}
                             : {
                                 official_event_url: sanitizeExternalUrl(createOfficialEventUrl) || undefined,
@@ -3079,9 +3079,9 @@ export default function StaffDashboard({
                                 official_schedule_url: sanitizeExternalUrl(createOfficialScheduleUrl) || undefined,
                               }),
                         });
-                        if (isGuidedStoryAct1) {
+                        if (demoSeedOnCreate) {
                           setMessage("Event created. Populating demo climbers, seeded scores, and target metadata...");
-                          const response = await fetch("/api/demo/populate", {
+                          const response = await fetch("/api/demo/seed", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ competitionId: created.id }),
@@ -3089,12 +3089,29 @@ export default function StaffDashboard({
                           const payload = (await response.json().catch(() => null)) as {
                             ok?: boolean;
                             judgeUrl?: string;
+                            publicUrl?: string;
+                            leaderboardUrl?: string;
+                            target?: {
+                              climberNumber: number;
+                              name: string;
+                              climbNumber: number;
+                              before: string;
+                              after: string;
+                            };
                             error?: string;
                           } | null;
                           if (!response.ok || !payload?.ok || !payload.judgeUrl) {
-                            throw new Error(payload?.error ?? "Unable to populate demo data.");
+                            throw new Error(payload?.error ?? "Unable to seed demo data.");
                           }
-                          router.push(payload.judgeUrl);
+                          setDemoSeedResult({
+                            judgeUrl: payload.judgeUrl,
+                            publicUrl: payload.publicUrl ?? buildCompetitionPath(created.slug),
+                            leaderboardUrl: payload.leaderboardUrl ?? buildCompetitionPath(created.slug, "leaderboard"),
+                            target: payload.target,
+                          });
+                          await refreshAfterChange(created.id);
+                          setSelectedCompetitionId(created.id);
+                          setMessage("Your event is ready. We've added sample climbers.");
                           return;
                         }
                         setCreateName("");

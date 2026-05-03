@@ -1,13 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { DEMO_COMPETITION_SLUG } from "@/lib/demo";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseBrowserKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SCORECARD_PATH_PATTERN = /^\/c\/[^/]+\/scorecard$/;
-const PUBLIC_DEMO_JUDGE_PATH = `/staff/c/${DEMO_COMPETITION_SLUG}/judge`;
 const SENSITIVE_CACHE_CONTROL = "no-store, max-age=0";
 
 function createMiddlewareResponse(request: NextRequest) {
@@ -100,9 +98,7 @@ export async function middleware(request: NextRequest) {
 
   if (
     !pathname.startsWith("/staff") ||
-    pathname.startsWith("/staff/login") ||
-    pathname === "/staff/demo" ||
-    pathname === PUBLIC_DEMO_JUDGE_PATH
+    pathname.startsWith("/staff/login")
   ) {
     return applySensitiveHeaders(request, NextResponse.next());
   }

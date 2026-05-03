@@ -2,13 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import DemoExperience from "@/components/demo-experience";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { getAuthState, isStaffRole } from "@/lib/auth";
-import { isDemoCompetitionRecord } from "@/lib/demo";
 import { buildCompetitionPath, formatUsesSelfScoredQualifiers, getActiveQueueSessionBlock } from "@/lib/scoring";
 
 export default function CompetitionDisplayPage() {
@@ -26,10 +24,9 @@ export default function CompetitionDisplayPage() {
       return;
     }
 
-    const allowPublicDemoDisplay = isDemoCompetitionRecord({ slug, is_demo: false });
     void getAuthState()
       .then((authState) => {
-        if (!isStaffRole(authState.profile?.role) && !allowPublicDemoDisplay) {
+        if (!isStaffRole(authState.profile?.role)) {
           router.replace(buildCompetitionPath(slug, "leaderboard"));
           return;
         }
@@ -37,11 +34,7 @@ export default function CompetitionDisplayPage() {
         setAuthorized(true);
       })
       .catch(() => {
-        if (!allowPublicDemoDisplay) {
-          router.replace(buildCompetitionPath(slug, "leaderboard"));
-          return;
-        }
-        setAuthorized(true);
+        router.replace(buildCompetitionPath(slug, "leaderboard"));
       })
       .finally(() => setCheckingAccess(false));
     }, [router, slug]);
@@ -117,15 +110,10 @@ export default function CompetitionDisplayPage() {
   return (
     <main className="results-page min-h-screen">
       <div className="content-frame space-y-6">
-        {snapshot && isDemoCompetitionRecord(snapshot.competition) ? (
-          <DemoExperience
-            enabled
-            routeId="display"
-            competitionSlug={snapshot.competition.slug}
-            bannerTitle="Spectator display demo"
-            bannerDescription="This is the projector-friendly event screen for a TV, livestream, or wall display. It keeps the room updated without staff narrating every standings change."
-            bannerTip="Use this as the final stop in the demo to show the polished public event-day experience."
-          />
+        {snapshot?.competition.is_demo ? (
+          <div className="results-alert results-alert-success">
+            Demo event: projector display view for the same seeded competition.
+          </div>
         ) : null}
         <section className="results-card" data-demo-anchor="display-overview">
           <div className="results-kicker">Big-screen display</div>

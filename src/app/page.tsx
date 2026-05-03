@@ -165,8 +165,8 @@ export default function HomePage() {
                   Open public event page
                 </Link>
               ) : null}
-              <Link href="/staff/demo" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
-                Open organizer demo
+              <Link href="/demo" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
+                Open product demo
               </Link>
             </div>
           </div>

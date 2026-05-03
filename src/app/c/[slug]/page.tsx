@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
-import { DemoModeBanner } from "@/components/demo/demo-mode-banner";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { Alert } from "@/components/ui/alert";
 import { buttonStyles } from "@/components/ui/button";
@@ -13,7 +12,6 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
-import { isDemoCompetitionRecord } from "@/lib/demo";
 import {
   buildCompetitionPath,
   buildDisplayPath,
@@ -238,7 +236,12 @@ export default function CompetitionOverviewPage() {
 
         {snapshot ? (
           <>
-            {isDemoCompetitionRecord(snapshot.competition) ? <DemoModeBanner /> : null}
+            {snapshot.competition.is_demo ? (
+              <div className="results-alert results-alert-success">
+                Demo event: use this page to view the public schedule, leaderboard links, and results exactly
+                as competitors and spectators would see them.
+              </div>
+            ) : null}
             <CompetitionHero competition={snapshot.competition} />
 
             <section className="results-editorial-panel">

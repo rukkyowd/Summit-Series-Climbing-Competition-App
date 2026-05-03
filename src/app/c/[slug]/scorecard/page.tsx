@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useMemo, useReducer, useState } from 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
-import { isDemoCompetitionRecord } from "@/lib/demo";
 import {
   getClimberByAccessToken,
   getCompetitionSnapshot,
@@ -91,7 +90,6 @@ function ScorecardContent() {
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const rawToken = searchParams?.get("token") ?? "";
   const stage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
-  const competitorDemoMode = searchParams?.get("demo") === "competitor";
   const [token, setToken] = useState("");
   const [tokenResolved, setTokenResolved] = useState(false);
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
@@ -396,13 +394,6 @@ function ScorecardContent() {
 
         {message ? <div className="results-alert results-alert-success">{message}</div> : null}
         {error ? <div className="results-alert results-alert-error">{error}</div> : null}
-        {competitorDemoMode && isDemoCompetitionRecord(snapshot.competition) ? (
-          <div className="results-alert results-alert-success">
-            Competitor demo view: this seeded athlete scorecard is reading the same live competition
-            data as the judge and leaderboard demo.
-          </div>
-        ) : null}
-
         <section className="results-card">
           <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
             <div>

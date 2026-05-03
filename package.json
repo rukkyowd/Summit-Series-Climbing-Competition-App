@@ -10,7 +10,6 @@
     "security:secrets": "node scripts/check-no-exposed-secrets.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "demo:seed": "tsx scripts/seed-demo.ts",
     "repair:finals-setup": "tsx scripts/repair-finals-setup.ts",
     "db:push": "npx supabase db push --linked",
     "db:push:dry": "npx supabase db push --linked --dry-run",
