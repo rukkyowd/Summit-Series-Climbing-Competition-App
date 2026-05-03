@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
 import FinalsResultsTable from "@/components/finals-results-table";
+import { GuidedDemoWalkthrough } from "@/components/guided-demo-walkthrough";
 import { Alert } from "@/components/ui/alert";
 import { buttonStyles } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -27,11 +28,14 @@ import {
 
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
+  const demoGuideActive = searchParams?.get("demo") === "1";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
+  const [demoStoryGuideStepIndex, setDemoStoryGuideStepIndex] = useState(4);
 
   const refresh = useCallback(async () => {
     if (!slug) {
@@ -237,10 +241,19 @@ export default function CompetitionOverviewPage() {
         {snapshot ? (
           <>
             {snapshot.competition.is_demo ? (
-              <div className="results-alert results-alert-success">
-                Demo event: use this page to view the public schedule, leaderboard links, and results exactly
-                as competitors and spectators would see them.
-              </div>
+              demoGuideActive ? (
+                <GuidedDemoWalkthrough
+                  currentStepIndex={demoStoryGuideStepIndex}
+                  onSelectStep={setDemoStoryGuideStepIndex}
+                  onRestart={() => setDemoStoryGuideStepIndex(0)}
+                  storyConnection="the same event now reaches the public surface. Schedule, leaderboards, finals state, and results come from the organizer and judge work you just performed."
+                />
+              ) : (
+                <div className="results-alert results-alert-success">
+                  Demo event: use this page to view the public schedule, leaderboard links, and results exactly
+                  as competitors and spectators would see them.
+                </div>
+              )
             ) : null}
             <CompetitionHero competition={snapshot.competition} />
 

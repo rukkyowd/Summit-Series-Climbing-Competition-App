@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
+import { GuidedDemoWalkthrough } from "@/components/guided-demo-walkthrough";
 import {
   StaffEventCreationForm,
   type StaffEventCreationFormValues,
@@ -733,6 +734,7 @@ export default function StaffDashboard({
   const [expandedScheduleBlockId, setExpandedScheduleBlockId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
   const [guidedAct1StepIndex, setGuidedAct1StepIndex] = useState(0);
+  const [demoStoryGuideStepIndex, setDemoStoryGuideStepIndex] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<CompetitionPresetId | null>(null);
   const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
   const [, setOrganizerGuidedBasicsState] = useState({
@@ -892,6 +894,12 @@ export default function StaffDashboard({
 
     setMessage("Guided demo mode: create the event normally, then choose when to add sample climbers.");
   }, [demoSeedOnCreate]);
+
+  useEffect(() => {
+    if (guidedDemoActive && !demoSeedOnCreate) {
+      setDemoStoryGuideStepIndex(3);
+    }
+  }, [demoSeedOnCreate, guidedDemoActive]);
 
 
   useEffect(() => {
@@ -1562,6 +1570,7 @@ export default function StaffDashboard({
             }
           : current
       );
+      setDemoStoryGuideStepIndex(2);
       router.push(payload.judgeUrl ?? demoAct1Ready.judgeUrl);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to open the judge panel.");
@@ -2045,16 +2054,6 @@ export default function StaffDashboard({
   }, [draft, setupStepCompletion]);
   const demoAct1CreatedForCurrentDraft =
     Boolean(demoAct1Ready && draft && demoAct1Ready.competitionId === draft.id);
-  const demoAct1ProgressItems = useMemo(
-    () => [
-      { label: "Basics", ok: draft ? setupStepCompletion[0] : Boolean(createName.trim()) },
-      { label: "Categories", ok: Boolean(draft?.categories.length) },
-      { label: "Schedule", ok: Boolean(draft?.schedule_blocks.length) },
-      { label: "Stages", ok: Boolean(draft?.rounds?.length) },
-      { label: "Ready", ok: demoAct1CreatedForCurrentDraft && Boolean(draft?.categories.length) },
-    ],
-    [createName, demoAct1CreatedForCurrentDraft, draft, setupStepCompletion]
-  );
   const demoAct1Warnings = useMemo(() => {
     if (!draft || !demoAct1CreatedForCurrentDraft) {
       return [] as Array<{ tone: "error" | "warning"; message: string }>;
@@ -2837,42 +2836,20 @@ export default function StaffDashboard({
           </Surface>
         ) : null}
         {isGuidedStoryAct1 ? (
-          <Surface variant="card" className="border-emerald-200 bg-emerald-50/80">
-            <div className="space-y-5">
-                <div className="results-kicker text-emerald-700">Act 1 - Guided organizer sandbox</div>
-                <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                  Organizer: Build Event
-                </h1>
-                <p className="max-w-4xl text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">
-                  You are using the real staff dashboard. The guide adds context and guardrails, but
-                  it does not lock presets, auto-fill inputs, or save anything for you.
-                </p>
-                <p className="max-w-4xl text-sm leading-6 text-emerald-950">
-                  Build the event your way. When you are ready, you will explicitly add sample
-                  climbers and move to the real judge panel.
-                </p>
-                <div className="grid gap-2 sm:grid-cols-5">
-                  {demoAct1ProgressItems.map((item) => (
-                    <div
-                      key={item.label}
-                      className={`rounded-[1rem] border px-3 py-2 text-sm ${
-                        item.ok
-                          ? "border-emerald-200 bg-white/90 text-emerald-950"
-                          : "border-emerald-100 bg-emerald-50/70 text-emerald-800"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 font-semibold">
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${item.ok ? "bg-emerald-500" : "bg-emerald-200"}`}
-                          aria-hidden="true"
-                        />
-                        {item.label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-            </div>
-          </Surface>
+          <GuidedDemoWalkthrough
+            currentStepIndex={demoStoryGuideStepIndex}
+            onSelectStep={setDemoStoryGuideStepIndex}
+            onRestart={() => setDemoStoryGuideStepIndex(0)}
+            storyConnection="this setup creates the event shell. After you submit and choose Go to Judge Panel, the demo seeds realistic climbers, qualifier scores, and finals-ready structure so the rest of the story has real data to work with."
+          />
+        ) : null}
+        {guidedDemoActive && !isGuidedStoryAct1 ? (
+          <GuidedDemoWalkthrough
+            currentStepIndex={demoStoryGuideStepIndex}
+            onSelectStep={setDemoStoryGuideStepIndex}
+            onRestart={() => setDemoStoryGuideStepIndex(0)}
+            storyConnection="the judge correction flows back into the real staff dashboard. Review the leaderboard impact here, then use normal organizer controls to advance the event."
+          />
         ) : null}
         {demoMode && !isGuidedStoryAct1 && draft ? (
           <OrganizerDemoTour
@@ -3126,6 +3103,7 @@ export default function StaffDashboard({
                             slug: created.slug,
                             judgeUrl: `${buildStaffCompetitionPath(created.slug, "judge")}?demo=1`,
                           });
+                          setDemoStoryGuideStepIndex(1);
                           await refreshAfterChange(created.id);
                           setSelectedCompetitionId(created.id);
                           setMessage("Your event is ready. Next, you'll score athletes as a judge.");

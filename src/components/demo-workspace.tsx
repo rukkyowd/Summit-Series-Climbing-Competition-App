@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { GuidedDemoWalkthrough } from "@/components/guided-demo-walkthrough";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { clearOfflineQueueForCompetition } from "@/lib/staff-offline-queue";
@@ -74,6 +75,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [demoStates, setDemoStates] = useState<Record<string, DemoStateResponse>>({});
+  const [guideStepIndex, setGuideStepIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,19 +130,12 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
           </p>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          {[
-            ["1. Organizer", "Create the demo event through the normal staff form."],
-            ["2. Judge", "Correct #104 Maya Chen on B3 from Top in 3 to Top in 1."],
-            ["3. Organizer", "Use the staff controls to lock qualifiers and advance finalists."],
-            ["4. Public", "View the public event, then finish and delete the demo."],
-          ].map(([title, copy]) => (
-            <div key={title} className="rounded-[1.25rem] border border-slate-200 bg-white/80 p-4">
-              <div className="text-sm font-semibold text-slate-950">{title}</div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{copy}</p>
-            </div>
-          ))}
-        </div>
+        <GuidedDemoWalkthrough
+          currentStepIndex={guideStepIndex}
+          onSelectStep={setGuideStepIndex}
+          onRestart={() => setGuideStepIndex(0)}
+          storyConnection="Start with real organizer setup, then use the same demo event for judging, organizer controls, public results, and cleanup."
+        />
 
         <div className="flex flex-wrap gap-3">
           <Button type="button" variant="primary" onClick={() => router.push("/staff/new?demo=act1")}>
