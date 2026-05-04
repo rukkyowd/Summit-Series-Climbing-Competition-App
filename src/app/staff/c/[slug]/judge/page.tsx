@@ -2,6 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { DemoJudgeSplitPanel } from "@/components/demo-judge-split-panel";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
 import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
@@ -52,6 +53,7 @@ import {
   DEMO_TARGET_CLIMBER_NUMBER,
   isDemoTargetCorrected,
 } from "@/lib/demo-scenario";
+import { jumpToDemoAnchor } from "@/lib/demo-jump-target";
 
 type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
 type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
@@ -821,10 +823,7 @@ export default function StaffJudgePage() {
     setSelectedBoulder(DEMO_TARGET_CLIMB_NUMBER);
     setSelectedCell({ climberId: demoTargetClimber.id, climbNumber: DEMO_TARGET_CLIMB_NUMBER });
     window.requestAnimationFrame(() => {
-      document.getElementById("judge-demo-score-editor")?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
+      jumpToDemoAnchor("judge-entry-cards");
     });
     setMessage("Maya Chen #104 and B3 are selected. The guide has not changed or saved any score.");
   }, [demoTargetClimber]);
@@ -1396,10 +1395,12 @@ export default function StaffJudgePage() {
             primaryAction={
               demoTargetCorrected
                 ? { label: "Continue to Organizer", href: `/staff/c/${slug}?demo=1` }
-                : { label: "Highlight Maya / B3", onClick: highlightDemoTarget }
+                : { label: "Highlight Maya / B3", onClick: highlightDemoTarget, targetAnchor: "judge-entry-cards" }
             }
             secondaryActions={[
-              { label: "Leaderboard impact", href: `/c/${slug}/leaderboard?demo=1` },
+              { label: "Jump to B3 button", targetAnchor: "judge-b3-button" },
+              { label: "Jump to save score", targetAnchor: "judge-save-score" },
+              { label: "Jump to live leaderboard", targetAnchor: "judge-leaderboard-split" },
               { label: "Demo home", href: "/demo" },
             ]}
           />
@@ -1467,22 +1468,25 @@ export default function StaffJudgePage() {
         </section>
 
         {stage === "qualifier" ? (
-          <section className="results-card" id="judge-demo-score-editor">
-            <div className="grid gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]">
-              <AthletePicker
-                activeRoundName={activeQualifierRoundName}
-                athletes={qualifierAthleteEntries}
-                problemCount={activeQualifierProblemCount}
-                query={query}
-                savedCount={qualifierSavedCount}
-                selectedAthleteId={selectedQualifierClimber?.id ?? null}
-                selectedBoulder={selectedBoulder}
-                totalCount={snapshot.climbers.length}
-                onQueryChange={setQuery}
-                onSelectAthlete={setSelectedQualifierClimberId}
-                onSelectBoulder={setSelectedBoulder}
-              />
-              <QualifierScoreEditor
+          <section className="results-card" id="judge-demo-score-editor" data-demo-anchor="judge-score-workspace">
+            <div className={demoWizardActive ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]" : ""}>
+              <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
+                <div data-demo-anchor="judge-athlete-picker">
+                  <AthletePicker
+                    activeRoundName={activeQualifierRoundName}
+                    athletes={qualifierAthleteEntries}
+                    problemCount={activeQualifierProblemCount}
+                    query={query}
+                    savedCount={qualifierSavedCount}
+                    selectedAthleteId={selectedQualifierClimber?.id ?? null}
+                    selectedBoulder={selectedBoulder}
+                    totalCount={snapshot.climbers.length}
+                    onQueryChange={setQuery}
+                    onSelectAthlete={setSelectedQualifierClimberId}
+                    onSelectBoulder={setSelectedBoulder}
+                  />
+                </div>
+                <QualifierScoreEditor
                 athlete={
                   selectedQualifierClimber
                     ? {
@@ -1548,6 +1552,14 @@ export default function StaffJudgePage() {
                   }))
                 }
               />
+              </div>
+              {demoWizardActive ? (
+                <DemoJudgeSplitPanel
+                  competitionId={snapshot.competition.id}
+                  competitionSlug={slug}
+                  initialSnapshot={snapshot}
+                />
+              ) : null}
             </div>
           </section>
         ) : (

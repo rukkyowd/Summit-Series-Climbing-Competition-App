@@ -81,7 +81,7 @@ export function StaffEventCreationForm({
 
   return (
     <fieldset disabled={formDisabled} className={formDisabled ? "mt-4 grid gap-3 opacity-70" : "mt-4 grid gap-3"}>
-      <div className="grid gap-3">
+      <div className="grid gap-3" data-demo-anchor="organizer-create-basics">
       <label className="results-field-group" htmlFor="create-event-name">
         <span className="results-field-label">Event name</span>
         <input
@@ -108,7 +108,7 @@ export function StaffEventCreationForm({
       </label>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="results-field-group" htmlFor="create-event-format">
+        <label className="results-field-group" htmlFor="create-event-format" data-demo-anchor="organizer-create-format">
           <span className="results-field-label">Format</span>
           <select
             id="create-event-format"
@@ -177,7 +177,7 @@ export function StaffEventCreationForm({
       </div>
       </div>
 
-      <div className="grid gap-3">
+      <div className="grid gap-3" data-demo-anchor="organizer-create-registration">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="results-field-group" htmlFor="create-event-registration-opens">
           <span className="results-field-label">Registration opens</span>

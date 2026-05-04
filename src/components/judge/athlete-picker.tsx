@@ -83,6 +83,7 @@ export function AthletePicker({
             className="min-w-0 px-3 text-base"
             aria-pressed={selectedBoulder === climbNumber}
             onClick={() => onSelectBoulder(climbNumber)}
+            data-demo-anchor={climbNumber === 3 ? "judge-b3-button" : undefined}
           >
             B{String(climbNumber).padStart(2, "0")}
           </Button>
@@ -102,6 +103,7 @@ export function AthletePicker({
                 key={athlete.id}
                 type="button"
                 data-demo-target={athlete.demoTarget ? "true" : undefined}
+                data-demo-anchor={athlete.demoTarget ? "judge-maya-athlete" : undefined}
                 onClick={() => onSelectAthlete(athlete.id)}
                 className={cn(
                   "w-full rounded-[1.2rem] border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:ring-offset-2",

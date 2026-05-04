@@ -188,7 +188,14 @@ export function QualifierScoreEditor({
         <Button size="touch" variant="danger" fullWidth onClick={onClear}>
           Clear
         </Button>
-        <Button size="touch" variant="primary" fullWidth onClick={onSave} disabled={saving || !scoringOpen}>
+        <Button
+          size="touch"
+          variant="primary"
+          fullWidth
+          onClick={onSave}
+          disabled={saving || !scoringOpen}
+          data-demo-anchor="judge-save-score"
+        >
           {saving ? "Saving..." : dirty ? "Save official score" : "Save again"}
         </Button>
       </div>

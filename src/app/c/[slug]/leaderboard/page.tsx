@@ -126,8 +126,13 @@ export default function CompetitionLeaderboardPage() {
               organizerAdvanced: false,
               publicReady: false,
             }}
-            primaryAction={{ label: "Back to Organizer", href: `/staff/c/${slug}?demo=1` }}
+            primaryAction={
+              demoTargetClimber
+                ? { label: "Jump to Maya row", targetAnchor: "leaderboard-maya-row" }
+                : { label: "Jump to standings", targetAnchor: "leaderboard-standings" }
+            }
             secondaryActions={[
+              { label: "Back to Organizer", href: `/staff/c/${slug}?demo=1` },
               { label: "Judge panel", href: `/staff/c/${slug}/judge?demo=1` },
               { label: "Demo home", href: "/demo" },
             ]}
@@ -147,7 +152,7 @@ export default function CompetitionLeaderboardPage() {
                 </p>
               </Surface>
             ) : null}
-            <div className="grid gap-4">
+            <div className="grid gap-4" data-demo-anchor="leaderboard-standings">
               {qualifierGroups.map((group) => (
                 <Surface key={group.category} variant="card">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -174,6 +179,12 @@ export default function CompetitionLeaderboardPage() {
                             className={demoGuideActive ? "demo-leaderboard-row-update" : undefined}
                             style={demoGuideActive ? { animationDelay: `${Math.min(0.45, row.category_rank * 0.035)}s` } : undefined}
                             data-update-key={rowAnimationKey}
+                            data-demo-anchor={
+                              row.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
+                              row.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
+                                ? "leaderboard-maya-row"
+                                : undefined
+                            }
                           >
                             <td className="py-3 pr-3 font-semibold text-slate-950">#{row.category_rank}</td>
                             <td className="py-3 pr-3">

@@ -2904,13 +2904,25 @@ export default function StaffDashboard({
             primaryAction={
               demoAct1CreatedForCurrentDraft
                 ? {
-                    label: demoSeedPending ? "Adding sample climbers..." : "Go to Judge Panel",
-                    onClick: seedDemoAndOpenJudge,
-                    disabled: demoSeedPending || !draft?.categories.length,
+                    label: "Jump to Go to Judge Panel",
+                    targetAnchor: "organizer-go-judge",
+                    disabled: demoSeedPending,
                   }
-                : { label: "Jump to event name", href: "#create-event-name" }
+                : { label: "Jump to event name", targetAnchor: "organizer-create-name" }
             }
-            secondaryActions={[{ label: "Demo home", href: "/demo" }]}
+            secondaryActions={
+              demoAct1CreatedForCurrentDraft
+                ? [
+                    { label: "Jump to setup summary", targetAnchor: "demo-organizer-setup" },
+                    { label: "Demo home", href: "/demo" },
+                  ]
+                : [
+                    { label: "Jump to format", targetAnchor: "organizer-create-format" },
+                    { label: "Jump to registration", targetAnchor: "organizer-create-registration" },
+                    { label: "Jump to create button", targetAnchor: "organizer-create-submit" },
+                    { label: "Demo home", href: "/demo" },
+                  ]
+            }
           />
         ) : guidedDemoActive && selectedCompetitionIsDemo && draft ? (
           <DemoWizardSidebar
@@ -2926,12 +2938,13 @@ export default function StaffDashboard({
               publicReady: resultsPublishedForOperations,
             }}
             primaryAction={
-              resultsPublishedForOperations
-                ? { label: "Open public results", href: demoPublicPath }
-                : { label: "Open leaderboard impact", href: demoLeaderboardPath }
+              { label: "Jump to Organizer Operations", targetAnchor: "organizer-operations" }
             }
             secondaryActions={[
-              { label: "Judge panel", href: demoJudgeUrl },
+              { label: "Jump to standings button", targetAnchor: "organizer-open-leaderboard" },
+              { label: "Jump to lock qualifiers", targetAnchor: "organizer-lock-qualifiers" },
+              { label: "Jump to advance finals", targetAnchor: "organizer-advance-finals" },
+              { label: resultsPublishedForOperations ? "Open public results" : "Jump to publish results", ...(resultsPublishedForOperations ? { href: demoPublicPath } : { targetAnchor: "organizer-publish-results" }) },
               { label: "Demo home", href: "/demo" },
             ]}
           />
@@ -3128,6 +3141,7 @@ export default function StaffDashboard({
                   className="results-primary-button"
                   disabled={demoSeedPending || !draft?.categories.length}
                   onClick={() => void seedDemoAndOpenJudge()}
+                  data-demo-anchor="organizer-go-judge"
                 >
                   {demoSeedPending ? "Adding sample climbers..." : "Go to Judge Panel"}
                 </button>
@@ -3143,6 +3157,7 @@ export default function StaffDashboard({
           <Surface
             variant="card"
             className="border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.9),rgba(255,255,255,0.98))]"
+            data-demo-anchor="organizer-operations"
           >
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="max-w-4xl space-y-2">
@@ -3209,6 +3224,7 @@ export default function StaffDashboard({
                   href={demoLeaderboardPath}
                   onClick={() => handleOrganizerHandoff("leaderboard")}
                   className="results-secondary-button mt-4 w-full justify-center"
+                  data-demo-anchor="organizer-open-leaderboard"
                 >
                   Open leaderboard
                 </Link>
@@ -3234,6 +3250,7 @@ export default function StaffDashboard({
                   onClick={confirmLockQualifiers}
                   disabled={!canLockQualifiers || isPending || isPhasePending}
                   className="results-secondary-button mt-4 w-full justify-center"
+                  data-demo-anchor="organizer-lock-qualifiers"
                 >
                   {isPhasePending ? "Updating..." : "Lock qualifiers"}
                 </button>
@@ -3270,6 +3287,7 @@ export default function StaffDashboard({
                   onClick={confirmAdvanceToFinals}
                   disabled={!canAdvanceToFinals || isPending || isPhasePending}
                   className="results-primary-button mt-4 w-full justify-center"
+                  data-demo-anchor="organizer-advance-finals"
                 >
                   {isPhasePending ? "Advancing..." : "Advance + start finals"}
                 </button>
@@ -3304,7 +3322,11 @@ export default function StaffDashboard({
                   Finish live scoring and show final standings publicly.
                 </p>
                 {resultsPublishedForOperations ? (
-                  <Link href={demoPublicPath} className="results-secondary-button mt-4 w-full justify-center">
+                  <Link
+                    href={demoPublicPath}
+                    className="results-secondary-button mt-4 w-full justify-center"
+                    data-demo-anchor="organizer-publish-results"
+                  >
                     Open public results
                   </Link>
                 ) : (
@@ -3313,6 +3335,7 @@ export default function StaffDashboard({
                     onClick={confirmPublishResults}
                     disabled={!canPublishResults || isPending || isPhasePending}
                     className="results-secondary-button mt-4 w-full justify-center"
+                    data-demo-anchor="organizer-publish-results"
                   >
                     {isPhasePending ? "Publishing..." : "Publish results"}
                   </button>

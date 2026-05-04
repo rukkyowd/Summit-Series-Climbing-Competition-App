@@ -311,12 +311,13 @@ export default function CompetitionOverviewPage() {
                 progress={demoWizardProgress}
                 primaryAction={
                   resultsPublished
-                    ? { label: "Finish Demo", onClick: finishDemo }
+                    ? { label: "Jump to public results", targetAnchor: "public-results" }
                     : { label: "Back to Organizer", href: `/staff/c/${slug}?demo=1` }
                 }
                 secondaryActions={[
+                  { label: "Jump to schedule", targetAnchor: "public-schedule" },
                   { label: "Leaderboard", href: `/c/${slug}/leaderboard?demo=1` },
-                  ...(resultsPublished ? [] : [{ label: "Finish Demo", onClick: finishDemo }]),
+                  { label: "Finish Demo", onClick: finishDemo },
                   { label: "Demo home", href: "/demo" },
                 ]}
               />
@@ -392,7 +393,7 @@ export default function CompetitionOverviewPage() {
             {finalsActive ? (
               finalsRows.length ? (
                 <>
-                  <section className="results-card">
+                  <section className="results-card" data-demo-anchor="public-results">
                     <div className="results-kicker">Finals results</div>
                     <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">Final standings</h2>
                     <div className="mt-3 text-sm text-slate-600">
@@ -418,13 +419,13 @@ export default function CompetitionOverviewPage() {
                   <FinalsResultsTable title={selectedFinalsCategory} rows={finalsRows} />
                 </>
               ) : (
-                <Surface variant="card" className="text-slate-600">
+                <Surface variant="card" className="text-slate-600" data-demo-anchor="public-results">
                   Finals are active, but no finals scores have been entered yet.
                 </Surface>
               )
             ) : null}
 
-            <section className="results-card">
+            <section className="results-card" data-demo-anchor="public-schedule">
               <div className="results-kicker">{activeScrambleSession ? "Active scramble session" : "Live schedule"}</div>
               <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
                 {activeBlock ? activeBlock.label : "No block live"}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { jumpToDemoAnchor } from "@/lib/demo-jump-target";
 
 export type DemoWizardStep = "create" | "judge" | "organize" | "public" | "cleanup";
 
@@ -11,6 +12,7 @@ export type DemoWizardAction = {
   label: string;
   href?: string;
   onClick?: () => void | Promise<void>;
+  targetAnchor?: string;
   disabled?: boolean;
 };
 
@@ -61,14 +63,23 @@ function ActionButton({
   const disabled = action.disabled || pending;
 
   async function runAction() {
-    if (!action.onClick || disabled) {
+    if (disabled) {
+      return;
+    }
+
+    if (!action.onClick && !action.targetAnchor) {
       return;
     }
 
     setPending(true);
     setError("");
     try {
-      await action.onClick();
+      if (action.onClick) {
+        await action.onClick();
+      }
+      if (action.targetAnchor && !jumpToDemoAnchor(action.targetAnchor)) {
+        throw new Error("That demo target is not visible on this screen yet.");
+      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Demo action failed.");
     } finally {
@@ -76,7 +87,7 @@ function ActionButton({
     }
   }
 
-  if (action.href && !action.onClick) {
+  if (action.href && !action.onClick && !action.targetAnchor) {
     return (
       <Link
         href={action.href}
@@ -182,7 +193,7 @@ export function DemoWizardSidebar({
       <div className="mt-4 grid gap-2">
         {primaryAction ? <ActionButton action={primaryAction} primary /> : null}
         {secondaryActions.map((action) => (
-          <ActionButton key={`${action.label}-${action.href ?? "action"}`} action={action} />
+          <ActionButton key={`${action.label}-${action.href ?? action.targetAnchor ?? "action"}`} action={action} />
         ))}
       </div>
 
