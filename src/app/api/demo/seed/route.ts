@@ -464,14 +464,12 @@ async function resetDemoProgress(
 
 async function clearPreviousSeed(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
-  competitionId: string,
-  climberNumbers: string[]
+  competitionId: string
 ) {
   const { data: existingClimbers, error } = await supabase
     .from("climbers")
     .select("id")
-    .eq("competition_id", competitionId)
-    .in("climber_number", climberNumbers);
+    .eq("competition_id", competitionId);
 
   if (error) {
     throw new Error(error.message);
@@ -570,11 +568,7 @@ export async function POST(request: NextRequest) {
       categories,
       fieldSize: targetFieldSize,
     });
-    await clearPreviousSeed(
-      supabase,
-      competition.id,
-      athleteSeeds.map((athlete) => athlete.climberNumber)
-    );
+    await clearPreviousSeed(supabase, competition.id);
 
     const climberRows = athleteSeeds.map((athlete) => {
       const category = athlete.category;

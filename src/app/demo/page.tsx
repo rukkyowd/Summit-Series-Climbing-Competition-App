@@ -1,5 +1,5 @@
 import SiteHeader from "@/components/site-header";
-import { DemoEntry } from "@/components/demo-entry";
+import { GuidedSandboxExperience } from "@/components/demo/GuidedSandboxExperience";
 import { getDemoSetupValidation } from "@/lib/demo-setup-validation";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
@@ -105,7 +105,7 @@ export default async function DemoPage() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light />
-        <DemoEntry demos={demos} />
+        <GuidedSandboxExperience demos={demos} />
       </div>
     </main>
   );

@@ -32,7 +32,7 @@ describe("demo seed data", () => {
     const secondRun = createDemoAthleteSeeds({ competitionId: "competition-1", categories });
 
     expect(firstRun).toEqual(secondRun);
-    expect(firstRun).toHaveLength(36);
+    expect(firstRun).toHaveLength(18);
     expect(firstRun[0].name).toMatch(/^[A-Z][a-z]+ [A-Z][A-Za-z]+$/);
     expect(new Set(firstRun.map((athlete) => athlete.name)).size).toBe(firstRun.length);
     expect(firstRun[2].climberNumber).toBe(DEMO_TARGET_CLIMBER_NUMBER);

@@ -3,9 +3,9 @@ import {
   DEMO_TARGET_CLIMBER_NUMBER,
 } from "@/lib/demo-scenario";
 
-export const DEMO_MIN_FIELD_SIZE = 36;
-export const DEMO_MAX_FIELD_SIZE = 96;
-export const DEMO_ATHLETES_PER_CATEGORY = 12;
+export const DEMO_MIN_FIELD_SIZE = 18;
+export const DEMO_MAX_FIELD_SIZE = 20;
+export const DEMO_ATHLETES_PER_CATEGORY = 3;
 export const DEMO_DEFAULT_QUALIFIER_PROBLEM_COUNT = 6;
 export const DEMO_DEFAULT_FINALS_PROBLEM_COUNT = 4;
 
