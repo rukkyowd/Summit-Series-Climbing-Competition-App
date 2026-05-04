@@ -490,8 +490,8 @@ describe("demo seed route", () => {
         before: DEMO_TARGET_BEFORE_LABEL,
       },
       inserted: {
-        climbers: 12,
-        attempts: 72,
+        climbers: 36,
+        attempts: 216,
       },
     });
     expect(climberInsert?.[0].name).toMatch(/^[A-Z][a-z]+ [A-Z][A-Za-z]+$/);
@@ -554,7 +554,7 @@ describe("demo seed route", () => {
 
     expect(response.status).toBe(200);
     expect(body.inserted).toMatchObject({
-      attempts: 120,
+      attempts: 360,
       qualifierRounds: 2,
       semifinalsSeeded: true,
       advancementSourceRoundId: "round-semi",
@@ -571,6 +571,6 @@ describe("demo seed route", () => {
     expect(mockState.deletes.map((entry) => entry.table)).toEqual(
       expect.arrayContaining(["competition_finalists", "final_attempts", "qualifier_attempts", "climbers"])
     );
-    expect(mockState.insertedClimbers).toHaveLength(12);
+    expect(mockState.insertedClimbers).toHaveLength(36);
   });
 });

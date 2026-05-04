@@ -21,6 +21,7 @@ import {
   DEMO_MIN_FIELD_SIZE,
   buildDemoQualifierScore,
   createDemoAthleteSeeds,
+  getDemoFieldSize,
 } from "@/lib/demo-seed-data";
 import type { Competition, CompetitionRound, CompetitionScheduleBlock } from "@/lib/scoring";
 
@@ -346,7 +347,8 @@ async function prepareQualifierSessions(
   competitionId: string,
   setupCompetition: ReturnType<typeof buildSetupCompetition>,
   qualifierRounds: ReturnType<typeof getDemoQualifierStyleRounds>,
-  categoryIds: string[]
+  categoryIds: string[],
+  fieldSize: number
 ) {
   let firstSessionId: string | null = null;
   for (let index = 0; index < qualifierRounds.length; index += 1) {
@@ -365,7 +367,7 @@ async function prepareQualifierSessions(
       .from("competition_schedule_blocks")
       .update({
         is_active: index === 0,
-        capacity: Math.max(session.capacity ?? 0, DEMO_MIN_FIELD_SIZE),
+        capacity: Math.max(session.capacity ?? 0, DEMO_MIN_FIELD_SIZE, fieldSize),
         eligible_category_ids: categoryIds,
       })
       .eq("competition_id", competitionId)
@@ -547,6 +549,7 @@ export async function POST(request: NextRequest) {
     const selectedCategoryIds = new Set(getDemoSelectedQualifierCategories(setupCompetition).map((category) => category.id));
     const categories = allCategories.filter((category) => selectedCategoryIds.has(category.id));
     const categoryIds = categories.map((category) => category.id);
+    const targetFieldSize = getDemoFieldSize(categories.length);
     const qualifierStyleRounds = getDemoQualifierStyleRounds(setupCompetition);
     const advancementSourceRound = getDemoAdvancementSourceRound(setupCompetition);
     const preparedQualifierRounds = await prepareQualifierRounds(supabase, competition, qualifierStyleRounds);
@@ -555,7 +558,8 @@ export async function POST(request: NextRequest) {
       competition.id,
       setupCompetition,
       qualifierStyleRounds,
-      categoryIds
+      categoryIds,
+      targetFieldSize
     );
     const activeQualifierRound = preparedQualifierRounds[0];
 
@@ -564,6 +568,7 @@ export async function POST(request: NextRequest) {
     const athleteSeeds = createDemoAthleteSeeds({
       competitionId: competition.id,
       categories,
+      fieldSize: targetFieldSize,
     });
     await clearPreviousSeed(
       supabase,

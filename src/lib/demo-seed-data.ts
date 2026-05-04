@@ -3,8 +3,9 @@ import {
   DEMO_TARGET_CLIMBER_NUMBER,
 } from "@/lib/demo-scenario";
 
-export const DEMO_MIN_FIELD_SIZE = 12;
-export const DEMO_MAX_FIELD_SIZE = 20;
+export const DEMO_MIN_FIELD_SIZE = 36;
+export const DEMO_MAX_FIELD_SIZE = 96;
+export const DEMO_ATHLETES_PER_CATEGORY = 12;
 export const DEMO_DEFAULT_QUALIFIER_PROBLEM_COUNT = 6;
 export const DEMO_DEFAULT_FINALS_PROBLEM_COUNT = 4;
 
@@ -48,8 +49,37 @@ export type DemoFinalScoreSeed = {
 
 const FIRST_NAMES = [
   "Avery",
+  "Amelia",
+  "Aria",
+  "Austin",
+  "Beatrice",
+  "Ben",
+  "Brooke",
+  "Camille",
+  "Charlie",
+  "Chloe",
+  "Cole",
+  "Dylan",
+  "Emmett",
+  "Eva",
+  "Felix",
+  "Georgia",
+  "Grace",
+  "Hannah",
+  "Harper",
+  "Isaac",
+  "Isla",
+  "Jasper",
+  "Jordan",
+  "Julian",
+  "Keira",
+  "Logan",
   "Maya",
+  "Maeve",
+  "Malik",
   "Noah",
+  "Olivia",
+  "Quinn",
   "Sofia",
   "Liam",
   "Iris",
@@ -71,11 +101,85 @@ const FIRST_NAMES = [
   "Elena",
   "Caleb",
   "Tessa",
+  "Layla",
+  "Ari",
+  "Riley",
+  "Sam",
+  "Mason",
+  "Piper",
+  "Wyatt",
+  "Naomi",
+  "Ethan",
+  "Freya",
+  "Nathan",
+  "Mia",
+  "Lucas",
+  "Ella",
+  "Jonah",
+  "Vivian",
+  "Oscar",
+  "Audrey",
+  "Henry",
+  "Luna",
+  "Mateo",
+  "Sienna",
+  "Hugo",
+  "Aisha",
+  "Declan",
+  "Molly",
+  "Carter",
+  "Anika",
+  "Simon",
+  "Claire",
+  "Evan",
+  "Leah",
+  "Rafael",
+  "Maren",
+  "Gavin",
+  "Priya",
+  "Xavier",
+  "Elise",
+  "Micah",
+  "Anya",
+  "Connor",
+  "Lydia",
+  "Juliette",
+  "Marcus",
+  "Nadia",
+  "Adam",
+  "Celia",
 ];
 
 const LAST_NAMES = [
   "Chen",
+  "Anderson",
+  "Bouchard",
+  "Brown",
+  "Bryant",
+  "Clarke",
+  "Coleman",
+  "Cote",
+  "Davis",
+  "Desrosiers",
+  "Evans",
+  "Fleming",
+  "Gagnon",
+  "Garcia",
+  "Gillis",
+  "Harris",
+  "Henderson",
+  "Hill",
+  "Ivanov",
+  "Johnson",
+  "Kim",
+  "King",
+  "Lam",
+  "Laurent",
+  "Lewis",
+  "Li",
   "MacLeod",
+  "MacDonald",
+  "Marshall",
   "Patel",
   "Nguyen",
   "Singh",
@@ -98,9 +202,38 @@ const LAST_NAMES = [
   "Reid",
   "Thomas",
   "Walker",
+  "Wang",
+  "Watson",
+  "White",
+  "Williams",
+  "Wong",
+  "Wood",
+  "Yamada",
+  "Zhang",
+  "Morin",
+  "Nielsen",
+  "Park",
+  "Peters",
+  "Poirier",
+  "Price",
+  "Roberts",
+  "Ross",
+  "Santos",
+  "Scott",
+  "Sharma",
+  "Silva",
+  "Stewart",
+  "Tremblay",
+  "Turner",
+  "Vargas",
+  "Vega",
+  "Villeneuve",
+  "Wells",
+  "West",
+  "Yoon",
 ];
 
-const PROVINCES = ["NS", "NB", "PE", "NL", "QC", "ON", "BC", "AB", "MB", "SK"];
+const PROVINCES = ["NS", "NB", "PE", "NL", "QC", "ON", "BC", "AB", "MB", "SK", "YT", "NT"];
 
 function hashSeed(seed: string) {
   let hash = 2166136261;
@@ -136,8 +269,11 @@ function seededShuffle<T>(items: T[], seed: string) {
   return next;
 }
 
-function getFieldSize(categoryCount: number) {
-  return Math.min(DEMO_MAX_FIELD_SIZE, Math.max(DEMO_MIN_FIELD_SIZE, categoryCount * 3));
+export function getDemoFieldSize(categoryCount: number) {
+  return Math.min(
+    DEMO_MAX_FIELD_SIZE,
+    Math.max(DEMO_MIN_FIELD_SIZE, categoryCount * DEMO_ATHLETES_PER_CATEGORY)
+  );
 }
 
 function getAttemptCount(raw: number) {
@@ -145,7 +281,8 @@ function getAttemptCount(raw: number) {
 }
 
 function buildName(firstNames: string[], lastNames: string[], index: number) {
-  return `${firstNames[index % firstNames.length]} ${lastNames[index % lastNames.length]}`;
+  const lastNameIndex = (index * 17 + Math.floor(index / firstNames.length)) % lastNames.length;
+  return `${firstNames[index % firstNames.length]} ${lastNames[lastNameIndex]}`;
 }
 
 export function createDemoAthleteSeeds({
@@ -166,7 +303,7 @@ export function createDemoAthleteSeeds({
     return [];
   }
 
-  const targetFieldSize = clamp(fieldSize ?? getFieldSize(orderedCategories.length), 10, DEMO_MAX_FIELD_SIZE);
+  const targetFieldSize = clamp(fieldSize ?? getDemoFieldSize(orderedCategories.length), 10, DEMO_MAX_FIELD_SIZE);
   const firstNames = seededShuffle(FIRST_NAMES, `${competitionId}:first-names`);
   const lastNames = seededShuffle(LAST_NAMES, `${competitionId}:last-names`);
   const provinces = seededShuffle(PROVINCES, `${competitionId}:provinces`);
@@ -177,7 +314,7 @@ export function createDemoAthleteSeeds({
     const categoryEntryIndex = categoryCounts.get(category.id) ?? 0;
     categoryCounts.set(category.id, categoryEntryIndex + 1);
     const rng = createDemoRandom(`${competitionId}:athlete:${index}`);
-    const skill = clamp(0.88 - categoryEntryIndex * 0.08 + rng() * 0.08 - index * 0.004, 0.34, 0.96);
+    const skill = clamp(0.93 - categoryEntryIndex * 0.047 + rng() * 0.07 - 0.035, 0.34, 0.97);
 
     return {
       name: buildName(firstNames, lastNames, index),
@@ -229,11 +366,11 @@ export function buildDemoQualifierScore({
 
   const rng = createDemoRandom(`${competitionId}:${roundId}:${climber.climberNumber}:${climbNumber}`);
   const normalizedClimb = problemCount > 1 ? (climbNumber - 1) / (problemCount - 1) : 0;
-  const semifinalPenalty = roundType === "semifinal" || roundIndex > 0 ? 0.08 : 0;
-  const difficulty = 0.38 + normalizedClimb * 0.32 + semifinalPenalty + (rng() - 0.5) * 0.08;
+  const semifinalPenalty = roundType === "semifinal" || roundIndex > 0 ? 0.09 : 0;
+  const difficulty = 0.32 + normalizedClimb * 0.44 + semifinalPenalty + (rng() - 0.5) * 0.1;
   const skillEdge = climber.skill - difficulty;
-  const topProbability = clamp(0.42 + skillEdge * 1.35, 0.04, 0.96);
-  const zoneProbability = clamp(0.68 + skillEdge * 1.2, 0.12, 0.98);
+  const topProbability = clamp(0.34 + skillEdge * 1.28, 0.03, 0.92);
+  const zoneProbability = clamp(0.64 + skillEdge * 1.12, 0.1, 0.98);
   const topped = rng() < topProbability;
   const zone = topped || rng() < zoneProbability;
 
@@ -247,9 +384,9 @@ export function buildDemoQualifierScore({
     };
   }
 
-  const attemptsToTop = topped ? getAttemptCount(1.2 + (difficulty - climber.skill + 0.28) * 5 + rng() * 1.5) : null;
+  const attemptsToTop = topped ? getAttemptCount(1 + (difficulty - climber.skill + 0.28) * 4.8 + rng() * 2.1) : null;
   const attemptsToZone = zone
-    ? getAttemptCount(Math.min(attemptsToTop ?? 5, 1 + (difficulty - climber.skill + 0.2) * 4 + rng() * 1.2))
+    ? getAttemptCount(Math.min(attemptsToTop ?? 5, 1 + (difficulty - climber.skill + 0.2) * 4.2 + rng() * 1.6))
     : null;
   const attemptCount = topped ? attemptsToTop ?? 1 : attemptsToZone ?? 1;
 
