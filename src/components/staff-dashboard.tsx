@@ -5141,7 +5141,7 @@ export default function StaffDashboard({
                 <div className="results-workspace-card">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="results-kicker">{demoMode ? "Move through the spine" : "Wizard navigation"}</div>
+                      <div className="results-kicker">{isGuidedStoryAct1 ? "Wizard navigation" : demoMode ? "Move through the spine" : "Wizard navigation"}</div>
                       <div className="mt-2 text-sm text-slate-600">
                         {isGuidedStoryAct1 && activeDemoSetupStepStatus?.blockingMessage
                           ? activeDemoSetupStepStatus.blockingMessage
@@ -5150,6 +5150,7 @@ export default function StaffDashboard({
                             : "Move one step at a time, or jump directly from the progress cards above."}
                       </div>
                     </div>
+                    {!isGuidedStoryAct1 || !isFirstSetupStep ? (
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -5159,6 +5160,8 @@ export default function StaffDashboard({
                       >
                         Previous step
                       </button>
+                      {!isGuidedStoryAct1 ? (
+                      <>
                       <button
                         type="button"
                         onClick={() => goToSetupStep(Math.min(SETUP_WIZARD_STEPS.length - 1, currentSetupStep + 1))}
@@ -5170,28 +5173,10 @@ export default function StaffDashboard({
                       <button type="button" onClick={persistDraft} disabled={isPending || !canEditSetup} className="results-secondary-button">
                         {isPending ? "Saving..." : "Save competition"}
                       </button>
+                      </>
+                      ) : null}
                     </div>
-                  </div>
-                </div>
-
-                <div className={`results-workspace-card ${demoMode ? "border-dashed border-slate-200 bg-slate-50/70" : ""}`}>
-                  <div className="results-kicker">{demoMode ? "Later - Share links" : "After setup - Share links"}</div>
-                  <div className="mt-4 space-y-2 text-sm text-slate-600">
-                    <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl || publicPath}</div>
-                    <div><span className="font-semibold text-slate-950">Register:</span> {registerUrl || registerPath}</div>
-                  <div><span className="font-semibold text-slate-950">Public display:</span> {displayUrl || displayPath}</div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button type="button" onClick={() => void navigator.clipboard.writeText(publicUrl)} className="results-secondary-button">Copy overview</button>
-                    <button type="button" onClick={() => void navigator.clipboard.writeText(registerUrl)} className="results-secondary-button">Copy register</button>
-                    <button type="button" onClick={() => void downloadRegistrationQr()} className="results-secondary-button">Download QR</button>
-                    <button type="button" onClick={printRegistrationQr} className="results-secondary-button">Print QR</button>
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-start gap-4">
-                    <Image src={registrationQrUrl} alt="Competition registration QR code" width={160} height={160} unoptimized className="rounded-[1.2rem] border border-slate-200 bg-white p-2" />
-                    <div className="max-w-xs text-sm leading-6 text-slate-600">
-                      Scan this QR code to open the competition registration page directly.
-                    </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -5252,6 +5237,29 @@ export default function StaffDashboard({
                   ) : null}
                 </div>
                 </fieldset>
+                ) : null}
+
+                {(!isGuidedStoryAct1 || currentSetupStep === 5) ? (
+                <div className={`results-workspace-card ${demoMode ? "border-dashed border-slate-200 bg-slate-50/70" : ""}`}>
+                  <div className="results-kicker">After setup - Share links</div>
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                    <div><span className="font-semibold text-slate-950">Overview:</span> {publicUrl || publicPath}</div>
+                    <div><span className="font-semibold text-slate-950">Register:</span> {registerUrl || registerPath}</div>
+                  <div><span className="font-semibold text-slate-950">Public display:</span> {displayUrl || displayPath}</div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button type="button" onClick={() => void navigator.clipboard.writeText(publicUrl)} className="results-secondary-button">Copy overview</button>
+                    <button type="button" onClick={() => void navigator.clipboard.writeText(registerUrl)} className="results-secondary-button">Copy register</button>
+                    <button type="button" onClick={() => void downloadRegistrationQr()} className="results-secondary-button">Download QR</button>
+                    <button type="button" onClick={printRegistrationQr} className="results-secondary-button">Print QR</button>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-start gap-4">
+                    <Image src={registrationQrUrl} alt="Competition registration QR code" width={160} height={160} unoptimized className="rounded-[1.2rem] border border-slate-200 bg-white p-2" />
+                    <div className="max-w-xs text-sm leading-6 text-slate-600">
+                      Scan this QR code to open the competition registration page directly.
+                    </div>
+                  </div>
+                </div>
                 ) : null}
 
                 {currentSetupStep === 4 ? (
