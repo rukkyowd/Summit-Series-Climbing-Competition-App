@@ -2,7 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
+import { DemoWizardSidebar, type DemoRankDelta } from "@/components/demo-wizard-sidebar";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
@@ -791,7 +791,33 @@ export default function StaffJudgePage() {
     [activeQualifierRoundId, demoTargetClimber]
   );
   const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
+  const demoTargetLeaderboardEntry = useMemo(
+    () =>
+      demoTargetClimber
+        ? snapshot?.qualifierLeaderboard.find((entry) => entry.climber_id === demoTargetClimber.id) ?? null
+        : null,
+    [demoTargetClimber, snapshot?.qualifierLeaderboard]
+  );
+  const demoTargetSeedRankRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!demoTargetCorrected && demoTargetLeaderboardEntry?.category_rank && demoTargetSeedRankRef.current === null) {
+      demoTargetSeedRankRef.current = demoTargetLeaderboardEntry.category_rank;
+    }
+  }, [demoTargetCorrected, demoTargetLeaderboardEntry?.category_rank]);
   const demoOverlayActive = demoGuideActive && snapshot?.competition.is_demo;
+  const demoFinalsCutoff = snapshot?.competition.finals_cutoff ?? 6;
+  const demoRankDelta = useMemo<DemoRankDelta | null>(() => {
+    if (!demoOverlayActive || !demoTargetClimber || !demoTargetLeaderboardEntry) {
+      return null;
+    }
+
+    return {
+      targetName: demoTargetClimber.name,
+      rankBefore: demoTargetSeedRankRef.current ?? Math.max(demoFinalsCutoff + 1, demoTargetLeaderboardEntry.category_rank),
+      rankNow: demoTargetLeaderboardEntry.category_rank,
+      cutoff: demoFinalsCutoff,
+    };
+  }, [demoFinalsCutoff, demoOverlayActive, demoTargetClimber, demoTargetLeaderboardEntry]);
   const demoWizardGuidance = useMemo(
     () =>
       getDemoJudgeWizardGuidance(demoTargetCorrected, {
@@ -1398,6 +1424,16 @@ export default function StaffJudgePage() {
               { label: "Score Workspace", targetAnchor: "judge-score-workspace" },
               { label: "Demo Home", href: "/demo" },
             ]}
+            wandTarget={
+              demoTargetCorrected
+                ? null
+                : {
+                    targetAthleteSelected:
+                      selectedQualifierClimber?.id === demoTargetClimber?.id &&
+                      selectedBoulder === DEMO_TARGET_CLIMB_NUMBER,
+                  }
+            }
+            demoRankDelta={demoRankDelta}
           />
         ) : null}
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">

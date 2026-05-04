@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { DemoLoadingOverlay, useDemoNavigation } from "@/components/demo-loading-overlay";
 import { buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -24,6 +24,13 @@ export type DemoWizardAction = {
   loadingDelayMs?: number;
 };
 
+export type DemoRankDelta = {
+  targetName: string;
+  rankBefore: number;
+  rankNow: number;
+  cutoff: number;
+};
+
 export type DemoWizardSidebarProps = {
   currentStep: DemoWizardStep;
   title: string;
@@ -33,6 +40,8 @@ export type DemoWizardSidebarProps = {
   blockingMessage?: string | null;
   primaryAction?: DemoWizardAction;
   secondaryActions?: DemoWizardAction[];
+  wandTarget?: { targetAthleteSelected: boolean } | null;
+  demoRankDelta?: DemoRankDelta | null;
 };
 
 function ActionButton({
@@ -102,6 +111,111 @@ function ActionButton({
   );
 }
 
+function WandButton({ targetAthleteSelected }: { targetAthleteSelected: boolean }) {
+  const [pending, setPending] = useState(false);
+
+  const run = useCallback(async () => {
+    if (pending) {
+      return;
+    }
+
+    setPending(true);
+    try {
+      if (!targetAthleteSelected) {
+        jumpToDemoAnchor("judge-target-athlete");
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 750));
+      }
+      jumpToDemoAnchor("judge-attempt-counter");
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 1400));
+      jumpToDemoAnchor("judge-top-button");
+    } finally {
+      setPending(false);
+    }
+  }, [pending, targetAthleteSelected]);
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={run}
+      className={cn(
+        "inline-flex w-full items-center justify-center gap-2 rounded-[1rem] border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900 transition hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40",
+        pending && "cursor-wait opacity-60"
+      )}
+      aria-label="Highlight the scoring controls you need to change"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="shrink-0"
+      >
+        <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
+        <path d="m14 7 3 3" />
+        <path d="M5 6v4" />
+        <path d="M19 14v4" />
+        <path d="M10 2v2" />
+        <path d="M7 8H3" />
+        <path d="M21 16h-4" />
+        <path d="M11 3H9" />
+      </svg>
+      {pending ? "Highlighting..." : "Show me where"}
+    </button>
+  );
+}
+
+function RankDeltaWidget({ delta }: { delta: DemoRankDelta }) {
+  const inFinals = delta.rankNow <= delta.cutoff;
+  const changed = delta.rankNow !== delta.rankBefore;
+
+  return (
+    <div className="mt-3 rounded-[1rem] border border-sky-100 bg-sky-50/80 px-3 py-2.5">
+      <div className="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-sky-600">
+        Correction impact
+      </div>
+      <div className="mt-1.5 flex items-center gap-2.5">
+        <span
+          className={cn(
+            "text-lg font-black tabular-nums",
+            changed ? "text-slate-400 line-through" : "text-slate-500"
+          )}
+          aria-label={`Previous rank: ${delta.rankBefore}`}
+        >
+          #{delta.rankBefore}
+        </span>
+        <span className="text-slate-400" aria-hidden="true">
+          {"->"}
+        </span>
+        <span
+          className={cn(
+            "text-2xl font-black tabular-nums transition-colors duration-500",
+            inFinals ? "text-emerald-600" : "text-slate-500"
+          )}
+          aria-label={`Current rank: ${delta.rankNow}`}
+        >
+          #{delta.rankNow}
+        </span>
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-[0.65rem] font-bold transition-colors duration-500",
+            inFinals ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+          )}
+        >
+          {inFinals ? "Finals" : "Out"}
+        </span>
+      </div>
+      <div className="mt-0.5 truncate text-xs text-slate-500">{delta.targetName}</div>
+    </div>
+  );
+}
+
 export function DemoWizardSidebar({
   currentStep,
   title,
@@ -111,6 +225,8 @@ export function DemoWizardSidebar({
   blockingMessage = null,
   primaryAction,
   secondaryActions = [],
+  wandTarget = null,
+  demoRankDelta = null,
 }: DemoWizardSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const normalizedProgress = normalizeDemoWizardProgress(progress);
@@ -118,6 +234,14 @@ export function DemoWizardSidebar({
   const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
   const currentLabel = `Step ${safeCurrentIndex + 1} of ${DEMO_WIZARD_STEPS.length}`;
   const { loadingCopy, navigateWithDemoLoading } = useDemoNavigation();
+  const showWand =
+    currentStep === "judge" &&
+    !normalizedProgress.keyScoreCorrected &&
+    wandTarget !== null;
+  const showRankDelta =
+    currentStep === "judge" &&
+    !normalizedProgress.keyScoreCorrected &&
+    demoRankDelta !== null;
 
   if (collapsed) {
     return (
@@ -166,6 +290,14 @@ export function DemoWizardSidebar({
           );
         })}
       </div>
+
+      {showWand ? (
+        <div className="mt-3">
+          <WandButton targetAthleteSelected={wandTarget?.targetAthleteSelected ?? false} />
+        </div>
+      ) : null}
+
+      {showRankDelta && demoRankDelta ? <RankDeltaWidget delta={demoRankDelta} /> : null}
 
       <h2 className="mt-4 text-xl font-semibold tracking-tight text-slate-950">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">{instruction}</p>

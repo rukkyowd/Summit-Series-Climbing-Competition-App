@@ -1,6 +1,7 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { formatFinalPoints, type FinalsLeaderboardEntry } from "@/lib/scoring";
 
 function FinalsResultCell({
@@ -40,13 +41,66 @@ function metricClassName(value: number) {
   return value === 0 ? "finals-metric finals-metric-dim" : "finals-metric finals-metric-strong";
 }
 
+function fireConfetti() {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return;
+  }
+
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+
+  const layer = document.createElement("div");
+  layer.setAttribute("aria-hidden", "true");
+  layer.className = "pointer-events-none fixed inset-0 z-[70] overflow-hidden";
+  document.body.appendChild(layer);
+
+  const colors = ["#38bdf8", "#34d399", "#a78bfa", "#fbbf24", "#fb7185"];
+  for (let index = 0; index < 72; index += 1) {
+    const piece = document.createElement("span");
+    const size = 6 + Math.random() * 7;
+    const left = 10 + Math.random() * 80;
+    const drift = (Math.random() - 0.5) * 42;
+    piece.className = "absolute block rounded-sm";
+    piece.style.left = `${left}%`;
+    piece.style.top = "48%";
+    piece.style.width = `${size}px`;
+    piece.style.height = `${size * 0.65}px`;
+    piece.style.background = colors[index % colors.length];
+    piece.style.opacity = "0.9";
+    piece.animate(
+      [
+        { transform: "translate3d(0, 0, 0) rotate(0deg)", opacity: 1 },
+        {
+          transform: `translate3d(${drift}vw, ${38 + Math.random() * 32}vh, 0) rotate(${180 + Math.random() * 360}deg)`,
+          opacity: 0,
+        },
+      ],
+      {
+        duration: 1100 + Math.random() * 700,
+        easing: "cubic-bezier(.18,.8,.32,1)",
+        fill: "forwards",
+      }
+    );
+    layer.appendChild(piece);
+  }
+
+  window.setTimeout(() => layer.remove(), 2100);
+}
+
+export type FinalsResultsTableProps = {
+  title: string;
+  rows: FinalsLeaderboardEntry[];
+  revealMode?: boolean;
+  revealedCount?: number;
+};
+
 export default function FinalsResultsTable({
   title,
   rows,
-}: {
-  title: string;
-  rows: FinalsLeaderboardEntry[];
-}) {
+  revealMode = false,
+  revealedCount,
+}: FinalsResultsTableProps) {
   const problemCount = Math.max(1, ...rows.map((entry) => entry.problem_results.length), 4);
   const mobileProblemGridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${problemCount}, minmax(0, 1fr))`,
@@ -55,6 +109,18 @@ export default function FinalsResultsTable({
     gridTemplateColumns: `0.7fr 2.3fr 1fr repeat(${problemCount}, 0.8fr) 1fr 0.7fr 0.7fr 0.8fr 0.8fr`,
   };
   const desktopTableMinWidth = `${760 + problemCount * 76}px`;
+  const visibleRows = revealMode ? rows.slice(0, revealedCount ?? rows.length) : rows;
+  const revealComplete = revealMode && (revealedCount ?? 0) >= rows.length && rows.length > 0;
+  const confettiFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!revealComplete || confettiFiredRef.current) {
+      return;
+    }
+
+    confettiFiredRef.current = true;
+    fireConfetti();
+  }, [revealComplete]);
 
   return (
     <section className="results-card">
@@ -67,8 +133,16 @@ export default function FinalsResultsTable({
       </div>
 
       <div className="mt-5 space-y-3 md:hidden">
-        {rows.map((entry) => (
-          <div key={entry.climber_id} className="results-meta-card min-w-0">
+        <AnimatePresence>
+        {visibleRows.map((entry, index) => (
+          <motion.div
+            key={entry.climber_id}
+            layout
+            initial={revealMode ? { opacity: 0, y: 10 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.32, delay: revealMode ? 0 : index * 0.04 }}
+            className="results-meta-card min-w-0"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="results-kicker">Rank #{entry.category_rank}</div>
@@ -105,8 +179,9 @@ export default function FinalsResultsTable({
               <div><span className="font-semibold text-slate-950">{entry.attempts_to_top}</span> attempts to top</div>
               <div><span className="font-semibold text-slate-950">{entry.attempts_to_zone}</span> attempts to zone</div>
             </div>
-          </div>
+          </motion.div>
         ))}
+        </AnimatePresence>
       </div>
 
       <div className="results-data-scroll mt-5 hidden md:block">
@@ -130,8 +205,17 @@ export default function FinalsResultsTable({
           </div>
 
           <div className="divide-y divide-black/10">
-            {rows.map((entry) => (
-              <div key={entry.climber_id} className="grid finals-table-row items-center" style={desktopGridStyle}>
+            <AnimatePresence>
+            {visibleRows.map((entry, index) => (
+              <motion.div
+                key={entry.climber_id}
+                layout
+                initial={revealMode ? { opacity: 0, y: 8 } : false}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.28, delay: revealMode ? 0 : index * 0.04 }}
+                className="grid finals-table-row items-center"
+                style={desktopGridStyle}
+              >
                 <div className="finals-rank">{entry.category_rank}</div>
                 <div className="min-w-0">
                   <div className="finals-athlete-name break-words">{entry.name}</div>
@@ -154,11 +238,30 @@ export default function FinalsResultsTable({
                 <div className={metricClassName(entry.zones)}>{entry.zones}</div>
                 <div className={metricClassName(entry.attempts_to_top)}>{entry.attempts_to_top}</div>
                 <div className={metricClassName(entry.attempts_to_zone)}>{entry.attempts_to_zone}</div>
-              </div>
+              </motion.div>
             ))}
+            </AnimatePresence>
           </div>
         </div>
       </div>
+
+      {revealMode && !revealComplete ? (
+        <div className="mt-4 flex items-center gap-3">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-sky-500 transition-all duration-300"
+              style={{
+                width: rows.length > 0
+                  ? `${Math.round(((revealedCount ?? 0) / rows.length) * 100)}%`
+                  : "0%",
+              }}
+            />
+          </div>
+          <span className="shrink-0 text-xs font-semibold text-slate-500">
+            {revealedCount ?? 0} / {rows.length}
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }

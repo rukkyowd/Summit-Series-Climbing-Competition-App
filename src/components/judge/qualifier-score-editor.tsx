@@ -101,7 +101,9 @@ export function QualifierScoreEditor({
           </div>
           <SaveStatus state={saveState} detail={dirty ? "Unsaved changes" : null} />
         </div>
-        <p className="mt-2 text-sm leading-6 text-slate-700">{dirty ? normalizedPreview : `Last saved: ${savedSummary}.`}</p>
+        <p className="mt-2 text-sm leading-6 text-slate-700">
+          {dirty ? normalizedPreview : `Last saved: ${savedSummary}.`}
+        </p>
       </div>
 
       {!scoringOpen ? (
@@ -122,7 +124,10 @@ export function QualifierScoreEditor({
             >
               -
             </Button>
-            <div className="inline-flex min-h-14 items-center justify-center rounded-[1rem] border border-slate-200 bg-white px-4 text-4xl font-black text-slate-950">
+            <div
+              data-demo-anchor="judge-attempt-counter"
+              className="inline-flex min-h-14 items-center justify-center rounded-[1rem] border border-slate-200 bg-white px-4 text-4xl font-black text-slate-950"
+            >
               {attemptCount}
             </div>
           </div>
@@ -174,6 +179,7 @@ export function QualifierScoreEditor({
           fullWidth
           onClick={onToggleTop}
           aria-pressed={topped}
+          data-demo-anchor="judge-top-button"
           className={cn(
             "min-h-24 flex-col items-start rounded-[1.35rem] border-emerald-200 bg-emerald-50 text-left text-emerald-900 hover:border-emerald-300",
             topped && "border-emerald-400 bg-emerald-100 shadow-[0_16px_30px_rgba(34,197,94,0.18)]"

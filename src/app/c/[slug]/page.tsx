@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
@@ -27,6 +27,31 @@ import {
   sortQualifierLeaderboardForDisplay,
 } from "@/lib/scoring";
 import { getDemoPublicWizardGuidance } from "@/lib/demo-wizard";
+import { useDemoState } from "@/lib/use-demo-state";
+
+type SseMessage = {
+  event: string;
+  data: Record<string, unknown>;
+};
+
+function parseSseMessage(message: string): SseMessage | null {
+  const lines = message.split("\n");
+  const eventLine = lines.find((line) => line.startsWith("event:"));
+  const dataLine = lines.find((line) => line.startsWith("data:"));
+
+  if (!eventLine || !dataLine) {
+    return null;
+  }
+
+  try {
+    return {
+      event: eventLine.slice("event:".length).trim(),
+      data: JSON.parse(dataLine.slice("data:".length).trim()) as Record<string, unknown>,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
@@ -37,6 +62,9 @@ export default function CompetitionOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedFinalsCategory, setSelectedFinalsCategory] = useState("");
+  const [revealedFinalsScoreCount, setRevealedFinalsScoreCount] = useState(0);
+  const [finalsRevealActive, setFinalsRevealActive] = useState(false);
+  const finalsRevealStartedRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!slug) {
@@ -170,6 +198,10 @@ export default function CompetitionOverviewPage() {
     snapshot?.competition.current_phase === "results";
   const resultsPublished = snapshot?.competition.current_phase === "results";
   const demoOverlayActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
+  const { state: liveDemoState, refetch: refetchDemoState } = useDemoState(
+    demoOverlayActive ? snapshot?.competition.id : null,
+    { pollMs: demoOverlayActive ? 2000 : 0 }
+  );
   const finalistRows = useMemo(
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot?.finalists]
@@ -179,7 +211,8 @@ export default function CompetitionOverviewPage() {
       row.problem_results.some((result) => result.top || result.zone || result.points > 0)
     )
   );
-  const demoPublicReady = finalsActive && finalistRows.length > 0 && finalsScorePresent;
+  const demoPublicReady =
+    liveDemoState?.progress?.publicReady ?? (finalsActive && finalistRows.length > 0 && finalsScorePresent);
   const demoWizardGuidance = useMemo(
     () => getDemoPublicWizardGuidance(demoPublicReady),
     [demoPublicReady]
@@ -255,6 +288,109 @@ export default function CompetitionOverviewPage() {
       setSelectedFinalsCategory(finalsCategories[0] ?? "");
     }
   }, [finalsCategories, finalsGroups, selectedFinalsCategory]);
+
+  useEffect(() => {
+    if (!demoOverlayActive || !snapshot || !finalsActive || !finalistRows.length) {
+      return;
+    }
+
+    const streamKey = snapshot.competition.id;
+    if (finalsRevealStartedRef.current === streamKey) {
+      return;
+    }
+
+    let cancelled = false;
+    const competitionId = snapshot.competition.id;
+    finalsRevealStartedRef.current = streamKey;
+    setFinalsRevealActive(true);
+    setRevealedFinalsScoreCount(0);
+
+    async function runFinalsReveal() {
+      try {
+        const response = await fetch("/api/demo/finals-results/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ competitionId }),
+        });
+
+        if (!response.ok || !response.body) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error ?? "Unable to stream demo finals results.");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const messages = buffer.split("\n\n");
+          buffer = messages.pop() ?? "";
+
+          for (const message of messages) {
+            const parsed = parseSseMessage(message);
+            if (!parsed) {
+              continue;
+            }
+
+            if (parsed.event === "score") {
+              let nextCount = 0;
+              if (typeof parsed.data.index === "number") {
+                nextCount = parsed.data.index + 1;
+                setRevealedFinalsScoreCount(nextCount);
+              } else {
+                setRevealedFinalsScoreCount((current) => {
+                  nextCount = current + 1;
+                  return nextCount;
+                });
+              }
+              if (nextCount % 3 === 0) {
+                void refresh();
+                void refetchDemoState();
+              }
+            }
+
+            if (parsed.event === "complete") {
+              void refresh();
+              void refetchDemoState();
+            }
+
+            if (parsed.event === "error") {
+              throw new Error(typeof parsed.data.message === "string" ? parsed.data.message : "Unable to stream demo finals results.");
+            }
+          }
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setError(nextError instanceof Error ? nextError.message : "Unable to stream demo finals results.");
+        }
+      } finally {
+        if (!cancelled) {
+          setFinalsRevealActive(false);
+          void refresh();
+          void refetchDemoState();
+        }
+      }
+    }
+
+    void runFinalsReveal();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    demoOverlayActive,
+    finalistRows.length,
+    finalsActive,
+    refetchDemoState,
+    refresh,
+    snapshot,
+  ]);
 
   return (
     <main className="results-page">
@@ -482,7 +618,12 @@ export default function CompetitionOverviewPage() {
                       ))}
                     </div>
                   </section>
-                  <FinalsResultsTable title={selectedFinalsCategory} rows={finalsRows} />
+                  <FinalsResultsTable
+                    title={selectedFinalsCategory}
+                    rows={finalsRows}
+                    revealMode={demoOverlayActive && (finalsRevealActive || revealedFinalsScoreCount > 0)}
+                    revealedCount={Math.min(finalsRows.length, revealedFinalsScoreCount)}
+                  />
                 </>
               ) : (
                 <Surface variant="card" className="text-slate-600" data-demo-anchor="public-results">
