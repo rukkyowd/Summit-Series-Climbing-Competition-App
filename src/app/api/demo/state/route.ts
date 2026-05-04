@@ -98,6 +98,7 @@ export async function GET(request: NextRequest) {
     const finalistCount = getSingleCount(finalistCountResult);
     const dataPopulated = climberCount > 0 && attemptCount > 0 && Boolean(targetClimber && targetAttempt);
     const finalsStarted = Boolean(competitionRow.finals_started_at) || ["finals_open", "finals_closed", "results"].includes(competitionRow.current_phase ?? "");
+    const publicReady = finalistCount > 0 && finalsStarted;
 
     return NextResponse.json({
       ok: true,
@@ -123,6 +124,7 @@ export async function GET(request: NextRequest) {
         dataPopulated,
         keyScoreCorrected: isDemoTargetCorrected(attempt),
         organizerAdvanced: dataPopulated && finalistCount > 0 && finalsStarted,
+        publicReady,
       },
     });
   } catch (error) {

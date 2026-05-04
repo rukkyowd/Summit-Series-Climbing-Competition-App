@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
-import { DemoGuideBanner } from "@/components/demo-guide-banner";
+import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { Alert } from "@/components/ui/alert";
 import { buttonStyles } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import {
   getTimeSlotLabel,
   parseScheduleTimeToMinutes,
 } from "@/lib/scoring";
+import { getDemoPublicWizardGuidance } from "@/lib/demo-wizard";
 
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
@@ -172,6 +173,11 @@ export default function CompetitionOverviewPage() {
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot?.finalists]
   );
+  const demoPublicReady = finalsActive && finalistRows.length > 0;
+  const demoWizardGuidance = useMemo(
+    () => getDemoPublicWizardGuidance(demoPublicReady),
+    [demoPublicReady]
+  );
   const qualifierPreviewRows = useMemo(
     () => [...(snapshot?.qualifierLeaderboard ?? [])].slice(0, 8),
     [snapshot?.qualifierLeaderboard]
@@ -257,26 +263,35 @@ export default function CompetitionOverviewPage() {
               </div>
             ) : null}
             {demoOverlayActive ? (
-              <>
-                <DemoGuideBanner
-                  title="Demo - Public View"
-                  body="This is what climbers and spectators see."
-                  actions={[
-                    { label: "Live Leaderboard", href: `/c/${slug}/leaderboard?demo=act4` },
-                    { label: "Organizer Dashboard", href: `/staff/c/${slug}?demo=act3` },
-                  ]}
-                />
-                <DemoGuideBanner
-                  eyebrow="Demo Complete"
-                  title="You've run a full climbing competition."
-                  body="The event, judge scores, finalist field, and public page are all using the real app workflow."
-                  tone="success"
-                  actions={[
-                    { label: "Run Again", href: "/demo", primary: true },
-                    { label: "Create Real Event", href: "/staff/new" },
-                  ]}
-                />
-              </>
+              <DemoWizardSidebar
+                currentStep={demoPublicReady ? "finish" : "public"}
+                title={demoWizardGuidance.title}
+                instruction={demoWizardGuidance.instruction}
+                why={demoWizardGuidance.why}
+                blockingMessage={demoWizardGuidance.blockingMessage}
+                progress={{
+                  eventReady: true,
+                  dataPopulated: true,
+                  keyScoreCorrected: true,
+                  organizerAdvanced: finalistRows.length > 0,
+                  publicReady: demoPublicReady,
+                }}
+                primaryAction={{
+                  label: demoWizardGuidance.primaryActionLabel,
+                  targetAnchor: demoWizardGuidance.primaryTargetAnchor,
+                }}
+                secondaryActions={
+                  demoPublicReady
+                    ? [
+                        { label: "Run Again", href: "/demo" },
+                        { label: "Create Real Event", href: "/staff/new" },
+                      ]
+                    : [
+                        { label: "Live Leaderboard", href: `/c/${slug}/leaderboard?demo=act4` },
+                        { label: "Organizer Dashboard", href: `/staff/c/${slug}?demo=act3` },
+                      ]
+                }
+              />
             ) : null}
             <CompetitionHero competition={snapshot.competition} />
 
@@ -413,7 +428,10 @@ export default function CompetitionOverviewPage() {
               ) : null}
 
               {finalistRows.length ? (
-                <div className="mt-6 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                <div
+                  className="mt-6 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4"
+                  data-demo-anchor="public-finalists"
+                >
                   <div className="results-kicker text-emerald-700">Finalists</div>
                   <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                     {finalistRows.map((finalist) => (

@@ -5,8 +5,13 @@ import Link from "next/link";
 import { buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { jumpToDemoAnchor } from "@/lib/demo-jump-target";
-
-export type DemoWizardStep = "create" | "judge" | "organize" | "public" | "cleanup";
+import {
+  DEMO_WIZARD_STEPS,
+  isDemoWizardStepComplete,
+  normalizeDemoWizardProgress,
+  type DemoWizardProgress,
+  type DemoWizardStep,
+} from "@/lib/demo-wizard";
 
 export type DemoWizardAction = {
   label: string;
@@ -21,35 +26,11 @@ export type DemoWizardSidebarProps = {
   title: string;
   instruction: string;
   why: string;
-  progress: {
-    eventReady: boolean;
-    dataPopulated: boolean;
-    keyScoreCorrected: boolean;
-    organizerAdvanced: boolean;
-    publicReady?: boolean;
-  };
+  progress: Partial<DemoWizardProgress>;
+  blockingMessage?: string | null;
   primaryAction?: DemoWizardAction;
   secondaryActions?: DemoWizardAction[];
 };
-
-const WIZARD_STEPS: Array<{
-  id: DemoWizardStep;
-  label: string;
-  progressKey?: keyof DemoWizardSidebarProps["progress"];
-}> = [
-  { id: "create", label: "Create", progressKey: "eventReady" },
-  { id: "judge", label: "Judge", progressKey: "keyScoreCorrected" },
-  { id: "organize", label: "Organize", progressKey: "organizerAdvanced" },
-  { id: "public", label: "Public", progressKey: "publicReady" },
-  { id: "cleanup", label: "Clean up" },
-];
-
-function isStepComplete(
-  step: (typeof WIZARD_STEPS)[number],
-  progress: DemoWizardSidebarProps["progress"]
-) {
-  return step.progressKey ? Boolean(progress[step.progressKey]) : false;
-}
 
 function ActionButton({
   action,
@@ -127,13 +108,15 @@ export function DemoWizardSidebar({
   instruction,
   why,
   progress,
+  blockingMessage = null,
   primaryAction,
   secondaryActions = [],
 }: DemoWizardSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const currentIndex = WIZARD_STEPS.findIndex((step) => step.id === currentStep);
+  const normalizedProgress = normalizeDemoWizardProgress(progress);
+  const currentIndex = DEMO_WIZARD_STEPS.findIndex((step) => step.id === currentStep);
   const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
-  const currentLabel = `Step ${safeCurrentIndex + 1} of ${WIZARD_STEPS.length}`;
+  const currentLabel = `Step ${safeCurrentIndex + 1} of ${DEMO_WIZARD_STEPS.length}`;
 
   if (collapsed) {
     return (
@@ -143,7 +126,7 @@ export function DemoWizardSidebar({
         className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-900 shadow-[0_20px_60px_rgba(15,23,42,0.18)] backdrop-blur"
       >
         <span className="h-2.5 w-2.5 rounded-full bg-sky-500 shadow-[0_0_0_6px_rgba(14,165,233,0.14)]" />
-        Cascade demo: {currentLabel}
+        Summit demo: {currentLabel}
       </button>
     );
   }
@@ -152,7 +135,7 @@ export function DemoWizardSidebar({
     <aside className="fixed bottom-4 right-4 z-50 w-[min(23rem,calc(100vw-2rem))] rounded-[1.5rem] border border-slate-200 bg-white/95 p-4 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.22)] backdrop-blur">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="results-kicker text-sky-700">Cascade Cup wizard</div>
+          <div className="results-kicker text-sky-700">Summit Series wizard</div>
           <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
             {currentLabel}
           </div>
@@ -167,9 +150,9 @@ export function DemoWizardSidebar({
       </div>
 
       <div className="mt-4 flex items-center gap-1.5">
-        {WIZARD_STEPS.map((step, index) => {
+        {DEMO_WIZARD_STEPS.map((step, index) => {
           const active = step.id === currentStep;
-          const complete = isStepComplete(step, progress);
+          const complete = isDemoWizardStepComplete(step, normalizedProgress);
           return (
             <div
               key={step.id}
@@ -189,6 +172,11 @@ export function DemoWizardSidebar({
         <span className="font-semibold">Why this matters: </span>
         {why}
       </div>
+      {blockingMessage ? (
+        <div className="mt-3 rounded-[1rem] border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-medium leading-6 text-amber-900">
+          {blockingMessage}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-2">
         {primaryAction ? <ActionButton action={primaryAction} primary /> : null}
@@ -198,17 +186,17 @@ export function DemoWizardSidebar({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-500">
-        <div className={progress.dataPopulated ? "text-emerald-700" : ""}>
-          {progress.dataPopulated ? "Seeded field" : "No sample field yet"}
+        <div className={normalizedProgress.dataPopulated ? "text-emerald-700" : ""}>
+          {normalizedProgress.dataPopulated ? "Seeded field" : "No sample field yet"}
         </div>
-        <div className={progress.keyScoreCorrected ? "text-emerald-700" : ""}>
-          {progress.keyScoreCorrected ? "Maya corrected" : "Maya pending"}
+        <div className={normalizedProgress.keyScoreCorrected ? "text-emerald-700" : ""}>
+          {normalizedProgress.keyScoreCorrected ? "Athlete C corrected" : "Athlete C pending"}
         </div>
-        <div className={progress.organizerAdvanced ? "text-emerald-700" : ""}>
-          {progress.organizerAdvanced ? "Finals live" : "Organizer pending"}
+        <div className={normalizedProgress.organizerAdvanced ? "text-emerald-700" : ""}>
+          {normalizedProgress.organizerAdvanced ? "Finalists set" : "Organizer pending"}
         </div>
-        <div className={progress.publicReady ? "text-emerald-700" : ""}>
-          {progress.publicReady ? "Public ready" : "Results pending"}
+        <div className={normalizedProgress.publicReady ? "text-emerald-700" : ""}>
+          {normalizedProgress.publicReady ? "Public ready" : "Public pending"}
         </div>
       </div>
     </aside>

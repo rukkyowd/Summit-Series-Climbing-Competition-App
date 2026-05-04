@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
-import { DemoGuideBanner } from "@/components/demo-guide-banner";
+import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import {
   StaffEventCreationForm,
   type StaffEventCreationFormValues,
@@ -26,6 +26,10 @@ import {
   type CompetitionPresetScheduleBlock,
 } from "@/lib/competition-presets";
 import { getDemoSetupValidation } from "@/lib/demo-setup-validation";
+import {
+  getDemoCreateWizardGuidance,
+  getDemoOrganizerWizardGuidance,
+} from "@/lib/demo-wizard";
 import {
   constrainFinalsEligibleAgeGroupsToSelectedCategories,
   finalsEligibilityUsesSelectedCategories,
@@ -2232,6 +2236,18 @@ export default function StaffDashboard({
 
     return warnings;
   }, [demoAct1CreatedForCurrentDraft, demoReviewStepStatus, demoSetupValidation.steps, draft]);
+  const demoAct1WizardGuidance = useMemo(
+    () => getDemoCreateWizardGuidance(demoSetupValidation, demoAct1CreatedForCurrentDraft),
+    [demoAct1CreatedForCurrentDraft, demoSetupValidation]
+  );
+  const demoOrganizerWizardGuidance = useMemo(
+    () =>
+      getDemoOrganizerWizardGuidance({
+        qualifierLocked: qualifierLockedForOperations,
+        finalistsPersisted,
+      }),
+    [finalistsPersisted, qualifierLockedForOperations]
+  );
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
     : "No stage flow yet";
@@ -2889,28 +2905,48 @@ export default function StaffDashboard({
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
         {demoSeedOnCreate ? (
-          <DemoGuideBanner
-            title={demoAct1CreatedForCurrentDraft ? "Your event is ready." : "Demo - Organizer"}
-            body={
-              demoAct1CreatedForCurrentDraft
-                ? "Next: You'll act as a judge and score athletes."
-                : "Use the real event creation flow. Fill it out manually, then decide when to add sample climbers for the judge panel."
-            }
-            actions={[{ label: "Demo Home", href: "/demo" }]}
+          <DemoWizardSidebar
+            currentStep="create"
+            title={demoAct1WizardGuidance.title}
+            instruction={demoAct1WizardGuidance.instruction}
+            why={demoAct1WizardGuidance.why}
+            blockingMessage={demoAct1WizardGuidance.blockingMessage}
+            progress={{
+              eventReady: demoSetupValidation.canContinueToJudge,
+              dataPopulated: false,
+              keyScoreCorrected: false,
+              organizerAdvanced: false,
+              publicReady: false,
+            }}
+            primaryAction={{
+              label: demoAct1WizardGuidance.primaryActionLabel,
+              targetAnchor: demoAct1WizardGuidance.primaryTargetAnchor,
+            }}
+            secondaryActions={[{ label: "Demo Home", href: "/demo" }]}
           />
         ) : guidedDemoActive && selectedCompetitionIsDemo && draft ? (
-          <DemoGuideBanner
-            title={finalistsPersisted ? "Finalists are set." : "Demo - Organizer"}
-            body={finalistsPersisted ? "Next: View the public event." : "Lock qualifiers and advance finalists."}
-            tone={finalistsPersisted ? "success" : "info"}
-            actions={
+          <DemoWizardSidebar
+            currentStep="organize"
+            title={demoOrganizerWizardGuidance.title}
+            instruction={demoOrganizerWizardGuidance.instruction}
+            why={demoOrganizerWizardGuidance.why}
+            blockingMessage={demoOrganizerWizardGuidance.blockingMessage}
+            progress={{
+              eventReady: true,
+              dataPopulated: true,
+              keyScoreCorrected: true,
+              organizerAdvanced: finalistsPersisted,
+              publicReady: finalistsPersisted && finalsStartedForOperations,
+            }}
+            primaryAction={
               finalistsPersisted
-                ? [
-                    { label: "View Public Page", href: demoPublicPath, primary: true },
-                    { label: "Demo Home", href: "/demo" },
-                  ]
-                : [{ label: "Demo Home", href: "/demo" }]
+                ? { label: demoOrganizerWizardGuidance.primaryActionLabel, href: demoPublicPath }
+                : {
+                    label: demoOrganizerWizardGuidance.primaryActionLabel,
+                    targetAnchor: demoOrganizerWizardGuidance.primaryTargetAnchor,
+                  }
             }
+            secondaryActions={[{ label: "Demo Home", href: "/demo" }]}
           />
         ) : null}
         {demoMode && !isGuidedStoryAct1 ? (

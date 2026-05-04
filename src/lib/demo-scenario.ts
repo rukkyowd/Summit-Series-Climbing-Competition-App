@@ -17,6 +17,7 @@ export type DemoProgress = {
   dataPopulated: boolean;
   keyScoreCorrected: boolean;
   organizerAdvanced: boolean;
+  publicReady?: boolean;
 };
 
 export function isDemoTargetCorrected(attempt: DemoTargetAttemptState) {

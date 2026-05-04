@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { DemoGuideBanner } from "@/components/demo-guide-banner";
+import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import SiteHeader from "@/components/site-header";
 import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import { getDemoPublicWizardGuidance } from "@/lib/demo-wizard";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 
 export default function CompetitionLeaderboardPage() {
@@ -79,6 +80,15 @@ export default function CompetitionLeaderboardPage() {
     : [];
   const rowAnimationKey = useMemo(() => (demoGuideActive ? lastUpdatedAt : 0), [demoGuideActive, lastUpdatedAt]);
   const demoOverlayActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
+  const finalsVisible =
+    snapshot?.competition.current_phase === "finals_open" ||
+    snapshot?.competition.current_phase === "finals_closed" ||
+    snapshot?.competition.current_phase === "results";
+  const demoPublicReady = Boolean(finalsVisible && (snapshot?.finalists.length ?? 0) > 0);
+  const demoWizardGuidance = useMemo(
+    () => getDemoPublicWizardGuidance(demoPublicReady),
+    [demoPublicReady]
+  );
 
   return (
     <main className="results-page">
@@ -92,13 +102,25 @@ export default function CompetitionLeaderboardPage() {
           </div>
         ) : null}
         {demoOverlayActive ? (
-          <DemoGuideBanner
-            title="Demo - Public View"
-            body="This live leaderboard uses the same public results surface climbers and spectators can open during the event."
-            actions={[
-              { label: "Public Page", href: `/c/${slug}?demo=act4`, primary: true },
-              { label: "Demo Home", href: "/demo" },
-            ]}
+          <DemoWizardSidebar
+            currentStep={demoPublicReady ? "finish" : "public"}
+            title={demoWizardGuidance.title}
+            instruction="This live leaderboard uses the same public results surface climbers and spectators can open during the event."
+            why={demoWizardGuidance.why}
+            blockingMessage={demoWizardGuidance.blockingMessage}
+            progress={{
+              eventReady: true,
+              dataPopulated: true,
+              keyScoreCorrected: true,
+              organizerAdvanced: (snapshot?.finalists.length ?? 0) > 0,
+              publicReady: demoPublicReady,
+            }}
+            primaryAction={
+              demoPublicReady
+                ? { label: "Public Page", href: `/c/${slug}?demo=act4` }
+                : { label: "Review Standings", targetAnchor: "leaderboard-standings" }
+            }
+            secondaryActions={[{ label: "Demo Home", href: "/demo" }]}
           />
         ) : null}
 

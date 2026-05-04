@@ -2,7 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { DemoGuideBanner } from "@/components/demo-guide-banner";
+import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
@@ -52,6 +52,7 @@ import {
   isDemoTargetCorrected,
 } from "@/lib/demo-scenario";
 import { jumpToDemoAnchor } from "@/lib/demo-jump-target";
+import { getDemoJudgeWizardGuidance } from "@/lib/demo-wizard";
 
 type QualifierDraft = { attemptCount: number; topped: boolean; zone: boolean };
 type FinalsDraft = { top: boolean; zone: boolean; attemptsToTop: number; attemptsToZone: number };
@@ -794,6 +795,10 @@ export default function StaffJudgePage() {
   );
   const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
   const demoOverlayActive = demoGuideActive && snapshot?.competition.is_demo;
+  const demoWizardGuidance = useMemo(
+    () => getDemoJudgeWizardGuidance(demoTargetCorrected),
+    [demoTargetCorrected]
+  );
 
   const highlightDemoTarget = useCallback(() => {
     if (!demoTargetClimber) {
@@ -1366,25 +1371,28 @@ export default function StaffJudgePage() {
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
         {demoOverlayActive ? (
-          <DemoGuideBanner
-            title={demoTargetCorrected ? "Nice - the leaderboard is now accurate." : "Demo - Judge"}
-            body={
+          <DemoWizardSidebar
+            currentStep="judge"
+            title={demoWizardGuidance.title}
+            instruction={demoWizardGuidance.instruction}
+            why={demoWizardGuidance.why}
+            blockingMessage={demoWizardGuidance.blockingMessage}
+            progress={{
+              eventReady: true,
+              dataPopulated: true,
+              keyScoreCorrected: demoTargetCorrected,
+              organizerAdvanced: false,
+              publicReady: false,
+            }}
+            primaryAction={
               demoTargetCorrected
-                ? "Next: Advance finalists."
-                : `Find ${DEMO_TARGET_CLIMBER_NAME} and correct their score on Boulder ${DEMO_TARGET_CLIMB_NUMBER}.`
+                ? { label: demoWizardGuidance.primaryActionLabel, href: `/staff/c/${slug}?demo=act3` }
+                : { label: demoWizardGuidance.primaryActionLabel, onClick: highlightDemoTarget }
             }
-            tone={demoTargetCorrected ? "success" : "info"}
-            actions={
-              demoTargetCorrected
-                ? [
-                    { label: "Go to Organizer Dashboard", href: `/staff/c/${slug}?demo=act3`, primary: true },
-                    { label: "Demo Home", href: "/demo" },
-                  ]
-                : [
-                    { label: "Highlight Athlete", onClick: highlightDemoTarget, primary: true },
-                    { label: "Demo Home", href: "/demo" },
-                  ]
-            }
+            secondaryActions={[
+              { label: "Score Workspace", targetAnchor: "judge-score-workspace" },
+              { label: "Demo Home", href: "/demo" },
+            ]}
           />
         ) : null}
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">
@@ -1468,72 +1476,74 @@ export default function StaffJudgePage() {
                     onSelectBoulder={setSelectedBoulder}
                   />
                 </div>
-                <QualifierScoreEditor
-                athlete={
-                  selectedQualifierClimber
-                    ? {
-                        climberNumber: selectedQualifierClimber.climber_number,
-                        name: selectedQualifierClimber.name,
-                        category: selectedQualifierClimber.display_category,
-                      }
-                    : null
-                }
-                attemptCount={selectedQualifierPresentation.normalized.attemptCount}
-                blockedMessage={`${activeQualifierRoundName} scoring is currently locked. Ask the organizer to reopen the live qualifier phase before saving.`}
-                boulderNumber={selectedBoulder}
-                confirmationLabel={selectedQualifierPresentation.confirmationLabel}
-                confirmationTone={selectedQualifierPresentation.confirmationTone}
-                dirty={selectedQualifierPresentation.dirty}
-                liveDetail={selectedQualifierPresentation.liveDetail}
-                liveLabel={selectedQualifierPresentation.liveLabel}
-                normalizedPreview={selectedQualifierPreview}
-                roundName={activeQualifierRoundName}
-                savedSummary={selectedQualifierPresentation.savedSummary}
-                saveState={saving ? "saving" : selectedQualifierPresentation.dirty ? "dirty" : queuedCount > 0 ? "queued" : "saved"}
-                saving={saving}
-                scoringOpen={qualifierScoringOpen}
-                topped={selectedQualifierPresentation.normalized.topped}
-                zone={selectedQualifierPresentation.normalized.zone}
-                onAddAttempt={() =>
-                  selectedQualifierClimber &&
-                  setQualifierDraft(selectedQualifierDraftKey, (current) => ({
-                    ...current,
-                    attemptCount: current.attemptCount + 1,
-                  }))
-                }
-                onClear={() =>
-                  selectedQualifierClimber &&
-                  setQualifierDraft(selectedQualifierDraftKey, () => EMPTY_QUALIFIER_DRAFT)
-                }
-                onDecreaseAttempt={() =>
-                  selectedQualifierClimber &&
-                  setQualifierDraft(selectedQualifierDraftKey, (current) => {
-                    const nextAttemptCount = Math.max(0, current.attemptCount - 1);
-                    return {
-                      attemptCount: nextAttemptCount,
-                      topped: nextAttemptCount > 0 ? current.topped : false,
-                      zone: nextAttemptCount > 0 ? current.zone : false,
-                    };
-                  })
-                }
-                onSave={() => selectedQualifierClimber && void saveQualifier(selectedQualifierClimber.id)}
-                onToggleTop={() =>
-                  selectedQualifierClimber &&
-                  setQualifierDraft(selectedQualifierDraftKey, (current) => ({
-                    attemptCount: Math.max(1, current.attemptCount),
-                    topped: !current.topped,
-                    zone: !current.topped ? true : current.zone,
-                  }))
-                }
-                onToggleZone={() =>
-                  selectedQualifierClimber &&
-                  setQualifierDraft(selectedQualifierDraftKey, (current) => ({
-                    attemptCount: Math.max(1, current.attemptCount),
-                    topped: false,
-                    zone: !current.zone,
-                  }))
-                }
-              />
+                <div data-demo-anchor="judge-entry-cards">
+                  <QualifierScoreEditor
+                    athlete={
+                      selectedQualifierClimber
+                        ? {
+                            climberNumber: selectedQualifierClimber.climber_number,
+                            name: selectedQualifierClimber.name,
+                            category: selectedQualifierClimber.display_category,
+                          }
+                        : null
+                    }
+                    attemptCount={selectedQualifierPresentation.normalized.attemptCount}
+                    blockedMessage={`${activeQualifierRoundName} scoring is currently locked. Ask the organizer to reopen the live qualifier phase before saving.`}
+                    boulderNumber={selectedBoulder}
+                    confirmationLabel={selectedQualifierPresentation.confirmationLabel}
+                    confirmationTone={selectedQualifierPresentation.confirmationTone}
+                    dirty={selectedQualifierPresentation.dirty}
+                    liveDetail={selectedQualifierPresentation.liveDetail}
+                    liveLabel={selectedQualifierPresentation.liveLabel}
+                    normalizedPreview={selectedQualifierPreview}
+                    roundName={activeQualifierRoundName}
+                    savedSummary={selectedQualifierPresentation.savedSummary}
+                    saveState={saving ? "saving" : selectedQualifierPresentation.dirty ? "dirty" : queuedCount > 0 ? "queued" : "saved"}
+                    saving={saving}
+                    scoringOpen={qualifierScoringOpen}
+                    topped={selectedQualifierPresentation.normalized.topped}
+                    zone={selectedQualifierPresentation.normalized.zone}
+                    onAddAttempt={() =>
+                      selectedQualifierClimber &&
+                      setQualifierDraft(selectedQualifierDraftKey, (current) => ({
+                        ...current,
+                        attemptCount: current.attemptCount + 1,
+                      }))
+                    }
+                    onClear={() =>
+                      selectedQualifierClimber &&
+                      setQualifierDraft(selectedQualifierDraftKey, () => EMPTY_QUALIFIER_DRAFT)
+                    }
+                    onDecreaseAttempt={() =>
+                      selectedQualifierClimber &&
+                      setQualifierDraft(selectedQualifierDraftKey, (current) => {
+                        const nextAttemptCount = Math.max(0, current.attemptCount - 1);
+                        return {
+                          attemptCount: nextAttemptCount,
+                          topped: nextAttemptCount > 0 ? current.topped : false,
+                          zone: nextAttemptCount > 0 ? current.zone : false,
+                        };
+                      })
+                    }
+                    onSave={() => selectedQualifierClimber && void saveQualifier(selectedQualifierClimber.id)}
+                    onToggleTop={() =>
+                      selectedQualifierClimber &&
+                      setQualifierDraft(selectedQualifierDraftKey, (current) => ({
+                        attemptCount: Math.max(1, current.attemptCount),
+                        topped: !current.topped,
+                        zone: !current.topped ? true : current.zone,
+                      }))
+                    }
+                    onToggleZone={() =>
+                      selectedQualifierClimber &&
+                      setQualifierDraft(selectedQualifierDraftKey, (current) => ({
+                        attemptCount: Math.max(1, current.attemptCount),
+                        topped: false,
+                        zone: !current.zone,
+                      }))
+                    }
+                  />
+                </div>
               </div>
             </div>
           </section>
