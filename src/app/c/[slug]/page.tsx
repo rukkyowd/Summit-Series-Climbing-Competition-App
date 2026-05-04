@@ -27,6 +27,11 @@ import {
   sortQualifierLeaderboardForDisplay,
 } from "@/lib/scoring";
 import { getDemoPublicWizardGuidance } from "@/lib/demo-wizard";
+import {
+  getPublicOverviewSections,
+  getPublicResultsState,
+  getPublicStandingsCopy,
+} from "@/lib/public-results";
 import { useDemoState } from "@/lib/use-demo-state";
 
 type SseMessage = {
@@ -191,11 +196,17 @@ export default function CompetitionOverviewPage() {
     return groups;
   }, [snapshot]);
   const finalsCategories = useMemo(() => Array.from(finalsGroups.keys()).sort(), [finalsGroups]);
-  const finalsRows = finalsGroups.get(selectedFinalsCategory) ?? [];
-  const finalsActive =
-    snapshot?.competition.current_phase === "finals_open" ||
-    snapshot?.competition.current_phase === "finals_closed" ||
-    snapshot?.competition.current_phase === "results";
+  const activeFinalsCategory = selectedFinalsCategory || finalsCategories[0] || "";
+  const finalsRows = finalsGroups.get(activeFinalsCategory) ?? [];
+  const publicResultsState = useMemo(
+    () =>
+      getPublicResultsState({
+        phase: snapshot?.competition.current_phase,
+        finalsLeaderboard: snapshot?.finalsLeaderboard ?? [],
+      }),
+    [snapshot?.competition.current_phase, snapshot?.finalsLeaderboard]
+  );
+  const finalsActive = publicResultsState.finalsStarted;
   const resultsPublished = snapshot?.competition.current_phase === "results";
   const demoOverlayActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
   const { state: liveDemoState, refetch: refetchDemoState } = useDemoState(
@@ -206,11 +217,7 @@ export default function CompetitionOverviewPage() {
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot?.finalists]
   );
-  const finalsScorePresent = Boolean(
-    snapshot?.finalsLeaderboard.some((row) =>
-      row.problem_results.some((result) => result.top || result.zone || result.points > 0)
-    )
-  );
+  const finalsScorePresent = publicResultsState.hasFinalsScores;
   const demoPublicReady =
     liveDemoState?.progress?.publicReady ?? (finalsActive && finalistRows.length > 0 && finalsScorePresent);
   const demoWizardGuidance = useMemo(
@@ -224,6 +231,8 @@ export default function CompetitionOverviewPage() {
         : [],
     [snapshot]
   );
+  const publicStandingsCopy = getPublicStandingsCopy(publicResultsState);
+  const publicOverviewSections = getPublicOverviewSections(publicResultsState);
   const liveCategoryCount = activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids).length : 0;
   const overviewNavItems = useMemo(
     () => [
@@ -392,6 +401,59 @@ export default function CompetitionOverviewPage() {
     snapshot,
   ]);
 
+  const renderFinalsResultsSection = () => {
+    if (!finalsActive || !snapshot) {
+      return null;
+    }
+
+    if (!finalsRows.length) {
+      return (
+        <Surface variant="card" className="text-slate-600" data-demo-anchor="public-results">
+          Finals are active, but the finalist standings are not available yet.
+        </Surface>
+      );
+    }
+
+    return (
+      <>
+        <section className="results-card" data-demo-anchor="public-results">
+          <div className="results-kicker">Finals results</div>
+          <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">Final standings</h2>
+          <div className="mt-3 text-sm text-slate-600">
+            Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
+          </div>
+          {publicResultsState.finalsPending ? (
+            <div className="results-alert mt-4">
+              Finals are live. Scores will appear here as judges save them.
+            </div>
+          ) : null}
+          <div className="finals-category-picker mt-5">
+            {finalsCategories.map((category) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => setSelectedFinalsCategory(category)}
+                className={
+                  category === activeFinalsCategory
+                    ? "finals-category-pill finals-category-pill-active"
+                    : "finals-category-pill"
+                }
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        </section>
+        <FinalsResultsTable
+          title={activeFinalsCategory}
+          rows={finalsRows}
+          revealMode={demoOverlayActive && (finalsRevealActive || revealedFinalsScoreCount > 0)}
+          revealedCount={Math.min(finalsRows.length, revealedFinalsScoreCount)}
+        />
+      </>
+    );
+  };
+
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
@@ -506,19 +568,21 @@ export default function CompetitionOverviewPage() {
               </div>
             </section>
 
+            {publicOverviewSections[0] === "finals" ? renderFinalsResultsSection() : null}
+
             <section className="results-card" data-demo-anchor="public-leaderboard">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="results-kicker">Leaderboard</div>
+                  <div className="results-kicker">{publicStandingsCopy.kicker}</div>
                   <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">
-                    Public standings
+                    {publicStandingsCopy.title}
                   </h2>
                   <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600">
-                    Live rankings and finalists stay visible to spectators from the public event surface.
+                    {publicStandingsCopy.description}
                   </p>
                 </div>
                 <Link href={buildCompetitionPath(slug, "leaderboard")} className={buttonStyles({ variant: "secondary" })}>
-                  Open full leaderboard
+                  {publicStandingsCopy.linkLabel}
                 </Link>
               </div>
 
@@ -547,7 +611,7 @@ export default function CompetitionOverviewPage() {
                   </div>
                 </div>
               ) : (
-                <div className="results-meta-card mt-6 text-slate-600">No qualifier scores are public yet.</div>
+                <div className="results-meta-card mt-6 text-slate-600">{publicStandingsCopy.emptyText}</div>
               )}
 
               {qualifierPreviewRows.length ? (
@@ -592,45 +656,7 @@ export default function CompetitionOverviewPage() {
               ) : null}
             </section>
 
-            {finalsActive ? (
-              finalsRows.length ? (
-                <>
-                  <section className="results-card" data-demo-anchor="public-results">
-                    <div className="results-kicker">Finals results</div>
-                    <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">Final standings</h2>
-                    <div className="mt-3 text-sm text-slate-600">
-                      Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
-                    </div>
-                    <div className="finals-category-picker mt-5">
-                      {finalsCategories.map((category) => (
-                        <button
-                          key={category}
-                          type="button"
-                          onClick={() => setSelectedFinalsCategory(category)}
-                          className={
-                            category === selectedFinalsCategory
-                              ? "finals-category-pill finals-category-pill-active"
-                              : "finals-category-pill"
-                          }
-                        >
-                          {category}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                  <FinalsResultsTable
-                    title={selectedFinalsCategory}
-                    rows={finalsRows}
-                    revealMode={demoOverlayActive && (finalsRevealActive || revealedFinalsScoreCount > 0)}
-                    revealedCount={Math.min(finalsRows.length, revealedFinalsScoreCount)}
-                  />
-                </>
-              ) : (
-                <Surface variant="card" className="text-slate-600" data-demo-anchor="public-results">
-                  Finals are active, but no finals scores have been entered yet.
-                </Surface>
-              )
-            ) : null}
+            {publicOverviewSections[1] === "finals" ? renderFinalsResultsSection() : null}
 
             <section className="results-card" data-demo-anchor="public-schedule">
               <div className="results-kicker">{activeScrambleSession ? "Active scramble session" : "Live schedule"}</div>
