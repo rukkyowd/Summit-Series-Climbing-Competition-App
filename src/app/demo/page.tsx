@@ -55,7 +55,7 @@ async function getDemoCompetitions() {
               .limit(1),
             supabase
               .from("competition_finalists")
-              .select("id")
+              .select("climber_id")
               .eq("competition_id", competitionId)
               .limit(1),
             supabase
@@ -100,13 +100,12 @@ async function getDemoCompetitions() {
 
 export default async function DemoPage() {
   const demos = await getDemoCompetitions();
-  const latestDemo = demos[0] ?? null;
 
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light />
-        <DemoEntry latestDemo={latestDemo} />
+        <DemoEntry demos={demos} />
       </div>
     </main>
   );
