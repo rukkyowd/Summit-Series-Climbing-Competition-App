@@ -166,11 +166,17 @@ export function getDemoJudgeWizardGuidance(
 
 export function getDemoOrganizerWizardGuidance({
   qualifierLocked,
+  hasSemifinal = false,
+  semifinalOpened = false,
+  semifinalLocked = false,
   finalistsPersisted,
   finalsScoresReady = finalistsPersisted,
   advancementSourceLabel = "qualifier",
 }: {
   qualifierLocked: boolean;
+  hasSemifinal?: boolean;
+  semifinalOpened?: boolean;
+  semifinalLocked?: boolean;
   finalistsPersisted: boolean;
   finalsScoresReady?: boolean;
   advancementSourceLabel?: string;
@@ -199,12 +205,40 @@ export function getDemoOrganizerWizardGuidance({
 
   if (!qualifierLocked) {
     return {
-      title: "Set the finals field",
-      instruction: `Lock ${sourceLabel}s so the cut line cannot change.`,
-      why: `Finalists should only be advanced after ${sourceLabel} scoring is frozen.`,
-      blockingMessage: `Lock ${sourceLabel}s before advancing finalists.`,
+      title: hasSemifinal ? "Prepare semifinals" : "Set the finals field",
+      instruction: hasSemifinal
+        ? "Lock qualifiers, then open semifinals."
+        : "Lock qualifiers so the finals field is based on stable scores.",
+      why: hasSemifinal
+        ? "Semifinals should only open after qualifier scoring is frozen."
+        : "Finalists should only be advanced after qualifier scoring is frozen.",
+      blockingMessage: hasSemifinal
+        ? "Lock qualifiers before opening semifinals."
+        : "Lock qualifiers before advancing finalists.",
       primaryActionLabel: "Show lock button",
       primaryTargetAnchor: "organizer-lock-qualifiers",
+    };
+  }
+
+  if (hasSemifinal && !semifinalOpened) {
+    return {
+      title: "Open semifinals",
+      instruction: "Open semifinals so judges can score the next round.",
+      why: "The semifinal round uses the same real judge workflow as qualifiers, but with its own active round.",
+      blockingMessage: "Open semifinals before reviewing semifinal standings.",
+      primaryActionLabel: "Show semifinals button",
+      primaryTargetAnchor: "organizer-open-semifinals",
+    };
+  }
+
+  if (hasSemifinal && !semifinalLocked) {
+    return {
+      title: "Set the finals field",
+      instruction: "Lock semifinals, then advance finalists.",
+      why: "The finals field should come from frozen semifinal standings.",
+      blockingMessage: "Lock semifinals before advancing finalists.",
+      primaryActionLabel: "Show semifinal lock",
+      primaryTargetAnchor: "organizer-lock-semifinals",
     };
   }
 

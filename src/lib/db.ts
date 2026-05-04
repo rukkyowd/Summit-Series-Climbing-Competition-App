@@ -332,7 +332,7 @@ function assertFinalsWindowOpen(competition: Competition) {
 
 function requireActiveQualifierStyleRound(competition: Competition) {
   const round = getActiveQualifierStyleRound(competition);
-  if (!round) {
+  if (!round || !isRoundActiveForCompetitionPhase(competition, round)) {
     throw new Error("No active qualifier-style round is configured for scoring.");
   }
 
@@ -1485,10 +1485,12 @@ export async function updateQualifierAttemptByStaff(
   if (!climber) {
     throw new Error("Climber not found.");
   }
-  const { round: linkedRound } = resolveClimberAssignedQualifierRound(competition, climber);
   const activeRound = requireActiveQualifierStyleRound(competition);
-  if (activeRound.id !== linkedRound.id) {
-    throw new Error(ROUND_VALIDATION_ERRORS.mismatchedClimberRound);
+  if (activeRound.runtime_phase === "qualifier_open" && activeRound.round_type === "qualifier") {
+    const { round: linkedRound } = resolveClimberAssignedQualifierRound(competition, climber);
+    if (activeRound.id !== linkedRound.id) {
+      throw new Error(ROUND_VALIDATION_ERRORS.mismatchedClimberRound);
+    }
   }
   const normalized = normalizeQualifierAttemptInput({
     attemptCount,

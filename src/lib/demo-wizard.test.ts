@@ -159,12 +159,40 @@ describe("demo wizard helpers", () => {
     expect(
       getDemoOrganizerWizardGuidance({
         qualifierLocked: false,
+        hasSemifinal: true,
         finalistsPersisted: false,
         advancementSourceLabel: "semifinal",
       })
     ).toMatchObject({
-      instruction: "Lock semifinals so the cut line cannot change.",
+      instruction: "Lock qualifiers, then open semifinals.",
+      blockingMessage: "Lock qualifiers before opening semifinals.",
+      primaryTargetAnchor: "organizer-lock-qualifiers",
+    });
+    expect(
+      getDemoOrganizerWizardGuidance({
+        qualifierLocked: true,
+        hasSemifinal: true,
+        semifinalOpened: false,
+        finalistsPersisted: false,
+        advancementSourceLabel: "semifinal",
+      })
+    ).toMatchObject({
+      instruction: "Open semifinals so judges can score the next round.",
+      primaryTargetAnchor: "organizer-open-semifinals",
+    });
+    expect(
+      getDemoOrganizerWizardGuidance({
+        qualifierLocked: true,
+        hasSemifinal: true,
+        semifinalOpened: true,
+        semifinalLocked: false,
+        finalistsPersisted: false,
+        advancementSourceLabel: "semifinal",
+      })
+    ).toMatchObject({
+      instruction: "Lock semifinals, then advance finalists.",
       blockingMessage: "Lock semifinals before advancing finalists.",
+      primaryTargetAnchor: "organizer-lock-semifinals",
     });
   });
 

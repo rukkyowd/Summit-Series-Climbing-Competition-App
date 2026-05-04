@@ -5,6 +5,7 @@ import {
   canRegisterForScheduleBlock,
   canClimberSelfScoreQualifier,
   canRegisterDuringCompetition,
+  canStaffScoreQualifier,
   canUseLiveBoulderQueue,
   DEFAULT_COMPETITION,
   formatCompetitionDateBadge,
@@ -55,6 +56,9 @@ describe("competition phases", () => {
     expect(canRegisterDuringCompetition({ current_phase: "qualifier_closed" })).toBe(false);
     expect(canClimberSelfScoreQualifier({ current_phase: "qualifier_open", format: "scramble" })).toBe(true);
     expect(canClimberSelfScoreQualifier({ current_phase: "qualifier_closed", format: "scramble" })).toBe(false);
+    expect(canStaffScoreQualifier({ current_phase: "qualifier_open" })).toBe(true);
+    expect(canStaffScoreQualifier({ current_phase: "wall_reset" })).toBe(true);
+    expect(canStaffScoreQualifier({ current_phase: "qualifier_closed" })).toBe(false);
   });
 
   it("allows future registration windows during qualifier_closed when explicit dates are still open", () => {

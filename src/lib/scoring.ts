@@ -1425,7 +1425,7 @@ export function canUseLiveBoulderQueue(
 }
 
 export function canStaffScoreQualifier(competition: Pick<Competition, "current_phase">) {
-  return competition.current_phase === "qualifier_open";
+  return competition.current_phase === "qualifier_open" || competition.current_phase === "wall_reset";
 }
 
 export function canStaffScoreFinals(competition: Pick<Competition, "current_phase">) {
