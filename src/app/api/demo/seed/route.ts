@@ -8,6 +8,7 @@ import {
   CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
   CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES,
   CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+  CASCADE_CUP_DEMO_SCENARIO,
   buildCascadeCupScorecardUrl,
   getCascadeCupCategoryRows,
   getCascadeCupSeedClimbers,
@@ -100,31 +101,6 @@ function scoreFor(climber: CascadeCupClimberSeed, climbNumber: number) {
     topped,
     attempts_to_top: topped ? attemptCount : null,
     attempts_to_zone: zone ? Math.max(1, Math.min(attemptCount || 1, 2)) : null,
-  };
-}
-
-function legacyScoreFor(climberNumber: string, climbNumber: number) {
-  if (climberNumber === DEMO_TARGET_CLIMBER_NUMBER && climbNumber === DEMO_TARGET_CLIMB_NUMBER) {
-    return {
-      attempt_count: 3,
-      zone: true,
-      topped: true,
-      attempts_to_top: 3,
-      attempts_to_zone: 1,
-    };
-  }
-
-  const numeric = Number(climberNumber);
-  const topped = (numeric + climbNumber) % 3 !== 0;
-  const zone = true;
-  const attemptCount = 1 + ((numeric + climbNumber) % 3);
-
-  return {
-    attempt_count: attemptCount,
-    zone,
-    topped,
-    attempts_to_top: topped ? attemptCount : null,
-    attempts_to_zone: zone ? Math.max(1, Math.min(attemptCount, 2)) : null,
   };
 }
 
@@ -628,6 +604,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "competitionId is required." }, { status: 400 });
   }
 
+  if (body.scenario && body.scenario !== CASCADE_CUP_DEMO_SCENARIO) {
+    return NextResponse.json(
+      { ok: false, error: `Unsupported demo scenario: ${body.scenario}.` },
+      { status: 400 }
+    );
+  }
+
   try {
     const supabase = createServiceRoleSupabaseClient();
     const { data: competition, error: competitionError } = await supabase
@@ -722,7 +705,10 @@ export async function POST(request: NextRequest) {
     const attempts = (insertedClimbers ?? []).flatMap((climber) =>
       Array.from({ length: CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS }, (_, index) => index + 1).map((climbNumber) => {
         const seed = seedByNumber.get(climber.climber_number as string);
-        const score = seed ? scoreFor(seed, climbNumber) : legacyScoreFor(climber.climber_number as string, climbNumber);
+        if (!seed) {
+          throw new Error(`Missing Cascade Cup score seed for climber #${climber.climber_number}.`);
+        }
+        const score = scoreFor(seed, climbNumber);
         return {
           competition_id: competitionRow.id,
           round_id: qualifierRoundId,

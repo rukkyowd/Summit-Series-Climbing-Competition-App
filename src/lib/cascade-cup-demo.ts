@@ -10,7 +10,7 @@ import {
 } from "./scoring";
 
 export const CASCADE_CUP_DEMO_SCENARIO = "cascade-cup";
-export const CASCADE_CUP_DEMO_NAME = "Cascade Cup 2026 - Youth";
+export const CASCADE_CUP_DEMO_NAME = "Cascade Cup 2026 — Youth";
 export const CASCADE_CUP_DEMO_SLUG = "cascade-cup-2026-youth";
 export const CASCADE_CUP_DEMO_LOCATION = "North Summit Climbing";
 export const CASCADE_CUP_DEMO_START_DATE = "2026-05-10";

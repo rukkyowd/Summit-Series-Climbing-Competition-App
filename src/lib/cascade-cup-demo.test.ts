@@ -5,11 +5,13 @@ import {
   CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
   CASCADE_CUP_DEMO_NAME,
   CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
+  buildCascadeCupScorecardUrl,
   buildCascadeCupRounds,
   buildCascadeCupScheduleBlocks,
   getCascadeCupCategoryRows,
   getCascadeCupCreateFormDefaults,
   getCascadeCupSeedClimbers,
+  isCascadeCupScenario,
 } from "./cascade-cup-demo";
 
 describe("Cascade Cup demo scenario", () => {
@@ -24,6 +26,24 @@ describe("Cascade Cup demo scenario", () => {
       endDate: "2026-05-10",
       maxClimbers: 80,
     });
+    expect(defaults.name).toBe("Cascade Cup 2026 — Youth");
+  });
+
+  it("recognizes only the Cascade Cup scenario key", () => {
+    expect(isCascadeCupScenario("cascade-cup")).toBe(true);
+    expect(isCascadeCupScenario("other-demo")).toBe(false);
+    expect(isCascadeCupScenario(undefined)).toBe(false);
+  });
+
+  it("builds the seeded athlete scorecard URL without a reseed request", () => {
+    const url = new URL(
+      buildCascadeCupScorecardUrl("cascade-cup-2026-youth", "competition-1"),
+      "https://example.test"
+    );
+
+    expect(url.pathname).toBe("/c/cascade-cup-2026-youth/scorecard");
+    expect(url.searchParams.get("demo")).toBe("1");
+    expect(url.searchParams.get("token")).toBe("scorecard-demo-seed-competition-1-104");
   });
 
   it("creates six youth championship categories for the sales demo", () => {

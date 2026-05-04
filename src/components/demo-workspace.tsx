@@ -119,6 +119,9 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
   }
 
   const latestDemo = demos[0] ?? null;
+  const latestDemoSeeded = latestDemo
+    ? Boolean(demoStates[latestDemo.id]?.progress?.dataPopulated)
+    : false;
 
   return (
     <div className="space-y-6">
@@ -174,7 +177,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
           <Button
             type="button"
             variant="secondary"
-            disabled={!latestDemo}
+            disabled={!latestDemo || !latestDemoSeeded}
             onClick={() => latestDemo && router.push(`/c/${latestDemo.slug}?demo=1`)}
           >
             Skip to Public
@@ -202,105 +205,108 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
 
         {demos.length ? (
           <div className="grid gap-3">
-            {demos.map((demo) => (
-              <div key={demo.id} className="rounded-[1.25rem] border border-slate-200 bg-white/80 p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <div className="text-lg font-semibold text-slate-950">{demo.name}</div>
-                    <div className="mt-1 text-sm text-slate-500">/{demo.slug}</div>
-                    <div className="mt-2 text-sm leading-6 text-slate-600">
-                      Script path: homepage, staff setup, judge B3 correction, leaderboard cut line,
-                      organizer operations, public results, cleanup.
+            {demos.map((demo) => {
+              const seeded = Boolean(demoStates[demo.id]?.progress?.dataPopulated);
+              return (
+                <div key={demo.id} className="rounded-[1.25rem] border border-slate-200 bg-white/80 p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="text-lg font-semibold text-slate-950">{demo.name}</div>
+                      <div className="mt-1 text-sm text-slate-500">/{demo.slug}</div>
+                      <div className="mt-2 text-sm leading-6 text-slate-600">
+                        Script path: homepage, staff setup, judge B3 correction, leaderboard cut line,
+                        organizer operations, public results, cleanup.
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="results-chip">
+                          {demoStates[demo.id]?.progress?.dataPopulated ? "Seeded" : "Needs seed"}
+                        </span>
+                        <span className="results-chip">
+                          {demoStates[demo.id]?.progress?.keyScoreCorrected ? "Maya corrected" : "Maya Top in 3"}
+                        </span>
+                        <span className="results-chip">
+                          {demoStates[demo.id]?.progress?.organizerAdvanced ? "Finals started" : "Organizer pending"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="results-chip">
-                        {demoStates[demo.id]?.progress?.dataPopulated ? "Seeded" : "Needs seed"}
-                      </span>
-                      <span className="results-chip">
-                        {demoStates[demo.id]?.progress?.keyScoreCorrected ? "Maya corrected" : "Maya Top in 3"}
-                      </span>
-                      <span className="results-chip">
-                        {demoStates[demo.id]?.progress?.organizerAdvanced ? "Finals started" : "Organizer pending"}
-                      </span>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={isPending}
+                        onClick={() =>
+                          runWithFeedback(async () => {
+                            const payload = await seedDemo(demo.id);
+                            setMessage(
+                              payload.target
+                                ? `Scenario reset: #${payload.target.climberNumber} ${payload.target.name} B${payload.target.climbNumber} is back to ${payload.target.before}.`
+                                : "Scenario reset."
+                            );
+                            router.refresh();
+                          })
+                        }
+                      >
+                        Restart Scenario
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        disabled={isPending}
+                        onClick={() =>
+                          runWithFeedback(async () => {
+                            if (!seeded) {
+                              const payload = await seedDemo(demo.id);
+                              router.push(payload.judgeUrl ?? `/staff/c/${demo.slug}/judge?demo=1`);
+                              return;
+                            }
+                            router.push(`/staff/c/${demo.slug}/judge?demo=1`);
+                          })
+                        }
+                      >
+                        {seeded ? "Open Judge Demo" : "Seed + Open Judge"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!seeded}
+                        onClick={() => router.push(`/c/${demo.slug}/leaderboard?demo=1`)}
+                      >
+                        Open Leaderboard
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={() => router.push(`/staff/c/${demo.slug}?demo=1`)}>
+                        Organizer Demo
+                      </Button>
+                      <Button type="button" variant="secondary" disabled={!seeded} onClick={() => router.push(`/c/${demo.slug}?demo=1`)}>
+                        Public Demo
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!seeded}
+                        onClick={() => router.push(buildCascadeCupScorecardUrl(demo.slug, demo.id))}
+                      >
+                        {seeded ? "Athlete Scorecard" : "Seed first for scorecard"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        disabled={isPending}
+                        onClick={() =>
+                          runWithFeedback(async () => {
+                            await completeDemo(demo.id);
+                            await clearOfflineQueueForCompetition(demo.id);
+                            setMessage("Demo deleted.");
+                            router.refresh();
+                          })
+                        }
+                      >
+                        Delete Demo
+                      </Button>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={isPending}
-                      onClick={() =>
-                        runWithFeedback(async () => {
-                          const payload = await seedDemo(demo.id);
-                          setMessage(
-                            payload.target
-                              ? `Scenario reset: #${payload.target.climberNumber} ${payload.target.name} B${payload.target.climbNumber} is back to ${payload.target.before}.`
-                              : "Scenario reset."
-                          );
-                          router.refresh();
-                        })
-                      }
-                    >
-                      Restart Scenario
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="primary"
-                      disabled={isPending}
-                      onClick={() =>
-                        runWithFeedback(async () => {
-                          const payload = await seedDemo(demo.id);
-                          router.push(payload.judgeUrl ?? `/staff/c/${demo.slug}/judge?demo=1`);
-                        })
-                      }
-                    >
-                      Open Judge Demo
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => router.push(`/c/${demo.slug}/leaderboard?demo=1`)}
-                    >
-                      Open Leaderboard
-                    </Button>
-                    <Button type="button" variant="secondary" onClick={() => router.push(`/staff/c/${demo.slug}?demo=1`)}>
-                      Organizer Demo
-                    </Button>
-                    <Button type="button" variant="secondary" onClick={() => router.push(`/c/${demo.slug}?demo=1`)}>
-                      Public Demo
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={isPending}
-                      onClick={() =>
-                        runWithFeedback(async () => {
-                          const payload = await seedDemo(demo.id);
-                          router.push(payload.scorecardUrl ?? buildCascadeCupScorecardUrl(demo.slug, demo.id));
-                        })
-                      }
-                    >
-                      Athlete Scorecard
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      disabled={isPending}
-                      onClick={() =>
-                        runWithFeedback(async () => {
-                          await completeDemo(demo.id);
-                          await clearOfflineQueueForCompetition(demo.id);
-                          setMessage("Demo deleted.");
-                          router.refresh();
-                        })
-                      }
-                    >
-                      Delete Demo
-                    </Button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">

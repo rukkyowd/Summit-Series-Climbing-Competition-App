@@ -30,6 +30,7 @@ type StaffEventCreationFormProps = {
   showCapacity?: boolean;
   showRegistrationStory?: boolean;
   hideSubmit?: boolean;
+  formatLockedNotice?: string | null;
   onChange: (values: StaffEventCreationFormValues) => void;
   onSubmit: () => void;
   importedLinksSummary?: string | null;
@@ -71,6 +72,7 @@ export function StaffEventCreationForm({
   showCapacity = false,
   showRegistrationStory = false,
   hideSubmit = false,
+  formatLockedNotice = null,
   onChange,
   onSubmit,
   importedLinksSummary,
@@ -114,7 +116,7 @@ export function StaffEventCreationForm({
             value={values.format}
             onChange={(event) => onChange({ ...values, format: event.target.value as EventFormat })}
             className="results-input"
-            disabled={formDisabled}
+            disabled={formDisabled || Boolean(formatLockedNotice)}
           >
             {formatOptions.map((template) => (
               <option key={template.value} value={template.value}>
@@ -122,6 +124,11 @@ export function StaffEventCreationForm({
               </option>
             ))}
           </select>
+          {formatLockedNotice ? (
+            <span className="mt-2 block text-xs font-semibold leading-5 text-sky-700">
+              {formatLockedNotice}
+            </span>
+          ) : null}
         </label>
 
         <label className="results-field-group" htmlFor="create-event-location">

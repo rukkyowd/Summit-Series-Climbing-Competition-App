@@ -2,11 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import SiteHeader from "@/components/site-header";
 import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import {
+  DEMO_TARGET_CLIMB_NUMBER,
+  DEMO_TARGET_CLIMBER_NAME,
+  DEMO_TARGET_CLIMBER_NUMBER,
+  isDemoTargetCorrected,
+} from "@/lib/demo-scenario";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
+import { filterAttemptsForRound, getActiveQualifierStyleRound } from "@/lib/scoring";
 
 export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
@@ -77,6 +85,22 @@ export default function CompetitionLeaderboardPage() {
       ).map(([category, rows]) => ({ category, rows }))
     : [];
   const rowAnimationKey = useMemo(() => (demoGuideActive ? lastUpdatedAt : 0), [demoGuideActive, lastUpdatedAt]);
+  const activeQualifierRoundId =
+    snapshot?.activeQualifierRound?.id ??
+    (snapshot ? getActiveQualifierStyleRound(snapshot.competition)?.id : null);
+  const demoTargetClimber = snapshot?.climbers.find(
+    (climber) =>
+      climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
+      climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
+  );
+  const demoTargetAttempt =
+    demoTargetClimber && activeQualifierRoundId
+      ? filterAttemptsForRound(demoTargetClimber.qualifier_attempts, activeQualifierRoundId).find(
+          (attempt) => attempt.climb_number === DEMO_TARGET_CLIMB_NUMBER
+        ) ?? null
+      : null;
+  const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
+  const demoWizardActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
 
   return (
     <main className="results-page">
@@ -86,8 +110,28 @@ export default function CompetitionLeaderboardPage() {
         {error ? <Alert variant="error">{error}</Alert> : null}
         {snapshot?.competition.is_demo ? (
           <div className="results-alert results-alert-success">
-            Demo event: this public leaderboard reads the same scores saved from the real judge panel.
+            Demo event: this public leaderboard refreshes every few seconds from the same scores saved by the real judge panel.
           </div>
+        ) : null}
+        {demoWizardActive ? (
+          <DemoWizardSidebar
+            currentStep="judge"
+            title="Watch the cut line move"
+            instruction="Use this leaderboard to show how Maya's B3 correction changes the standings story."
+            why="The sales moment is seeing one judge save ripple into public rankings without rebuilding the event."
+            progress={{
+              eventReady: true,
+              dataPopulated: Boolean(snapshot?.climbers.length),
+              keyScoreCorrected: demoTargetCorrected,
+              organizerAdvanced: false,
+              publicReady: false,
+            }}
+            primaryAction={{ label: "Back to Organizer", href: `/staff/c/${slug}?demo=1` }}
+            secondaryActions={[
+              { label: "Judge panel", href: `/staff/c/${slug}/judge?demo=1` },
+              { label: "Demo home", href: "/demo" },
+            ]}
+          />
         ) : null}
 
         {snapshot ? (

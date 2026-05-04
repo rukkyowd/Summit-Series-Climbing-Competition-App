@@ -2,15 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
+import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { Alert } from "@/components/ui/alert";
 import { buttonStyles } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
+import {
+  DEMO_TARGET_CLIMB_NUMBER,
+  DEMO_TARGET_CLIMBER_NAME,
+  DEMO_TARGET_CLIMBER_NUMBER,
+  isDemoTargetCorrected,
+} from "@/lib/demo-scenario";
+import { clearOfflineQueueForCompetition } from "@/lib/staff-offline-queue";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
@@ -20,14 +28,19 @@ import {
   formatTimeRange,
   formatUsesSelfScoredQualifiers,
   getActiveQueueSessionBlock,
+  getActiveQualifierStyleRound,
   getActiveScheduleBlock,
   getTimeSlotLabel,
+  filterAttemptsForRound,
   parseScheduleTimeToMinutes,
 } from "@/lib/scoring";
 
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
+  const demoGuideActive = searchParams?.get("demo") === "1";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -164,6 +177,28 @@ export default function CompetitionOverviewPage() {
     snapshot?.competition.current_phase === "finals_closed" ||
     snapshot?.competition.current_phase === "results";
   const resultsPublished = snapshot?.competition.current_phase === "results";
+  const activeQualifierRoundId =
+    snapshot?.activeQualifierRound?.id ??
+    (snapshot ? getActiveQualifierStyleRound(snapshot.competition)?.id : null);
+  const demoTargetClimber = snapshot?.climbers.find(
+    (climber) =>
+      climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
+      climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
+  );
+  const demoTargetAttempt =
+    demoTargetClimber && activeQualifierRoundId
+      ? filterAttemptsForRound(demoTargetClimber.qualifier_attempts, activeQualifierRoundId).find(
+          (attempt) => attempt.climb_number === DEMO_TARGET_CLIMB_NUMBER
+        ) ?? null
+      : null;
+  const demoWizardActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
+  const demoWizardProgress = {
+    eventReady: Boolean(snapshot),
+    dataPopulated: Boolean(snapshot?.climbers.length),
+    keyScoreCorrected: isDemoTargetCorrected(demoTargetAttempt),
+    organizerAdvanced: resultsPublished,
+    publicReady: resultsPublished,
+  };
   const liveCategoryCount = activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids).length : 0;
   const overviewNavItems = useMemo(
     () => [
@@ -229,6 +264,25 @@ export default function CompetitionOverviewPage() {
     }
   }, [finalsCategories, finalsGroups, selectedFinalsCategory]);
 
+  const finishDemo = useCallback(async () => {
+    if (!snapshot?.competition.id) {
+      throw new Error("Demo competition is not loaded yet.");
+    }
+
+    const response = await fetch("/api/demo/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ competitionId: snapshot.competition.id }),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Unable to finish demo.");
+    }
+
+    await clearOfflineQueueForCompetition(snapshot.competition.id);
+    router.push("/demo");
+  }, [router, snapshot?.competition.id]);
+
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
@@ -243,6 +297,29 @@ export default function CompetitionOverviewPage() {
                 Demo event: use this page to view the public schedule, leaderboard links, and results exactly
                 as competitors and spectators would see them.
               </div>
+            ) : null}
+            {demoWizardActive ? (
+              <DemoWizardSidebar
+                currentStep="public"
+                title={resultsPublished ? "View public results" : "Public page preview"}
+                instruction={
+                  resultsPublished
+                    ? "Review the schedule and final standings, then finish the demo when you are done."
+                    : "The public page is available now. Publish results from Organizer Operations for the full ending."
+                }
+                why="This is the buyer-facing payoff: athletes, parents, coaches, and spectators see one polished event page."
+                progress={demoWizardProgress}
+                primaryAction={
+                  resultsPublished
+                    ? { label: "Finish Demo", onClick: finishDemo }
+                    : { label: "Back to Organizer", href: `/staff/c/${slug}?demo=1` }
+                }
+                secondaryActions={[
+                  { label: "Leaderboard", href: `/c/${slug}/leaderboard?demo=1` },
+                  ...(resultsPublished ? [] : [{ label: "Finish Demo", onClick: finishDemo }]),
+                  { label: "Demo home", href: "/demo" },
+                ]}
+              />
             ) : null}
             <CompetitionHero competition={snapshot.competition} />
 

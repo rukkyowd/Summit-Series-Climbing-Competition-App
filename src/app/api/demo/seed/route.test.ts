@@ -283,6 +283,15 @@ describe("demo seed route", () => {
     expect(mockState.competitionUpdates).toEqual([]);
   });
 
+  it("rejects unsupported demo scenarios before touching the database", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1", scenario: "other-demo" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toContain("Unsupported demo scenario");
+    expect(mockState.from).not.toHaveBeenCalled();
+  });
+
   it("reseeds Maya B3 as Top in 3 and returns a preselected judge URL", async () => {
     const response = await POST(jsonRequest({ competitionId: "competition-1" }));
     const body = await response.json();
@@ -317,6 +326,8 @@ describe("demo seed route", () => {
     expect(body.leaderboardUrl).toBe("/c/demo-comp/leaderboard?demo=1");
     expect(body.organizerUrl).toBe("/staff/c/demo-comp?demo=1");
     expect(body.scorecardUrl).toContain("/c/demo-comp/scorecard?");
+    expect(body.scorecardUrl).toContain("token=scorecard-demo-seed-competition-1-104");
+    expect(body.scorecardUrl).toContain("demo=1");
     expect(body.inserted).toMatchObject({ climbers: 48, attempts: 960 });
   });
 

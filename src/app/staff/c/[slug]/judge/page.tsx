@@ -3,6 +3,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
+import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import { QualifierScoreEditor } from "@/components/judge/qualifier-score-editor";
@@ -799,6 +800,34 @@ export default function StaffJudgePage() {
     [activeQualifierRoundId, demoTargetClimber]
   );
   const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
+  const demoWizardActive = demoGuideActive && snapshot?.competition.is_demo;
+  const demoWizardProgress = {
+    eventReady: Boolean(snapshot),
+    dataPopulated: Boolean(snapshot?.climbers.length && demoTargetClimber && demoTargetAttempt),
+    keyScoreCorrected: demoTargetCorrected,
+    organizerAdvanced: false,
+    publicReady: false,
+  };
+
+  const highlightDemoTarget = useCallback(() => {
+    if (!demoTargetClimber) {
+      setMessage("Maya Chen is not available in this judge panel yet. Restart the scenario from Demo Home.");
+      return;
+    }
+
+    setStage("qualifier");
+    setQuery(DEMO_TARGET_CLIMBER_NUMBER);
+    setSelectedQualifierClimberId(demoTargetClimber.id);
+    setSelectedBoulder(DEMO_TARGET_CLIMB_NUMBER);
+    setSelectedCell({ climberId: demoTargetClimber.id, climbNumber: DEMO_TARGET_CLIMB_NUMBER });
+    window.requestAnimationFrame(() => {
+      document.getElementById("judge-demo-score-editor")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    setMessage("Maya Chen #104 and B3 are selected. The guide has not changed or saved any score.");
+  }, [demoTargetClimber]);
 
   const selectedQualifierDraftKey = selectedQualifierClimber ? `${selectedQualifierClimber.id}:${selectedBoulder}` : "";
   const selectedQualifierDraft = selectedQualifierClimber
@@ -1353,6 +1382,28 @@ export default function StaffJudgePage() {
           detail={saveFeedbackDetail}
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
+        {demoWizardActive ? (
+          <DemoWizardSidebar
+            currentStep="judge"
+            title={demoTargetCorrected ? "Maya's key score is corrected" : "Correct Maya Chen on B3"}
+            instruction={
+              demoTargetCorrected
+                ? "The database now shows Maya Chen B3 as Top in 1. Continue to the organizer workflow."
+                : "Find Maya Chen #104, select B3, change Top from attempt 3 to attempt 1, then save."
+            }
+            why="This score correction moves the cut-line story using the same protected judge save path as a live event."
+            progress={demoWizardProgress}
+            primaryAction={
+              demoTargetCorrected
+                ? { label: "Continue to Organizer", href: `/staff/c/${slug}?demo=1` }
+                : { label: "Highlight Maya / B3", onClick: highlightDemoTarget }
+            }
+            secondaryActions={[
+              { label: "Leaderboard impact", href: `/c/${slug}/leaderboard?demo=1` },
+              { label: "Demo home", href: "/demo" },
+            ]}
+          />
+        ) : null}
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">
           <div className="results-workspace-hero">
             <div>
