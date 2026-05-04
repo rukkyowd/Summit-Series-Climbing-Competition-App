@@ -2,23 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import CompetitionHero from "@/components/competition-hero";
-import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
+import { DemoGuideBanner } from "@/components/demo-guide-banner";
 import FinalsResultsTable from "@/components/finals-results-table";
 import { Alert } from "@/components/ui/alert";
 import { buttonStyles } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
-import {
-  DEMO_TARGET_CLIMB_NUMBER,
-  DEMO_TARGET_CLIMBER_NAME,
-  DEMO_TARGET_CLIMBER_NUMBER,
-  isDemoTargetCorrected,
-} from "@/lib/demo-scenario";
-import { clearOfflineQueueForCompetition } from "@/lib/staff-offline-queue";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 import {
   buildCompetitionPath,
@@ -28,19 +21,16 @@ import {
   formatTimeRange,
   formatUsesSelfScoredQualifiers,
   getActiveQueueSessionBlock,
-  getActiveQualifierStyleRound,
   getActiveScheduleBlock,
   getTimeSlotLabel,
-  filterAttemptsForRound,
   parseScheduleTimeToMinutes,
 } from "@/lib/scoring";
 
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
-  const demoGuideActive = searchParams?.get("demo") === "1";
+  const demoGuideActive = searchParams?.get("demo") === "act4";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -177,28 +167,15 @@ export default function CompetitionOverviewPage() {
     snapshot?.competition.current_phase === "finals_closed" ||
     snapshot?.competition.current_phase === "results";
   const resultsPublished = snapshot?.competition.current_phase === "results";
-  const activeQualifierRoundId =
-    snapshot?.activeQualifierRound?.id ??
-    (snapshot ? getActiveQualifierStyleRound(snapshot.competition)?.id : null);
-  const demoTargetClimber = snapshot?.climbers.find(
-    (climber) =>
-      climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
-      climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
+  const demoOverlayActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
+  const finalistRows = useMemo(
+    () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
+    [snapshot?.finalists]
   );
-  const demoTargetAttempt =
-    demoTargetClimber && activeQualifierRoundId
-      ? filterAttemptsForRound(demoTargetClimber.qualifier_attempts, activeQualifierRoundId).find(
-          (attempt) => attempt.climb_number === DEMO_TARGET_CLIMB_NUMBER
-        ) ?? null
-      : null;
-  const demoWizardActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
-  const demoWizardProgress = {
-    eventReady: Boolean(snapshot),
-    dataPopulated: Boolean(snapshot?.climbers.length),
-    keyScoreCorrected: isDemoTargetCorrected(demoTargetAttempt),
-    organizerAdvanced: resultsPublished,
-    publicReady: resultsPublished,
-  };
+  const qualifierPreviewRows = useMemo(
+    () => [...(snapshot?.qualifierLeaderboard ?? [])].slice(0, 8),
+    [snapshot?.qualifierLeaderboard]
+  );
   const liveCategoryCount = activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids).length : 0;
   const overviewNavItems = useMemo(
     () => [
@@ -264,25 +241,6 @@ export default function CompetitionOverviewPage() {
     }
   }, [finalsCategories, finalsGroups, selectedFinalsCategory]);
 
-  const finishDemo = useCallback(async () => {
-    if (!snapshot?.competition.id) {
-      throw new Error("Demo competition is not loaded yet.");
-    }
-
-    const response = await fetch("/api/demo/complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ competitionId: snapshot.competition.id }),
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    if (!response.ok) {
-      throw new Error(payload?.error ?? "Unable to finish demo.");
-    }
-
-    await clearOfflineQueueForCompetition(snapshot.competition.id);
-    router.push("/demo");
-  }, [router, snapshot?.competition.id]);
-
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
@@ -298,29 +256,27 @@ export default function CompetitionOverviewPage() {
                 as competitors and spectators would see them.
               </div>
             ) : null}
-            {demoWizardActive ? (
-              <DemoWizardSidebar
-                currentStep="public"
-                title={resultsPublished ? "View public results" : "Public page preview"}
-                instruction={
-                  resultsPublished
-                    ? "Review the schedule and final standings, then finish the demo when you are done."
-                    : "The public page is available now. Publish results from Organizer Operations for the full ending."
-                }
-                why="This is the buyer-facing payoff: athletes, parents, coaches, and spectators see one polished event page."
-                progress={demoWizardProgress}
-                primaryAction={
-                  resultsPublished
-                    ? { label: "Jump to public results", targetAnchor: "public-results" }
-                    : { label: "Back to Organizer", href: `/staff/c/${slug}?demo=1` }
-                }
-                secondaryActions={[
-                  { label: "Jump to schedule", targetAnchor: "public-schedule" },
-                  { label: "Leaderboard", href: `/c/${slug}/leaderboard?demo=1` },
-                  { label: "Finish Demo", onClick: finishDemo },
-                  { label: "Demo home", href: "/demo" },
-                ]}
-              />
+            {demoOverlayActive ? (
+              <>
+                <DemoGuideBanner
+                  title="Demo - Public View"
+                  body="This is what climbers and spectators see."
+                  actions={[
+                    { label: "Live Leaderboard", href: `/c/${slug}/leaderboard?demo=act4` },
+                    { label: "Organizer Dashboard", href: `/staff/c/${slug}?demo=act3` },
+                  ]}
+                />
+                <DemoGuideBanner
+                  eyebrow="Demo Complete"
+                  title="You've run a full climbing competition."
+                  body="The event, judge scores, finalist field, and public page are all using the real app workflow."
+                  tone="success"
+                  actions={[
+                    { label: "Run Again", href: "/demo", primary: true },
+                    { label: "Create Real Event", href: "/staff/new" },
+                  ]}
+                />
+              </>
             ) : null}
             <CompetitionHero competition={snapshot.competition} />
 
@@ -388,6 +344,89 @@ export default function CompetitionOverviewPage() {
                   </div>
                 </div>
               </div>
+            </section>
+
+            <section className="results-card" data-demo-anchor="public-leaderboard">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="results-kicker">Leaderboard</div>
+                  <h2 className="mt-2 break-words text-3xl font-semibold tracking-tight text-slate-950">
+                    Public standings
+                  </h2>
+                  <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600">
+                    Live rankings and finalists stay visible to spectators from the public event surface.
+                  </p>
+                </div>
+                <Link href={buildCompetitionPath(slug, "leaderboard")} className={buttonStyles({ variant: "secondary" })}>
+                  Open full leaderboard
+                </Link>
+              </div>
+
+              {qualifierPreviewRows.length ? (
+                <div className="results-data-scroll mt-6 hidden md:block">
+                  <div className="min-w-[760px]">
+                    <div className="grid grid-cols-[0.5fr_1.4fr_1fr_0.7fr_0.7fr] gap-4 border-b border-slate-200 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <div>Rank</div>
+                      <div>Athlete</div>
+                      <div>Category</div>
+                      <div>Tops</div>
+                      <div>Zones</div>
+                    </div>
+                    {qualifierPreviewRows.map((entry) => (
+                      <div key={entry.climber_id} className="grid grid-cols-[0.5fr_1.4fr_1fr_0.7fr_0.7fr] gap-4 border-b border-slate-100 px-5 py-4 text-sm text-slate-700">
+                        <div className="font-semibold text-slate-950">#{entry.category_rank}</div>
+                        <div className="min-w-0">
+                          <div className="break-words font-semibold text-slate-950">{entry.name}</div>
+                          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">#{entry.climber_number}</div>
+                        </div>
+                        <div>{entry.display_category}</div>
+                        <div>{entry.topped_count}</div>
+                        <div>{entry.zone_count}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="results-meta-card mt-6 text-slate-600">No qualifier scores are public yet.</div>
+              )}
+
+              {qualifierPreviewRows.length ? (
+                <div className="mt-6 space-y-3 md:hidden">
+                  {qualifierPreviewRows.map((entry) => (
+                    <div key={entry.climber_id} className="results-meta-card">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="break-words text-lg font-semibold text-slate-950">{entry.name}</div>
+                          <div className="mt-1 break-words text-sm leading-relaxed text-slate-600">
+                            #{entry.climber_number} | {entry.display_category}
+                          </div>
+                        </div>
+                        <span className="results-chip">#{entry.category_rank}</span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <span className="results-chip">{entry.topped_count} tops</span>
+                        <span className="results-chip">{entry.zone_count} zones</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {finalistRows.length ? (
+                <div className="mt-6 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                  <div className="results-kicker text-emerald-700">Finalists</div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {finalistRows.map((finalist) => (
+                      <div key={finalist.climber_id} className="rounded-[1rem] border border-emerald-200 bg-white/85 px-3 py-3 text-sm">
+                        <div className="font-semibold text-slate-950">{finalist.name}</div>
+                        <div className="mt-1 text-slate-600">
+                          {finalist.display_category} | Qualifier rank #{finalist.qualifier_rank}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             {finalsActive ? (

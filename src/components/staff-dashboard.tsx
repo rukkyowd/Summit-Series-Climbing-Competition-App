@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
-import { DemoWizardSidebar, type DemoWizardSidebarProps } from "@/components/demo-wizard-sidebar";
+import { DemoGuideBanner } from "@/components/demo-guide-banner";
 import {
   StaffEventCreationForm,
   type StaffEventCreationFormValues,
@@ -17,17 +17,6 @@ import { Badge } from "@/components/ui/badge";
 import { Surface } from "@/components/ui/surface";
 import { getAuthState, signOutUser, type Profile } from "@/lib/auth";
 import { buildFinalsCsv, buildQualifierCsv, downloadCsv } from "@/lib/export";
-import {
-  CASCADE_CUP_AGE_GROUPS,
-  CASCADE_CUP_DEMO_COUNTING_CLIMBS,
-  CASCADE_CUP_DEMO_FINALS_CUTOFF,
-  CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT,
-  CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES,
-  CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS,
-  CASCADE_CUP_DEMO_SCENARIO,
-  getCascadeCupCreateFormDefaults,
-  isCascadeCupScenario,
-} from "@/lib/cascade-cup-demo";
 import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
@@ -188,10 +177,6 @@ const ORGANIZER_BUILD_TRANSITION_STEPS = [
   "Seeding practice scores",
   "Opening judge workspace",
 ] as const;
-
-function waitForDemoHandoff(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
 
 const ORGANIZER_STEP_LABELS = unusedOrganizerStepLabels;
 const DEMO_AUTOPLAY_ENABLED = false;
@@ -503,11 +488,11 @@ const SETUP_STEP_COACHING = [
 ] as const;
 
 const ACT1_SANDBOX_STEP_GUIDANCE: Record<(typeof SETUP_WIZARD_STEPS)[number]["id"], string> = {
-  basics: "Start with the same basics organizers use for a real event: identity, format, dates, and registration timing.",
-  presets: "Presets are optional accelerators here. Pick one if it helps, or keep customizing manually.",
-  categories: "Categories decide who can register and which divisions can later be scored or advanced.",
-  schedule: "Schedule blocks connect the public event timeline to what staff and judges run on comp day.",
-  stages: "Stages define qualifier/finals rounds, problem counts, scoring buckets, and advancement rules.",
+  basics: "Name your event and set location + dates. This is what climbers will see publicly.",
+  presets: "Optional starting point. You can fully customize everything.",
+  categories: "Define divisions (e.g. Youth A, Open). These determine rankings and finals.",
+  schedule: "Controls when climbers compete and judges score.",
+  stages: "Add competition stages. For the full demo: include a Finals stage and choose how many advance.",
 };
 
 const ACT1_SANDBOX_OPERATIONS_GUIDANCE =
@@ -631,9 +616,8 @@ export default function StaffDashboard({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const guidedDemoActive = searchParams?.get("demo") === "1";
-  const demoScenario = searchParams?.get("scenario") ?? "";
-  const cascadeCupDemoActive = demoSeedOnCreate && isCascadeCupScenario(demoScenario);
+  const demoAct = searchParams?.get("demo") ?? "";
+  const guidedDemoActive = demoAct === "act3";
   const demoMode = false;
   const [allSummaries, setAllSummaries] = useState<CompetitionSummary[]>([]);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
@@ -732,13 +716,11 @@ export default function StaffDashboard({
     };
   }>(null);
   const [demoSeedPending, setDemoSeedPending] = useState(false);
-  const [demoWizardProgress, setDemoWizardProgress] = useState<DemoWizardSidebarProps["progress"]>({
-    eventReady: false,
-    dataPopulated: false,
-    keyScoreCorrected: false,
-    organizerAdvanced: false,
-    publicReady: false,
-  });
+  const [demoFinalsWarningAcknowledged, setDemoFinalsWarningAcknowledged] = useState(false);
+
+  useEffect(() => {
+    setDemoFinalsWarningAcknowledged(false);
+  }, [draft?.id]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -832,24 +814,6 @@ export default function StaffDashboard({
 
     setMessage("Guided demo mode: create the event normally, then choose when to add sample climbers.");
   }, [demoSeedOnCreate]);
-
-  useEffect(() => {
-    if (!cascadeCupDemoActive) {
-      return;
-    }
-
-    const defaults = getCascadeCupCreateFormDefaults();
-    setCreateName(defaults.name);
-    setCreateFormat(defaults.format);
-    setCreateLocation(defaults.location);
-    setCreateStartDate(defaults.startDate);
-    setCreateEndDate(defaults.endDate);
-    setCreateDescription(defaults.description);
-    setCreateRegistrationOpensAt(defaults.registrationOpensAt);
-    setCreateRegistrationClosesAt(defaults.registrationClosesAt);
-    setCreateMaxClimbers(defaults.maxClimbers);
-    setMessage("Cascade Cup defaults loaded. Review the real form, create the demo event, then seed sample climbers.");
-  }, [cascadeCupDemoActive]);
 
   useEffect(() => {
     const importedName = sanitizeDraftText(initialCreateDraft?.name);
@@ -1077,58 +1041,13 @@ export default function StaffDashboard({
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const selectedCompetitionIsDemo = draft ? isDemoCompetitionRecord(draft) : false;
-  const demoPublicPath = guidedDemoActive && selectedCompetitionIsDemo && publicPath ? `${publicPath}?demo=1` : publicPath;
+  const demoPublicPath = guidedDemoActive && selectedCompetitionIsDemo && publicPath ? `${publicPath}?demo=act4` : publicPath;
   const demoLeaderboardPath =
-    guidedDemoActive && selectedCompetitionIsDemo && leaderboardPath ? `${leaderboardPath}?demo=1` : leaderboardPath;
-  const demoJudgeUrl = guidedDemoActive && selectedCompetitionIsDemo && judgeUrl ? `${judgeUrl}?demo=1` : judgeUrl;
+    guidedDemoActive && selectedCompetitionIsDemo && leaderboardPath ? `${leaderboardPath}?demo=act4` : leaderboardPath;
+  const demoJudgeUrl = guidedDemoActive && selectedCompetitionIsDemo && judgeUrl ? `${judgeUrl}?demo=act2` : judgeUrl;
   const canEditPhase = profile?.role === "admin";
   const canEditSetup = profile?.role === "admin";
   const canRestoreDemo = false;
-
-  useEffect(() => {
-    if (!draft || !selectedCompetitionIsDemo || (!guidedDemoActive && !demoSeedOnCreate)) {
-      setDemoWizardProgress({
-        eventReady: Boolean(draft),
-        dataPopulated: false,
-        keyScoreCorrected: false,
-        organizerAdvanced: false,
-        publicReady: false,
-      });
-      return;
-    }
-
-    let cancelled = false;
-    const competitionId = draft.id;
-    const publicReady = draft.current_phase === "results";
-    async function loadDemoWizardProgress() {
-      const response = await fetch(`/api/demo/state?competitionId=${encodeURIComponent(competitionId)}`, {
-        cache: "no-store",
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        ok?: boolean;
-        progress?: DemoWizardSidebarProps["progress"];
-      } | null;
-      if (!cancelled && payload?.ok && payload.progress) {
-        setDemoWizardProgress({
-          ...payload.progress,
-          publicReady,
-        });
-      }
-    }
-
-    void loadDemoWizardProgress().catch(() => {
-      if (!cancelled) {
-        setDemoWizardProgress((current) => ({
-          ...current,
-          eventReady: true,
-        }));
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [demoSeedOnCreate, draft, guidedDemoActive, selectedCompetitionIsDemo]);
   const showLegacyEventRunner = false;
   const liveScheduleBlock = draft?.schedule_blocks.find((block) => block.is_active) ?? null;
   const impliedCompetitionPhase = liveScheduleBlock
@@ -1567,19 +1486,6 @@ export default function StaffDashboard({
     });
   };
 
-  const seedDemoFinalsResults = async (competitionId: string) => {
-    const response = await fetch("/api/demo/finals-results", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ competitionId }),
-    });
-    const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-
-    if (!response.ok || !payload?.ok) {
-      throw new Error(payload?.error ?? "Unable to seed demo finals results.");
-    }
-  };
-
   const confirmPublishResults = () => {
     if (!draft) {
       return;
@@ -1597,12 +1503,6 @@ export default function StaffDashboard({
           "Results published.",
           resultsBlock?.id
         );
-        if (selectedCompetitionIsDemo) {
-          setMessage("Results published. Adding demo finals scores...");
-          await seedDemoFinalsResults(draft.id);
-          await refreshAfterChange(draft.id);
-          setMessage("Results published with demo finals scores.");
-        }
       },
     });
   };
@@ -1629,6 +1529,11 @@ export default function StaffDashboard({
       return;
     }
 
+    if (demoSeedOnCreate && !qualifierCategories.length) {
+      setError("You must add at least one category");
+      return;
+    }
+
     startTransition(() => {
       void (async () => {
         try {
@@ -1652,6 +1557,10 @@ export default function StaffDashboard({
       throw new Error("No event is selected.");
     }
 
+    if (demoSeedOnCreate && !qualifierCategories.length) {
+      throw new Error("You must add at least one category");
+    }
+
     setError("");
     setMessage("");
     await saveCompetitionConfig(draft.id, {
@@ -1661,7 +1570,7 @@ export default function StaffDashboard({
     });
     await refreshAfterChange(draft.id);
     setRoundPlanNeedsReset(false);
-  }, [draft, refreshAfterChange]);
+  }, [demoSeedOnCreate, draft, qualifierCategories.length, refreshAfterChange]);
 
   const seedDemoAndOpenJudge = useCallback(async () => {
     if (!draft || !demoAct1Ready) {
@@ -1669,33 +1578,22 @@ export default function StaffDashboard({
       return;
     }
 
-    if (!draft.categories.length) {
-      setError("Add at least one category before opening the judge panel.");
+    if (!qualifierCategories.length) {
+      setError("You must add at least one category");
       return;
     }
 
     setDemoSeedPending(true);
     setError("");
     setMessage("");
-    setBuildTransitionState({
-      active: true,
-      stepIndex: 0,
-      complete: false,
-    });
 
     try {
       await saveDraftNow();
-      setBuildTransitionState({
-        active: true,
-        stepIndex: 1,
-        complete: false,
-      });
       const response = await fetch("/api/demo/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           competitionId: draft.id,
-          scenario: cascadeCupDemoActive ? CASCADE_CUP_DEMO_SCENARIO : undefined,
         }),
       });
       const payload = (await response.json().catch(() => null)) as {
@@ -1715,19 +1613,7 @@ export default function StaffDashboard({
         if (!response.ok || !payload?.ok) {
           throw new Error(payload?.error ?? "Unable to seed demo data.");
         }
-  
-        setBuildTransitionState({
-          active: true,
-          stepIndex: 2,
-          complete: false,
-        });
-        await waitForDemoHandoff(450);
-        setBuildTransitionState({
-          active: true,
-          stepIndex: 3,
-          complete: true,
-        });
-        await waitForDemoHandoff(600);
+
         setDemoAct1Ready((current) =>
           current
             ? {
@@ -1739,17 +1625,12 @@ export default function StaffDashboard({
         );
         router.push(payload.judgeUrl ?? demoAct1Ready.judgeUrl);
       } catch (nextError) {
-        setBuildTransitionState({
-          active: false,
-          stepIndex: 0,
-          complete: false,
-        });
         setError(nextError instanceof Error ? nextError.message : "Unable to open the judge panel.");
         setMessage("");
       } finally {
         setDemoSeedPending(false);
       }
-    }, [cascadeCupDemoActive, demoAct1Ready, draft, router, saveDraftNow]);
+    }, [demoAct1Ready, draft, qualifierCategories.length, router, saveDraftNow]);
 
   const resetDemoSessionCompetition = useCallback(async () => {
     setError("");
@@ -2277,27 +2158,24 @@ export default function StaffDashboard({
     }
 
     const warnings: Array<{ tone: "error" | "warning"; message: string }> = [];
-    if (!draft.categories.length) {
+    if (!qualifierCategories.length) {
       warnings.push({
         tone: "error",
-        message: "Add at least one category before opening the judge panel.",
+        message: "You must add at least one category",
       });
     }
-    if (!competitionHasFinals(draft) || !currentCompetitionStages.some((round) => round.scoring_bucket === "finals")) {
+    if (
+      !demoFinalsWarningAcknowledged &&
+      (!competitionHasFinals(draft) || !currentCompetitionStages.some((round) => round.scoring_bucket === "finals"))
+    ) {
       warnings.push({
         tone: "warning",
-        message: "The demo includes finals. Continue anyway or add one.",
-      });
-    }
-    if (!draft.schedule_blocks.length) {
-      warnings.push({
-        tone: "warning",
-        message: "No schedule blocks yet. Continue anyway or add schedule blocks so the day has structure.",
+        message: "This demo includes finals.",
       });
     }
 
     return warnings;
-  }, [currentCompetitionStages, demoAct1CreatedForCurrentDraft, draft]);
+  }, [currentCompetitionStages, demoAct1CreatedForCurrentDraft, demoFinalsWarningAcknowledged, draft, qualifierCategories.length]);
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
     : "No stage flow yet";
@@ -2943,68 +2821,28 @@ export default function StaffDashboard({
         {error ? <Alert variant="error">{error}</Alert> : null}
         {message ? <Alert variant="success">{message}</Alert> : null}
         {demoSeedOnCreate ? (
-          <DemoWizardSidebar
-            currentStep="create"
-            title={demoAct1CreatedForCurrentDraft ? "Event shell created" : "Create the Cascade Cup event"}
-            instruction={
+          <DemoGuideBanner
+            title={demoAct1CreatedForCurrentDraft ? "Your event is ready." : "Demo - Organizer"}
+            body={
               demoAct1CreatedForCurrentDraft
-                ? "Review the event, then seed sample climbers only when you are ready for the judge panel."
-                : "Use the real staff form, review Cascade Cup defaults, then create the demo event."
+                ? "Next: You'll act as a judge and score athletes."
+                : "Use the real event creation flow. Fill it out manually, then decide when to add sample climbers for the judge panel."
             }
-            why="This creates the believable event identity before the demo adds climbers, scores, and the judge-ready scenario."
-            progress={{
-              eventReady: Boolean(demoAct1CreatedForCurrentDraft),
-              dataPopulated: demoWizardProgress.dataPopulated,
-              keyScoreCorrected: demoWizardProgress.keyScoreCorrected,
-              organizerAdvanced: demoWizardProgress.organizerAdvanced,
-              publicReady: demoWizardProgress.publicReady,
-            }}
-            primaryAction={
-              demoAct1CreatedForCurrentDraft
-                ? {
-                    label: "Jump to Go to Judge Panel",
-                    targetAnchor: "organizer-go-judge",
-                    disabled: demoSeedPending,
-                  }
-                : { label: "Jump to event name", targetAnchor: "organizer-create-name" }
-            }
-            secondaryActions={
-              demoAct1CreatedForCurrentDraft
-                ? [
-                    { label: "Jump to setup summary", targetAnchor: "demo-organizer-setup" },
-                    { label: "Demo home", href: "/demo" },
-                  ]
-                : [
-                    { label: "Jump to format", targetAnchor: "organizer-create-format" },
-                    { label: "Jump to registration", targetAnchor: "organizer-create-registration" },
-                    { label: "Jump to create button", targetAnchor: "organizer-create-submit" },
-                    { label: "Demo home", href: "/demo" },
-                  ]
-            }
+            actions={[{ label: "Demo Home", href: "/demo" }]}
           />
         ) : guidedDemoActive && selectedCompetitionIsDemo && draft ? (
-          <DemoWizardSidebar
-            currentStep="organize"
-            title={resultsPublishedForOperations ? "Results are published" : "Advance the event day"}
-            instruction="Use the top Organizer Operations card: review standings, lock qualifiers, advance finals, then publish results."
-            why="This is the organizer workflow buyers care about: one live event moves from qualifier scoring into finals and public results."
-            progress={{
-              eventReady: true,
-              dataPopulated: demoWizardProgress.dataPopulated || Boolean(snapshot?.climbers.length),
-              keyScoreCorrected: demoWizardProgress.keyScoreCorrected,
-              organizerAdvanced: demoWizardProgress.organizerAdvanced || resultsPublishedForOperations,
-              publicReady: resultsPublishedForOperations,
-            }}
-            primaryAction={
-              { label: "Jump to Organizer Operations", targetAnchor: "organizer-operations" }
+          <DemoGuideBanner
+            title={finalistsPersisted ? "Finalists are set." : "Demo - Organizer"}
+            body={finalistsPersisted ? "Next: View the public event." : "Lock qualifiers and advance finalists."}
+            tone={finalistsPersisted ? "success" : "info"}
+            actions={
+              finalistsPersisted
+                ? [
+                    { label: "View Public Page", href: demoPublicPath, primary: true },
+                    { label: "Demo Home", href: "/demo" },
+                  ]
+                : [{ label: "Demo Home", href: "/demo" }]
             }
-            secondaryActions={[
-              { label: "Jump to standings button", targetAnchor: "organizer-open-leaderboard" },
-              { label: "Jump to lock qualifiers", targetAnchor: "organizer-lock-qualifiers" },
-              { label: "Jump to advance finals", targetAnchor: "organizer-advance-finals" },
-              { label: resultsPublishedForOperations ? "Open public results" : "Jump to publish results", ...(resultsPublishedForOperations ? { href: demoPublicPath } : { targetAnchor: "organizer-publish-results" }) },
-              { label: "Demo home", href: "/demo" },
-            ]}
           />
         ) : null}
         {demoMode && !isGuidedStoryAct1 ? (
@@ -3062,7 +2900,7 @@ export default function StaffDashboard({
                   Moving from organizer setup to the judge panel.
                 </h2>
                 <p className="max-w-2xl text-base leading-7 text-slate-600">
-                  The demo is saving this event, adding Cascade Cup climbers, seeding Maya Chen&apos;s B3 mistake, and opening the real judge workspace.
+                  The demo is saving this event, adding Summit Series athletes, seeding Athlete C&apos;s Boulder 3 correction, and opening the real judge workspace.
                 </p>
                 <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-4 py-2 text-sm font-medium text-sky-800">
                   <span className="demo-live-dot" aria-hidden="true" />
@@ -3170,11 +3008,10 @@ export default function StaffDashboard({
               <div className="space-y-2">
                 <div className="results-kicker text-emerald-700">Act 1 complete</div>
                 <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
-                  Your event is ready. Next, you&apos;ll score athletes as a judge.
+                  Your event is ready.
                 </h2>
                 <p className="max-w-3xl text-sm leading-6 text-slate-700">
-                  Review or adjust anything below. When you click Go to Judge Panel, we will save
-                  this setup, add sample climbers and scores, then open the real judge route.
+                  Next: You&apos;ll act as a judge and score athletes.
                 </p>
                 {demoAct1Warnings.length ? (
                   <div className="space-y-2">
@@ -3188,6 +3025,40 @@ export default function StaffDashboard({
                         }`}
                       >
                         {warning.message}
+                        {warning.message === "This demo includes finals." ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="results-secondary-button"
+                              onClick={() => {
+                                setCurrentSetupStep(4);
+                                setDraft((currentDraft) =>
+                                  currentDraft
+                                    ? {
+                                        ...currentDraft,
+                                        has_finals: true,
+                                        finals_eligible_age_groups: currentDraft.finals_eligible_age_groups.length
+                                          ? currentDraft.finals_eligible_age_groups
+                                          : currentDraft.qualifier_eligible_age_groups,
+                                      }
+                                    : currentDraft
+                                );
+                                if (!currentCompetitionStages.some((round) => round.scoring_bucket === "finals")) {
+                                  addRound("finals");
+                                }
+                              }}
+                            >
+                              Add Finals Stage
+                            </button>
+                            <button
+                              type="button"
+                              className="results-secondary-button"
+                              onClick={() => setDemoFinalsWarningAcknowledged(true)}
+                            >
+                              Continue Anyway
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -3197,11 +3068,11 @@ export default function StaffDashboard({
                 <button
                   type="button"
                   className="results-primary-button"
-                  disabled={demoSeedPending || !draft?.categories.length}
+                  disabled={demoSeedPending || !qualifierCategories.length}
                   onClick={() => void seedDemoAndOpenJudge()}
                   data-demo-anchor="organizer-go-judge"
                 >
-                  {demoSeedPending ? "Adding sample climbers..." : "Go to Judge Panel"}
+                  {demoSeedPending ? "Adding sample climbers..." : "Continue to Judge Panel"}
                 </button>
                 <Link href="/demo" className="results-secondary-button">
                   Back to Demo Home
@@ -3355,7 +3226,7 @@ export default function StaffDashboard({
                     {selectedCompetitionIsDemo && qualifierLockedForOperations && !projectedFinalistCount ? (
                       <>
                         {" "}
-                        If this demo looks stuck, restart the scenario from <Link href="/demo" className="font-semibold text-sky-700 underline">Demo Home</Link>.
+                        If this demo looks stuck, restart from <Link href="/demo" className="font-semibold text-sky-700 underline">Demo Home</Link>.
                       </>
                     ) : null}
                   </p>
@@ -3525,11 +3396,7 @@ export default function StaffDashboard({
                   description: createDescription,
                   maxClimbers: createMaxClimbers,
                 }}
-                formatOptions={
-                  cascadeCupDemoActive
-                    ? FORMAT_TEMPLATES.filter((template) => template.value === "five_on_five_off")
-                    : FORMAT_TEMPLATES
-                }
+                formatOptions={FORMAT_TEMPLATES}
                 disabled={!canEditSetup}
                 pending={isPending}
                 submitLabel={demoSeedOnCreate ? "Create demo event" : "Create new event"}
@@ -3537,11 +3404,7 @@ export default function StaffDashboard({
                 canSubmit={Boolean(createName.trim())}
                 showCapacity={demoSeedOnCreate}
                 showRegistrationStory={demoSeedOnCreate}
-                formatLockedNotice={
-                  cascadeCupDemoActive
-                    ? "Cascade Cup uses five-on-five-off with finals: 20 qualifier problems, 8 counting climbs, Top 6 finalists, and 4 finals boulders."
-                    : null
-                }
+                formatLockedNotice={null}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
                     ? `Imported official links:${createOfficialEventUrl ? " event page" : ""}${
@@ -3571,27 +3434,15 @@ export default function StaffDashboard({
                         const created = await createCompetitionFromTemplate({
                           name: sanitizeDraftText(createName),
                           format: createFormat,
-                          has_finals: cascadeCupDemoActive
-                            ? true
-                            : competitionAllowsOptionalFinals(createFormat)
-                              ? false
-                              : true,
+                          has_finals: competitionAllowsOptionalFinals(createFormat) ? false : true,
                           is_demo: demoSeedOnCreate,
-                          demo_scenario: cascadeCupDemoActive ? CASCADE_CUP_DEMO_SCENARIO : undefined,
                           location_name: sanitizeDraftText(createLocation),
                           start_date: sanitizeDraftText(createStartDate) || null,
                           end_date: sanitizeDraftText(createEndDate) || null,
                           registration_opens_at: sanitizeDraftNullable(createRegistrationOpensAt),
                           registration_closes_at: sanitizeDraftNullable(createRegistrationClosesAt),
                           description: sanitizeDraftText(createDescription),
-                          max_climbers: cascadeCupDemoActive ? createMaxClimbers : undefined,
-                          total_climbs: cascadeCupDemoActive ? CASCADE_CUP_DEMO_QUALIFIER_PROBLEMS : undefined,
-                          qualifier_counting_climbs: cascadeCupDemoActive ? CASCADE_CUP_DEMO_COUNTING_CLIMBS : undefined,
-                          finals_cutoff: cascadeCupDemoActive ? CASCADE_CUP_DEMO_FINALS_CUTOFF : undefined,
-                          finals_tie_advances: cascadeCupDemoActive ? CASCADE_CUP_DEMO_FINALS_TIE_ADVANCES : undefined,
-                          finals_problem_count: cascadeCupDemoActive ? CASCADE_CUP_DEMO_FINALS_PROBLEM_COUNT : undefined,
-                          qualifier_eligible_age_groups: cascadeCupDemoActive ? [...CASCADE_CUP_AGE_GROUPS] : undefined,
-                          finals_eligible_age_groups: cascadeCupDemoActive ? [...CASCADE_CUP_AGE_GROUPS] : undefined,
+                          max_climbers: demoSeedOnCreate ? createMaxClimbers : undefined,
                           hero_image_url: demoSeedOnCreate ? undefined : sanitizeExternalUrl(createHeroImageUrl) || undefined,
                           discipline_label: sanitizeDraftText(createDisciplineLabel) || undefined,
                           ...(demoSeedOnCreate
@@ -3606,7 +3457,7 @@ export default function StaffDashboard({
                           setDemoAct1Ready({
                             competitionId: created.id,
                             slug: created.slug,
-                            judgeUrl: `${buildStaffCompetitionPath(created.slug, "judge")}?demo=1`,
+                            judgeUrl: `${buildStaffCompetitionPath(created.slug, "judge")}?demo=act2`,
                           });
                           await refreshAfterChange(created.id);
                           setSelectedCompetitionId(created.id);
@@ -3712,7 +3563,7 @@ export default function StaffDashboard({
                 </h2>
                 <p className="text-sm leading-6 text-slate-600">
                   This is the normal staff creation flow. The demo will not add climbers or scores
-                  until the event exists and you choose <span className="font-semibold">Go to Judge Panel</span>.
+                  until the event exists and you choose <span className="font-semibold">Continue to Judge Panel</span>.
                 </p>
                 <div className="rounded-[1.2rem] border border-sky-100 bg-sky-50/80 px-4 py-3 text-sm leading-6 text-sky-950">
                   After creation, this page shows a simple success card with the handoff to the real

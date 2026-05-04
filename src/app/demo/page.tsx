@@ -1,5 +1,5 @@
 import SiteHeader from "@/components/site-header";
-import { DemoWorkspace } from "@/components/demo-workspace";
+import { DemoEntry } from "@/components/demo-entry";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
 async function getDemoCompetitions() {
@@ -28,12 +28,13 @@ async function getDemoCompetitions() {
 
 export default async function DemoPage() {
   const demos = await getDemoCompetitions();
+  const latestDemo = demos[0] ?? null;
 
   return (
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light />
-        <DemoWorkspace demos={demos} />
+        <DemoEntry latestDemo={latestDemo} />
       </div>
     </main>
   );

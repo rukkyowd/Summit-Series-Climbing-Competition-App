@@ -1,5 +1,5 @@
-export const DEMO_TARGET_CLIMBER_NUMBER = "104";
-export const DEMO_TARGET_CLIMBER_NAME = "Maya Chen";
+export const DEMO_TARGET_CLIMBER_NUMBER = "103";
+export const DEMO_TARGET_CLIMBER_NAME = "Athlete C";
 export const DEMO_TARGET_CLIMB_NUMBER = 3;
 export const DEMO_TARGET_BEFORE_LABEL = "Top in 3 attempts";
 export const DEMO_TARGET_AFTER_LABEL = "Top in 1 attempt";
@@ -41,7 +41,7 @@ export function isDemoTargetSeeded(attempt: DemoTargetAttemptState) {
 
 export function buildDemoJudgeUrl(slug: string, climberId: string | null | undefined) {
   const params = new URLSearchParams({
-    demo: "1",
+    demo: "act2",
     boulder: String(DEMO_TARGET_CLIMB_NUMBER),
   });
 
@@ -53,13 +53,13 @@ export function buildDemoJudgeUrl(slug: string, climberId: string | null | undef
 }
 
 export function buildDemoOrganizerUrl(slug: string) {
-  return `/staff/c/${slug}?demo=1`;
+  return `/staff/c/${slug}?demo=act3`;
 }
 
 export function buildDemoPublicUrl(slug: string) {
-  return `/c/${slug}?demo=1`;
+  return `/c/${slug}?demo=act4`;
 }
 
 export function buildDemoLeaderboardUrl(slug: string) {
-  return `/c/${slug}/leaderboard?demo=1`;
+  return `/c/${slug}/leaderboard?demo=act4`;
 }

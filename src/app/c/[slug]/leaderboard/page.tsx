@@ -2,26 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
+import { DemoGuideBanner } from "@/components/demo-guide-banner";
 import SiteHeader from "@/components/site-header";
 import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
-import {
-  DEMO_TARGET_CLIMB_NUMBER,
-  DEMO_TARGET_CLIMBER_NAME,
-  DEMO_TARGET_CLIMBER_NUMBER,
-  isDemoTargetCorrected,
-} from "@/lib/demo-scenario";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
-import { filterAttemptsForRound, getActiveQualifierStyleRound } from "@/lib/scoring";
 
 export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const presentationMode = searchParams?.get("presentation") === "1";
-  const demoGuideActive = searchParams?.get("demo") === "1";
+  const demoGuideActive = searchParams?.get("demo") === "act4";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState(0);
@@ -85,22 +78,7 @@ export default function CompetitionLeaderboardPage() {
       ).map(([category, rows]) => ({ category, rows }))
     : [];
   const rowAnimationKey = useMemo(() => (demoGuideActive ? lastUpdatedAt : 0), [demoGuideActive, lastUpdatedAt]);
-  const activeQualifierRoundId =
-    snapshot?.activeQualifierRound?.id ??
-    (snapshot ? getActiveQualifierStyleRound(snapshot.competition)?.id : null);
-  const demoTargetClimber = snapshot?.climbers.find(
-    (climber) =>
-      climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
-      climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
-  );
-  const demoTargetAttempt =
-    demoTargetClimber && activeQualifierRoundId
-      ? filterAttemptsForRound(demoTargetClimber.qualifier_attempts, activeQualifierRoundId).find(
-          (attempt) => attempt.climb_number === DEMO_TARGET_CLIMB_NUMBER
-        ) ?? null
-      : null;
-  const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
-  const demoWizardActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
+  const demoOverlayActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
 
   return (
     <main className="results-page">
@@ -113,28 +91,13 @@ export default function CompetitionLeaderboardPage() {
             Demo event: this public leaderboard refreshes every few seconds from the same scores saved by the real judge panel.
           </div>
         ) : null}
-        {demoWizardActive ? (
-          <DemoWizardSidebar
-            currentStep="judge"
-            title="Watch the cut line move"
-            instruction="Use this leaderboard to show how Maya's B3 correction changes the standings story."
-            why="The sales moment is seeing one judge save ripple into public rankings without rebuilding the event."
-            progress={{
-              eventReady: true,
-              dataPopulated: Boolean(snapshot?.climbers.length),
-              keyScoreCorrected: demoTargetCorrected,
-              organizerAdvanced: false,
-              publicReady: false,
-            }}
-            primaryAction={
-              demoTargetClimber
-                ? { label: "Jump to Maya row", targetAnchor: "leaderboard-maya-row" }
-                : { label: "Jump to standings", targetAnchor: "leaderboard-standings" }
-            }
-            secondaryActions={[
-              { label: "Back to Organizer", href: `/staff/c/${slug}?demo=1` },
-              { label: "Judge panel", href: `/staff/c/${slug}/judge?demo=1` },
-              { label: "Demo home", href: "/demo" },
+        {demoOverlayActive ? (
+          <DemoGuideBanner
+            title="Demo - Public View"
+            body="This live leaderboard uses the same public results surface climbers and spectators can open during the event."
+            actions={[
+              { label: "Public Page", href: `/c/${slug}?demo=act4`, primary: true },
+              { label: "Demo Home", href: "/demo" },
             ]}
           />
         ) : null}
@@ -179,12 +142,6 @@ export default function CompetitionLeaderboardPage() {
                             className={demoGuideActive ? "demo-leaderboard-row-update" : undefined}
                             style={demoGuideActive ? { animationDelay: `${Math.min(0.45, row.category_rank * 0.035)}s` } : undefined}
                             data-update-key={rowAnimationKey}
-                            data-demo-anchor={
-                              row.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
-                              row.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
-                                ? "leaderboard-maya-row"
-                                : undefined
-                            }
                           >
                             <td className="py-3 pr-3 font-semibold text-slate-950">#{row.category_rank}</td>
                             <td className="py-3 pr-3">

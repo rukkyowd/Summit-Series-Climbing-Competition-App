@@ -8,13 +8,13 @@ import {
 } from "./demo-scenario";
 
 describe("demo scenario helpers", () => {
-  it("builds judge links that preselect Maya and B3", () => {
-    expect(buildDemoJudgeUrl("demo-comp", "climber-104")).toBe(
-      `/staff/c/demo-comp/judge?demo=1&boulder=${DEMO_TARGET_CLIMB_NUMBER}&climberId=climber-104`
+  it("builds judge links that preselect Athlete C and Boulder 3", () => {
+    expect(buildDemoJudgeUrl("demo-comp", "climber-103")).toBe(
+      `/staff/c/demo-comp/judge?demo=act2&boulder=${DEMO_TARGET_CLIMB_NUMBER}&climberId=climber-103`
     );
   });
 
-  it("recognizes Maya's seeded scoring mistake as Top in 3", () => {
+  it("recognizes Athlete C's seeded scoring mistake as Top in 3", () => {
     expect(
       isDemoTargetSeeded({
         attempt_count: 3,
@@ -26,7 +26,7 @@ describe("demo scenario helpers", () => {
     ).toBe(true);
   });
 
-  it("only completes the judge act after Maya is Top in 1", () => {
+  it("only completes the judge act after Athlete C is Top in 1", () => {
     expect(
       isDemoTargetCorrected({
         attempt_count: 3,
@@ -49,6 +49,6 @@ describe("demo scenario helpers", () => {
   });
 
   it("documents the stable target number used by seed/state routes", () => {
-    expect(DEMO_TARGET_CLIMBER_NUMBER).toBe("104");
+    expect(DEMO_TARGET_CLIMBER_NUMBER).toBe("103");
   });
 });

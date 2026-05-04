@@ -2,9 +2,8 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { DemoJudgeSplitPanel } from "@/components/demo-judge-split-panel";
+import { DemoGuideBanner } from "@/components/demo-guide-banner";
 import { AthletePicker, type AthletePickerEntry, type AthletePickerStatusTone } from "@/components/judge/athlete-picker";
-import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import { JudgeStatusStrip } from "@/components/judge/judge-status-strip";
 import { OfflineQueuePanel } from "@/components/judge/offline-queue-panel";
 import { QualifierScoreEditor } from "@/components/judge/qualifier-score-editor";
@@ -23,7 +22,6 @@ import { getAuthState, type Profile } from "@/lib/auth";
 import { normalizeFinalAttemptInput, normalizeQualifierAttemptInput } from "@/lib/attempts";
 import {
   buildQueueMetadata,
-  clearOfflineQueueForCompetition,
   enqueueOfflineItem,
   markOfflineItemRetried,
   readOfflineQueue,
@@ -484,7 +482,7 @@ export default function StaffJudgePage() {
   const initialStage = searchParams?.get("stage") === "finals" ? "finals" : "qualifier";
   const initialClimberId = searchParams?.get("climberId") ?? "";
   const initialBoulder = Math.max(1, Number(searchParams?.get("boulder") ?? 1) || 1);
-  const demoGuideActive = searchParams?.get("demo") === "1";
+  const demoGuideActive = searchParams?.get("demo") === "act2";
   const [snapshot, setSnapshot] = useState<CompetitionSnapshot | null>(null);
   const snapshotRef = useRef<CompetitionSnapshot | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -646,13 +644,6 @@ export default function StaffJudgePage() {
           return;
         }
 
-        if (demoGuideActive && nextSnapshot.competition.is_demo) {
-          await clearOfflineQueueForCompetition(nextSnapshot.competition.id);
-          if (cancelled) {
-            return;
-          }
-        }
-
         setResolvedSnapshot(nextSnapshot);
         const qualifierNext: QualifierDraftState = {};
         const finalsNext: FinalsDraftState = {};
@@ -802,18 +793,11 @@ export default function StaffJudgePage() {
     [activeQualifierRoundId, demoTargetClimber]
   );
   const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
-  const demoWizardActive = demoGuideActive && snapshot?.competition.is_demo;
-  const demoWizardProgress = {
-    eventReady: Boolean(snapshot),
-    dataPopulated: Boolean(snapshot?.climbers.length && demoTargetClimber && demoTargetAttempt),
-    keyScoreCorrected: demoTargetCorrected,
-    organizerAdvanced: false,
-    publicReady: false,
-  };
+  const demoOverlayActive = demoGuideActive && snapshot?.competition.is_demo;
 
   const highlightDemoTarget = useCallback(() => {
     if (!demoTargetClimber) {
-      setMessage("Maya Chen is not available in this judge panel yet. Restart the scenario from Demo Home.");
+      setMessage(`${DEMO_TARGET_CLIMBER_NAME} is not available in this judge panel yet. Start from Demo Home and seed the event.`);
       return;
     }
 
@@ -825,7 +809,7 @@ export default function StaffJudgePage() {
     window.requestAnimationFrame(() => {
       jumpToDemoAnchor("judge-entry-cards");
     });
-    setMessage("Maya Chen #104 and B3 are selected. The guide has not changed or saved any score.");
+    setMessage(`${DEMO_TARGET_CLIMBER_NAME} #${DEMO_TARGET_CLIMBER_NUMBER} and Boulder ${DEMO_TARGET_CLIMB_NUMBER} are selected. The guide has not changed or saved any score.`);
   }, [demoTargetClimber]);
 
   const selectedQualifierDraftKey = selectedQualifierClimber ? `${selectedQualifierClimber.id}:${selectedBoulder}` : "";
@@ -1381,28 +1365,26 @@ export default function StaffJudgePage() {
           detail={saveFeedbackDetail}
           contextLabel={stage === "finals" ? "Finals save feedback" : "Qualifier save feedback"}
         />
-        {demoWizardActive ? (
-          <DemoWizardSidebar
-            currentStep="judge"
-            title={demoTargetCorrected ? "Maya's key score is corrected" : "Correct Maya Chen on B3"}
-            instruction={
+        {demoOverlayActive ? (
+          <DemoGuideBanner
+            title={demoTargetCorrected ? "Nice - the leaderboard is now accurate." : "Demo - Judge"}
+            body={
               demoTargetCorrected
-                ? "The database now shows Maya Chen B3 as Top in 1. Continue to the organizer workflow."
-                : "Find Maya Chen #104, select B3, change Top from attempt 3 to attempt 1, then save."
+                ? "Next: Advance finalists."
+                : `Find ${DEMO_TARGET_CLIMBER_NAME} and correct their score on Boulder ${DEMO_TARGET_CLIMB_NUMBER}.`
             }
-            why="This score correction moves the cut-line story using the same protected judge save path as a live event."
-            progress={demoWizardProgress}
-            primaryAction={
+            tone={demoTargetCorrected ? "success" : "info"}
+            actions={
               demoTargetCorrected
-                ? { label: "Continue to Organizer", href: `/staff/c/${slug}?demo=1` }
-                : { label: "Highlight Maya / B3", onClick: highlightDemoTarget, targetAnchor: "judge-entry-cards" }
+                ? [
+                    { label: "Go to Organizer Dashboard", href: `/staff/c/${slug}?demo=act3`, primary: true },
+                    { label: "Demo Home", href: "/demo" },
+                  ]
+                : [
+                    { label: "Highlight Athlete", onClick: highlightDemoTarget, primary: true },
+                    { label: "Demo Home", href: "/demo" },
+                  ]
             }
-            secondaryActions={[
-              { label: "Jump to B3 button", targetAnchor: "judge-b3-button" },
-              { label: "Jump to save score", targetAnchor: "judge-save-score" },
-              { label: "Jump to live leaderboard", targetAnchor: "judge-leaderboard-split" },
-              { label: "Demo home", href: "/demo" },
-            ]}
           />
         ) : null}
         <section className="results-card space-y-4" data-demo-anchor="judge-hero">
@@ -1469,7 +1451,7 @@ export default function StaffJudgePage() {
 
         {stage === "qualifier" ? (
           <section className="results-card" id="judge-demo-score-editor" data-demo-anchor="judge-score-workspace">
-            <div className={demoWizardActive ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]" : ""}>
+            <div>
               <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
                 <div data-demo-anchor="judge-athlete-picker">
                   <AthletePicker
@@ -1553,13 +1535,6 @@ export default function StaffJudgePage() {
                 }
               />
               </div>
-              {demoWizardActive ? (
-                <DemoJudgeSplitPanel
-                  competitionId={snapshot.competition.id}
-                  competitionSlug={slug}
-                  initialSnapshot={snapshot}
-                />
-              ) : null}
             </div>
           </section>
         ) : (

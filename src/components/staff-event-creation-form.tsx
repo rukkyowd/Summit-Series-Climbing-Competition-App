@@ -250,7 +250,7 @@ export function StaffEventCreationForm({
         <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-950">
           In a real event, athletes register through the public registration page, choose a
           category, and receive private scorecard links. In this sandbox, sample climbers and
-          scores are added only when you choose <span className="font-semibold">Go to Judge Panel</span>
+          scores are added only when you choose <span className="font-semibold">Continue to Judge Panel</span>
           after creating and reviewing the event.
         </div>
       ) : null}
