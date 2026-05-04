@@ -48,6 +48,19 @@ const SETUP_STEP_ANCHORS: Record<DemoSetupStepId, string> = {
   review: "organizer-save-event",
 };
 
+export const DEMO_SETUP_STEP_CARD_ANCHORS: Record<DemoSetupStepId, string> = {
+  basics: "organizer-step-basics",
+  presets: "organizer-step-preset",
+  categories: "organizer-step-categories",
+  schedule: "organizer-step-schedule",
+  stages: "organizer-step-stages",
+  review: "organizer-step-review",
+};
+
+export function getDemoSetupStepCardAnchor(stepId: DemoSetupStepId) {
+  return DEMO_SETUP_STEP_CARD_ANCHORS[stepId];
+}
+
 const SETUP_STEP_WHY: Record<DemoSetupStepId, string> = {
   basics: "This is the public event identity athletes and spectators will see.",
   presets: "The preset is only a starting point; choosing one or Custom makes the setup intentional.",

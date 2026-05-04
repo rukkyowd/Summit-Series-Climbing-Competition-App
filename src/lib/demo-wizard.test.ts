@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEMO_WIZARD_STEPS,
+  getDemoSetupStepCardAnchor,
   getDemoCreateWizardGuidance,
   getDemoJudgeWizardGuidance,
   getDemoOrganizerWizardGuidance,
@@ -8,7 +9,7 @@ import {
   isDemoWizardStepComplete,
   normalizeDemoWizardProgress,
 } from "@/lib/demo-wizard";
-import type { DemoSetupValidation } from "@/lib/demo-setup-validation";
+import { DEMO_SETUP_STEPS, type DemoSetupValidation } from "@/lib/demo-setup-validation";
 
 function validation(overrides: Partial<DemoSetupValidation> = {}): DemoSetupValidation {
   return {
@@ -73,6 +74,17 @@ describe("demo wizard helpers", () => {
       blockingMessage: "Add schedule.",
       primaryTargetAnchor: "organizer-schedule",
     });
+  });
+
+  it("has a stable step-card highlight target for every Act 1 setup step", () => {
+    expect(DEMO_SETUP_STEPS.map((step) => [step.id, getDemoSetupStepCardAnchor(step.id)])).toEqual([
+      ["basics", "organizer-step-basics"],
+      ["presets", "organizer-step-preset"],
+      ["categories", "organizer-step-categories"],
+      ["schedule", "organizer-step-schedule"],
+      ["stages", "organizer-step-stages"],
+      ["review", "organizer-step-review"],
+    ]);
   });
 
   it("targets the judge handoff when setup is complete", () => {

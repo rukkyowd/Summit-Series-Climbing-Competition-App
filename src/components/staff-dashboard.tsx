@@ -29,7 +29,9 @@ import { getDemoSetupValidation } from "@/lib/demo-setup-validation";
 import {
   getDemoCreateWizardGuidance,
   getDemoOrganizerWizardGuidance,
+  getDemoSetupStepCardAnchor,
 } from "@/lib/demo-wizard";
+import { jumpToDemoAnchor } from "@/lib/demo-jump-target";
 import {
   constrainFinalsEligibleAgeGroupsToSelectedCategories,
   finalsEligibilityUsesSelectedCategories,
@@ -192,6 +194,45 @@ function DemoSalesShell(_: Record<string, unknown>) {
 
 function OrganizerDemoTour(_: Record<string, unknown>) {
   return null;
+}
+
+function DemoHandoffOverlay({
+  active,
+  title,
+  currentText,
+  complete = false,
+}: {
+  active: boolean;
+  title: string;
+  currentText: string;
+  complete?: boolean;
+}) {
+  if (!active) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
+      <div
+        role="status"
+        aria-live="polite"
+        className="w-[min(22.5rem,calc(100vw-2rem))] rounded-[1.5rem] border border-white/60 bg-white/70 px-6 py-7 text-center text-slate-950 shadow-[0_28px_90px_rgba(15,23,42,0.28)] backdrop-blur-xl"
+      >
+        <div className="mx-auto flex h-1.5 w-16 overflow-hidden rounded-full bg-white/75 shadow-inner">
+          <div
+            className={`h-full rounded-full bg-sky-700 transition-all duration-500 ${
+              complete ? "w-full" : "w-1/2 animate-pulse"
+            }`}
+          />
+        </div>
+        <div className="results-kicker mt-6 text-slate-500">Guided handoff</div>
+        <h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight text-slate-950">
+          {title}
+        </h2>
+        <p className="mt-4 text-sm font-medium leading-6 text-slate-600">{currentText}</p>
+      </div>
+    </div>
+  );
 }
 
 function readDemoSalesSession() {
@@ -467,6 +508,12 @@ const SETUP_WIZARD_STEPS = [
     title: "Competition stages",
     description: "Fine-tune rounds, scoring buckets, problem counts, and advancement cutoffs.",
   },
+  {
+    id: "review",
+    shortLabel: "Review",
+    title: "Review and save",
+    description: "Confirm the setup, save the persisted event, and unlock the judge handoff.",
+  },
 ] as const;
 
 const SETUP_STEP_COACHING = [
@@ -490,6 +537,10 @@ const SETUP_STEP_COACHING = [
     task: "Confirm the scored stages, boulder counts, and advancement rules.",
     unlock: "This event is now ready to hand into live judging.",
   },
+  {
+    task: "Save the event and confirm the persisted setup matches this draft.",
+    unlock: "The guided demo can seed climbers and open the judge panel.",
+  },
 ] as const;
 
 const ACT1_SANDBOX_STEP_GUIDANCE: Record<(typeof SETUP_WIZARD_STEPS)[number]["id"], string> = {
@@ -498,6 +549,7 @@ const ACT1_SANDBOX_STEP_GUIDANCE: Record<(typeof SETUP_WIZARD_STEPS)[number]["id
   categories: "Define divisions (e.g. Youth A, Open). These determine rankings and finals.",
   schedule: "Controls when climbers compete and judges score.",
   stages: "Add competition stages. For the full demo: include a Finals stage and choose how many advance.",
+  review: "Save the event so the judge panel opens with the exact setup you just completed.",
 };
 
 const ACT1_SANDBOX_OPERATIONS_GUIDANCE =
@@ -690,6 +742,7 @@ export default function StaffDashboard({
     stepIndex: 0,
     complete: false,
   });
+  const [publicHandoffActive, setPublicHandoffActive] = useState(false);
   const [organizerDemoCursor, setOrganizerDemoCursor] = useState<OrganizerDemoCursorState>({
     visible: false,
     x: 0,
@@ -747,7 +800,17 @@ export default function StaffDashboard({
       );
       setSelectedCompetitionId((current) => {
         if (demoSeedOnCreate) {
-          return "";
+          if (current && summariesVisibleInThisContext.some((entry) => entry.competition.id === current)) {
+            return current;
+          }
+
+          const initialMatch = initialCompetitionSlug
+            ? summariesVisibleInThisContext.find((entry) => entry.competition.slug === initialCompetitionSlug)
+            : null;
+          const preferredDemoSummary = demoSessionCompetitionId
+            ? summariesVisibleInThisContext.find((entry) => entry.competition.id === demoSessionCompetitionId) ?? null
+            : null;
+          return initialMatch?.competition.id ?? preferredDemoSummary?.competition.id ?? "";
         }
 
         if (current && summariesVisibleInThisContext.some((entry) => entry.competition.id === current)) {
@@ -900,6 +963,7 @@ export default function StaffDashboard({
     setOrganizerAutoplayRunning(false);
     setOrganizerPlaybackStep(null);
     setOrganizerNarration(null);
+    setPublicHandoffActive(false);
     setOrganizerDemoCursor({
       visible: false,
       x: 0,
@@ -909,6 +973,10 @@ export default function StaffDashboard({
     });
   }, [draft?.id]);
 
+  const hasPersistedDraft =
+    !!draft &&
+    !!selectedSummary &&
+    JSON.stringify(cloneCompetition(draft)) === JSON.stringify(cloneCompetition(selectedSummary.competition));
   const setupStepCompletion = useMemo(() => {
     if (!draft) {
       return SETUP_WIZARD_STEPS.map(() => false);
@@ -951,12 +1019,9 @@ export default function StaffDashboard({
       categoriesReady,
       scheduleReady,
       stagesReady,
+      hasPersistedDraft,
     ];
-  }, [draft, linkedScheduleBlockCount, selectedGuidedSetupPreset]);
-  const hasPersistedDraft =
-    !!draft &&
-    !!selectedSummary &&
-    JSON.stringify(cloneCompetition(draft)) === JSON.stringify(cloneCompetition(selectedSummary.competition));
+  }, [draft, hasPersistedDraft, linkedScheduleBlockCount, selectedGuidedSetupPreset]);
   const demoSetupValidation = useMemo(
     () =>
       getDemoSetupValidation(draft, {
@@ -995,6 +1060,7 @@ export default function StaffDashboard({
         { id: "setup-categories", label: "Categories", stepIndex: 2 },
         { id: "setup-schedule", label: "Schedule", stepIndex: 3 },
         { id: "setup-stages", label: "Stages", stepIndex: 4 },
+        { id: "setup-review", label: "Review", stepIndex: 5 },
       ] as const,
     []
   );
@@ -2238,8 +2304,18 @@ export default function StaffDashboard({
         : activeSetupStepCompletion[4]
           ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} are ready to score.`
           : "Confirm the scored stages before moving on.",
+      hasPersistedDraft
+        ? "The saved event matches this setup and is ready for the judge handoff."
+        : "Save the event so the judge panel uses this exact setup.",
     ].slice(0, SETUP_WIZARD_STEPS.length);
-  }, [activeSetupStepCompletion, currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset]);
+  }, [
+    activeSetupStepCompletion,
+    currentCompetitionStages.length,
+    draft,
+    hasPersistedDraft,
+    orderedDraftScheduleBlocks.length,
+    selectedGuidedSetupPreset,
+  ]);
   const activeSetupCoaching = SETUP_STEP_COACHING[currentSetupStep] ?? SETUP_STEP_COACHING[0];
   const wizardGuardrails = useMemo(() => {
     if (!draft) {
@@ -2381,6 +2457,31 @@ export default function StaffDashboard({
     },
     [demoMode, demoSetupValidation.steps, isGuidedStoryAct1, maxReachableSetupStepIndex]
   );
+  const demoAct1PrimarySetupStepId =
+    demoSeedOnCreate && demoAct1CreatedForCurrentDraft && !demoSetupValidation.canContinueToJudge
+      ? demoSetupValidation.firstIncompleteStep
+      : null;
+  const handleDemoAct1SetupStepAction = useCallback(() => {
+    if (!demoAct1PrimarySetupStepId) {
+      return;
+    }
+
+    const stepIndex = SETUP_WIZARD_STEPS.findIndex((step) => step.id === demoAct1PrimarySetupStepId);
+    if (stepIndex < 0) {
+      return;
+    }
+
+    goToSetupStep(stepIndex);
+    const stepCardAnchor = getDemoSetupStepCardAnchor(demoAct1PrimarySetupStepId);
+    const sectionAnchor = demoAct1WizardGuidance.primaryTargetAnchor;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (!jumpToDemoAnchor(stepCardAnchor) && sectionAnchor) {
+          jumpToDemoAnchor(sectionAnchor);
+        }
+      });
+    });
+  }, [demoAct1PrimarySetupStepId, demoAct1WizardGuidance.primaryTargetAnchor, goToSetupStep]);
   const handleOrganizerPresetSelection = (presetId: CompetitionPresetId) => {
     if (
       draft &&
@@ -2443,6 +2544,7 @@ export default function StaffDashboard({
       stepIndex: 0,
       complete: false,
     });
+    setPublicHandoffActive(false);
     setOrganizerDemoCursor({
       visible: false,
       x: 0,
@@ -2520,6 +2622,24 @@ export default function StaffDashboard({
     (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms)),
     []
   );
+  const openDemoPublicPage = useCallback(async () => {
+    if (!demoPublicPath) {
+      setError("The public event page is not available yet.");
+      return;
+    }
+
+    if (!demoOrganizerReadyForPublic) {
+      setError("Finalists and demo finals scores must be ready before opening the public page.");
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setPublicHandoffActive(true);
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    await waitForOrganizerPlayback(reducedMotion ? 180 : 700);
+    router.push(demoPublicPath);
+  }, [demoOrganizerReadyForPublic, demoPublicPath, router, waitForOrganizerPlayback]);
   const moveOrganizerDemoCursor = useCallback(
     async (
       anchor: string,
@@ -3011,10 +3131,17 @@ export default function StaffDashboard({
               organizerAdvanced: false,
               publicReady: false,
             }}
-            primaryAction={{
-              label: demoAct1WizardGuidance.primaryActionLabel,
-              targetAnchor: demoAct1WizardGuidance.primaryTargetAnchor,
-            }}
+            primaryAction={
+              demoAct1PrimarySetupStepId
+                ? {
+                    label: demoAct1WizardGuidance.primaryActionLabel,
+                    onClick: handleDemoAct1SetupStepAction,
+                  }
+                : {
+                    label: demoAct1WizardGuidance.primaryActionLabel,
+                    targetAnchor: demoAct1WizardGuidance.primaryTargetAnchor,
+                  }
+            }
             secondaryActions={[{ label: "Demo Home", href: "/demo" }]}
           />
         ) : guidedDemoActive && selectedCompetitionIsDemo && draft ? (
@@ -3033,7 +3160,7 @@ export default function StaffDashboard({
             }}
             primaryAction={
               demoOrganizerReadyForPublic
-                ? { label: demoOrganizerWizardGuidance.primaryActionLabel, href: demoPublicPath }
+                ? { label: demoOrganizerWizardGuidance.primaryActionLabel, onClick: openDemoPublicPage }
                 : finalistsPersisted
                   ? {
                       label: demoOrganizerWizardGuidance.primaryActionLabel,
@@ -3094,7 +3221,21 @@ export default function StaffDashboard({
             }}
           />
         ) : null}
-        {(demoMode || demoSeedOnCreate) && buildTransitionState.active ? (
+        <DemoHandoffOverlay
+          active={demoSeedOnCreate && buildTransitionState.active}
+          title={buildTransitionState.complete ? "Opening Judge panel..." : "Traveling to Judge panel..."}
+          currentText={
+            ORGANIZER_BUILD_TRANSITION_STEPS[buildTransitionState.stepIndex] ??
+            ORGANIZER_BUILD_TRANSITION_STEPS[0]
+          }
+          complete={buildTransitionState.complete}
+        />
+        <DemoHandoffOverlay
+          active={guidedDemoActive && publicHandoffActive}
+          title="Traveling to Public results..."
+          currentText="Opening public results"
+        />
+        {demoMode && buildTransitionState.active ? (
           <Surface variant="card" className="overflow-hidden border-sky-200 bg-sky-50/70">
             <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
               <div className="space-y-3">
@@ -3453,7 +3594,16 @@ export default function StaffDashboard({
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   Finish live scoring and show final standings publicly.
                 </p>
-                {resultsPublishedForOperations ? (
+                {resultsPublishedForOperations && guidedDemoActive ? (
+                  <button
+                    type="button"
+                    onClick={() => void openDemoPublicPage()}
+                    className="results-secondary-button mt-4 w-full justify-center"
+                    data-demo-anchor="organizer-publish-results"
+                  >
+                    Open public results
+                  </button>
+                ) : resultsPublishedForOperations ? (
                   <Link
                     href={demoPublicPath}
                     className="results-secondary-button mt-4 w-full justify-center"
@@ -3968,17 +4118,7 @@ export default function StaffDashboard({
                           aria-current={isActive ? "step" : undefined}
                           disabled={organizerAutoplayRunning || isLocked}
                           title={isLocked ? "Complete prior setup steps first." : undefined}
-                          data-demo-anchor={
-                            step.id === "categories"
-                              ? "organizer-step-categories"
-                              : step.id === "presets"
-                                ? "organizer-step-preset"
-                                : step.id === "schedule"
-                                  ? "organizer-step-schedule"
-                                  : step.id === "stages"
-                                    ? "organizer-step-stages"
-                                    : undefined
-                          }
+                          data-demo-anchor={getDemoSetupStepCardAnchor(step.id)}
                           className={`group min-w-0 rounded-[1.5rem] border px-4 py-4 text-left transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-1 sm:px-5 sm:py-5 ${
                             isActive
                               ? "border-slate-950 bg-[linear-gradient(180deg,rgba(15,23,42,1),rgba(30,41,59,0.98))] text-white shadow-[0_28px_70px_rgba(15,23,42,0.24)] ring-1 ring-sky-200/40"
@@ -5085,6 +5225,65 @@ export default function StaffDashboard({
                     </div>
                   </div>
                 </div>
+
+                {currentSetupStep === 5 ? (
+                <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
+                <div
+                  id="setup-review"
+                  className={`results-workspace-card ${demoSeedOnCreate ? "border border-emerald-200/80 bg-[linear-gradient(180deg,rgba(240,253,244,0.94),rgba(255,255,255,0.98))] shadow-[0_18px_40px_rgba(16,185,129,0.08)]" : ""}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="results-kicker text-emerald-700">Step 6 - Review and save</div>
+                      <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                        Save the event before the judge handoff.
+                      </h3>
+                      <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                        This last check makes sure the event basics, categories, schedule, and scoring structure all match the persisted competition.
+                      </div>
+                    </div>
+                    <div className="results-chip">
+                      {readyToSaveChecklist.filter((item) => item.ok).length} / {readyToSaveChecklist.length} ready
+                    </div>
+                  </div>
+                  <div className="results-check-grid mt-4">
+                    {readyToSaveChecklist.map((item) => (
+                      <div
+                        key={`review-check-${item.label}`}
+                        className={`results-check-card ${item.ok ? "results-check-card-ok" : "results-check-card-warn"}`}
+                      >
+                        <div className="font-semibold">{item.label}</div>
+                        <div className="mt-1">{item.ok ? "Looks good." : "Still needs attention."}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={persistDraft}
+                      disabled={isPending || !canEditSetup}
+                      className="results-primary-button"
+                      data-demo-anchor="organizer-save-event"
+                    >
+                      {isPending ? "Saving..." : "Save competition"}
+                    </button>
+                    <button
+                      type="button"
+                      className="results-secondary-button"
+                      disabled={demoSeedPending || !demoSetupValidation.canContinueToJudge}
+                      onClick={() => void seedDemoAndOpenJudge()}
+                    >
+                      {demoSeedPending ? "Adding sample climbers..." : "Continue to Judge Panel"}
+                    </button>
+                  </div>
+                  {activeDemoSetupStepStatus?.blockingMessage ? (
+                    <div className="mt-4 rounded-[1rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                      {activeDemoSetupStepStatus.blockingMessage}
+                    </div>
+                  ) : null}
+                </div>
+                </fieldset>
+                ) : null}
 
                 {currentSetupStep === 4 ? (
                 <fieldset disabled={!demoMode && !canEditSetup} className={!demoMode && !canEditSetup ? "space-y-6 opacity-70" : "space-y-6"}>
