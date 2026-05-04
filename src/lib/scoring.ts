@@ -2044,8 +2044,8 @@ export function pickFinalists(
       return;
     }
 
-    entries.forEach((entry) => {
-      const withinCutoff = entry.category_rank <= advancementCutoff;
+    entries.forEach((entry, index) => {
+      const withinCutoff = index < advancementCutoff;
       const tiedAtCutoff =
         competition.finals_tie_advances &&
         entry.total_score === cutoffEntry.total_score &&

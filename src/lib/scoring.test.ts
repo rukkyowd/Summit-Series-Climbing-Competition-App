@@ -18,7 +18,9 @@ import {
   isRoundActiveForCompetitionPhase,
   normalizeCompetition,
   phaseToStageMode,
+  pickFinalists,
   pickPreferredQualifierCategory,
+  type QualifierLeaderboardEntry,
 } from "./scoring";
 
 describe("format capabilities", () => {
@@ -810,5 +812,99 @@ describe("leaderboard category defaults", () => {
     );
 
     expect(preferred).toBe("open");
+  });
+});
+
+describe("finalist selection", () => {
+  function qualifierEntry(input: {
+    id: string;
+    name: string;
+    rank: number;
+    score: number;
+    attempts: number;
+  }): QualifierLeaderboardEntry {
+    return {
+      climber_id: input.id,
+      name: input.name,
+      climber_number: input.id.replace("climber-", ""),
+      province: "NS",
+      category_id: "Men::Open",
+      display_category: "Men / Open",
+      gender_division: "Men",
+      age_group: "Open",
+      time_slot_id: null,
+      total_score: input.score,
+      counting_climbs: [],
+      all_climbs: [],
+      topped_count: 10,
+      zone_count: 10,
+      counting_attempt_total: input.attempts,
+      overall_rank: input.rank,
+      category_rank: input.rank,
+    };
+  }
+
+  const tiedCutLineEntries = [
+    qualifierEntry({ id: "climber-1", name: "Athlete 1", rank: 1, score: 100, attempts: 10 }),
+    qualifierEntry({ id: "climber-2", name: "Athlete 2", rank: 2, score: 90, attempts: 10 }),
+    qualifierEntry({ id: "climber-3", name: "Athlete 3", rank: 3, score: 80, attempts: 10 }),
+    qualifierEntry({ id: "climber-4", name: "Athlete 4", rank: 4, score: 70, attempts: 10 }),
+    qualifierEntry({ id: "climber-5", name: "Athlete 5", rank: 5, score: 60, attempts: 10 }),
+    qualifierEntry({ id: "climber-6", name: "Athlete 6", rank: 6, score: 50, attempts: 10 }),
+    qualifierEntry({ id: "climber-7", name: "Athlete 7", rank: 6, score: 50, attempts: 10 }),
+    qualifierEntry({ id: "climber-8", name: "Athlete 8", rank: 8, score: 40, attempts: 10 }),
+  ];
+
+  it("keeps a shared cut-line rank to the row cutoff when tie advancement is disabled", () => {
+    const competition = normalizeCompetition({
+      id: "comp-finalists-no-ties",
+      slug: "comp-finalists-no-ties",
+      name: "No Tie Advances",
+      format: "five_on_five_off",
+      finals_cutoff: 6,
+      finals_tie_advances: false,
+      finals_eligible_age_groups: ["Open"],
+    });
+
+    const finalists = pickFinalists(tiedCutLineEntries, competition);
+
+    expect(finalists.map((finalist) => finalist.climber_id)).toEqual([
+      "climber-1",
+      "climber-2",
+      "climber-3",
+      "climber-4",
+      "climber-5",
+      "climber-6",
+    ]);
+    expect(finalists).toHaveLength(6);
+    expect(finalists.some((finalist) => finalist.advanced_with_tie)).toBe(false);
+  });
+
+  it("adds equal cut-line athletes beyond the row cutoff when tie advancement is enabled", () => {
+    const competition = normalizeCompetition({
+      id: "comp-finalists-with-ties",
+      slug: "comp-finalists-with-ties",
+      name: "Tie Advances",
+      format: "five_on_five_off",
+      finals_cutoff: 6,
+      finals_tie_advances: true,
+      finals_eligible_age_groups: ["Open"],
+    });
+
+    const finalists = pickFinalists(tiedCutLineEntries, competition);
+
+    expect(finalists.map((finalist) => finalist.climber_id)).toEqual([
+      "climber-1",
+      "climber-2",
+      "climber-3",
+      "climber-4",
+      "climber-5",
+      "climber-6",
+      "climber-7",
+    ]);
+    expect(finalists.at(-1)).toMatchObject({
+      climber_id: "climber-7",
+      advanced_with_tie: true,
+    });
   });
 });
