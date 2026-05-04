@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { buildDemoFinalScore } from "@/lib/demo-seed-data";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
 type DemoFinalsResultsRequest = {
@@ -21,22 +22,6 @@ type FinalistRow = {
   qualifier_rank: number | null;
   climbing_order: number | null;
 };
-
-function scoreForFinalist(finalistIndex: number, climbNumber: number) {
-  const rankSeed = finalistIndex + 1;
-  const topLimit = Math.max(1, 5 - Math.ceil(rankSeed / 2));
-  const top = climbNumber <= topLimit;
-  const zone = top || (rankSeed + climbNumber) % 4 !== 0;
-  const attemptsToTop = top ? 1 + ((rankSeed + climbNumber) % 3) : null;
-  const attemptsToZone = zone ? Math.min(attemptsToTop ?? 1 + ((rankSeed + climbNumber) % 2), 4) : null;
-
-  return {
-    top,
-    zone,
-    attempts_to_top: attemptsToTop,
-    attempts_to_zone: attemptsToZone,
-  };
-}
 
 export async function POST(request: NextRequest) {
   let body: DemoFinalsResultsRequest;
@@ -117,7 +102,16 @@ export async function POST(request: NextRequest) {
     const attempts = finalistRows.flatMap((finalist, finalistIndex) =>
       Array.from({ length: problemCount }, (_, problemIndex) => {
         const climbNumber = problemIndex + 1;
-        const score = scoreForFinalist(finalistIndex, climbNumber);
+        const score = buildDemoFinalScore({
+          competitionId: competitionRow.id,
+          roundId: finalsRoundRow.id,
+          climberId: finalist.climber_id,
+          qualifierRank: finalist.qualifier_rank,
+          climbingOrder: finalist.climbing_order,
+          finalistIndex,
+          climbNumber,
+          problemCount,
+        });
         return {
           competition_id: competitionRow.id,
           round_id: finalsRoundRow.id,
@@ -132,6 +126,16 @@ export async function POST(request: NextRequest) {
         };
       })
     );
+
+    const { error: deleteError } = await supabase
+      .from("final_attempts")
+      .delete()
+      .eq("competition_id", competitionRow.id)
+      .eq("round_id", finalsRoundRow.id);
+
+    if (deleteError) {
+      throw new Error(deleteError.message);
+    }
 
     const { error: upsertError } = await supabase.from("final_attempts").upsert(attempts, {
       onConflict: "competition_id,round_id,climber_id,climb_number",

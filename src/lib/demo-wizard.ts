@@ -22,6 +22,15 @@ export type DemoWizardGuidance = {
   primaryTargetAnchor?: string;
 };
 
+export type DemoJudgeCorrectionTarget = {
+  athleteName?: string | null;
+  climberNumber?: string | null;
+  roundName?: string | null;
+  climbNumber: number;
+  currentScore: string;
+  correctedScore: string;
+};
+
 export const DEMO_WIZARD_STEPS: DemoWizardStepDefinition[] = [
   { id: "create", label: "Create", progressKey: "eventReady" },
   { id: "judge", label: "Judge", progressKey: "keyScoreCorrected" },
@@ -102,7 +111,18 @@ export function getDemoCreateWizardGuidance(
   };
 }
 
-export function getDemoJudgeWizardGuidance(corrected: boolean): DemoWizardGuidance {
+export function getDemoJudgeWizardGuidance(
+  corrected: boolean,
+  target?: DemoJudgeCorrectionTarget | null
+): DemoWizardGuidance {
+  const athleteName = target?.athleteName?.trim() || "the highlighted athlete";
+  const climberNumber = target?.climberNumber?.trim();
+  const athleteLabel = climberNumber ? `${athleteName} (#${climberNumber})` : athleteName;
+  const roundName = target?.roundName?.trim() || "Qualifier";
+  const climbNumber = target?.climbNumber ?? 3;
+  const currentScore = target?.currentScore ?? "Top in 3 attempts, Zone yes";
+  const correctedScore = target?.correctedScore ?? "Top in 1 attempt, Zone yes";
+
   if (corrected) {
     return {
       title: "Nice - the leaderboard is now accurate.",
@@ -115,9 +135,9 @@ export function getDemoJudgeWizardGuidance(corrected: boolean): DemoWizardGuidan
 
   return {
     title: "Demo - Judge",
-    instruction: "Find Athlete C and correct their score on Boulder 3.",
+    instruction: `Select ${athleteLabel} in ${roundName}. Boulder ${climbNumber} is currently ${currentScore}. Set Boulder ${climbNumber} to ${correctedScore}, then Save.`,
     why: "This uses the real score editor; the walkthrough only helps you find the right athlete.",
-    blockingMessage: "Correct Athlete C's Boulder 3 score before continuing.",
+    blockingMessage: `Correct ${athleteLabel}'s Boulder ${climbNumber} score to ${correctedScore} before continuing.`,
     primaryActionLabel: "Highlight Athlete",
     primaryTargetAnchor: "judge-entry-cards",
   };
@@ -126,26 +146,42 @@ export function getDemoJudgeWizardGuidance(corrected: boolean): DemoWizardGuidan
 export function getDemoOrganizerWizardGuidance({
   qualifierLocked,
   finalistsPersisted,
+  finalsScoresReady = finalistsPersisted,
+  advancementSourceLabel = "qualifier",
 }: {
   qualifierLocked: boolean;
   finalistsPersisted: boolean;
+  finalsScoresReady?: boolean;
+  advancementSourceLabel?: string;
 }): DemoWizardGuidance {
+  const sourceLabel = advancementSourceLabel.toLowerCase() === "semifinal" ? "semifinal" : "qualifier";
+  if (finalistsPersisted && finalsScoresReady) {
+    return {
+      title: "Finalists are set.",
+      instruction: "Next, view the public event page after the demo finals scores are ready.",
+      why: "The public event page now reflects the real finalist field and finals attempts.",
+      blockingMessage: null,
+      primaryActionLabel: "View Public Page",
+    };
+  }
+
   if (finalistsPersisted) {
     return {
       title: "Finalists are set.",
-      instruction: "Next, view the public event page.",
-      why: "The public event page now reflects the real finalist field.",
-      blockingMessage: null,
-      primaryActionLabel: "View Public Page",
+      instruction: "The demo is waiting for finals scores before the public page unlocks.",
+      why: "Public results should not be marked complete until finalists have real finals attempts.",
+      blockingMessage: "Demo finals scores are not ready yet.",
+      primaryActionLabel: "Finals Scores Pending",
+      primaryTargetAnchor: "organizer-advance-finals",
     };
   }
 
   if (!qualifierLocked) {
     return {
       title: "Demo - Organizer",
-      instruction: "Lock qualifiers so the cut line cannot change.",
-      why: "Finalists should only be advanced after qualifier scoring is frozen.",
-      blockingMessage: "Lock qualifiers before advancing finalists.",
+      instruction: `Lock ${sourceLabel}s so the cut line cannot change.`,
+      why: `Finalists should only be advanced after ${sourceLabel} scoring is frozen.`,
+      blockingMessage: `Lock ${sourceLabel}s before advancing finalists.`,
       primaryActionLabel: "Find Lock Qualifiers",
       primaryTargetAnchor: "organizer-lock-qualifiers",
     };
@@ -154,7 +190,7 @@ export function getDemoOrganizerWizardGuidance({
   return {
     title: "Advance finalists",
     instruction: "Advance the finalist field and start finals.",
-    why: "This creates the real finals field from the qualifier rankings.",
+    why: `This creates the real finals field from the ${sourceLabel} rankings.`,
     blockingMessage: "Advance finalists before opening the public event.",
     primaryActionLabel: "Find Advance Finalists",
     primaryTargetAnchor: "organizer-advance-finals",
@@ -166,7 +202,7 @@ export function getDemoPublicWizardGuidance(publicReady: boolean): DemoWizardGui
     return {
       title: "Demo Complete",
       instruction: "You've run a full climbing competition.",
-      why: "The event, judge scores, finalist field, and public page all came from the real app workflow.",
+      why: "The event, judge scores, finalist field, finals attempts, and public page all came from the real app workflow.",
       blockingMessage: null,
       primaryActionLabel: "Review Public Results",
       primaryTargetAnchor: "public-results",
@@ -176,7 +212,7 @@ export function getDemoPublicWizardGuidance(publicReady: boolean): DemoWizardGui
   return {
     title: "Demo - Public View",
     instruction: "This is what climbers and spectators see.",
-    why: "Public standings and finalist information update from the live competition data.",
+    why: "Public standings, finalists, and finals results update from the live competition data.",
     blockingMessage: null,
     primaryActionLabel: "Review Leaderboard",
     primaryTargetAnchor: "public-leaderboard",

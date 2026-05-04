@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompetitionSnapshot } from "@/lib/db";
 import {
-  DEMO_TARGET_CLIMBER_NAME,
   DEMO_TARGET_CLIMBER_NUMBER,
   isDemoTargetCorrected,
 } from "@/lib/demo-scenario";
@@ -36,11 +35,7 @@ async function fetchStaffSnapshot(identifier: string) {
 }
 
 function findDemoTarget(snapshot: CompetitionSnapshot) {
-  return snapshot.climbers.find(
-    (climber) =>
-      climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
-      climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
-  );
+  return snapshot.climbers.find((climber) => climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER);
 }
 
 export function DemoJudgeSplitPanel({
@@ -146,9 +141,9 @@ export function DemoJudgeSplitPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="results-kicker text-sky-700">Live leaderboard</div>
-          <h2 className="mt-2 text-xl font-semibold text-slate-950">Maya&apos;s cut-line impact</h2>
+          <h2 className="mt-2 text-xl font-semibold text-slate-950">Correction impact</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Save Maya&apos;s B3 correction and watch this ranking panel update without leaving the judge screen.
+            Save the Boulder 3 correction and watch this ranking panel update without leaving the judge screen.
           </p>
         </div>
         <span className="results-chip">Top {finalsCutoff}</span>
@@ -179,7 +174,7 @@ export function DemoJudgeSplitPanel({
                     ? "border-emerald-200 bg-emerald-50/80"
                     : "border-slate-200 bg-slate-50/80"
               )}
-              data-demo-anchor={isTarget ? "judge-leaderboard-maya-row" : undefined}
+              data-demo-anchor={isTarget ? "judge-leaderboard-target-row" : undefined}
             >
               <div className="flex items-center gap-3">
                 <div
@@ -207,7 +202,7 @@ export function DemoJudgeSplitPanel({
       </div>
 
       <div className="mt-4 border-t border-dashed border-slate-200 pt-3 text-xs leading-5 text-slate-500">
-        The cut line is Top {finalsCutoff}. Rows above the line stay green; Maya flashes when the saved score changes.
+        The cut line is Top {finalsCutoff}. Rows above the line stay green; the target row updates when the saved score changes.
       </div>
     </aside>
   );

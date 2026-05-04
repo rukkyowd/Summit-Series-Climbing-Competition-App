@@ -173,7 +173,12 @@ export default function CompetitionOverviewPage() {
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot?.finalists]
   );
-  const demoPublicReady = finalsActive && finalistRows.length > 0;
+  const finalsScorePresent = Boolean(
+    snapshot?.finalsLeaderboard.some((row) =>
+      row.problem_results.some((result) => result.top || result.zone || result.points > 0)
+    )
+  );
+  const demoPublicReady = finalsActive && finalistRows.length > 0 && finalsScorePresent;
   const demoWizardGuidance = useMemo(
     () => getDemoPublicWizardGuidance(demoPublicReady),
     [demoPublicReady]

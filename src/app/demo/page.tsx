@@ -21,7 +21,15 @@ async function getDemoCompetitions() {
     return Promise.all(
       (data ?? []).map(async (competition) => {
         const competitionId = competition.id as string;
-        const [categoriesResult, roundsResult, scheduleResult, climbersResult, attemptsResult, finalistsResult] =
+        const [
+          categoriesResult,
+          roundsResult,
+          scheduleResult,
+          climbersResult,
+          attemptsResult,
+          finalistsResult,
+          finalAttemptsResult,
+        ] =
           await Promise.all([
             supabase
               .from("competition_categories")
@@ -50,6 +58,11 @@ async function getDemoCompetitions() {
               .select("id")
               .eq("competition_id", competitionId)
               .limit(1),
+            supabase
+              .from("final_attempts")
+              .select("id")
+              .eq("competition_id", competitionId)
+              .limit(1),
           ]);
 
         const setupValidation = getDemoSetupValidation(
@@ -67,6 +80,7 @@ async function getDemoCompetitions() {
         const seeded = (climbersResult.data?.length ?? 0) >= 10 && (attemptsResult.data?.length ?? 0) > 0;
         const publicReady =
           (finalistsResult.data?.length ?? 0) > 0 &&
+          (finalAttemptsResult.data?.length ?? 0) > 0 &&
           ["finals_open", "finals_closed", "results"].includes(String(competition.current_phase ?? ""));
 
         return {

@@ -86,8 +86,13 @@ function normalizeFinalsScheduleLinks(
 export function normalizeCompetitionFinalsSetup(competition: Competition) {
   const currentRounds = [...(competition.rounds ?? [])];
   const shouldHaveFinals = competitionHasFinals(competition);
-  const qualifierRound =
-    currentRounds.find((round) => round.scoring_bucket === "qualifier") ?? currentRounds[0] ?? null;
+  const qualifierStyleRounds = currentRounds.filter(
+    (round) =>
+      round.scoring_bucket === "qualifier" ||
+      round.round_type === "qualifier" ||
+      round.round_type === "semifinal"
+  );
+  const advancementSourceRound = qualifierStyleRounds[qualifierStyleRounds.length - 1] ?? currentRounds[0] ?? null;
   const finalsRoundIndex = currentRounds.findIndex((round) => round.scoring_bucket === "finals");
   const standbyFinalsRoundIndex = currentRounds.findIndex(
     (round) => round.round_type === "finals" && round.scoring_bucket !== "finals"
@@ -104,13 +109,13 @@ export function normalizeCompetitionFinalsSetup(competition: Competition) {
               ...round,
               scoring_bucket: "finals",
               format: "ifsc_finals_format",
-              advancement_source_round_id: round.advancement_source_round_id ?? qualifierRound?.id ?? null,
+              advancement_source_round_id: round.advancement_source_round_id ?? advancementSourceRound?.id ?? null,
             }
           : round
       );
     } else {
       const nextFinalsRound = createRoundTemplate(competition, "finals", currentRounds.length + 1);
-      nextFinalsRound.advancement_source_round_id = qualifierRound?.id ?? null;
+      nextFinalsRound.advancement_source_round_id = advancementSourceRound?.id ?? null;
       nextRounds = [...currentRounds, nextFinalsRound];
     }
     roundsChanged = true;

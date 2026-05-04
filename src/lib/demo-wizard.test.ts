@@ -90,11 +90,23 @@ describe("demo wizard helpers", () => {
     });
   });
 
-  it("switches judge guidance after Athlete C is corrected", () => {
-    expect(getDemoJudgeWizardGuidance(false)).toMatchObject({
+  it("gives exact judge correction instructions before continuing", () => {
+    const guidance = getDemoJudgeWizardGuidance(false, {
+      athleteName: "Avery Chen",
+      climberNumber: "103",
+      roundName: "Qualifier",
+      climbNumber: 3,
+      currentScore: "Top in 3 attempts, Zone yes",
+      correctedScore: "Top in 1 attempt, Zone yes",
+    });
+
+    expect(guidance).toMatchObject({
       primaryActionLabel: "Highlight Athlete",
       primaryTargetAnchor: "judge-entry-cards",
     });
+    expect(guidance.instruction).toContain("Avery Chen (#103)");
+    expect(guidance.instruction).toContain("Boulder 3 is currently Top in 3 attempts, Zone yes");
+    expect(guidance.instruction).toContain("Set Boulder 3 to Top in 1 attempt, Zone yes, then Save.");
     expect(getDemoJudgeWizardGuidance(true)).toMatchObject({
       primaryActionLabel: "Go to Organizer Dashboard",
       blockingMessage: null,
@@ -108,9 +120,26 @@ describe("demo wizard helpers", () => {
     expect(getDemoOrganizerWizardGuidance({ qualifierLocked: true, finalistsPersisted: false })).toMatchObject({
       primaryTargetAnchor: "organizer-advance-finals",
     });
-    expect(getDemoOrganizerWizardGuidance({ qualifierLocked: true, finalistsPersisted: true })).toMatchObject({
+    expect(getDemoOrganizerWizardGuidance({ qualifierLocked: true, finalistsPersisted: true, finalsScoresReady: false })).toMatchObject({
+      primaryActionLabel: "Finals Scores Pending",
+      blockingMessage: "Demo finals scores are not ready yet.",
+    });
+    expect(getDemoOrganizerWizardGuidance({ qualifierLocked: true, finalistsPersisted: true, finalsScoresReady: true })).toMatchObject({
       primaryActionLabel: "View Public Page",
       blockingMessage: null,
+    });
+  });
+
+  it("uses semifinal organizer copy when finals advance from semifinals", () => {
+    expect(
+      getDemoOrganizerWizardGuidance({
+        qualifierLocked: false,
+        finalistsPersisted: false,
+        advancementSourceLabel: "semifinal",
+      })
+    ).toMatchObject({
+      instruction: "Lock semifinals so the cut line cannot change.",
+      blockingMessage: "Lock semifinals before advancing finalists.",
     });
   });
 

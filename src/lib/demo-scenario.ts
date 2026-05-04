@@ -1,8 +1,8 @@
 export const DEMO_TARGET_CLIMBER_NUMBER = "103";
 export const DEMO_TARGET_CLIMBER_NAME = "Athlete C";
 export const DEMO_TARGET_CLIMB_NUMBER = 3;
-export const DEMO_TARGET_BEFORE_LABEL = "Top in 3 attempts";
-export const DEMO_TARGET_AFTER_LABEL = "Top in 1 attempt";
+export const DEMO_TARGET_BEFORE_LABEL = "Top in 3 attempts, Zone yes";
+export const DEMO_TARGET_AFTER_LABEL = "Top in 1 attempt, Zone yes";
 
 export type DemoTargetAttemptState = {
   attempt_count?: number | null;
@@ -21,14 +21,13 @@ export type DemoProgress = {
 };
 
 export function isDemoTargetCorrected(attempt: DemoTargetAttemptState) {
-  if (!attempt?.topped) {
-    return false;
-  }
-
-  const topOnFirstAttempt = attempt.attempts_to_top === 1 || attempt.attempt_count === 1;
-  const zoneResolved = attempt.zone === true || attempt.topped === true;
-
-  return topOnFirstAttempt && zoneResolved;
+  return Boolean(
+    attempt?.topped === true &&
+      attempt.zone === true &&
+      attempt.attempt_count === 1 &&
+      attempt.attempts_to_top === 1 &&
+      attempt.attempts_to_zone === 1
+  );
 }
 
 export function isDemoTargetSeeded(attempt: DemoTargetAttemptState) {

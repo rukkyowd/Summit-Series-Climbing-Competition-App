@@ -133,7 +133,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
           </h1>
           <p className="max-w-3xl text-base leading-7 text-slate-600">
             This workspace supports the sales demo from start to finish: create {CASCADE_CUP_DEMO_NAME}
-            in the real staff flow, add a realistic youth field, correct Maya Chen on B3, advance
+            in the real staff flow, add a realistic youth field, correct one Boulder 3 score, advance
             finalists, publish results, then delete the demo when you are done.
           </p>
         </div>
@@ -141,7 +141,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
         <div className="grid gap-3 md:grid-cols-4">
           {[
             ["1. Create", "Use the real staff creation form with Cascade Cup defaults preloaded."],
-            ["2. Judge", "Seed 48 youth climbers, then fix Maya Chen #104 on B3."],
+            ["2. Judge", "Seed youth climbers, then fix the guided Boulder 3 score."],
             ["3. Organize", "Review standings, lock qualifiers, advance finalists, and publish results."],
             ["4. Clean up", "Delete the demo from this workspace when the walkthrough is finished."],
           ].map(([title, body]) => (
@@ -222,7 +222,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
                           {demoStates[demo.id]?.progress?.dataPopulated ? "Seeded" : "Needs seed"}
                         </span>
                         <span className="results-chip">
-                          {demoStates[demo.id]?.progress?.keyScoreCorrected ? "Maya corrected" : "Maya Top in 3"}
+                          {demoStates[demo.id]?.progress?.keyScoreCorrected ? "Score corrected" : "Correction pending"}
                         </span>
                         <span className="results-chip">
                           {demoStates[demo.id]?.progress?.organizerAdvanced ? "Finals started" : "Organizer pending"}

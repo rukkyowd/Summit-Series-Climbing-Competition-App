@@ -17,12 +17,13 @@ const mockState = vi.hoisted(() => ({
     { climber_id: "climber-1", qualifier_rank: 1, climbing_order: 1 },
     { climber_id: "climber-2", qualifier_rank: 2, climbing_order: 2 },
   ],
+  deletedFinalAttempts: false,
   upsertedFinalAttempts: [] as Array<Record<string, unknown>>,
   from: vi.fn(),
 }));
 
 class SupabaseQueryMock {
-  private operation: "select" | "upsert" | null = null;
+  private operation: "select" | "upsert" | "delete" | null = null;
   private payload: unknown = null;
 
   constructor(private readonly table: string) {}
@@ -35,6 +36,11 @@ class SupabaseQueryMock {
   upsert(payload: unknown) {
     this.operation = "upsert";
     this.payload = payload;
+    return this;
+  }
+
+  delete() {
+    this.operation = "delete";
     return this;
   }
 
@@ -83,6 +89,11 @@ class SupabaseQueryMock {
       return { error: null };
     }
 
+    if (this.table === "final_attempts" && this.operation === "delete") {
+      mockState.deletedFinalAttempts = true;
+      return { error: null };
+    }
+
     return { data: null, error: null };
   }
 }
@@ -117,6 +128,7 @@ beforeEach(() => {
     { climber_id: "climber-1", qualifier_rank: 1, climbing_order: 1 },
     { climber_id: "climber-2", qualifier_rank: 2, climbing_order: 2 },
   ];
+  mockState.deletedFinalAttempts = false;
   mockState.upsertedFinalAttempts = [];
   mockState.from.mockReset();
   mockState.from.mockImplementation((table: string) => new SupabaseQueryMock(table));
@@ -159,6 +171,7 @@ describe("demo finals results route", () => {
         attempts: 8,
       },
     });
+    expect(mockState.deletedFinalAttempts).toBe(true);
     expect(mockState.upsertedFinalAttempts).toHaveLength(8);
     expect(mockState.upsertedFinalAttempts[0]).toMatchObject({
       competition_id: "competition-1",

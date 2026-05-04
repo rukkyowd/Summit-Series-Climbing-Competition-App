@@ -68,15 +68,28 @@ function hasText(value: string | null | undefined) {
 }
 
 function getScoringRounds(competition: DemoSetupCompetition | null | undefined) {
-  return (competition?.rounds ?? []).filter((round) => round.scoring_bucket !== "none" && round.is_enabled !== false);
+  return (competition?.rounds ?? [])
+    .filter((round) => round.scoring_bucket !== "none" && round.is_enabled !== false)
+    .sort((left, right) => {
+      const sortDiff = (left.sort_order ?? 0) - (right.sort_order ?? 0);
+      if (sortDiff !== 0) {
+        return sortDiff;
+      }
+      return (left.round_number ?? 0) - (right.round_number ?? 0);
+    });
+}
+
+export function getDemoQualifierStyleRounds(competition: DemoSetupCompetition | null | undefined) {
+  return getScoringRounds(competition).filter(
+    (round) =>
+      round.scoring_bucket === "qualifier" ||
+      round.round_type === "qualifier" ||
+      round.round_type === "semifinal"
+  );
 }
 
 export function getDemoQualifierRound(competition: DemoSetupCompetition | null | undefined) {
-  return (
-    getScoringRounds(competition).find(
-      (round) => round.scoring_bucket === "qualifier" || round.round_type === "qualifier"
-    ) ?? null
-  );
+  return getDemoQualifierStyleRounds(competition)[0] ?? null;
 }
 
 export function getDemoFinalsRound(competition: DemoSetupCompetition | null | undefined) {
@@ -85,6 +98,18 @@ export function getDemoFinalsRound(competition: DemoSetupCompetition | null | un
       (round) => round.scoring_bucket === "finals" || round.round_type === "finals"
     ) ?? null
   );
+}
+
+export function getDemoAdvancementSourceRound(competition: DemoSetupCompetition | null | undefined) {
+  const qualifierStyleRounds = getDemoQualifierStyleRounds(competition);
+  const finalsRound = getDemoFinalsRound(competition);
+  if (!qualifierStyleRounds.length || !finalsRound) {
+    return null;
+  }
+
+  const linkedSource =
+    qualifierStyleRounds.find((round) => round.id === finalsRound.advancement_source_round_id) ?? null;
+  return linkedSource ?? qualifierStyleRounds[qualifierStyleRounds.length - 1] ?? null;
 }
 
 export function getDemoSelectedQualifierCategories(competition: DemoSetupCompetition | null | undefined) {
@@ -97,17 +122,23 @@ export function getDemoFinalsEligibleCategories(competition: DemoSetupCompetitio
   return getDemoSelectedQualifierCategories(competition).filter((category) => finalsAgeGroups.has(category.age_group));
 }
 
-export function getDemoQualifierScheduleBlock(competition: DemoSetupCompetition | null | undefined) {
-  const qualifierRound = getDemoQualifierRound(competition);
-  if (!qualifierRound?.id) {
+export function getDemoScheduleBlockForRound(
+  competition: DemoSetupCompetition | null | undefined,
+  round: { id: string; round_type?: CompetitionRound["round_type"] | null } | null | undefined
+) {
+  if (!round?.id) {
     return null;
   }
 
   return (
     (competition?.schedule_blocks ?? []).find(
-      (block) => block.phase_type === "qualifier_round" && block.round_id === qualifierRound.id
+      (block) => block.phase_type === "qualifier_round" && block.round_id === round.id
     ) ?? null
   );
+}
+
+export function getDemoQualifierScheduleBlock(competition: DemoSetupCompetition | null | undefined) {
+  return getDemoScheduleBlockForRound(competition, getDemoQualifierRound(competition));
 }
 
 export function getDemoFinalsScheduleBlock(competition: DemoSetupCompetition | null | undefined) {
@@ -164,6 +195,7 @@ function getStagesBlockingMessage(competition: DemoSetupCompetition | null | und
   }
 
   const qualifierRound = getDemoQualifierRound(competition);
+  const qualifierStyleRounds = getDemoQualifierStyleRounds(competition);
   const finalsRound = getDemoFinalsRound(competition);
   if (!qualifierRound) {
     return "Add a qualifier scoring stage.";
@@ -185,13 +217,36 @@ function getStagesBlockingMessage(competition: DemoSetupCompetition | null | und
     return "Set qualifier counted climbs between 1 and the qualifier problem count.";
   }
 
+  const semifinalRounds = qualifierStyleRounds.filter((round) => round.round_type === "semifinal");
+  const invalidSemifinal = semifinalRounds.find((round) => {
+    const problemCount = Number(round.problem_count ?? 0);
+    const countingClimbs = Number(round.counting_climbs ?? 0);
+    return (
+      !Number.isFinite(problemCount) ||
+      problemCount <= 0 ||
+      !Number.isFinite(countingClimbs) ||
+      countingClimbs <= 0 ||
+      countingClimbs > problemCount
+    );
+  });
+  if (invalidSemifinal) {
+    return "Set valid semifinal problem counts and counted climbs.";
+  }
+
   const finalsProblemCount = Number(finalsRound.problem_count ?? 0);
   if (!Number.isFinite(finalsProblemCount) || finalsProblemCount <= 0) {
     return "Set a valid Finals problem count.";
   }
 
-  if (!finalsRound.advancement_source_round_id || finalsRound.advancement_source_round_id !== qualifierRound.id) {
-    return "Link Finals advancement to the qualifier stage.";
+  const expectedAdvancementSource = qualifierStyleRounds[qualifierStyleRounds.length - 1] ?? qualifierRound;
+  const linkedSource = qualifierStyleRounds.find((round) => round.id === finalsRound.advancement_source_round_id);
+  if (!finalsRound.advancement_source_round_id || !linkedSource) {
+    return "Link Finals advancement to the qualifier or semifinal stage.";
+  }
+  if (linkedSource.id !== expectedAdvancementSource.id) {
+    return expectedAdvancementSource.round_type === "semifinal"
+      ? "Link Finals advancement to the semifinal stage."
+      : "Link Finals advancement to the qualifier stage.";
   }
 
   const advancementCutoff = Number(finalsRound.advancement_cutoff ?? finalsRound.finals_cutoff ?? competition?.finals_cutoff ?? 0);
@@ -210,6 +265,12 @@ function getScheduleBlockingMessage(competition: DemoSetupCompetition | null | u
 
   if (!getDemoQualifierScheduleBlock(competition)) {
     return "Add a qualifier schedule block linked to the qualifier stage.";
+  }
+  const semifinalWithoutSchedule = getDemoQualifierStyleRounds(competition).find(
+    (round) => round.round_type === "semifinal" && !getDemoScheduleBlockForRound(competition, round)
+  );
+  if (semifinalWithoutSchedule) {
+    return "Add a semifinal schedule block linked to the Semifinal stage.";
   }
   if (!getDemoFinalsScheduleBlock(competition)) {
     return "Add a Finals schedule block linked to the Finals stage.";

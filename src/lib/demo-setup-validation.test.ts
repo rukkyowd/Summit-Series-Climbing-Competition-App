@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getDemoSetupValidation } from "@/lib/demo-setup-validation";
+import {
+  getDemoAdvancementSourceRound,
+  getDemoSetupValidation,
+} from "@/lib/demo-setup-validation";
 import type { Competition } from "@/lib/scoring";
 
 function buildCompetition(overrides: Partial<Competition> = {}): Competition {
@@ -185,6 +188,85 @@ describe("getDemoSetupValidation", () => {
       complete: false,
       blockingMessage: "Add a Finals schedule block linked to the Finals stage.",
     });
+  });
+
+  it("requires finals to advance from a semifinal when a semifinal exists", () => {
+    const base = buildCompetition();
+    const semifinal = {
+      ...(base.rounds?.[0] ?? base.rounds![0]),
+      id: "round-semi",
+      round_number: 2,
+      sort_order: 2,
+      name: "Semifinal",
+      round_type: "semifinal" as const,
+      problem_count: 4,
+      counting_climbs: 4,
+    };
+    const finals = {
+      ...(base.rounds?.[1] ?? base.rounds![1]),
+      round_number: 3,
+      sort_order: 3,
+      advancement_source_round_id: "round-qualifier",
+    };
+    const competition = buildCompetition({
+      rounds: [base.rounds![0], semifinal, finals],
+      schedule_blocks: [
+        base.schedule_blocks[0],
+        {
+          ...base.schedule_blocks[0],
+          id: "schedule-semi",
+          round_id: "round-semi",
+          sort_order: 2,
+          label: "Semifinal",
+        },
+        { ...base.schedule_blocks[1], sort_order: 3 },
+      ],
+    });
+
+    const validation = getDemoSetupValidation(competition, { selectedPresetId: "custom", saved: true });
+
+    expect(validation.steps.find((step) => step.id === "stages")).toMatchObject({
+      complete: false,
+      blockingMessage: "Link Finals advancement to the semifinal stage.",
+    });
+  });
+
+  it("passes setup with qualifier, semifinal, finals, and linked schedule blocks", () => {
+    const base = buildCompetition();
+    const semifinal = {
+      ...base.rounds![0],
+      id: "round-semi",
+      round_number: 2,
+      sort_order: 2,
+      name: "Semifinal",
+      round_type: "semifinal" as const,
+      problem_count: 4,
+      counting_climbs: 4,
+    };
+    const finals = {
+      ...base.rounds![1],
+      round_number: 3,
+      sort_order: 3,
+      advancement_source_round_id: "round-semi",
+    };
+    const competition = buildCompetition({
+      rounds: [base.rounds![0], semifinal, finals],
+      schedule_blocks: [
+        base.schedule_blocks[0],
+        {
+          ...base.schedule_blocks[0],
+          id: "schedule-semi",
+          round_id: "round-semi",
+          sort_order: 2,
+          label: "Semifinal",
+        },
+        { ...base.schedule_blocks[1], sort_order: 3 },
+      ],
+    });
+    const validation = getDemoSetupValidation(competition, { selectedPresetId: "custom", saved: true });
+
+    expect(getDemoAdvancementSourceRound(competition)?.id).toBe("round-semi");
+    expect(validation.canContinueToJudge).toBe(true);
   });
 
   it("blocks judge continuation until the saved draft matches persisted event", () => {

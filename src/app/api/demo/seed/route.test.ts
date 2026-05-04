@@ -113,6 +113,7 @@ const mockState = vi.hoisted(() => ({
   inserts: [] as Array<{ table: string; payload: unknown }>,
   insertedClimbers: [] as Array<{ id: string; climber_number: string }>,
   insertedAttempts: [] as Array<{
+    round_id: string;
     climber_id: string;
     climb_number: number;
     attempt_count: number;
@@ -434,9 +435,43 @@ describe("demo seed route", () => {
     expect(mockState.insertedClimbers).toEqual([]);
   });
 
-  it("seeds Summit Series climbers, scores, and the Athlete C correction target", async () => {
+  it("rejects setup without a linked semifinal schedule block", async () => {
+    const qualifierRound = mockState.rounds[0];
+    const finalsRound = mockState.rounds[1];
+    mockState.rounds = [
+      qualifierRound,
+      {
+        ...qualifierRound,
+        id: "round-semi",
+        round_number: 2,
+        sort_order: 2,
+        name: "Semifinal",
+        round_type: "semifinal",
+        problem_count: 4,
+        counting_climbs: 4,
+      },
+      {
+        ...finalsRound,
+        round_number: 3,
+        sort_order: 3,
+        advancement_source_round_id: "round-semi",
+      },
+    ];
+
     const response = await POST(jsonRequest({ competitionId: "competition-1" }));
     const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toBe("Add a semifinal schedule block linked to the Semifinal stage.");
+    expect(mockState.insertedClimbers).toEqual([]);
+  });
+
+  it("seeds realistic Summit Series climbers, scores, and the correction target", async () => {
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+    const body = await response.json();
+    const climberInsert = mockState.inserts.find((entry) => entry.table === "climbers")?.payload as
+      | Array<{ name: string; province: string; climber_number: string }>
+      | undefined;
     const target = mockState.insertedClimbers.find(
       (climber) => climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER
     );
@@ -459,6 +494,10 @@ describe("demo seed route", () => {
         attempts: 72,
       },
     });
+    expect(climberInsert?.[0].name).toMatch(/^[A-Z][a-z]+ [A-Z][A-Za-z]+$/);
+    expect(climberInsert?.[0].name).not.toBe("Athlete A");
+    expect(climberInsert?.[0].province).toMatch(/^[A-Z]{2}$/);
+    expect(body.target.name).not.toBe("Athlete C");
     expect(targetB3).toMatchObject({
       attempt_count: 3,
       topped: true,
@@ -471,6 +510,56 @@ describe("demo seed route", () => {
     expect(body.judgeUrl).toContain(`climberId=${target?.id}`);
     expect(body.organizerUrl).toBe("/staff/c/summit-demo?demo=act3");
     expect(body.publicUrl).toBe("/c/summit-demo?demo=act4");
+  });
+
+  it("seeds semifinal scores when Finals advance from a semifinal", async () => {
+    const qualifierRound = mockState.rounds[0];
+    const finalsRound = mockState.rounds[1];
+    mockState.rounds = [
+      qualifierRound,
+      {
+        ...qualifierRound,
+        id: "round-semi",
+        round_number: 2,
+        sort_order: 2,
+        name: "Semifinal",
+        round_type: "semifinal",
+        problem_count: 4,
+        counting_climbs: 4,
+      },
+      {
+        ...finalsRound,
+        round_number: 3,
+        sort_order: 3,
+        advancement_source_round_id: "round-semi",
+      },
+    ];
+    mockState.scheduleBlocks = [
+      mockState.scheduleBlocks[0],
+      {
+        ...mockState.scheduleBlocks[0],
+        id: "session-semi",
+        round_id: "round-semi",
+        label: "Semifinal",
+        sort_order: 2,
+      },
+      {
+        ...mockState.scheduleBlocks[1],
+        sort_order: 3,
+      },
+    ];
+
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.inserted).toMatchObject({
+      attempts: 120,
+      qualifierRounds: 2,
+      semifinalsSeeded: true,
+      advancementSourceRoundId: "round-semi",
+    });
+    expect(mockState.insertedAttempts.some((attempt) => attempt.round_id === "round-semi")).toBe(true);
   });
 
   it("clears previous seeded rows before inserting fresh demo data", async () => {

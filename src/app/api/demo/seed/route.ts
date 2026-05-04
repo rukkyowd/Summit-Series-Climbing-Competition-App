@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 import {
-  getDemoQualifierRound,
-  getDemoQualifierScheduleBlock,
+  getDemoAdvancementSourceRound,
+  getDemoQualifierStyleRounds,
+  getDemoScheduleBlockForRound,
   getDemoSelectedQualifierCategories,
   getDemoSetupValidation,
 } from "@/lib/demo-setup-validation";
@@ -10,12 +11,17 @@ import {
   DEMO_TARGET_AFTER_LABEL,
   DEMO_TARGET_BEFORE_LABEL,
   DEMO_TARGET_CLIMB_NUMBER,
-  DEMO_TARGET_CLIMBER_NAME,
   DEMO_TARGET_CLIMBER_NUMBER,
   buildDemoJudgeUrl,
   buildDemoOrganizerUrl,
   buildDemoPublicUrl,
 } from "@/lib/demo-scenario";
+import {
+  DEMO_DEFAULT_QUALIFIER_PROBLEM_COUNT,
+  DEMO_MIN_FIELD_SIZE,
+  buildDemoQualifierScore,
+  createDemoAthleteSeeds,
+} from "@/lib/demo-seed-data";
 import type { Competition, CompetitionRound, CompetitionScheduleBlock } from "@/lib/scoring";
 
 type DemoSeedRequest = {
@@ -96,51 +102,12 @@ type InsertedClimberRow = {
   climber_number: string;
 };
 
-const DEMO_FIELD_SIZE = 12;
-const DEMO_PROBLEM_COUNT = 6;
-const DEMO_CLIMBERS = Array.from({ length: DEMO_FIELD_SIZE }, (_, index) => {
-  const letter = String.fromCharCode("A".charCodeAt(0) + index);
-  return {
-    name: `Athlete ${letter}`,
-    number: String(101 + index),
-    province: ["NS", "NB", "PE", "NL", "QC", "ON"][index % 6],
-    seedIndex: index,
-  };
-});
-const DEMO_CLIMBER_NUMBERS = DEMO_CLIMBERS.map((climber) => climber.number);
-
 function createId() {
   return crypto.randomUUID();
 }
 
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-}
-
-function scoreFor(seedIndex: number, climbNumber: number) {
-  if (DEMO_CLIMBERS[seedIndex]?.number === DEMO_TARGET_CLIMBER_NUMBER && climbNumber === DEMO_TARGET_CLIMB_NUMBER) {
-    return {
-      attempt_count: 3,
-      zone: true,
-      topped: true,
-      attempts_to_top: 3,
-      attempts_to_zone: 1,
-    };
-  }
-
-  const topCountBySeed = [6, 6, 5, 5, 5, 4, 4, 4, 3, 3, 2, 1];
-  const topCount = topCountBySeed[seedIndex] ?? 2;
-  const topped = climbNumber <= topCount;
-  const zone = topped || climbNumber <= Math.min(DEMO_PROBLEM_COUNT, topCount + 1 + (seedIndex % 2));
-  const attemptCount = topped ? 1 + ((seedIndex + climbNumber) % 3) : zone ? 2 + ((seedIndex + climbNumber) % 2) : 0;
-
-  return {
-    attempt_count: attemptCount,
-    zone,
-    topped,
-    attempts_to_top: topped ? attemptCount : null,
-    attempts_to_zone: zone ? Math.max(1, Math.min(attemptCount || 1, 2)) : null,
-  };
 }
 
 async function getCompetition(
@@ -250,8 +217,11 @@ function buildSetupCompetition(
     location_name: competition.location_name ?? "",
     start_date: competition.start_date,
     end_date: competition.end_date,
-    total_climbs: asNumber(competition.total_climbs, DEMO_PROBLEM_COUNT),
-    qualifier_counting_climbs: asNumber(competition.qualifier_counting_climbs, DEMO_PROBLEM_COUNT),
+    total_climbs: asNumber(competition.total_climbs, DEMO_DEFAULT_QUALIFIER_PROBLEM_COUNT),
+    qualifier_counting_climbs: asNumber(
+      competition.qualifier_counting_climbs,
+      DEMO_DEFAULT_QUALIFIER_PROBLEM_COUNT
+    ),
     finals_cutoff: asFinalsCutoff(competition.finals_cutoff) ?? 6,
     finals_problem_count: asNumber(competition.finals_problem_count, 4),
     qualifier_eligible_age_groups: asStringArray(competition.qualifier_eligible_age_groups),
@@ -304,69 +274,115 @@ function buildSetupCompetition(
   };
 }
 
-async function prepareQualifierRound(
+type PreparedQualifierRound = {
+  id: string;
+  name: string;
+  roundIndex: number;
+  roundType: string | null | undefined;
+  problemCount: number;
+};
+
+async function prepareQualifierRounds(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competition: CompetitionRow,
-  qualifierRound: ReturnType<typeof getDemoQualifierRound>
-) {
-  if (!qualifierRound?.id) {
+  qualifierRounds: ReturnType<typeof getDemoQualifierStyleRounds>
+): Promise<PreparedQualifierRound[]> {
+  if (!qualifierRounds.length) {
     throw new Response("Add a qualifier scoring stage.", { status: 409 });
   }
 
-  const problemCount = Math.max(asNumber(qualifierRound.problem_count, DEMO_PROBLEM_COUNT), DEMO_TARGET_CLIMB_NUMBER);
-  const countingClimbs = Math.min(
-    Math.max(asNumber(qualifierRound.counting_climbs, competition.qualifier_counting_climbs ?? DEMO_PROBLEM_COUNT), 1),
-    problemCount
-  );
-  const update = await supabase
-    .from("competition_rounds")
-    .update({
-      status: "scoring",
-      runtime_phase: "qualifier_open",
-      is_enabled: true,
-      is_active: true,
-      activated_at: new Date().toISOString(),
-      started_at: new Date().toISOString(),
-      closed_at: null,
-      problem_count: problemCount,
-      counting_climbs: countingClimbs,
-      scoring_bucket: "qualifier",
-    })
-    .eq("competition_id", competition.id)
-    .eq("id", qualifierRound.id);
+  const now = new Date().toISOString();
+  const prepared: PreparedQualifierRound[] = [];
+  for (let roundIndex = 0; roundIndex < qualifierRounds.length; roundIndex += 1) {
+    const round = qualifierRounds[roundIndex];
+    const fallbackProblemCount =
+      round.round_type === "semifinal"
+        ? Math.min(DEMO_DEFAULT_QUALIFIER_PROBLEM_COUNT, Math.max(4, competition.total_climbs ?? 4))
+        : (competition.total_climbs ?? DEMO_DEFAULT_QUALIFIER_PROBLEM_COUNT);
+    const problemCount = Math.max(
+      asNumber(round.problem_count, fallbackProblemCount),
+      roundIndex === 0 ? DEMO_TARGET_CLIMB_NUMBER : 1
+    );
+    const countingClimbs = Math.min(
+      Math.max(asNumber(round.counting_climbs, competition.qualifier_counting_climbs ?? problemCount), 1),
+      problemCount
+    );
+    const active = roundIndex === 0;
+    const update = await supabase
+      .from("competition_rounds")
+      .update({
+        status: active ? "scoring" : "pending",
+        runtime_phase: round.round_type === "semifinal" ? "wall_reset" : "qualifier_open",
+        is_enabled: true,
+        is_active: active,
+        activated_at: active ? now : null,
+        started_at: active ? now : null,
+        closed_at: null,
+        problem_count: problemCount,
+        counting_climbs: countingClimbs,
+        scoring_bucket: "qualifier",
+      })
+      .eq("competition_id", competition.id)
+      .eq("id", round.id);
 
-  if (update.error) {
-    throw new Error(update.error.message);
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+
+    prepared.push({
+      id: round.id,
+      name: round.name || (round.round_type === "semifinal" ? "Semifinal" : "Qualifier"),
+      roundIndex,
+      roundType: round.round_type,
+      problemCount,
+    });
   }
 
-  return { id: qualifierRound.id, problemCount };
+  return prepared;
 }
 
-async function prepareQualifierSession(
+async function prepareQualifierSessions(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
   competitionId: string,
-  qualifierSession: ReturnType<typeof getDemoQualifierScheduleBlock>,
+  setupCompetition: ReturnType<typeof buildSetupCompetition>,
+  qualifierRounds: ReturnType<typeof getDemoQualifierStyleRounds>,
   categoryIds: string[]
 ) {
-  if (!qualifierSession?.id) {
+  let firstSessionId: string | null = null;
+  for (let index = 0; index < qualifierRounds.length; index += 1) {
+    const round = qualifierRounds[index];
+    const session = getDemoScheduleBlockForRound(setupCompetition, round);
+    if (!session?.id) {
+      throw new Response(
+        round.round_type === "semifinal"
+          ? "Add a semifinal schedule block linked to the Semifinal stage."
+          : "Add a qualifier schedule block linked to the qualifier stage.",
+        { status: 409 }
+      );
+    }
+
+    const update = await supabase
+      .from("competition_schedule_blocks")
+      .update({
+        is_active: index === 0,
+        capacity: Math.max(session.capacity ?? 0, DEMO_MIN_FIELD_SIZE),
+        eligible_category_ids: categoryIds,
+      })
+      .eq("competition_id", competitionId)
+      .eq("id", session.id);
+
+    if (update.error) {
+      throw new Error(update.error.message);
+    }
+
+    firstSessionId ??= session.id;
+  }
+
+  if (!firstSessionId) {
     throw new Response("Add a qualifier schedule block linked to the qualifier stage.", { status: 409 });
   }
 
-  const update = await supabase
-    .from("competition_schedule_blocks")
-    .update({
-      is_active: true,
-      capacity: Math.max(qualifierSession.capacity ?? 0, DEMO_FIELD_SIZE),
-      eligible_category_ids: categoryIds,
-    })
-    .eq("competition_id", competitionId)
-    .eq("id", qualifierSession.id);
-
-  if (update.error) {
-    throw new Error(update.error.message);
-  }
-
-  return qualifierSession.id;
+  return firstSessionId;
 }
 
 async function resetDemoProgress(
@@ -446,13 +462,14 @@ async function resetDemoProgress(
 
 async function clearPreviousSeed(
   supabase: ReturnType<typeof createServiceRoleSupabaseClient>,
-  competitionId: string
+  competitionId: string,
+  climberNumbers: string[]
 ) {
   const { data: existingClimbers, error } = await supabase
     .from("climbers")
     .select("id")
     .eq("competition_id", competitionId)
-    .in("climber_number", DEMO_CLIMBER_NUMBERS);
+    .in("climber_number", climberNumbers);
 
   if (error) {
     throw new Error(error.message);
@@ -530,31 +547,44 @@ export async function POST(request: NextRequest) {
     const selectedCategoryIds = new Set(getDemoSelectedQualifierCategories(setupCompetition).map((category) => category.id));
     const categories = allCategories.filter((category) => selectedCategoryIds.has(category.id));
     const categoryIds = categories.map((category) => category.id);
-    const qualifierRound = await prepareQualifierRound(supabase, competition, getDemoQualifierRound(setupCompetition));
-    const qualifierSessionId = await prepareQualifierSession(
+    const qualifierStyleRounds = getDemoQualifierStyleRounds(setupCompetition);
+    const advancementSourceRound = getDemoAdvancementSourceRound(setupCompetition);
+    const preparedQualifierRounds = await prepareQualifierRounds(supabase, competition, qualifierStyleRounds);
+    const qualifierSessionId = await prepareQualifierSessions(
       supabase,
       competition.id,
-      getDemoQualifierScheduleBlock(setupCompetition),
+      setupCompetition,
+      qualifierStyleRounds,
       categoryIds
     );
+    const activeQualifierRound = preparedQualifierRounds[0];
 
-    await resetDemoProgress(supabase, competition.id, qualifierRound.id, qualifierSessionId);
-    await clearPreviousSeed(supabase, competition.id);
+    await resetDemoProgress(supabase, competition.id, activeQualifierRound.id, qualifierSessionId);
 
-    const climberRows = DEMO_CLIMBERS.map((climber, index) => {
-      const category = categories[index % categories.length];
+    const athleteSeeds = createDemoAthleteSeeds({
+      competitionId: competition.id,
+      categories,
+    });
+    await clearPreviousSeed(
+      supabase,
+      competition.id,
+      athleteSeeds.map((athlete) => athlete.climberNumber)
+    );
+
+    const climberRows = athleteSeeds.map((athlete) => {
+      const category = athlete.category;
       return {
         id: createId(),
         competition_id: competition.id,
-        name: climber.name,
-        climber_number: climber.number,
-        province: climber.province,
+        name: athlete.name,
+        climber_number: athlete.climberNumber,
+        province: athlete.province,
         category_id: category.id,
         gender_division: category.gender_division,
         age_group: category.age_group,
         display_category: category.display_name,
         time_slot_id: qualifierSessionId,
-        access_token: `summit-demo-${competition.id}-${climber.number}`,
+        access_token: `summit-demo-${competition.id}-${athlete.climberNumber}`,
       };
     });
 
@@ -568,20 +598,33 @@ export async function POST(request: NextRequest) {
     }
 
     const insertedRows = (insertedClimbers ?? []) as InsertedClimberRow[];
-    const seedIndexByNumber = new Map(DEMO_CLIMBERS.map((climber) => [climber.number, climber.seedIndex]));
-    const problemCount = Math.max(qualifierRound.problemCount, DEMO_TARGET_CLIMB_NUMBER);
-    const attempts = insertedRows.flatMap((climber) =>
-      Array.from({ length: problemCount }, (_, index) => {
-        const climbNumber = index + 1;
-        const seedIndex = seedIndexByNumber.get(climber.climber_number) ?? 0;
-        return {
-          competition_id: competition.id,
-          round_id: qualifierRound.id,
-          climber_id: climber.id,
-          climb_number: climbNumber,
-          entered_by: "staff",
-          ...scoreFor(seedIndex, climbNumber),
-        };
+    const seedByNumber = new Map(athleteSeeds.map((athlete) => [athlete.climberNumber, athlete]));
+    const fallbackSeed = athleteSeeds[0];
+    if (!fallbackSeed) {
+      throw new Response("You must add at least one category", { status: 409 });
+    }
+    const attempts = preparedQualifierRounds.flatMap((round) =>
+      insertedRows.flatMap((climber) => {
+        const seed = seedByNumber.get(climber.climber_number) ?? fallbackSeed;
+        return Array.from({ length: round.problemCount }, (_, index) => {
+          const climbNumber = index + 1;
+          return {
+            competition_id: competition.id,
+            round_id: round.id,
+            climber_id: climber.id,
+            climb_number: climbNumber,
+            entered_by: "staff",
+            ...buildDemoQualifierScore({
+              competitionId: competition.id,
+              roundId: round.id,
+              roundIndex: round.roundIndex,
+              roundType: round.roundType,
+              climber: seed,
+              climbNumber,
+              problemCount: round.problemCount,
+            }),
+          };
+        });
       })
     );
 
@@ -592,26 +635,31 @@ export async function POST(request: NextRequest) {
 
     const target = insertedRows.find((climber) => climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER);
     const targetClimberId = target?.id ?? null;
+    const targetSeed = athleteSeeds.find((athlete) => athlete.climberNumber === DEMO_TARGET_CLIMBER_NUMBER);
 
     return NextResponse.json({
       ok: true,
       competitionId: competition.id,
       slug: competition.slug,
-      activeRoundId: qualifierRound.id,
+      activeRoundId: activeQualifierRound.id,
       judgeUrl: buildDemoJudgeUrl(competition.slug, targetClimberId),
       organizerUrl: buildDemoOrganizerUrl(competition.slug),
       publicUrl: buildDemoPublicUrl(competition.slug),
       target: {
         climberId: targetClimberId,
         climberNumber: DEMO_TARGET_CLIMBER_NUMBER,
-        name: DEMO_TARGET_CLIMBER_NAME,
+        name: targetSeed?.name ?? "Demo athlete",
         climbNumber: DEMO_TARGET_CLIMB_NUMBER,
+        roundName: activeQualifierRound.name,
         before: DEMO_TARGET_BEFORE_LABEL,
         after: DEMO_TARGET_AFTER_LABEL,
       },
       inserted: {
         climbers: insertedRows.length,
         attempts: attempts.length,
+        qualifierRounds: preparedQualifierRounds.length,
+        semifinalsSeeded: preparedQualifierRounds.some((round) => round.roundType === "semifinal"),
+        advancementSourceRoundId: advancementSourceRound?.id ?? null,
       },
     });
   } catch (error) {

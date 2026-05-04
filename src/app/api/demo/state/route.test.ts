@@ -26,9 +26,14 @@ const mockState = vi.hoisted(() => ({
   climberCount: 12,
   attemptCount: 24,
   finalistCount: 6,
+  finalAttemptCount: 24,
+  qualifierRound: {
+    id: "round-qualifier",
+    name: "Qualifier",
+  } as { id: string; name: string | null },
   targetClimber: {
     id: "climber-c",
-    name: "Athlete C",
+    name: "Avery Chen",
     climber_number: "103",
   } as { id: string; name: string; climber_number: string },
   targetAttempt: {
@@ -63,6 +68,10 @@ class SupabaseQueryMock {
     return this;
   }
 
+  order() {
+    return this;
+  }
+
   limit() {
     return this;
   }
@@ -76,8 +85,13 @@ class SupabaseQueryMock {
       return { data: mockState.targetClimber, error: null };
     }
 
+    if (this.table === "competition_rounds") {
+      return { data: mockState.qualifierRound, error: null };
+    }
+
     if (
       this.table === "qualifier_attempts" &&
+      this.filters.round_id === mockState.qualifierRound.id &&
       this.filters.climber_id === mockState.targetClimber.id &&
       this.filters.climb_number === DEMO_TARGET_CLIMB_NUMBER
     ) {
@@ -105,6 +119,10 @@ class SupabaseQueryMock {
 
     if (this.selectOptions?.head && this.table === "competition_finalists") {
       return { count: mockState.finalistCount, error: null };
+    }
+
+    if (this.selectOptions?.head && this.table === "final_attempts") {
+      return { count: mockState.finalAttemptCount, error: null };
     }
 
     return { data: null, error: null };
@@ -137,9 +155,14 @@ beforeEach(() => {
   mockState.climberCount = 12;
   mockState.attemptCount = 24;
   mockState.finalistCount = 6;
+  mockState.finalAttemptCount = 24;
+  mockState.qualifierRound = {
+    id: "round-qualifier",
+    name: "Qualifier",
+  };
   mockState.targetClimber = {
     id: "climber-c",
-    name: "Athlete C",
+    name: "Avery Chen",
     climber_number: DEMO_TARGET_CLIMBER_NUMBER,
   };
   mockState.targetAttempt = {
@@ -154,7 +177,7 @@ beforeEach(() => {
 });
 
 describe("demo state route", () => {
-  it("returns publicReady when finalists exist and finals are visible", async () => {
+  it("returns publicReady when finalists, finals attempts, and finals are visible", async () => {
     const response = await GET(stateRequest("competitionId=competition-1"));
     const body = await response.json();
 
@@ -178,6 +201,20 @@ describe("demo state route", () => {
       organizerAdvanced: false,
       publicReady: false,
     });
+  });
+
+  it("keeps publicReady false until finals attempts exist", async () => {
+    mockState.finalAttemptCount = 0;
+
+    const response = await GET(stateRequest("slug=summit-demo"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.progress).toMatchObject({
+      organizerAdvanced: true,
+      publicReady: false,
+    });
+    expect(body.counts.finalAttempts).toBe(0);
   });
 
   it("refuses non-demo competitions", async () => {

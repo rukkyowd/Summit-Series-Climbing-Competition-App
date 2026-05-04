@@ -60,6 +60,11 @@ export default function CompetitionLeaderboardPage() {
         { event: "*", schema: "public", table: "competition_finalists", filter: `competition_id=eq.${competitionId}` },
         refreshLeaderboard
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "final_attempts", filter: `competition_id=eq.${competitionId}` },
+        refreshLeaderboard
+      )
       .on("postgres_changes", { event: "*", schema: "public", table: "competitions", filter: `id=eq.${competitionId}` }, refreshLeaderboard)
       .subscribe();
 
@@ -84,7 +89,12 @@ export default function CompetitionLeaderboardPage() {
     snapshot?.competition.current_phase === "finals_open" ||
     snapshot?.competition.current_phase === "finals_closed" ||
     snapshot?.competition.current_phase === "results";
-  const demoPublicReady = Boolean(finalsVisible && (snapshot?.finalists.length ?? 0) > 0);
+  const finalsScorePresent = Boolean(
+    snapshot?.finalsLeaderboard.some((row) =>
+      row.problem_results.some((result) => result.top || result.zone || result.points > 0)
+    )
+  );
+  const demoPublicReady = Boolean(finalsVisible && (snapshot?.finalists.length ?? 0) > 0 && finalsScorePresent);
   const demoWizardGuidance = useMemo(
     () => getDemoPublicWizardGuidance(demoPublicReady),
     [demoPublicReady]

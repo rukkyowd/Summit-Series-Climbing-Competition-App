@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 import {
+  DEMO_TARGET_AFTER_LABEL,
+  DEMO_TARGET_BEFORE_LABEL,
   DEMO_TARGET_CLIMB_NUMBER,
   DEMO_TARGET_CLIMBER_NUMBER,
   isDemoTargetCorrected,
@@ -58,11 +60,22 @@ export async function GET(request: NextRequest) {
       climberCountResult,
       attemptCountResult,
       finalistCountResult,
+      finalAttemptCountResult,
+      qualifierRoundResult,
       targetClimberResult,
     ] = await Promise.all([
       supabase.from("climbers").select("id", { count: "exact", head: true }).eq("competition_id", competitionRow.id),
       supabase.from("qualifier_attempts").select("id", { count: "exact", head: true }).eq("competition_id", competitionRow.id),
       supabase.from("competition_finalists").select("climber_id", { count: "exact", head: true }).eq("competition_id", competitionRow.id),
+      supabase.from("final_attempts").select("id", { count: "exact", head: true }).eq("competition_id", competitionRow.id),
+      supabase
+        .from("competition_rounds")
+        .select("id, name")
+        .eq("competition_id", competitionRow.id)
+        .eq("scoring_bucket", "qualifier")
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
       supabase
         .from("climbers")
         .select("id, name, climber_number")
@@ -71,18 +84,27 @@ export async function GET(request: NextRequest) {
         .maybeSingle(),
     ]);
 
-    for (const result of [climberCountResult, attemptCountResult, finalistCountResult, targetClimberResult]) {
+    for (const result of [
+      climberCountResult,
+      attemptCountResult,
+      finalistCountResult,
+      finalAttemptCountResult,
+      qualifierRoundResult,
+      targetClimberResult,
+    ]) {
       if (result.error) {
         throw new Error(result.error.message);
       }
     }
 
     const targetClimber = targetClimberResult.data as { id: string; name: string; climber_number: string } | null;
+    const qualifierRound = qualifierRoundResult.data as { id: string; name: string | null } | null;
     const { data: targetAttempt, error: targetAttemptError } = targetClimber
       ? await supabase
           .from("qualifier_attempts")
           .select("attempt_count, topped, zone, attempts_to_top, attempts_to_zone")
           .eq("competition_id", competitionRow.id)
+          .eq("round_id", qualifierRound?.id ?? "")
           .eq("climber_id", targetClimber.id)
           .eq("climb_number", DEMO_TARGET_CLIMB_NUMBER)
           .maybeSingle()
@@ -96,9 +118,10 @@ export async function GET(request: NextRequest) {
     const climberCount = getSingleCount(climberCountResult);
     const attemptCount = getSingleCount(attemptCountResult);
     const finalistCount = getSingleCount(finalistCountResult);
+    const finalAttemptCount = getSingleCount(finalAttemptCountResult);
     const dataPopulated = climberCount > 0 && attemptCount > 0 && Boolean(targetClimber && targetAttempt);
     const finalsStarted = Boolean(competitionRow.finals_started_at) || ["finals_open", "finals_closed", "results"].includes(competitionRow.current_phase ?? "");
-    const publicReady = finalistCount > 0 && finalsStarted;
+    const publicReady = finalistCount > 0 && finalAttemptCount >= finalistCount && finalsStarted;
 
     return NextResponse.json({
       ok: true,
@@ -109,7 +132,11 @@ export async function GET(request: NextRequest) {
       target: {
         climberId: targetClimber?.id ?? null,
         climberNumber: DEMO_TARGET_CLIMBER_NUMBER,
+        name: targetClimber?.name ?? null,
         climbNumber: DEMO_TARGET_CLIMB_NUMBER,
+        roundName: qualifierRound?.name ?? "Qualifier",
+        before: DEMO_TARGET_BEFORE_LABEL,
+        after: DEMO_TARGET_AFTER_LABEL,
         attempt,
         seeded: isDemoTargetSeeded(attempt),
         corrected: isDemoTargetCorrected(attempt),
@@ -118,6 +145,7 @@ export async function GET(request: NextRequest) {
         climbers: climberCount,
         attempts: attemptCount,
         finalists: finalistCount,
+        finalAttempts: finalAttemptCount,
       },
       progress: {
         eventReady: true,

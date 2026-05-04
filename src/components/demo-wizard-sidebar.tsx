@@ -190,7 +190,7 @@ export function DemoWizardSidebar({
           {normalizedProgress.dataPopulated ? "Seeded field" : "No sample field yet"}
         </div>
         <div className={normalizedProgress.keyScoreCorrected ? "text-emerald-700" : ""}>
-          {normalizedProgress.keyScoreCorrected ? "Athlete C corrected" : "Athlete C pending"}
+          {normalizedProgress.keyScoreCorrected ? "Score corrected" : "Score correction pending"}
         </div>
         <div className={normalizedProgress.organizerAdvanced ? "text-emerald-700" : ""}>
           {normalizedProgress.organizerAdvanced ? "Finalists set" : "Organizer pending"}

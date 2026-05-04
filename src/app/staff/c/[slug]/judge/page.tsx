@@ -46,8 +46,9 @@ import {
   type QualifierAttempt,
 } from "@/lib/scoring";
 import {
+  DEMO_TARGET_AFTER_LABEL,
+  DEMO_TARGET_BEFORE_LABEL,
   DEMO_TARGET_CLIMB_NUMBER,
-  DEMO_TARGET_CLIMBER_NAME,
   DEMO_TARGET_CLIMBER_NUMBER,
   isDemoTargetCorrected,
 } from "@/lib/demo-scenario";
@@ -777,11 +778,7 @@ export default function StaffJudgePage() {
   );
   const demoTargetClimber = useMemo(
     () =>
-      snapshot?.climbers.find(
-        (climber) =>
-          climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER ||
-          climber.name.toLowerCase() === DEMO_TARGET_CLIMBER_NAME.toLowerCase()
-      ) ?? null,
+      snapshot?.climbers.find((climber) => climber.climber_number === DEMO_TARGET_CLIMBER_NUMBER) ?? null,
     [snapshot]
   );
   const demoTargetAttempt = useMemo(
@@ -796,13 +793,21 @@ export default function StaffJudgePage() {
   const demoTargetCorrected = isDemoTargetCorrected(demoTargetAttempt);
   const demoOverlayActive = demoGuideActive && snapshot?.competition.is_demo;
   const demoWizardGuidance = useMemo(
-    () => getDemoJudgeWizardGuidance(demoTargetCorrected),
-    [demoTargetCorrected]
+    () =>
+      getDemoJudgeWizardGuidance(demoTargetCorrected, {
+        athleteName: demoTargetClimber?.name,
+        climberNumber: DEMO_TARGET_CLIMBER_NUMBER,
+        roundName: activeQualifierRoundName,
+        climbNumber: DEMO_TARGET_CLIMB_NUMBER,
+        currentScore: DEMO_TARGET_BEFORE_LABEL,
+        correctedScore: DEMO_TARGET_AFTER_LABEL,
+      }),
+    [activeQualifierRoundName, demoTargetClimber?.name, demoTargetCorrected]
   );
 
   const highlightDemoTarget = useCallback(() => {
     if (!demoTargetClimber) {
-      setMessage(`${DEMO_TARGET_CLIMBER_NAME} is not available in this judge panel yet. Start from Demo Home and seed the event.`);
+      setMessage(`Athlete #${DEMO_TARGET_CLIMBER_NUMBER} is not available in this judge panel yet. Start from Demo Home and seed the event.`);
       return;
     }
 
@@ -814,7 +819,7 @@ export default function StaffJudgePage() {
     window.requestAnimationFrame(() => {
       jumpToDemoAnchor("judge-entry-cards");
     });
-    setMessage(`${DEMO_TARGET_CLIMBER_NAME} #${DEMO_TARGET_CLIMBER_NUMBER} and Boulder ${DEMO_TARGET_CLIMB_NUMBER} are selected. The guide has not changed or saved any score.`);
+    setMessage(`${demoTargetClimber.name} #${DEMO_TARGET_CLIMBER_NUMBER} and Boulder ${DEMO_TARGET_CLIMB_NUMBER} are selected. The guide has not changed or saved any score.`);
   }, [demoTargetClimber]);
 
   const selectedQualifierDraftKey = selectedQualifierClimber ? `${selectedQualifierClimber.id}:${selectedBoulder}` : "";

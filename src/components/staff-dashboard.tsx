@@ -179,7 +179,7 @@ type OrganizerBuildTransitionState = {
 const ORGANIZER_BUILD_TRANSITION_STEPS = [
   "Saving event setup",
   "Adding sample climbers",
-  "Seeding practice scores",
+  "Seeding realistic scores",
   "Opening judge workspace",
 ] as const;
 
@@ -1182,6 +1182,36 @@ export default function StaffDashboard({
       (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "finals_open"
     ) ?? finalsBlocks[0];
   }, [liveScheduleBlock, orderedScheduleBlocks]);
+  const qualifierStyleRoundsForOperations = useMemo(
+    () =>
+      [...(draft?.rounds ?? [])]
+        .filter(
+          (round) =>
+            round.scoring_bucket === "qualifier" ||
+            round.round_type === "qualifier" ||
+            round.round_type === "semifinal"
+        )
+        .sort((left, right) => left.sort_order - right.sort_order),
+    [draft?.rounds]
+  );
+  const finalsRoundForOperations = useMemo(
+    () => draft?.rounds?.find((round) => round.scoring_bucket === "finals" || round.round_type === "finals") ?? null,
+    [draft?.rounds]
+  );
+  const finalsAdvancementSourceRound = useMemo(() => {
+    if (!qualifierStyleRoundsForOperations.length) {
+      return null;
+    }
+
+    return (
+      qualifierStyleRoundsForOperations.find(
+        (round) => round.id === finalsRoundForOperations?.advancement_source_round_id
+      ) ?? qualifierStyleRoundsForOperations[qualifierStyleRoundsForOperations.length - 1]
+    );
+  }, [finalsRoundForOperations?.advancement_source_round_id, qualifierStyleRoundsForOperations]);
+  const finalsAdvancementSourceLabel =
+    finalsAdvancementSourceRound?.round_type === "semifinal" ? "semifinal" : "qualifier";
+  const finalsAdvancementSourcePlural = finalsAdvancementSourceLabel === "semifinal" ? "semifinals" : "qualifiers";
   const resultsBlock = useMemo(() => {
     const resultBlocks = orderedScheduleBlocks.filter(
       (block) => getCompetitionPhaseForSchedulePhase(block.phase_type) === "results"
@@ -1493,16 +1523,16 @@ export default function StaffDashboard({
     }
 
     setConfirming({
-      title: "Lock qualifiers",
+      title: `Lock ${finalsAdvancementSourcePlural}`,
       description:
-        "Close qualifier scoring so the organizer can review a stable cut line before creating the finals field.",
-      confirmLabel: "Lock qualifiers",
+        `Close ${finalsAdvancementSourceLabel} scoring so the organizer can review a stable cut line before creating the finals field.`,
+      confirmLabel: `Lock ${finalsAdvancementSourcePlural}`,
       action: async () => {
         await runPhaseNavigation(
           draft.id,
           "qualifier_closed",
           1,
-          "Qualifier scoring locked. Review projected finalists before advancing."
+          `${finalsAdvancementSourceLabel === "semifinal" ? "Semifinal" : "Qualifier"} scoring locked. Review projected finalists before advancing.`
         );
       },
     });
@@ -1519,12 +1549,35 @@ export default function StaffDashboard({
       confirmLabel: "Advance and start finals",
       expectedValue: draft.name,
       action: async () => {
-        await advanceCompetitionToFinals(draft.id);
-        if (finalsOperationBlock) {
-          await setCompetitionLiveScheduleBlock(draft.id, finalsOperationBlock.id);
+        setIsPhasePending(true);
+        setError("");
+        try {
+          setMessage("Advancing finalists and opening finals...");
+          await advanceCompetitionToFinals(draft.id);
+          if (finalsOperationBlock) {
+            await setCompetitionLiveScheduleBlock(draft.id, finalsOperationBlock.id);
+          }
+          if (guidedDemoActive && selectedCompetitionIsDemo) {
+            setMessage("Finalists advanced. Adding demo finals scores...");
+            const response = await fetch("/api/demo/finals-results", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ competitionId: draft.id }),
+            });
+            const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+            if (!response.ok || !payload?.ok) {
+              throw new Error(payload?.error ?? "Unable to seed demo finals scores.");
+            }
+          }
+          await refreshAfterChange(draft.id);
+          setMessage(
+            guidedDemoActive && selectedCompetitionIsDemo
+              ? "Finalists advanced, finals scores are seeded, and finals are live."
+              : "Finalists advanced and finals are live."
+          );
+        } finally {
+          setIsPhasePending(false);
         }
-        await refreshAfterChange(draft.id);
-        setMessage("Finalists advanced and finals are live.");
       },
     });
   };
@@ -1647,9 +1700,19 @@ export default function StaffDashboard({
     setDemoSeedPending(true);
     setError("");
     setMessage("");
+    setBuildTransitionState({
+      active: true,
+      stepIndex: 0,
+      complete: false,
+    });
 
     try {
       await saveDraftNow();
+      setBuildTransitionState({
+        active: true,
+        stepIndex: 1,
+        complete: false,
+      });
       const response = await fetch("/api/demo/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1665,33 +1728,49 @@ export default function StaffDashboard({
           climberNumber: string;
           name: string;
           climbNumber: number;
+          roundName?: string;
           before: string;
           after: string;
         };
         error?: string;
       } | null;
 
-        if (!response.ok || !payload?.ok) {
-          throw new Error(payload?.error ?? "Unable to seed demo data.");
-        }
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? "Unable to seed demo data.");
+      }
 
-        setDemoAct1Ready((current) =>
-          current
-            ? {
-                ...current,
+      setBuildTransitionState({
+        active: true,
+        stepIndex: 2,
+        complete: false,
+      });
+      setDemoAct1Ready((current) =>
+        current
+          ? {
+              ...current,
               judgeUrl: payload.judgeUrl ?? current.judgeUrl,
               target: payload.target,
             }
-            : current
-        );
-        router.push(payload.judgeUrl ?? demoAct1Ready.judgeUrl);
-      } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "Unable to open the judge panel.");
-        setMessage("");
-      } finally {
-        setDemoSeedPending(false);
-      }
-    }, [demoAct1Ready, demoSetupValidation.canContinueToJudge, demoSetupValidation.firstBlockingMessage, demoSetupValidation.firstIncompleteStep, draft, router, saveDraftNow]);
+          : current
+      );
+      setBuildTransitionState({
+        active: true,
+        stepIndex: ORGANIZER_BUILD_TRANSITION_STEPS.length - 1,
+        complete: true,
+      });
+      router.push(payload.judgeUrl ?? demoAct1Ready.judgeUrl);
+    } catch (nextError) {
+      setBuildTransitionState({
+        active: false,
+        stepIndex: 0,
+        complete: false,
+      });
+      setError(nextError instanceof Error ? nextError.message : "Unable to open the judge panel.");
+      setMessage("");
+    } finally {
+      setDemoSeedPending(false);
+    }
+  }, [demoAct1Ready, demoSetupValidation.canContinueToJudge, demoSetupValidation.firstBlockingMessage, demoSetupValidation.firstIncompleteStep, draft, router, saveDraftNow]);
 
   const resetDemoSessionCompetition = useCallback(async () => {
     setError("");
@@ -2059,6 +2138,12 @@ export default function StaffDashboard({
   const qualifierStandingsCount = snapshot?.qualifierLeaderboard.length ?? 0;
   const projectedFinalistCount = snapshot?.finalists.length ?? 0;
   const finalistsPersisted = Boolean(snapshot?.finalistsPersisted);
+  const finalsScoresSeededForOperations = Boolean(
+    snapshot?.finalsLeaderboard.some((row) =>
+      row.problem_results.some((result) => result.top || result.zone || result.points > 0)
+    )
+  );
+  const demoOrganizerReadyForPublic = finalistsPersisted && finalsScoresSeededForOperations;
   const qualifierLockedForOperations = draft
     ? compareCompetitionPhases(draft.current_phase, "qualifier_closed") >= 0
     : false;
@@ -2091,9 +2176,9 @@ export default function StaffDashboard({
   const lockQualifiersDisabledReason = !draft
     ? ""
     : !canEditPhase
-      ? "Only admins can lock qualifier scoring."
+      ? `Only admins can lock ${finalsAdvancementSourceLabel} scoring.`
       : qualifierLockedForOperations
-        ? "Qualifier scoring is already locked."
+        ? `${finalsAdvancementSourceLabel === "semifinal" ? "Semifinal" : "Qualifier"} scoring is already locked.`
         : draft.current_phase !== "qualifier_open"
           ? `Move the event to ${formatCompetitionPhaseLabel("qualifier_open").toLowerCase()} before locking.`
           : "";
@@ -2106,9 +2191,9 @@ export default function StaffDashboard({
         : finalsStartedForOperations
           ? "Finals are already running or complete."
         : !qualifierLockedForOperations
-          ? "Lock qualifier scoring first so the cut line is stable."
-          : !projectedFinalistCount
-            ? "No projected finalists yet. Check finals eligibility, cutoff, and qualifier scores."
+          ? `Lock ${finalsAdvancementSourceLabel} scoring first so the cut line is stable.`
+        : !projectedFinalistCount
+            ? `No projected finalists yet. Check finals eligibility, cutoff, and ${finalsAdvancementSourceLabel} scores.`
             : "";
   const publishResultsDisabledReason = !draft
     ? ""
@@ -2245,8 +2330,16 @@ export default function StaffDashboard({
       getDemoOrganizerWizardGuidance({
         qualifierLocked: qualifierLockedForOperations,
         finalistsPersisted,
+        finalsScoresReady: selectedCompetitionIsDemo ? finalsScoresSeededForOperations : finalistsPersisted,
+        advancementSourceLabel: finalsAdvancementSourceLabel,
       }),
-    [finalistsPersisted, qualifierLockedForOperations]
+    [
+      finalistsPersisted,
+      finalsScoresSeededForOperations,
+      finalsAdvancementSourceLabel,
+      qualifierLockedForOperations,
+      selectedCompetitionIsDemo,
+    ]
   );
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
@@ -2936,11 +3029,17 @@ export default function StaffDashboard({
               dataPopulated: true,
               keyScoreCorrected: true,
               organizerAdvanced: finalistsPersisted,
-              publicReady: finalistsPersisted && finalsStartedForOperations,
+              publicReady: demoOrganizerReadyForPublic && finalsStartedForOperations,
             }}
             primaryAction={
-              finalistsPersisted
+              demoOrganizerReadyForPublic
                 ? { label: demoOrganizerWizardGuidance.primaryActionLabel, href: demoPublicPath }
+                : finalistsPersisted
+                  ? {
+                      label: demoOrganizerWizardGuidance.primaryActionLabel,
+                      targetAnchor: demoOrganizerWizardGuidance.primaryTargetAnchor,
+                      disabled: true,
+                    }
                 : {
                     label: demoOrganizerWizardGuidance.primaryActionLabel,
                     targetAnchor: demoOrganizerWizardGuidance.primaryTargetAnchor,
@@ -3004,7 +3103,7 @@ export default function StaffDashboard({
                   Moving from organizer setup to the judge panel.
                 </h2>
                 <p className="max-w-2xl text-base leading-7 text-slate-600">
-                  The demo is saving this event, adding Summit Series athletes, seeding Athlete C&apos;s Boulder 3 correction, and opening the real judge workspace.
+                  The demo is saving this event, adding Summit Series athletes, seeding a realistic Boulder 3 correction target, and opening the real judge workspace.
                 </p>
                 <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-4 py-2 text-sm font-medium text-sky-800">
                   <span className="demo-live-dot" aria-hidden="true" />
@@ -3199,7 +3298,7 @@ export default function StaffDashboard({
                   Run the event day in order.
                 </h2>
                 <p className="text-sm leading-6 text-slate-600">
-                  Review live standings, lock qualifier scoring, advance and start finals, then publish results. This is the only place to run the live event.
+                  Review live standings, lock {finalsAdvancementSourceLabel} scoring, advance and start finals, then publish results. This is the only place to run the live event.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -3209,8 +3308,8 @@ export default function StaffDashboard({
                     : finalsLiveForOperations
                       ? "Finals live"
                       : qualifierLockedForOperations
-                        ? "Qualifiers locked"
-                        : "Qualifiers open"}
+                        ? `${finalsAdvancementSourcePlural.charAt(0).toUpperCase()}${finalsAdvancementSourcePlural.slice(1)} locked`
+                        : `${finalsAdvancementSourcePlural.charAt(0).toUpperCase()}${finalsAdvancementSourcePlural.slice(1)} open`}
                 </span>
                 {operationsScheduleBlockLabel ? <span className="results-chip">{operationsScheduleBlockLabel}</span> : null}
               </div>
@@ -3251,7 +3350,7 @@ export default function StaffDashboard({
                 </div>
                 <h3 className="mt-3 text-lg font-semibold">Review standings</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Check the cut line before locking scores.
+                  Check the {finalsAdvancementSourceLabel} cut line before locking scores.
                 </p>
                 <Link
                   href={demoLeaderboardPath}
@@ -3274,9 +3373,9 @@ export default function StaffDashboard({
                   <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Step 2</div>
                   <span className="results-chip">{qualifierLockedForOperations ? "Locked" : "Open"}</span>
                 </div>
-                <h3 className="mt-3 text-lg font-semibold">Lock qualifiers</h3>
+                <h3 className="mt-3 text-lg font-semibold">Lock {finalsAdvancementSourcePlural}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Freeze qualifier scoring before finalists are selected.
+                  Freeze {finalsAdvancementSourceLabel} scoring before finalists are selected.
                 </p>
                 <button
                   type="button"
@@ -3285,7 +3384,7 @@ export default function StaffDashboard({
                   className="results-secondary-button mt-4 w-full justify-center"
                   data-demo-anchor="organizer-lock-qualifiers"
                 >
-                  {isPhasePending ? "Updating..." : "Lock qualifiers"}
+                  {isPhasePending ? "Updating..." : `Lock ${finalsAdvancementSourcePlural}`}
                 </button>
                 {lockQualifiersDisabledReason ? (
                   <p className="mt-2 text-xs leading-5 text-slate-500">{lockQualifiersDisabledReason}</p>
@@ -3313,7 +3412,7 @@ export default function StaffDashboard({
                 </div>
                 <h3 className="mt-3 text-lg font-semibold">Advance + start finals</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Create the finals field and open finals scoring.
+                  Create the finals field from {finalsAdvancementSourceLabel} rankings and open finals scoring.
                 </p>
                 <button
                   type="button"
@@ -3385,7 +3484,7 @@ export default function StaffDashboard({
                   <div>
                     <div className="results-kicker">Projected cut line</div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Top {draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF} per eligible category advance when the finals field is created. These cards show the athlete currently sitting on the last qualifying spot in each category.
+                      Top {draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF} per eligible category advance from the {finalsAdvancementSourceLabel}. These cards show the athlete currently sitting on the last qualifying spot in each category.
                     </p>
                   </div>
                   <span className="results-chip">
