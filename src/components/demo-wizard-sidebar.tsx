@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { DemoLoadingOverlay, useDemoNavigation } from "@/components/demo-loading-overlay";
 import { buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { jumpToDemoAnchor } from "@/lib/demo-jump-target";
@@ -19,6 +19,9 @@ export type DemoWizardAction = {
   onClick?: () => void | Promise<void>;
   targetAnchor?: string;
   disabled?: boolean;
+  loadingTitle?: string;
+  loadingText?: string;
+  loadingDelayMs?: number;
 };
 
 export type DemoWizardSidebarProps = {
@@ -34,9 +37,11 @@ export type DemoWizardSidebarProps = {
 
 function ActionButton({
   action,
+  navigateWithDemoLoading,
   primary = false,
 }: {
   action: DemoWizardAction;
+  navigateWithDemoLoading: ReturnType<typeof useDemoNavigation>["navigateWithDemoLoading"];
   primary?: boolean;
 }) {
   const [pending, setPending] = useState(false);
@@ -48,7 +53,7 @@ function ActionButton({
       return;
     }
 
-    if (!action.onClick && !action.targetAnchor) {
+    if (!action.onClick && !action.targetAnchor && !action.href) {
       return;
     }
 
@@ -59,28 +64,20 @@ function ActionButton({
         await action.onClick();
       }
       if (action.targetAnchor && !jumpToDemoAnchor(action.targetAnchor)) {
-        throw new Error("That demo target is not visible on this screen yet.");
+        throw new Error("I can't find that step on this screen yet.");
+      }
+      if (action.href) {
+        await navigateWithDemoLoading(action.href, {
+          title: action.loadingTitle,
+          text: action.loadingText,
+          delayMs: action.loadingDelayMs,
+        });
       }
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Demo action failed.");
+      setError(nextError instanceof Error ? nextError.message : "That demo action did not work. Try again.");
     } finally {
       setPending(false);
     }
-  }
-
-  if (action.href && !action.onClick && !action.targetAnchor) {
-    return (
-      <Link
-        href={action.href}
-        aria-disabled={disabled}
-        className={cn(
-          buttonStyles({ variant: primary ? "primary" : "secondary", size: "compact", fullWidth: true }),
-          disabled && "pointer-events-none opacity-50"
-        )}
-      >
-        {action.label}
-      </Link>
-    );
   }
 
   return (
@@ -89,9 +86,12 @@ function ActionButton({
         type="button"
         disabled={disabled}
         onClick={runAction}
-        className={buttonStyles({ variant: primary ? "primary" : "secondary", size: "compact", fullWidth: true })}
+        className={cn(
+          buttonStyles({ variant: primary ? "primary" : "secondary", size: "compact", fullWidth: true }),
+          disabled && "opacity-60"
+        )}
       >
-        {pending ? "Working..." : action.label}
+        {pending ? (action.href ? "Opening..." : "Working...") : action.label}
       </button>
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
@@ -117,6 +117,7 @@ export function DemoWizardSidebar({
   const currentIndex = DEMO_WIZARD_STEPS.findIndex((step) => step.id === currentStep);
   const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
   const currentLabel = `Step ${safeCurrentIndex + 1} of ${DEMO_WIZARD_STEPS.length}`;
+  const { loadingCopy, navigateWithDemoLoading } = useDemoNavigation();
 
   if (collapsed) {
     return (
@@ -169,7 +170,7 @@ export function DemoWizardSidebar({
       <h2 className="mt-4 text-xl font-semibold tracking-tight text-slate-950">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">{instruction}</p>
       <div className="mt-4 rounded-[1rem] border border-sky-100 bg-sky-50 px-3 py-3 text-sm leading-6 text-sky-950">
-        <span className="font-semibold">Why this matters: </span>
+        <span className="font-semibold">Why it matters: </span>
         {why}
       </div>
       {blockingMessage ? (
@@ -179,26 +180,37 @@ export function DemoWizardSidebar({
       ) : null}
 
       <div className="mt-4 grid gap-2">
-        {primaryAction ? <ActionButton action={primaryAction} primary /> : null}
+        {primaryAction ? (
+          <ActionButton action={primaryAction} navigateWithDemoLoading={navigateWithDemoLoading} primary />
+        ) : null}
         {secondaryActions.map((action) => (
-          <ActionButton key={`${action.label}-${action.href ?? action.targetAnchor ?? "action"}`} action={action} />
+          <ActionButton
+            key={`${action.label}-${action.href ?? action.targetAnchor ?? "action"}`}
+            action={action}
+            navigateWithDemoLoading={navigateWithDemoLoading}
+          />
         ))}
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-500">
         <div className={normalizedProgress.dataPopulated ? "text-emerald-700" : ""}>
-          {normalizedProgress.dataPopulated ? "Seeded field" : "No sample field yet"}
+          {normalizedProgress.dataPopulated ? "Sample field ready" : "Add sample field"}
         </div>
         <div className={normalizedProgress.keyScoreCorrected ? "text-emerald-700" : ""}>
-          {normalizedProgress.keyScoreCorrected ? "Score corrected" : "Score correction pending"}
+          {normalizedProgress.keyScoreCorrected ? "Correction saved" : "Score fix needed"}
         </div>
         <div className={normalizedProgress.organizerAdvanced ? "text-emerald-700" : ""}>
-          {normalizedProgress.organizerAdvanced ? "Finalists set" : "Organizer pending"}
+          {normalizedProgress.organizerAdvanced ? "Finalists set" : "Organizer step next"}
         </div>
         <div className={normalizedProgress.publicReady ? "text-emerald-700" : ""}>
-          {normalizedProgress.publicReady ? "Public ready" : "Public pending"}
+          {normalizedProgress.publicReady ? "Public page ready" : "Public page next"}
         </div>
       </div>
+      <DemoLoadingOverlay
+        active={Boolean(loadingCopy)}
+        title={loadingCopy?.title ?? "Opening next step..."}
+        text={loadingCopy?.text ?? "Bringing the next demo screen into view."}
+      />
     </aside>
   );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEMO_WIZARD_STEPS,
+  formatDemoJudgeScoreLabel,
   getDemoSetupStepCardAnchor,
   getDemoCreateWizardGuidance,
   getDemoJudgeWizardGuidance,
@@ -54,7 +55,7 @@ describe("demo wizard helpers", () => {
     const guidance = getDemoCreateWizardGuidance(validation(), false);
 
     expect(guidance).toMatchObject({
-      title: "Demo - Organizer",
+      title: "Start as the organizer",
       primaryActionLabel: "Start Event Basics",
       primaryTargetAnchor: "organizer-create-name",
     });
@@ -102,7 +103,12 @@ describe("demo wizard helpers", () => {
     });
   });
 
-  it("gives exact judge correction instructions before continuing", () => {
+  it("normalizes raw score labels into friendly demo copy", () => {
+    expect(formatDemoJudgeScoreLabel("Top in 3 attempts, Zone yes")).toBe("Top on try 3, zone reached");
+    expect(formatDemoJudgeScoreLabel("Top in 1 attempt, Zone no")).toBe("Top on try 1, zone not reached");
+  });
+
+  it("gives friendly judge correction instructions before continuing", () => {
     const guidance = getDemoJudgeWizardGuidance(false, {
       athleteName: "Avery Chen",
       climberNumber: "103",
@@ -117,8 +123,15 @@ describe("demo wizard helpers", () => {
       primaryTargetAnchor: "judge-entry-cards",
     });
     expect(guidance.instruction).toContain("Avery Chen (#103)");
-    expect(guidance.instruction).toContain("Boulder 3 is currently Top in 3 attempts, Zone yes");
-    expect(guidance.instruction).toContain("Set Boulder 3 to Top in 1 attempt, Zone yes, then Save.");
+    expect(guidance.instruction).toContain(
+      'open Boulder 3 in Qualifier, and change the demo mistake from "Top on try 3, zone reached" to "Top on try 1, zone reached"'
+    );
+    expect(guidance.blockingMessage).toBe(
+      'Save Boulder 3 for Avery Chen (#103) as "Top on try 1, zone reached" to continue.'
+    );
+    expect(`${guidance.title} ${guidance.instruction} ${guidance.blockingMessage}`).not.toMatch(
+      /Zone yes|then Save|Demo - Judge|Correct Avery Chen/
+    );
     expect(getDemoJudgeWizardGuidance(true)).toMatchObject({
       primaryActionLabel: "Go to Organizer Dashboard",
       blockingMessage: null,
@@ -133,8 +146,8 @@ describe("demo wizard helpers", () => {
       primaryTargetAnchor: "organizer-advance-finals",
     });
     expect(getDemoOrganizerWizardGuidance({ qualifierLocked: true, finalistsPersisted: true, finalsScoresReady: false })).toMatchObject({
-      primaryActionLabel: "Finals Scores Pending",
-      blockingMessage: "Demo finals scores are not ready yet.",
+      primaryActionLabel: "Waiting for finals scores",
+      blockingMessage: "Finals scores are still being prepared.",
     });
     expect(getDemoOrganizerWizardGuidance({ qualifierLocked: true, finalistsPersisted: true, finalsScoresReady: true })).toMatchObject({
       primaryActionLabel: "View Public Page",
@@ -157,7 +170,7 @@ describe("demo wizard helpers", () => {
 
   it("uses the finish copy once the public page is ready", () => {
     expect(getDemoPublicWizardGuidance(false)).toMatchObject({
-      title: "Demo - Public View",
+      title: "Public view",
       primaryTargetAnchor: "public-leaderboard",
     });
     expect(getDemoPublicWizardGuidance(true)).toMatchObject({

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEMO_TARGET_AFTER_LABEL,
+  DEMO_TARGET_BEFORE_LABEL,
   DEMO_TARGET_CLIMB_NUMBER,
   DEMO_TARGET_CLIMBER_NUMBER,
   buildDemoJudgeUrl,
@@ -60,5 +62,10 @@ describe("demo scenario helpers", () => {
 
   it("documents the stable target number used by seed/state routes", () => {
     expect(DEMO_TARGET_CLIMBER_NUMBER).toBe("103");
+  });
+
+  it("uses human demo score labels for the correction target", () => {
+    expect(DEMO_TARGET_BEFORE_LABEL).toBe("Top on try 3, zone reached");
+    expect(DEMO_TARGET_AFTER_LABEL).toBe("Top on try 1, zone reached");
   });
 });

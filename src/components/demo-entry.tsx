@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { DemoLoadingOverlay, useDemoNavigation } from "@/components/demo-loading-overlay";
 import { buttonStyles } from "@/components/ui/button";
 
 type DemoSummary = {
@@ -14,8 +14,14 @@ type DemoSummary = {
 };
 
 export function DemoEntry({ latestDemo }: { latestDemo: DemoSummary | null }) {
-  const router = useRouter();
   const [error, setError] = useState("");
+  const { loadingCopy, navigateWithDemoLoading } = useDemoNavigation();
+  const navigationPending = Boolean(loadingCopy);
+
+  function startFullDemo() {
+    setError("");
+    void navigateWithDemoLoading("/staff/new?demo=act1");
+  }
 
   function skipToJudge() {
     if (!latestDemo?.canSkipToJudge) {
@@ -23,7 +29,8 @@ export function DemoEntry({ latestDemo }: { latestDemo: DemoSummary | null }) {
       return;
     }
 
-    router.push(`/staff/c/${latestDemo.slug}/judge?demo=act2`);
+    setError("");
+    void navigateWithDemoLoading(`/staff/c/${latestDemo.slug}/judge?demo=act2`);
   }
 
   function skipToResults() {
@@ -32,7 +39,8 @@ export function DemoEntry({ latestDemo }: { latestDemo: DemoSummary | null }) {
       return;
     }
 
-    router.push(`/c/${latestDemo.slug}?demo=act4`);
+    setError("");
+    void navigateWithDemoLoading(`/c/${latestDemo.slug}?demo=act4`);
   }
 
   return (
@@ -65,13 +73,18 @@ export function DemoEntry({ latestDemo }: { latestDemo: DemoSummary | null }) {
       ) : null}
 
       <div className="mt-6 flex flex-wrap gap-3">
-        <a href="/staff/new?demo=act1" className={buttonStyles({ variant: "primary" })}>
+        <button
+          type="button"
+          onClick={startFullDemo}
+          disabled={navigationPending}
+          className={buttonStyles({ variant: "primary" })}
+        >
           Start Full Demo
-        </a>
+        </button>
         <button
           type="button"
           onClick={skipToJudge}
-          disabled={!latestDemo?.canSkipToJudge}
+          disabled={navigationPending || !latestDemo?.canSkipToJudge}
           className={buttonStyles({ variant: "secondary" })}
         >
           Skip to Judge
@@ -79,12 +92,17 @@ export function DemoEntry({ latestDemo }: { latestDemo: DemoSummary | null }) {
         <button
           type="button"
           onClick={skipToResults}
-          disabled={!latestDemo?.canSkipToResults}
+          disabled={navigationPending || !latestDemo?.canSkipToResults}
           className={buttonStyles({ variant: "secondary" })}
         >
           Skip to Results
         </button>
       </div>
+      <DemoLoadingOverlay
+        active={Boolean(loadingCopy)}
+        title={loadingCopy?.title ?? "Opening next step..."}
+        text={loadingCopy?.text ?? "Bringing the next demo screen into view."}
+      />
     </section>
   );
 }

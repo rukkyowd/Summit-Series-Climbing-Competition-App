@@ -133,7 +133,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
           </h1>
           <p className="max-w-3xl text-base leading-7 text-slate-600">
             This workspace supports the sales demo from start to finish: create {CASCADE_CUP_DEMO_NAME}
-            in the real staff flow, add a realistic youth field, correct one Boulder 3 score, advance
+            in the real staff flow, add a realistic youth field, fix one Boulder 3 score, advance
             finalists, publish results, then delete the demo when you are done.
           </p>
         </div>
@@ -225,7 +225,7 @@ export function DemoWorkspace({ demos }: { demos: DemoCompetition[] }) {
                           {demoStates[demo.id]?.progress?.keyScoreCorrected ? "Score corrected" : "Correction pending"}
                         </span>
                         <span className="results-chip">
-                          {demoStates[demo.id]?.progress?.organizerAdvanced ? "Finals started" : "Organizer pending"}
+                          {demoStates[demo.id]?.progress?.organizerAdvanced ? "Finals started" : "Organizer step next"}
                         </span>
                       </div>
                     </div>

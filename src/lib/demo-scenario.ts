@@ -1,8 +1,8 @@
 export const DEMO_TARGET_CLIMBER_NUMBER = "103";
 export const DEMO_TARGET_CLIMBER_NAME = "Athlete C";
 export const DEMO_TARGET_CLIMB_NUMBER = 3;
-export const DEMO_TARGET_BEFORE_LABEL = "Top in 3 attempts, Zone yes";
-export const DEMO_TARGET_AFTER_LABEL = "Top in 1 attempt, Zone yes";
+export const DEMO_TARGET_BEFORE_LABEL = "Top on try 3, zone reached";
+export const DEMO_TARGET_AFTER_LABEL = "Top on try 1, zone reached";
 
 export type DemoTargetAttemptState = {
   attempt_count?: number | null;

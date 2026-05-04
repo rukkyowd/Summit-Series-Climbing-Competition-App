@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import StaffCompetitionSubnav from "@/components/staff-competition-subnav";
 import ConfirmationModal from "@/components/confirmation-modal";
+import { DemoLoadingOverlay, useDemoNavigation } from "@/components/demo-loading-overlay";
 import { DemoWizardSidebar } from "@/components/demo-wizard-sidebar";
 import {
   StaffEventCreationForm,
@@ -194,45 +195,6 @@ function DemoSalesShell(_: Record<string, unknown>) {
 
 function OrganizerDemoTour(_: Record<string, unknown>) {
   return null;
-}
-
-function DemoHandoffOverlay({
-  active,
-  title,
-  currentText,
-  complete = false,
-}: {
-  active: boolean;
-  title: string;
-  currentText: string;
-  complete?: boolean;
-}) {
-  if (!active) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
-      <div
-        role="status"
-        aria-live="polite"
-        className="w-[min(22.5rem,calc(100vw-2rem))] rounded-[1.5rem] border border-white/60 bg-white/70 px-6 py-7 text-center text-slate-950 shadow-[0_28px_90px_rgba(15,23,42,0.28)] backdrop-blur-xl"
-      >
-        <div className="mx-auto flex h-1.5 w-16 overflow-hidden rounded-full bg-white/75 shadow-inner">
-          <div
-            className={`h-full rounded-full bg-sky-700 transition-all duration-500 ${
-              complete ? "w-full" : "w-1/2 animate-pulse"
-            }`}
-          />
-        </div>
-        <div className="results-kicker mt-6 text-slate-500">Guided handoff</div>
-        <h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight text-slate-950">
-          {title}
-        </h2>
-        <p className="mt-4 text-sm font-medium leading-6 text-slate-600">{currentText}</p>
-      </div>
-    </div>
-  );
 }
 
 function readDemoSalesSession() {
@@ -673,6 +635,7 @@ export default function StaffDashboard({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { loadingCopy: demoNavigationCopy, navigateWithDemoLoading } = useDemoNavigation();
   const demoAct = searchParams?.get("demo") ?? "";
   const guidedDemoActive = demoAct === "act3";
   const demoMode = false;
@@ -742,7 +705,6 @@ export default function StaffDashboard({
     stepIndex: 0,
     complete: false,
   });
-  const [publicHandoffActive, setPublicHandoffActive] = useState(false);
   const [organizerDemoCursor, setOrganizerDemoCursor] = useState<OrganizerDemoCursorState>({
     visible: false,
     x: 0,
@@ -963,7 +925,6 @@ export default function StaffDashboard({
     setOrganizerAutoplayRunning(false);
     setOrganizerPlaybackStep(null);
     setOrganizerNarration(null);
-    setPublicHandoffActive(false);
     setOrganizerDemoCursor({
       visible: false,
       x: 0,
@@ -2544,7 +2505,6 @@ export default function StaffDashboard({
       stepIndex: 0,
       complete: false,
     });
-    setPublicHandoffActive(false);
     setOrganizerDemoCursor({
       visible: false,
       x: 0,
@@ -2635,11 +2595,8 @@ export default function StaffDashboard({
 
     setError("");
     setMessage("");
-    setPublicHandoffActive(true);
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    await waitForOrganizerPlayback(reducedMotion ? 180 : 700);
-    router.push(demoPublicPath);
-  }, [demoOrganizerReadyForPublic, demoPublicPath, router, waitForOrganizerPlayback]);
+    await navigateWithDemoLoading(demoPublicPath);
+  }, [demoOrganizerReadyForPublic, demoPublicPath, navigateWithDemoLoading]);
   const moveOrganizerDemoCursor = useCallback(
     async (
       anchor: string,
@@ -3221,19 +3178,19 @@ export default function StaffDashboard({
             }}
           />
         ) : null}
-        <DemoHandoffOverlay
+        <DemoLoadingOverlay
           active={demoSeedOnCreate && buildTransitionState.active}
-          title={buildTransitionState.complete ? "Opening Judge panel..." : "Traveling to Judge panel..."}
-          currentText={
+          title="Opening judge panel..."
+          text={
             ORGANIZER_BUILD_TRANSITION_STEPS[buildTransitionState.stepIndex] ??
             ORGANIZER_BUILD_TRANSITION_STEPS[0]
           }
           complete={buildTransitionState.complete}
         />
-        <DemoHandoffOverlay
-          active={guidedDemoActive && publicHandoffActive}
-          title="Traveling to Public results..."
-          currentText="Opening public results"
+        <DemoLoadingOverlay
+          active={Boolean(demoNavigationCopy)}
+          title={demoNavigationCopy?.title ?? "Opening public results..."}
+          text={demoNavigationCopy?.text ?? "Loading the spectator view."}
         />
         {demoMode && buildTransitionState.active ? (
           <Surface variant="card" className="overflow-hidden border-sky-200 bg-sky-50/70">
@@ -3418,9 +3375,13 @@ export default function StaffDashboard({
                 >
                   {demoSeedPending ? "Adding sample climbers..." : "Continue to Judge Panel"}
                 </button>
-                <Link href="/demo" className="results-secondary-button">
+                <button
+                  type="button"
+                  onClick={() => void navigateWithDemoLoading("/demo")}
+                  className="results-secondary-button"
+                >
                   Back to Demo Home
-                </Link>
+                </button>
               </div>
             </div>
           </Surface>
@@ -3570,7 +3531,15 @@ export default function StaffDashboard({
                     {selectedCompetitionIsDemo && qualifierLockedForOperations && !projectedFinalistCount ? (
                       <>
                         {" "}
-                        If this demo looks stuck, restart from <Link href="/demo" className="font-semibold text-sky-700 underline">Demo Home</Link>.
+                        If this demo looks stuck, restart from{" "}
+                        <button
+                          type="button"
+                          onClick={() => void navigateWithDemoLoading("/demo")}
+                          className="font-semibold text-sky-700 underline"
+                        >
+                          Demo Home
+                        </button>
+                        .
                       </>
                     ) : null}
                   </p>
