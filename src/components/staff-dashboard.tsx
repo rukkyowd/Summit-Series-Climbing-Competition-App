@@ -189,6 +189,10 @@ const ORGANIZER_BUILD_TRANSITION_STEPS = [
   "Opening judge workspace",
 ] as const;
 
+function waitForDemoHandoff(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 const ORGANIZER_STEP_LABELS = unusedOrganizerStepLabels;
 const DEMO_AUTOPLAY_ENABLED = false;
 
@@ -1241,6 +1245,33 @@ export default function StaffDashboard({
     () => [...(snapshot?.finalists ?? [])].sort((left, right) => (left.climbing_order ?? 0) - (right.climbing_order ?? 0)),
     [snapshot]
   );
+  const projectedCutLineEntries = useMemo(() => {
+    if (!draft || !finalsOrder.length) {
+      return [];
+    }
+
+    const cutoff = draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF;
+    const entriesByCategory = new Map<string, typeof finalsOrder>();
+    finalsOrder.forEach((entry) => {
+      const rows = entriesByCategory.get(entry.display_category) ?? [];
+      rows.push(entry);
+      entriesByCategory.set(entry.display_category, rows);
+    });
+
+    const cutLineEntries: Array<(typeof finalsOrder)[number]> = [];
+    entriesByCategory.forEach((rows) => {
+      const rankedRows = [...rows].sort((left, right) => left.qualifier_rank - right.qualifier_rank);
+      const cutLineEntry =
+        rankedRows.find((entry) => entry.qualifier_rank === cutoff) ??
+        rankedRows.filter((entry) => entry.qualifier_rank <= cutoff).at(-1) ??
+        rankedRows.at(-1);
+      if (cutLineEntry) {
+        cutLineEntries.push(cutLineEntry);
+      }
+    });
+
+    return cutLineEntries.sort((left, right) => left.display_category.localeCompare(right.display_category));
+  }, [draft, finalsOrder]);
   const scheduleTemplates = useMemo(() => (draft ? buildScheduleBlockTemplates(draft) : []), [draft]);
   const groupedScheduleTemplates = useMemo<ScheduleTemplateGroup[]>(() => {
     const arrivalTemplates = scheduleTemplates.filter((template) =>
@@ -1645,10 +1676,20 @@ export default function StaffDashboard({
 
     setDemoSeedPending(true);
     setError("");
-    setMessage("Saving setup and adding sample climbers...");
+    setMessage("");
+    setBuildTransitionState({
+      active: true,
+      stepIndex: 0,
+      complete: false,
+    });
 
     try {
       await saveDraftNow();
+      setBuildTransitionState({
+        active: true,
+        stepIndex: 1,
+        complete: false,
+      });
       const response = await fetch("/api/demo/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1671,27 +1712,44 @@ export default function StaffDashboard({
         error?: string;
       } | null;
 
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error ?? "Unable to seed demo data.");
-      }
-
-      setDemoAct1Ready((current) =>
-        current
-          ? {
-              ...current,
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error ?? "Unable to seed demo data.");
+        }
+  
+        setBuildTransitionState({
+          active: true,
+          stepIndex: 2,
+          complete: false,
+        });
+        await waitForDemoHandoff(450);
+        setBuildTransitionState({
+          active: true,
+          stepIndex: 3,
+          complete: true,
+        });
+        await waitForDemoHandoff(600);
+        setDemoAct1Ready((current) =>
+          current
+            ? {
+                ...current,
               judgeUrl: payload.judgeUrl ?? current.judgeUrl,
               target: payload.target,
             }
-          : current
-      );
-      router.push(payload.judgeUrl ?? demoAct1Ready.judgeUrl);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to open the judge panel.");
-      setMessage("");
-    } finally {
-      setDemoSeedPending(false);
-    }
-  }, [cascadeCupDemoActive, demoAct1Ready, draft, router, saveDraftNow]);
+            : current
+        );
+        router.push(payload.judgeUrl ?? demoAct1Ready.judgeUrl);
+      } catch (nextError) {
+        setBuildTransitionState({
+          active: false,
+          stepIndex: 0,
+          complete: false,
+        });
+        setError(nextError instanceof Error ? nextError.message : "Unable to open the judge panel.");
+        setMessage("");
+      } finally {
+        setDemoSeedPending(false);
+      }
+    }, [cascadeCupDemoActive, demoAct1Ready, draft, router, saveDraftNow]);
 
   const resetDemoSessionCompetition = useCallback(async () => {
     setError("");
@@ -2995,16 +3053,16 @@ export default function StaffDashboard({
             }}
           />
         ) : null}
-        {demoMode && buildTransitionState.active ? (
+        {(demoMode || demoSeedOnCreate) && buildTransitionState.active ? (
           <Surface variant="card" className="overflow-hidden border-sky-200 bg-sky-50/70">
             <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
               <div className="space-y-3">
                 <div className="results-kicker text-sky-700">Building the event</div>
                 <h2 className="text-3xl font-semibold text-slate-950 sm:text-4xl">
-                  The organizer setup is becoming a live comp.
+                  Moving from organizer setup to the judge panel.
                 </h2>
                 <p className="max-w-2xl text-base leading-7 text-slate-600">
-                  The demo is saving your event setup, simulating registrations, generating seeded scores, and opening the judge workspace.
+                  The demo is saving this event, adding Cascade Cup climbers, seeding Maya Chen&apos;s B3 mistake, and opening the real judge workspace.
                 </p>
                 <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-4 py-2 text-sm font-medium text-sky-800">
                   <span className="demo-live-dot" aria-hidden="true" />
@@ -3106,7 +3164,7 @@ export default function StaffDashboard({
             </div>
           </Surface>
         ) : null}
-        {demoAct1CreatedForCurrentDraft ? (
+        {demoAct1CreatedForCurrentDraft && !buildTransitionState.active ? (
           <Surface variant="card" className="border-emerald-200 bg-emerald-50/90">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
@@ -3352,26 +3410,26 @@ export default function StaffDashboard({
                   <div>
                     <div className="results-kicker">Projected cut line</div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Top {draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF} per eligible category advance when the finals field is created.
+                      Top {draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF} per eligible category advance when the finals field is created. These cards show the athlete currently sitting on the last qualifying spot in each category.
                     </p>
                   </div>
                   <span className="results-chip">
                     {projectedFinalistCount ? `${projectedFinalistCount} projected finalists` : "No projected field yet"}
                   </span>
                 </div>
-                {finalsOrder.length ? (
+                {projectedCutLineEntries.length ? (
                   <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                    {finalsOrder.slice(0, 6).map((entry) => (
+                    {projectedCutLineEntries.map((entry) => (
                       <div
                         key={`operations-finalist-${entry.climber_id}`}
                         className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
                       >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 font-semibold text-sky-800">
-                          {entry.qualifier_rank}
+                        <div className="flex h-10 w-14 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold uppercase tracking-[0.12em] text-sky-800">
+                          #{entry.qualifier_rank}
                         </div>
                         <div className="min-w-0">
                           <div className="truncate font-semibold text-slate-950">{entry.name}</div>
-                          <div className="truncate text-xs text-slate-500">{entry.display_category}</div>
+                          <div className="truncate text-xs text-slate-500">{entry.display_category} cut line</div>
                         </div>
                       </div>
                     ))}
