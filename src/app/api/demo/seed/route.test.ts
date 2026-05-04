@@ -12,13 +12,19 @@ const mockState = vi.hoisted(() => ({
   competition: {
     id: "competition-1",
     slug: "summit-demo",
+    name: "Summit Series Demo",
     is_demo: true,
     format: "scramble",
+    has_finals: true,
+    location_name: "Summit Gym",
+    start_date: "2026-06-01",
+    end_date: "2026-06-01",
     total_climbs: 6,
     qualifier_counting_climbs: 4,
     finals_cutoff: 6,
     finals_problem_count: 4,
     qualifier_eligible_age_groups: ["Open"],
+    finals_eligible_age_groups: ["Open"],
     current_phase: "qualifier_open",
   },
   categories: [
@@ -39,19 +45,66 @@ const mockState = vi.hoisted(() => ({
       sort_order: 2,
     },
   ],
-  qualifierRound: {
-    id: "round-qualifier",
-    round_number: 1,
-    sort_order: 1,
-    problem_count: 6,
-    counting_climbs: 4,
-  } as Record<string, unknown> | null,
+  rounds: [
+    {
+      id: "round-qualifier",
+      competition_id: "competition-1",
+      round_number: 1,
+      sort_order: 1,
+      name: "Qualifier",
+      round_type: "qualifier",
+      format: "scramble",
+      status: "pending",
+      runtime_phase: "qualifier_open",
+      is_enabled: true,
+      is_active: false,
+      problem_count: 6,
+      counting_climbs: 4,
+      finals_cutoff: 6,
+      advancement_source_round_id: null,
+      advancement_cutoff: null,
+      scoring_bucket: "qualifier",
+    },
+    {
+      id: "round-finals",
+      competition_id: "competition-1",
+      round_number: 2,
+      sort_order: 2,
+      name: "Finals",
+      round_type: "finals",
+      format: "ifsc_finals_format",
+      status: "pending",
+      runtime_phase: "finals_open",
+      is_enabled: true,
+      is_active: false,
+      problem_count: 4,
+      counting_climbs: null,
+      finals_cutoff: 6,
+      advancement_source_round_id: "round-qualifier",
+      advancement_cutoff: 6,
+      scoring_bucket: "finals",
+    },
+  ] as Array<Record<string, unknown>>,
   scheduleBlocks: [
     {
       id: "session-1",
+      competition_id: "competition-1",
       round_id: "round-qualifier",
+      label: "Qualifier",
+      phase_type: "qualifier_round",
+      audience_label: "All athletes",
       capacity: 24,
       sort_order: 1,
+    },
+    {
+      id: "session-finals",
+      competition_id: "competition-1",
+      round_id: "round-finals",
+      label: "Finals",
+      phase_type: "finals_round",
+      audience_label: "Finalists",
+      capacity: 12,
+      sort_order: 2,
     },
   ],
   existingClimbers: [] as Array<{ id: string }>,
@@ -130,10 +183,6 @@ class SupabaseQueryMock {
       return { data: mockState.competition, error: null };
     }
 
-    if (this.table === "competition_rounds") {
-      return { data: mockState.qualifierRound, error: null };
-    }
-
     return { data: null, error: null };
   }
 
@@ -171,6 +220,10 @@ class SupabaseQueryMock {
 
     if (this.table === "competition_categories") {
       return { data: mockState.categories, error: null };
+    }
+
+    if (this.table === "competition_rounds") {
+      return { data: mockState.rounds, error: null };
     }
 
     if (this.table === "competition_schedule_blocks") {
@@ -225,13 +278,19 @@ beforeEach(() => {
   mockState.competition = {
     id: "competition-1",
     slug: "summit-demo",
+    name: "Summit Series Demo",
     is_demo: true,
     format: "scramble",
+    has_finals: true,
+    location_name: "Summit Gym",
+    start_date: "2026-06-01",
+    end_date: "2026-06-01",
     total_climbs: 6,
     qualifier_counting_climbs: 4,
     finals_cutoff: 6,
     finals_problem_count: 4,
     qualifier_eligible_age_groups: ["Open"],
+    finals_eligible_age_groups: ["Open"],
     current_phase: "qualifier_open",
   };
   mockState.categories = [
@@ -252,19 +311,66 @@ beforeEach(() => {
       sort_order: 2,
     },
   ];
-  mockState.qualifierRound = {
-    id: "round-qualifier",
-    round_number: 1,
-    sort_order: 1,
-    problem_count: 6,
-    counting_climbs: 4,
-  };
+  mockState.rounds = [
+    {
+      id: "round-qualifier",
+      competition_id: "competition-1",
+      round_number: 1,
+      sort_order: 1,
+      name: "Qualifier",
+      round_type: "qualifier",
+      format: "scramble",
+      status: "pending",
+      runtime_phase: "qualifier_open",
+      is_enabled: true,
+      is_active: false,
+      problem_count: 6,
+      counting_climbs: 4,
+      finals_cutoff: 6,
+      advancement_source_round_id: null,
+      advancement_cutoff: null,
+      scoring_bucket: "qualifier",
+    },
+    {
+      id: "round-finals",
+      competition_id: "competition-1",
+      round_number: 2,
+      sort_order: 2,
+      name: "Finals",
+      round_type: "finals",
+      format: "ifsc_finals_format",
+      status: "pending",
+      runtime_phase: "finals_open",
+      is_enabled: true,
+      is_active: false,
+      problem_count: 4,
+      counting_climbs: null,
+      finals_cutoff: 6,
+      advancement_source_round_id: "round-qualifier",
+      advancement_cutoff: 6,
+      scoring_bucket: "finals",
+    },
+  ];
   mockState.scheduleBlocks = [
     {
       id: "session-1",
+      competition_id: "competition-1",
       round_id: "round-qualifier",
+      label: "Qualifier",
+      phase_type: "qualifier_round",
+      audience_label: "All athletes",
       capacity: 24,
       sort_order: 1,
+    },
+    {
+      id: "session-finals",
+      competition_id: "competition-1",
+      round_id: "round-finals",
+      label: "Finals",
+      phase_type: "finals_round",
+      audience_label: "Finalists",
+      capacity: 12,
+      sort_order: 2,
     },
   ];
   mockState.existingClimbers = [];
@@ -295,6 +401,7 @@ describe("demo seed route", () => {
     mockState.competition = {
       ...mockState.competition,
       qualifier_eligible_age_groups: [],
+      finals_eligible_age_groups: [],
     };
 
     const response = await POST(jsonRequest({ competitionId: "competition-1" }));
@@ -302,6 +409,28 @@ describe("demo seed route", () => {
 
     expect(response.status).toBe(409);
     expect(body.error).toBe("You must add at least one category");
+    expect(mockState.insertedClimbers).toEqual([]);
+  });
+
+  it("rejects setup without a finals scoring round", async () => {
+    mockState.rounds = mockState.rounds.filter((round) => round.scoring_bucket !== "finals");
+
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toBe("Add a Finals stage.");
+    expect(mockState.insertedClimbers).toEqual([]);
+  });
+
+  it("rejects setup without a linked finals schedule block", async () => {
+    mockState.scheduleBlocks = mockState.scheduleBlocks.filter((block) => block.phase_type !== "finals_round");
+
+    const response = await POST(jsonRequest({ competitionId: "competition-1" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toBe("Add a Finals schedule block linked to the Finals stage.");
     expect(mockState.insertedClimbers).toEqual([]);
   });
 

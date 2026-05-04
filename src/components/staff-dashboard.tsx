@@ -25,6 +25,7 @@ import {
   type CompetitionPresetId,
   type CompetitionPresetScheduleBlock,
 } from "@/lib/competition-presets";
+import { getDemoSetupValidation } from "@/lib/demo-setup-validation";
 import {
   constrainFinalsEligibleAgeGroupsToSelectedCategories,
   finalsEligibilityUsesSelectedCategories,
@@ -652,6 +653,8 @@ export default function StaffDashboard({
   const [expandedScheduleBlockId, setExpandedScheduleBlockId] = useState<string | null>(null);
   const [currentSetupStep, setCurrentSetupStep] = useState(0);
   const [selectedGuidedSetupPresetId, setSelectedGuidedSetupPresetId] = useState<CompetitionPresetId | null>(null);
+  const [demoAct1ExplicitPresetChoiceId, setDemoAct1ExplicitPresetChoiceId] = useState<CompetitionPresetId | null>(null);
+  const demoAct1PresetChoiceByCompetitionIdRef = useRef<Record<string, CompetitionPresetId>>({});
   const [activeOrganizerDemoStep, setActiveOrganizerDemoStep] = useState<OrganizerDemoStepId>("overview");
   const [, setOrganizerGuidedBasicsState] = useState({
     identityReviewed: false,
@@ -716,11 +719,6 @@ export default function StaffDashboard({
     };
   }>(null);
   const [demoSeedPending, setDemoSeedPending] = useState(false);
-  const [demoFinalsWarningAcknowledged, setDemoFinalsWarningAcknowledged] = useState(false);
-
-  useEffect(() => {
-    setDemoFinalsWarningAcknowledged(false);
-  }, [draft?.id]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -951,16 +949,40 @@ export default function StaffDashboard({
       stagesReady,
     ];
   }, [draft, linkedScheduleBlockCount, selectedGuidedSetupPreset]);
-  const setupProgressCount = setupStepCompletion.filter(Boolean).length;
-  const setupProgressPercent = Math.round((setupProgressCount / SETUP_WIZARD_STEPS.length) * 100);
   const hasPersistedDraft =
     !!draft &&
     !!selectedSummary &&
     JSON.stringify(cloneCompetition(draft)) === JSON.stringify(cloneCompetition(selectedSummary.competition));
+  const demoSetupValidation = useMemo(
+    () =>
+      getDemoSetupValidation(draft, {
+        selectedPresetId: isGuidedStoryAct1 ? demoAct1ExplicitPresetChoiceId : selectedGuidedSetupPresetId,
+        saved: hasPersistedDraft,
+      }),
+    [demoAct1ExplicitPresetChoiceId, draft, hasPersistedDraft, isGuidedStoryAct1, selectedGuidedSetupPresetId]
+  );
+  const demoSetupStepCompletion = SETUP_WIZARD_STEPS.map(
+    (step) => demoSetupValidation.steps.find((status) => status.id === step.id)?.complete ?? false
+  );
+  const activeSetupStepCompletion = isGuidedStoryAct1 ? demoSetupStepCompletion : setupStepCompletion;
+  const setupProgressCount = activeSetupStepCompletion.filter(Boolean).length;
+  const setupProgressPercent = Math.round((setupProgressCount / SETUP_WIZARD_STEPS.length) * 100);
+  const firstIncompleteSetupStepIndex = activeSetupStepCompletion.findIndex((complete) => !complete);
+  const maxReachableSetupStepIndex =
+    isGuidedStoryAct1 && firstIncompleteSetupStepIndex >= 0
+      ? firstIncompleteSetupStepIndex
+      : SETUP_WIZARD_STEPS.length - 1;
   const activeSetupStep = SETUP_WIZARD_STEPS[currentSetupStep] ?? SETUP_WIZARD_STEPS[0];
+  const activeDemoSetupStepStatus = demoSetupValidation.steps.find((status) => status.id === activeSetupStep.id) ?? null;
+  const demoReviewStepStatus = demoSetupValidation.steps.find((status) => status.id === "review") ?? null;
   const isFirstSetupStep = currentSetupStep === 0;
   const isLastSetupStep = currentSetupStep === SETUP_WIZARD_STEPS.length - 1;
-  const demoJudgeReady = demoMode && !!draft && setupProgressCount === SETUP_WIZARD_STEPS.length && hasPersistedDraft;
+  const demoJudgeReady =
+    demoMode &&
+    !!draft &&
+    (isGuidedStoryAct1
+      ? demoSetupValidation.canContinueToJudge
+      : setupProgressCount === SETUP_WIZARD_STEPS.length && hasPersistedDraft);
   const setupSectionAnchors = useMemo(
     () =>
       [
@@ -978,6 +1000,7 @@ export default function StaffDashboard({
       setDraft(null);
       setSnapshot(null);
       setSelectedGuidedSetupPresetId(null);
+      setDemoAct1ExplicitPresetChoiceId(null);
       setPhaseBlockMemory({});
       setRoundPlanNeedsReset(false);
       setExpandedRoundId(null);
@@ -988,12 +1011,28 @@ export default function StaffDashboard({
     const clonedCompetition = cloneCompetition(selectedSummary.competition);
     skipNextFinalsNormalizationForDraftIdRef.current = clonedCompetition.id;
     setDraft(clonedCompetition);
-    setSelectedGuidedSetupPresetId(detectCompetitionPreset(clonedCompetition).id);
+    const detectedPresetId = detectCompetitionPreset(clonedCompetition).id;
+    const explicitDemoPresetChoice =
+      demoSeedOnCreate && clonedCompetition.is_demo
+        ? demoAct1PresetChoiceByCompetitionIdRef.current[clonedCompetition.id] ?? null
+        : null;
+    setDemoAct1ExplicitPresetChoiceId(explicitDemoPresetChoice);
+    setSelectedGuidedSetupPresetId(
+      demoSeedOnCreate && clonedCompetition.is_demo ? explicitDemoPresetChoice : detectedPresetId
+    );
     void getCompetitionSnapshot(selectedSummary.competition.id, { authenticated: true })
       .then((nextSnapshot) => setSnapshot(nextSnapshot))
       .catch(() => setSnapshot(null));
     setRoundPlanNeedsReset(false);
-  }, [demoMode, selectedSummary]);
+  }, [demoMode, demoSeedOnCreate, selectedSummary]);
+
+  useEffect(() => {
+    if (!demoSeedOnCreate || !draft?.id || !demoAct1ExplicitPresetChoiceId) {
+      return;
+    }
+
+    demoAct1PresetChoiceByCompetitionIdRef.current[draft.id] = demoAct1ExplicitPresetChoiceId;
+  }, [demoAct1ExplicitPresetChoiceId, demoSeedOnCreate, draft?.id]);
 
   useEffect(() => {
     const draftBlocks = draft?.schedule_blocks ?? [];
@@ -1529,8 +1568,15 @@ export default function StaffDashboard({
       return;
     }
 
-    if (demoSeedOnCreate && !qualifierCategories.length) {
-      setError("You must add at least one category");
+    const setupBlockingStatus = demoSeedOnCreate
+      ? demoSetupValidation.steps.find((status) => status.id !== "review" && !status.complete)
+      : null;
+    if (setupBlockingStatus?.blockingMessage) {
+      setError(setupBlockingStatus.blockingMessage);
+      const blockedStepIndex = SETUP_WIZARD_STEPS.findIndex((step) => step.id === setupBlockingStatus.id);
+      if (blockedStepIndex >= 0) {
+        setCurrentSetupStep(blockedStepIndex);
+      }
       return;
     }
 
@@ -1557,8 +1603,15 @@ export default function StaffDashboard({
       throw new Error("No event is selected.");
     }
 
-    if (demoSeedOnCreate && !qualifierCategories.length) {
-      throw new Error("You must add at least one category");
+    const setupBlockingStatus = demoSeedOnCreate
+      ? demoSetupValidation.steps.find((status) => status.id !== "review" && !status.complete)
+      : null;
+    if (setupBlockingStatus?.blockingMessage) {
+      const blockedStepIndex = SETUP_WIZARD_STEPS.findIndex((step) => step.id === setupBlockingStatus.id);
+      if (blockedStepIndex >= 0) {
+        setCurrentSetupStep(blockedStepIndex);
+      }
+      throw new Error(setupBlockingStatus.blockingMessage);
     }
 
     setError("");
@@ -1570,7 +1623,7 @@ export default function StaffDashboard({
     });
     await refreshAfterChange(draft.id);
     setRoundPlanNeedsReset(false);
-  }, [demoSeedOnCreate, draft, qualifierCategories.length, refreshAfterChange]);
+  }, [demoSeedOnCreate, demoSetupValidation.steps, draft, refreshAfterChange]);
 
   const seedDemoAndOpenJudge = useCallback(async () => {
     if (!draft || !demoAct1Ready) {
@@ -1578,8 +1631,12 @@ export default function StaffDashboard({
       return;
     }
 
-    if (!qualifierCategories.length) {
-      setError("You must add at least one category");
+    if (!demoSetupValidation.canContinueToJudge) {
+      setError(demoSetupValidation.firstBlockingMessage ?? "Complete and save the setup before opening the judge panel.");
+      const blockedStepIndex = SETUP_WIZARD_STEPS.findIndex((step) => step.id === demoSetupValidation.firstIncompleteStep);
+      if (blockedStepIndex >= 0) {
+        setCurrentSetupStep(blockedStepIndex);
+      }
       return;
     }
 
@@ -1630,7 +1687,7 @@ export default function StaffDashboard({
       } finally {
         setDemoSeedPending(false);
       }
-    }, [demoAct1Ready, draft, qualifierCategories.length, router, saveDraftNow]);
+    }, [demoAct1Ready, demoSetupValidation.canContinueToJudge, demoSetupValidation.firstBlockingMessage, demoSetupValidation.firstIncompleteStep, draft, router, saveDraftNow]);
 
   const resetDemoSessionCompetition = useCallback(async () => {
     setError("");
@@ -2075,25 +2132,25 @@ export default function StaffDashboard({
     }
 
     return [
-      setupStepCompletion[0]
+      activeSetupStepCompletion[0]
         ? `${draft.name || "Event"} is grounded and ready for setup.`
         : "Ground the event with its name, format, and registration window.",
-      setupStepCompletion[1]
+      activeSetupStepCompletion[1]
         ? `${selectedGuidedSetupPreset?.name ?? "Custom"} is the starting point.`
         : "Choose a preset before tuning categories.",
-      setupStepCompletion[2]
+      activeSetupStepCompletion[2]
         ? `${draft.qualifier_eligible_age_groups.length} registration groups are set.`
         : "Review the generated groups and keep finals eligibility inside that field.",
-      setupStepCompletion[3]
+      activeSetupStepCompletion[3]
         ? `${orderedDraftScheduleBlocks.length} schedule blocks are planned and linked.`
         : "Make sure the day plan and live rounds point at each other.",
-      setupStepCompletion[4] && selectedGuidedSetupPreset && selectedGuidedSetupPreset.id !== "custom"
+      activeSetupStepCompletion[4] && selectedGuidedSetupPreset && selectedGuidedSetupPreset.id !== "custom"
         ? `${selectedGuidedSetupPreset.name} generated the event structure.`
-        : setupStepCompletion[4]
+        : activeSetupStepCompletion[4]
           ? `${currentCompetitionStages.length} stage${currentCompetitionStages.length === 1 ? "" : "s"} are ready to score.`
           : "Confirm the scored stages before moving on.",
     ].slice(0, SETUP_WIZARD_STEPS.length);
-  }, [currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset, setupStepCompletion]);
+  }, [activeSetupStepCompletion, currentCompetitionStages.length, draft, orderedDraftScheduleBlocks.length, selectedGuidedSetupPreset]);
   const activeSetupCoaching = SETUP_STEP_COACHING[currentSetupStep] ?? SETUP_STEP_COACHING[0];
   const wizardGuardrails = useMemo(() => {
     if (!draft) {
@@ -2144,12 +2201,12 @@ export default function StaffDashboard({
 
     return [
       { label: "Event details filled", ok: Boolean(draft.name.trim() && draft.slug.trim() && draft.location_name.trim()) },
-      { label: "Preset selected", ok: setupStepCompletion[1] },
-      { label: "Categories selected", ok: setupStepCompletion[2] },
-      { label: "Schedule is linked to scoring", ok: setupStepCompletion[3] },
-      { label: "Scoring stages are ready", ok: setupStepCompletion[4] },
+      { label: "Preset selected", ok: activeSetupStepCompletion[1] },
+      { label: "Categories selected", ok: activeSetupStepCompletion[2] },
+      { label: "Schedule is linked to scoring", ok: activeSetupStepCompletion[3] },
+      { label: "Scoring stages are ready", ok: activeSetupStepCompletion[4] },
     ];
-  }, [draft, setupStepCompletion]);
+  }, [activeSetupStepCompletion, draft]);
   const demoAct1CreatedForCurrentDraft =
     Boolean(demoAct1Ready && draft && demoAct1Ready.competitionId === draft.id);
   const demoAct1Warnings = useMemo(() => {
@@ -2158,24 +2215,23 @@ export default function StaffDashboard({
     }
 
     const warnings: Array<{ tone: "error" | "warning"; message: string }> = [];
-    if (!qualifierCategories.length) {
+    const setupBlockingStatus =
+      demoSetupValidation.steps.find((status) => status.id !== "review" && !status.complete) ?? null;
+    if (setupBlockingStatus?.blockingMessage) {
       warnings.push({
         tone: "error",
-        message: "You must add at least one category",
+        message: setupBlockingStatus.blockingMessage,
       });
     }
-    if (
-      !demoFinalsWarningAcknowledged &&
-      (!competitionHasFinals(draft) || !currentCompetitionStages.some((round) => round.scoring_bucket === "finals"))
-    ) {
+    if (!setupBlockingStatus && demoReviewStepStatus?.blockingMessage) {
       warnings.push({
         tone: "warning",
-        message: "This demo includes finals.",
+        message: demoReviewStepStatus.blockingMessage,
       });
     }
 
     return warnings;
-  }, [currentCompetitionStages, demoAct1CreatedForCurrentDraft, demoFinalsWarningAcknowledged, draft, qualifierCategories.length]);
+  }, [demoAct1CreatedForCurrentDraft, demoReviewStepStatus, demoSetupValidation.steps, draft]);
   const stageFlowSummary = currentCompetitionStages.length
     ? currentCompetitionStages.map((round) => getRoundLabel(round.round_type, 0)).join(" -> ")
     : "No stage flow yet";
@@ -2195,7 +2251,15 @@ export default function StaffDashboard({
   const goToSetupStep = useCallback(
     (stepIndex: number) => {
       const nextIndex = Math.max(0, Math.min(SETUP_WIZARD_STEPS.length - 1, stepIndex));
+      if (isGuidedStoryAct1 && nextIndex > maxReachableSetupStepIndex) {
+        const blockingStatus = demoSetupValidation.steps.find((status) => !status.complete);
+        setError(blockingStatus?.blockingMessage ?? "Complete the current setup step before continuing.");
+        setCurrentSetupStep(maxReachableSetupStepIndex);
+        return;
+      }
+
       setCurrentSetupStep(nextIndex);
+      setError("");
 
       if (!demoMode) {
         return;
@@ -2206,7 +2270,7 @@ export default function StaffDashboard({
         setupOpened: true,
       }));
     },
-    [demoMode]
+    [demoMode, demoSetupValidation.steps, isGuidedStoryAct1, maxReachableSetupStepIndex]
   );
   const handleOrganizerPresetSelection = (presetId: CompetitionPresetId) => {
     if (
@@ -2221,6 +2285,10 @@ export default function StaffDashboard({
       return;
     }
 
+    if (demoSeedOnCreate && draft?.id) {
+      demoAct1PresetChoiceByCompetitionIdRef.current[draft.id] = presetId;
+      setDemoAct1ExplicitPresetChoiceId(presetId);
+    }
     applyGuidedSetupPreset(presetId);
     updateOrganizerDemoState({ presetSelected: true });
   };
@@ -3006,12 +3074,16 @@ export default function StaffDashboard({
           <Surface variant="card" className="border-emerald-200 bg-emerald-50/90">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
-                <div className="results-kicker text-emerald-700">Act 1 complete</div>
+                <div className="results-kicker text-emerald-700">
+                  {demoSetupValidation.canContinueToJudge ? "Act 1 complete" : "Act 1 setup"}
+                </div>
                 <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
-                  Your event is ready.
+                  {demoSetupValidation.canContinueToJudge ? "Your event is ready." : "Finish the demo setup."}
                 </h2>
                 <p className="max-w-3xl text-sm leading-6 text-slate-700">
-                  Next: You&apos;ll act as a judge and score athletes.
+                  {demoSetupValidation.canContinueToJudge
+                    ? "Next: You'll act as a judge and score athletes."
+                    : "Work through each real setup section, save the event, then the judge handoff will unlock."}
                 </p>
                 {demoAct1Warnings.length ? (
                   <div className="space-y-2">
@@ -3025,13 +3097,16 @@ export default function StaffDashboard({
                         }`}
                       >
                         {warning.message}
-                        {warning.message === "This demo includes finals." ? (
+                        {warning.message.toLowerCase().includes("finals stage") ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               type="button"
                               className="results-secondary-button"
                               onClick={() => {
                                 setCurrentSetupStep(4);
+                                if (!isGuidedStoryAct1) {
+                                  setSelectedGuidedSetupPresetId("custom");
+                                }
                                 setDraft((currentDraft) =>
                                   currentDraft
                                     ? {
@@ -3050,13 +3125,6 @@ export default function StaffDashboard({
                             >
                               Add Finals Stage
                             </button>
-                            <button
-                              type="button"
-                              className="results-secondary-button"
-                              onClick={() => setDemoFinalsWarningAcknowledged(true)}
-                            >
-                              Continue Anyway
-                            </button>
                           </div>
                         ) : null}
                       </div>
@@ -3068,7 +3136,7 @@ export default function StaffDashboard({
                 <button
                   type="button"
                   className="results-primary-button"
-                  disabled={demoSeedPending || !qualifierCategories.length}
+                  disabled={demoSeedPending || !demoSetupValidation.canContinueToJudge}
                   onClick={() => void seedDemoAndOpenJudge()}
                   data-demo-anchor="organizer-go-judge"
                 >
@@ -3668,16 +3736,27 @@ export default function StaffDashboard({
                 <div className={`results-section-nav ${demoMode ? "opacity-90" : ""}`}>
                   {setupSectionAnchors.map((item) => {
                     const isActive = item.stepIndex !== null ? currentSetupStep === item.stepIndex : false;
+                    const isLocked =
+                      item.stepIndex !== null && isGuidedStoryAct1 && item.stepIndex > maxReachableSetupStepIndex;
                     return (
                       <a
                         key={item.id}
                         href={`#${item.id}`}
-                        onClick={() => {
+                        onClick={(event) => {
+                          if (isLocked) {
+                            event.preventDefault();
+                            setError(
+                              demoSetupValidation.firstBlockingMessage ??
+                                "Complete prior setup steps first."
+                            );
+                            return;
+                          }
                           if (item.stepIndex !== null) {
                             goToSetupStep(item.stepIndex);
                           }
                         }}
-                        className={`results-section-nav__pill transition-all duration-300 ${demoMode ? "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-700" : ""} ${isActive ? "results-section-nav__pill-active" : ""} ${demoMode && isActive ? "border-slate-950 bg-slate-950 text-white shadow-[0_14px_34px_rgba(15,23,42,0.16)]" : ""}`}
+                        aria-disabled={isLocked}
+                        className={`results-section-nav__pill transition-all duration-300 ${demoMode ? "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-700" : ""} ${isActive ? "results-section-nav__pill-active" : ""} ${demoMode && isActive ? "border-slate-950 bg-slate-950 text-white shadow-[0_14px_34px_rgba(15,23,42,0.16)]" : ""} ${isLocked ? "cursor-not-allowed opacity-50 hover:border-slate-200 hover:text-slate-500" : ""}`}
                       >
                         {item.label}
                       </a>
@@ -3723,7 +3802,7 @@ export default function StaffDashboard({
                       <div className={`rounded-[1rem] border px-3 py-2.5 ${demoMode ? "border-sky-100 bg-white/95" : "border-slate-200 bg-slate-50/80"}`}>
                         <div className="results-kicker">Applied preset</div>
                         <div className="mt-1 text-sm font-semibold text-slate-950">
-                          {selectedGuidedSetupPreset?.name ?? (setupStepCompletion[4] ? "Manual build ready" : "None")}
+                          {selectedGuidedSetupPreset?.name ?? (activeSetupStepCompletion[4] ? "Manual build ready" : "None")}
                         </div>
                       </div>
                       <div className={`rounded-[1rem] border px-3 py-2.5 ${demoMode ? "border-sky-100 bg-white/95" : "border-slate-200 bg-slate-50/80"}`}>
@@ -3743,7 +3822,8 @@ export default function StaffDashboard({
                   <div className="grid gap-4 md:grid-cols-2 xl:gap-5">
                     {SETUP_WIZARD_STEPS.map((step, index) => {
                       const isActive = index === currentSetupStep;
-                      const isComplete = setupStepCompletion[index];
+                      const isComplete = activeSetupStepCompletion[index];
+                      const isLocked = isGuidedStoryAct1 && index > maxReachableSetupStepIndex;
 
                       return (
                         <button
@@ -3751,7 +3831,8 @@ export default function StaffDashboard({
                           type="button"
                           onClick={() => goToSetupStep(index)}
                           aria-current={isActive ? "step" : undefined}
-                          disabled={organizerAutoplayRunning}
+                          disabled={organizerAutoplayRunning || isLocked}
+                          title={isLocked ? "Complete prior setup steps first." : undefined}
                           data-demo-anchor={
                             step.id === "categories"
                               ? "organizer-step-categories"
@@ -3769,7 +3850,7 @@ export default function StaffDashboard({
                               : isComplete
                                 ? "border-emerald-200/90 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(220,252,231,0.9))] text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.06)] hover:border-emerald-300"
                                 : "border-slate-200/90 bg-white text-slate-900 shadow-[0_8px_26px_rgba(15,23,42,0.04)] hover:border-slate-300"
-                          }`}
+                          } ${isLocked ? "cursor-not-allowed opacity-55 hover:translate-y-0 hover:border-slate-200 hover:shadow-none" : ""}`}
                           style={{ minHeight: "9.5rem" }}
                         >
                           <div className={`text-sm font-semibold uppercase tracking-[0.24em] ${isActive ? "text-slate-200" : isComplete ? "text-emerald-700" : "text-slate-500"}`}>
@@ -4113,7 +4194,9 @@ export default function StaffDashboard({
                           formatReviewed: true,
                         }));
                         const nextFormat = event.target.value as Competition["format"];
-                        setSelectedGuidedSetupPresetId("custom");
+                        if (!isGuidedStoryAct1) {
+                          setSelectedGuidedSetupPresetId("custom");
+                        }
                         if (!roundPlanCustomized) {
                           replaceRoundPlanFromTemplate(nextFormat);
                           return;
@@ -4286,7 +4369,9 @@ export default function StaffDashboard({
                                 ...draft,
                                 qualifier_eligible_age_groups: nextQualifierAgeGroups,
                               };
-                              setSelectedGuidedSetupPresetId("custom");
+                              if (!isGuidedStoryAct1) {
+                                setSelectedGuidedSetupPresetId("custom");
+                              }
                               setDraft({
                                 ...nextDraft,
                                 finals_eligible_age_groups: constrainFinalsEligibleAgeGroupsToSelectedCategories(nextDraft),
@@ -4303,7 +4388,7 @@ export default function StaffDashboard({
 
                   {draftHasFinals ? (
                     <div className="results-workspace-card">
-                    <div className="results-kicker">Finals categories (optional)</div>
+                    <div className="results-kicker">{isGuidedStoryAct1 ? "Finals categories (required)" : "Finals categories (optional)"}</div>
                     <div className="mt-2 text-sm text-slate-600">
                       Finals eligibility can only come from the qualifier categories selected on the left.
                     </div>
@@ -4316,7 +4401,9 @@ export default function StaffDashboard({
                               type="button"
                               onClick={() => {
                                 updateOrganizerDemoState({ categoriesViewed: true });
-                                setSelectedGuidedSetupPresetId("custom");
+                                if (!isGuidedStoryAct1) {
+                                  setSelectedGuidedSetupPresetId("custom");
+                                }
                                 setDraft({
                                   ...draft,
                                   finals_eligible_age_groups: toggleAgeGroup(draft.finals_eligible_age_groups, option.ageGroup),
@@ -4352,7 +4439,7 @@ export default function StaffDashboard({
                     </div>
                     {selectedGuidedSetupPreset ? (
                       <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900">
-                        Selected: {selectedGuidedSetupPreset.name}
+                        Selected: {selectedGuidedSetupPreset.id === "custom" ? "Custom setup" : selectedGuidedSetupPreset.name}
                       </div>
                     ) : (
                       <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
@@ -4365,6 +4452,7 @@ export default function StaffDashboard({
                       (() => {
                         const isSelected = selectedGuidedSetupPresetId === preset.id;
                         const finalsEligibleCategories = getPresetFinalsEligibleCategories(preset);
+                        const presetDisplayName = preset.id === "custom" ? "Custom setup" : preset.name;
 
                         return (
                           <button
@@ -4395,7 +4483,7 @@ export default function StaffDashboard({
                               </div>
                             </div>
                             <div className={`mt-4 text-[clamp(2rem,1.75rem+0.35vw,2.35rem)] font-semibold leading-[1.08] tracking-tight ${isSelected ? "text-white" : "text-slate-950"}`}>
-                              {preset.name}
+                              {presetDisplayName}
                             </div>
                             <div className={`mt-4 text-base leading-relaxed ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
                               {preset.description}
@@ -4419,7 +4507,11 @@ export default function StaffDashboard({
                               ))}
                             </div>
                             <div className={`mt-5 break-words text-sm font-semibold leading-relaxed ${isSelected ? "text-emerald-300" : "text-sky-700"}`}>
-                              {isSelected ? "Applied to this event" : "Click to apply this setup"}
+                              {isSelected
+                                ? "Applied to this event"
+                                : preset.id === "custom"
+                                  ? "Choose Custom setup"
+                                  : "Click to apply this setup"}
                             </div>
                           </button>
                         );
@@ -4428,7 +4520,10 @@ export default function StaffDashboard({
                   </div>
                   {selectedGuidedSetupPreset ? (
                     <div className="mt-4 rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-950">
-                      <span className="font-semibold">{selectedGuidedSetupPreset.name}</span> is currently selected. Generated qualifier categories:{" "}
+                      <span className="font-semibold">
+                        {selectedGuidedSetupPreset.id === "custom" ? "Custom setup" : selectedGuidedSetupPreset.name}
+                      </span>{" "}
+                      is currently selected. Generated qualifier categories:{" "}
                       <span className="font-semibold">{draft.qualifier_eligible_age_groups.join(" / ") || "none yet"}</span>. Finals-eligible categories:{" "}
                       <span className="font-semibold">
                         {draftHasFinals ? draft.finals_eligible_age_groups.join(" / ") || "none selected" : "finals disabled"}
@@ -4804,9 +4899,11 @@ export default function StaffDashboard({
                     <div>
                       <div className="results-kicker">{demoMode ? "Move through the spine" : "Wizard navigation"}</div>
                       <div className="mt-2 text-sm text-slate-600">
-                        {demoMode
-                          ? "Stay focused on one setup area at a time, or jump from the progress cards above."
-                          : "Move one step at a time, or jump directly from the progress cards above."}
+                        {isGuidedStoryAct1 && activeDemoSetupStepStatus?.blockingMessage
+                          ? activeDemoSetupStepStatus.blockingMessage
+                          : demoMode
+                            ? "Stay focused on one setup area at a time, or jump from the progress cards above."
+                            : "Move one step at a time, or jump directly from the progress cards above."}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">

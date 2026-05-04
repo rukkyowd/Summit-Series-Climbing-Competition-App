@@ -9,48 +9,26 @@ type DemoSummary = {
   slug: string;
   name: string;
   created_at: string | null;
+  canSkipToJudge: boolean;
+  canSkipToResults: boolean;
 };
 
 export function DemoEntry({ latestDemo }: { latestDemo: DemoSummary | null }) {
   const router = useRouter();
-  const [pending, setPending] = useState<"judge" | null>(null);
   const [error, setError] = useState("");
 
-  async function skipToJudge() {
-    if (!latestDemo) {
-      setError("Create a demo event first, then you can skip back to the judge panel.");
+  function skipToJudge() {
+    if (!latestDemo?.canSkipToJudge) {
+      setError("Finish setup and seed the demo before skipping to the judge panel.");
       return;
     }
 
-    setPending("judge");
-    setError("");
-    try {
-      const response = await fetch("/api/demo/seed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ competitionId: latestDemo.id }),
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        ok?: boolean;
-        judgeUrl?: string;
-        error?: string;
-      } | null;
-
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error ?? "Unable to prepare the judge panel.");
-      }
-
-      router.push(payload.judgeUrl ?? `/staff/c/${latestDemo.slug}/judge?demo=act2`);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to prepare the judge panel.");
-    } finally {
-      setPending(null);
-    }
+    router.push(`/staff/c/${latestDemo.slug}/judge?demo=act2`);
   }
 
   function skipToResults() {
-    if (!latestDemo) {
-      setError("Create a demo event first, then you can skip to its public page.");
+    if (!latestDemo?.canSkipToResults) {
+      setError("Advance finalists before skipping to the public results page.");
       return;
     }
 
@@ -92,13 +70,18 @@ export function DemoEntry({ latestDemo }: { latestDemo: DemoSummary | null }) {
         </a>
         <button
           type="button"
-          onClick={() => void skipToJudge()}
-          disabled={pending === "judge"}
+          onClick={skipToJudge}
+          disabled={!latestDemo?.canSkipToJudge}
           className={buttonStyles({ variant: "secondary" })}
         >
-          {pending === "judge" ? "Preparing Judge..." : "Skip to Judge"}
+          Skip to Judge
         </button>
-        <button type="button" onClick={skipToResults} className={buttonStyles({ variant: "secondary" })}>
+        <button
+          type="button"
+          onClick={skipToResults}
+          disabled={!latestDemo?.canSkipToResults}
+          className={buttonStyles({ variant: "secondary" })}
+        >
           Skip to Results
         </button>
       </div>
