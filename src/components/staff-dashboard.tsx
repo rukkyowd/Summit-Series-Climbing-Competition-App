@@ -1277,19 +1277,32 @@ export default function StaffDashboard({
       entriesByCategory.set(entry.display_category, rows);
     });
 
-    const cutLineEntries: Array<(typeof finalsOrder)[number]> = [];
+    const cutLineEntries: Array<{
+      entry: (typeof finalsOrder)[number];
+      qualifyingSlot: number;
+      cutoff: number;
+      categorySize: number;
+    }> = [];
     entriesByCategory.forEach((rows) => {
-      const rankedRows = [...rows].sort((left, right) => left.qualifier_rank - right.qualifier_rank);
-      const cutLineEntry =
-        rankedRows.find((entry) => entry.qualifier_rank === cutoff) ??
-        rankedRows.filter((entry) => entry.qualifier_rank <= cutoff).at(-1) ??
-        rankedRows.at(-1);
+      const rankedRows = [...rows].sort(
+        (left, right) =>
+          left.qualifier_rank - right.qualifier_rank ||
+          (left.climbing_order ?? Number.MAX_SAFE_INTEGER) - (right.climbing_order ?? Number.MAX_SAFE_INTEGER) ||
+          left.name.localeCompare(right.name)
+      );
+      const qualifyingSlot = Math.min(cutoff, rankedRows.length);
+      const cutLineEntry = rankedRows[qualifyingSlot - 1] ?? null;
       if (cutLineEntry) {
-        cutLineEntries.push(cutLineEntry);
+        cutLineEntries.push({
+          entry: cutLineEntry,
+          qualifyingSlot,
+          cutoff,
+          categorySize: rankedRows.length,
+        });
       }
     });
 
-    return cutLineEntries.sort((left, right) => left.display_category.localeCompare(right.display_category));
+    return cutLineEntries.sort((left, right) => left.entry.display_category.localeCompare(right.entry.display_category));
   }, [draft, finalsOrder]);
   const scheduleTemplates = useMemo(() => (draft ? buildScheduleBlockTemplates(draft) : []), [draft]);
   const groupedScheduleTemplates = useMemo<ScheduleTemplateGroup[]>(() => {
@@ -3603,7 +3616,7 @@ export default function StaffDashboard({
                   <div>
                     <div className="results-kicker">Projected cut line</div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Top {draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF} per eligible category advance from the {finalsAdvancementSourceLabel}. These cards show the athlete currently sitting on the last qualifying spot in each category.
+                      Top {draft.finals_cutoff ?? DEFAULT_FINALS_CUTOFF} per eligible category advance from the {finalsAdvancementSourceLabel}. Each card shows the last projected qualifying spot for that category right now.
                     </p>
                   </div>
                   <span className="results-chip">
@@ -3612,17 +3625,25 @@ export default function StaffDashboard({
                 </div>
                 {projectedCutLineEntries.length ? (
                   <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                    {projectedCutLineEntries.map((entry) => (
+                    {projectedCutLineEntries.map(({ entry, qualifyingSlot, cutoff, categorySize }) => (
                       <div
                         key={`operations-finalist-${entry.climber_id}`}
-                        className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                        className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-3 text-sm"
                       >
-                        <div className="flex h-10 w-14 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold uppercase tracking-[0.12em] text-sky-800">
-                          #{entry.qualifier_rank}
+                        <div className="flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded-full bg-sky-100 text-sky-800">
+                          <span className="text-[0.58rem] font-bold uppercase tracking-[0.16em]">Spot</span>
+                          <span className="text-xs font-bold">{qualifyingSlot}/{cutoff}</span>
                         </div>
                         <div className="min-w-0">
                           <div className="truncate font-semibold text-slate-950">{entry.name}</div>
-                          <div className="truncate text-xs text-slate-500">{entry.display_category} cut line</div>
+                          <div className="truncate text-xs text-slate-500">
+                            {entry.display_category} | Rank #{entry.qualifier_rank} from {finalsAdvancementSourceLabel}
+                          </div>
+                          {categorySize < cutoff ? (
+                            <div className="mt-1 text-xs font-medium text-amber-700">
+                              Only {categorySize} eligible {categorySize === 1 ? "athlete" : "athletes"} in this category.
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     ))}
