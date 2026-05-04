@@ -30,6 +30,9 @@ type StaffEventCreationFormProps = {
   showCapacity?: boolean;
   showRegistrationStory?: boolean;
   hideSubmit?: boolean;
+  hideFormat?: boolean;
+  formatLabel?: string;
+  formatAriaLabel?: string;
   formatLockedNotice?: string | null;
   onChange: (values: StaffEventCreationFormValues) => void;
   onSubmit: () => void;
@@ -72,6 +75,9 @@ export function StaffEventCreationForm({
   showCapacity = false,
   showRegistrationStory = false,
   hideSubmit = false,
+  hideFormat = false,
+  formatLabel = "Format",
+  formatAriaLabel = "Event format",
   formatLockedNotice = null,
   onChange,
   onSubmit,
@@ -107,29 +113,31 @@ export function StaffEventCreationForm({
         />
       </label>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="results-field-group" htmlFor="create-event-format" data-demo-anchor="organizer-create-format">
-          <span className="results-field-label">Format</span>
-          <select
-            id="create-event-format"
-            aria-label="Event format"
-            value={values.format}
-            onChange={(event) => onChange({ ...values, format: event.target.value as EventFormat })}
-            className="results-input"
-            disabled={formDisabled || Boolean(formatLockedNotice)}
-          >
-            {formatOptions.map((template) => (
-              <option key={template.value} value={template.value}>
-                {template.label}
-              </option>
-            ))}
-          </select>
-          {formatLockedNotice ? (
-            <span className="mt-2 block text-xs font-semibold leading-5 text-sky-700">
-              {formatLockedNotice}
-            </span>
-          ) : null}
-        </label>
+      <div className={hideFormat ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>
+        {!hideFormat ? (
+          <label className="results-field-group" htmlFor="create-event-format" data-demo-anchor="organizer-create-format">
+            <span className="results-field-label">{formatLabel}</span>
+            <select
+              id="create-event-format"
+              aria-label={formatAriaLabel}
+              value={values.format}
+              onChange={(event) => onChange({ ...values, format: event.target.value as EventFormat })}
+              className="results-input"
+              disabled={formDisabled || Boolean(formatLockedNotice)}
+            >
+              {formatOptions.map((template) => (
+                <option key={template.value} value={template.value}>
+                  {template.label}
+                </option>
+              ))}
+            </select>
+            {formatLockedNotice ? (
+              <span className="mt-2 block text-xs font-semibold leading-5 text-sky-700">
+                {formatLockedNotice}
+              </span>
+            ) : null}
+          </label>
+        ) : null}
 
         <label className="results-field-group" htmlFor="create-event-location">
           <span className="results-field-label">Location</span>

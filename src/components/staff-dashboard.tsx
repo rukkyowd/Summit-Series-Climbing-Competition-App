@@ -22,6 +22,7 @@ import {
   COMPETITION_PRESETS,
   detectCompetitionPreset,
   getCompetitionPreset,
+  getGuidedDemoPreset,
   getPresetFinalsEligibleCategories,
   type CompetitionPresetId,
   type CompetitionPresetScheduleBlock,
@@ -80,6 +81,7 @@ import {
   formatDateTimeLabel,
   formatSchedulePhaseLabel,
   formatUsesSelfScoredQualifiers,
+  getFormatTemplate,
   getNextCompetitionPhase,
   getPreviousCompetitionPhase,
   getRecommendedFinalsCutoff,
@@ -144,7 +146,7 @@ type ScheduleTemplateGroup = {
 
 const unusedOrganizerStepLabels = {
   intro: "Organizer · introduction",
-  preset: "Organizer · format template",
+  preset: "Organizer · competition preset",
   categories: "Organizer · categories",
   schedule: "Organizer · day schedule",
   stages: "Organizer · competition stages",
@@ -439,6 +441,7 @@ function buildScheduleBlockTemplates(competition: Competition): ScheduleBlockTem
 }
 
 const GUIDED_SETUP_PRESETS = COMPETITION_PRESETS;
+const GUIDED_DEMO_INITIAL_PRESET = getGuidedDemoPreset();
 
 const SETUP_WIZARD_STEPS = [
   {
@@ -481,7 +484,7 @@ const SETUP_WIZARD_STEPS = [
 
 const SETUP_STEP_COACHING = [
   {
-    task: "Name the event, pick the format, and set registration timing.",
+    task: "Name the event, confirm the venue, and set registration timing.",
     unlock: "Presets now apply to a real event instead of a blank shell.",
   },
   {
@@ -650,7 +653,9 @@ export default function StaffDashboard({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [createName, setCreateName] = useState("");
-  const [createFormat, setCreateFormat] = useState<Competition["format"]>("scramble");
+  const [createFormat, setCreateFormat] = useState<Competition["format"]>(() =>
+    demoSeedOnCreate ? GUIDED_DEMO_INITIAL_PRESET.format : "scramble"
+  );
   const [createLocation, setCreateLocation] = useState("");
   const [createStartDate, setCreateStartDate] = useState("");
   const [createEndDate, setCreateEndDate] = useState("");
@@ -1909,6 +1914,41 @@ export default function StaffDashboard({
     setRoundPlanNeedsReset(false);
   };
 
+  const updateDraftScoringRules = (nextFormat: Competition["format"]) => {
+    if (!draft) {
+      return;
+    }
+
+    setOrganizerGuidedBasicsState((current) => ({
+      ...current,
+      formatReviewed: true,
+    }));
+    if (!isGuidedStoryAct1) {
+      setSelectedGuidedSetupPresetId("custom");
+    }
+    if (!roundPlanCustomized) {
+      replaceRoundPlanFromTemplate(nextFormat);
+      return;
+    }
+
+    const metadataOnlyDraft = {
+      ...draft,
+      format: nextFormat,
+      has_finals: competitionAllowsOptionalFinals(nextFormat) ? draft.has_finals : true,
+      total_climbs: getRecommendedQualifierClimbCount(nextFormat),
+      qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(nextFormat),
+      finals_cutoff: getRecommendedFinalsCutoff(nextFormat),
+    };
+    setDraft({
+      ...metadataOnlyDraft,
+      rounds: (draft.rounds ?? []).map((round) => ({
+        ...round,
+        format: round.scoring_bucket === "finals" ? "ifsc_finals_format" : nextFormat,
+      })),
+    });
+    setRoundPlanNeedsReset(roundPlanCustomized);
+  };
+
   const addRound = (roundType: CompetitionRoundType) => {
     if (!draft) {
       return;
@@ -2241,6 +2281,10 @@ export default function StaffDashboard({
   const currentCompetitionStages = useMemo(() => draft?.rounds ?? [], [draft?.rounds]);
   const qualifierStage = currentCompetitionStages.find((round) => round.scoring_bucket === "qualifier") ?? null;
   const finalsStage = currentCompetitionStages.find((round) => round.scoring_bucket === "finals") ?? null;
+  const draftScoringRulesLabel = draft ? getFormatTemplate(draft.format).label : "";
+  const selectedPresetScoringRulesLabel = selectedGuidedSetupPreset
+    ? getFormatTemplate(selectedGuidedSetupPreset.id === "custom" && draft ? draft.format : selectedGuidedSetupPreset.format).label
+    : "";
   const setupStepSummaries = useMemo(() => {
     if (!draft) {
       return [] as string[];
@@ -2249,7 +2293,7 @@ export default function StaffDashboard({
     return [
       activeSetupStepCompletion[0]
         ? `${draft.name || "Event"} is grounded and ready for setup.`
-        : "Ground the event with its name, format, and registration window.",
+        : "Ground the event with its name, location, dates, and registration window.",
       activeSetupStepCompletion[1]
         ? `${selectedGuidedSetupPreset?.name ?? "Custom"} is the starting point.`
         : "Choose a preset before tuning categories.",
@@ -2521,7 +2565,7 @@ export default function StaffDashboard({
       createDemoSalesSession({
         mode: "organizer",
         storyStep: "organizer-intro",
-        narratorTitle: "Choose a comp format. Generate the day. Hand it into live judging.",
+        narratorTitle: "Choose a competition preset. Generate the day. Hand it into live judging.",
         narratorBody:
           "This sales story starts in organizer setup, then carries the same event into the judge station and public results.",
         autoplay: false,
@@ -2780,7 +2824,7 @@ export default function StaffDashboard({
       createDemoSalesSession({
         mode: "organizer",
         storyStep: "organizer-intro",
-        narratorTitle: "Start with a comp format, not a blank admin tool",
+        narratorTitle: "Start with a competition preset, not a blank admin tool",
         narratorBody:
           "This organizer demo shows the setup path a gym owner actually cares about: choose the event shape, generate the day, then hand the same event into live scoring.",
         autoplay: false,
@@ -2794,7 +2838,7 @@ export default function StaffDashboard({
     try {
       setOrganizerPlaybackStep("intro");
       setOrganizerNarration({
-        title: "Start with a comp format, not a blank admin tool",
+        title: "Start with a competition preset, not a blank admin tool",
         body: "This organizer demo shows the setup path a gym owner actually cares about: choose the event shape, generate the day, then hand the same event into live scoring.",
       });
       patchDemoSalesSession({
@@ -2809,12 +2853,12 @@ export default function StaffDashboard({
       setOrganizerPlaybackStep("preset");
       goToSetupStep(1);
       setOrganizerNarration({
-        title: "Apply a proven comp format",
+        title: "Apply a proven competition preset",
         body: "First, the organizer chooses a tested setup that generates categories, finals eligibility, competition stages, and the day plan together.",
       });
       patchDemoSalesSession({
         storyStep: "organizer-preset",
-        narratorTitle: "Apply a proven comp format",
+        narratorTitle: "Apply a proven competition preset",
         narratorBody:
           "First, the organizer chooses a tested setup that generates categories, finals eligibility, competition stages, and the day plan together.",
       });
@@ -2853,13 +2897,13 @@ export default function StaffDashboard({
       goToSetupStep(3);
       setOrganizerNarration({
         title: "Review the day schedule",
-        body: "The schedule blocks are generated from that format, so the event timeline is already linked to the right competition moments.",
+        body: "The schedule blocks are generated from that preset, so the event timeline is already linked to the right competition moments.",
       });
       patchDemoSalesSession({
         storyStep: "organizer-schedule",
         narratorTitle: "Review the day schedule",
         narratorBody:
-          "The schedule blocks are generated from that format, so the event timeline is already linked to the right competition moments.",
+          "The schedule blocks are generated from that preset, so the event timeline is already linked to the right competition moments.",
       });
       await moveOrganizerDemoCursor("organizer-step-schedule", {
         click: true,
@@ -3240,7 +3284,7 @@ export default function StaffDashboard({
             stepLabel={organizerPlaybackStep ? ORGANIZER_STEP_LABELS[organizerPlaybackStep] : "Organizer · sales intro"}
             title={
               organizerNarration?.title ??
-              "Choose a comp format. Generate the day. Hand it straight into live judging."
+              "Choose a competition preset. Generate the day. Hand it straight into live judging."
             }
             body={
               organizerNarration?.body ??
@@ -3264,7 +3308,7 @@ export default function StaffDashboard({
                     phase: "organizer",
                     storyStep: "organizer-intro",
                     narratorTitle:
-                      "Choose a comp format. Generate the day. Hand it into live judging.",
+                      "Choose a competition preset. Generate the day. Hand it into live judging.",
                     narratorBody:
                       "This sales story starts in organizer setup, then carries the same event into the judge station and public results.",
                     autoplay: false,
@@ -3722,6 +3766,7 @@ export default function StaffDashboard({
                 canSubmit={Boolean(createName.trim())}
                 showCapacity={demoSeedOnCreate}
                 showRegistrationStory={demoSeedOnCreate}
+                hideFormat={demoSeedOnCreate}
                 formatLockedNotice={null}
                 importedLinksSummary={
                   createOfficialEventUrl || createOfficialRegistrationUrl || createOfficialScheduleUrl
@@ -4418,53 +4463,43 @@ export default function StaffDashboard({
                   </label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label
-                    className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_format")}`}
-                    htmlFor="current-event-format"
-                    data-demo-anchor="organizer-basic-format"
-                  >
-                    <span className="results-field-label">Format</span>
-                    <select
-                      id="current-event-format"
-                      aria-label="Event format"
-                      value={draft.format}
-                      onChange={(event) => {
-                        setOrganizerGuidedBasicsState((current) => ({
-                          ...current,
-                          formatReviewed: true,
-                        }));
-                        const nextFormat = event.target.value as Competition["format"];
-                        if (!isGuidedStoryAct1) {
-                          setSelectedGuidedSetupPresetId("custom");
-                        }
-                        if (!roundPlanCustomized) {
-                          replaceRoundPlanFromTemplate(nextFormat);
-                          return;
-                        }
-                        const metadataOnlyDraft = {
-                          ...draft,
-                          format: nextFormat,
-                          has_finals: competitionAllowsOptionalFinals(nextFormat) ? draft.has_finals : true,
-                          total_climbs: getRecommendedQualifierClimbCount(nextFormat),
-                          qualifier_counting_climbs: getRecommendedQualifierCountingClimbs(nextFormat),
-                          finals_cutoff: getRecommendedFinalsCutoff(nextFormat),
-                        };
-                        setDraft({
-                          ...metadataOnlyDraft,
-                          rounds: (draft.rounds ?? []).map((round) => ({
-                            ...round,
-                            format: round.scoring_bucket === "finals" ? "ifsc_finals_format" : nextFormat,
-                          })),
-                        });
-                        setRoundPlanNeedsReset(roundPlanCustomized);
-                      }}
-                      className="results-input"
+                  {isGuidedStoryAct1 ? (
+                    <div
+                      className={`results-field-group rounded-[1rem] border border-sky-100 bg-sky-50/60 p-4 transition ${organizerFieldFocusClass("basics_format")}`}
+                      data-demo-anchor="organizer-basic-format"
                     >
-                      {FORMAT_TEMPLATES.map((template) => (
-                        <option key={template.value} value={template.value}>{template.label}</option>
-                      ))}
-                    </select>
-                  </label>
+                      <span className="results-field-label">Scoring rules</span>
+                      <div className="mt-2 text-base font-semibold text-slate-950">
+                        {draftScoringRulesLabel || "Set by your preset"}
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-slate-600">
+                        {selectedGuidedSetupPreset
+                          ? selectedGuidedSetupPreset.id === "custom"
+                            ? "Custom setup keeps scoring rules editable in the Preset step."
+                            : `Set by ${selectedGuidedSetupPreset.name}. Choose Custom setup in the Preset step if you want to edit scoring rules.`
+                          : "Choose a preset in Step 2. Custom setup unlocks manual scoring rules."}
+                      </div>
+                    </div>
+                  ) : (
+                    <label
+                      className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_format")}`}
+                      htmlFor="current-event-format"
+                      data-demo-anchor="organizer-basic-format"
+                    >
+                      <span className="results-field-label">Format</span>
+                      <select
+                        id="current-event-format"
+                        aria-label="Event format"
+                        value={draft.format}
+                        onChange={(event) => updateDraftScoringRules(event.target.value as Competition["format"])}
+                        className="results-input"
+                      >
+                        {FORMAT_TEMPLATES.map((template) => (
+                          <option key={template.value} value={template.value}>{template.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label
                     className={`results-field-group rounded-[1rem] border border-transparent p-2 transition ${organizerFieldFocusClass("basics_name")}`}
                     htmlFor="current-event-location"
@@ -4488,13 +4523,13 @@ export default function StaffDashboard({
                 </div>
                 {roundPlanNeedsReset ? (
                   <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    Format changed, but this event has a customized round plan. Current rounds were kept as a metadata-only update.
+                    Scoring rules changed, but this event has a customized round plan. Current rounds were kept as a metadata-only update.
                     <button
                       type="button"
                       onClick={() => replaceRoundPlanFromTemplate()}
                       className="results-secondary-button ml-3"
                     >
-                      Reset rounds from format
+                      Reset rounds from scoring rules
                     </button>
                   </div>
                 ) : null}
@@ -4731,7 +4766,7 @@ export default function StaffDashboard({
                             <div className="mt-5 space-y-3 text-sm leading-relaxed">
                               {[
                                 ["Audience", preset.targetAudience],
-                                ["Format", FORMAT_TEMPLATES.find((template) => template.value === preset.format)?.label ?? preset.format],
+                                ["Scoring rules", getFormatTemplate(preset.format).label],
                                 ["Categories", preset.defaultCategories.join(" / ")],
                                 ["Finals", preset.finalsEnabled ? `Top ${preset.finalsCutoff}: ${finalsEligibleCategories.join(" / ") || "selected categories"}` : "Disabled"],
                                 ["Qualifiers", `${preset.qualifierProblemCount} problems, best ${preset.countingClimbs} count`],
@@ -4760,14 +4795,71 @@ export default function StaffDashboard({
                   </div>
                   {selectedGuidedSetupPreset ? (
                     <div className="mt-4 rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-950">
-                      <span className="font-semibold">
-                        {selectedGuidedSetupPreset.id === "custom" ? "Custom setup" : selectedGuidedSetupPreset.name}
-                      </span>{" "}
-                      is currently selected. Generated qualifier categories:{" "}
-                      <span className="font-semibold">{draft.qualifier_eligible_age_groups.join(" / ") || "none yet"}</span>. Finals-eligible categories:{" "}
-                      <span className="font-semibold">
-                        {draftHasFinals ? draft.finals_eligible_age_groups.join(" / ") || "none selected" : "finals disabled"}
-                      </span>.
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <span className="font-semibold">
+                            {selectedGuidedSetupPreset.id === "custom" ? "Custom setup" : selectedGuidedSetupPreset.name}
+                          </span>{" "}
+                          is currently selected.
+                          <div className="mt-2 text-emerald-900">
+                            Qualifier categories:{" "}
+                            <span className="font-semibold">{draft.qualifier_eligible_age_groups.join(" / ") || "none yet"}</span>. Finals-eligible categories:{" "}
+                            <span className="font-semibold">
+                              {draftHasFinals ? draft.finals_eligible_age_groups.join(" / ") || "none selected" : "finals disabled"}
+                            </span>.
+                          </div>
+                        </div>
+                        {selectedGuidedSetupPreset.id !== "custom" ? (
+                          <div
+                            className="min-w-[16rem] border-l border-emerald-200 pl-4"
+                            data-demo-anchor="organizer-preset-scoring-rules"
+                          >
+                            <div className="results-kicker text-emerald-800">Scoring rules</div>
+                            <div className="mt-1 text-base font-semibold text-emerald-950">
+                              {selectedPresetScoringRulesLabel}
+                            </div>
+                            <div className="mt-1 text-xs leading-5 text-emerald-800">
+                              The preset controls this so scoring, schedule, and stages stay aligned.
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      {selectedGuidedSetupPreset.id === "custom" ? (
+                        <div
+                          className="mt-4 border-t border-emerald-200 pt-4"
+                          data-demo-anchor="organizer-preset-scoring-rules"
+                        >
+                          <label className="results-field-group" htmlFor="custom-event-scoring-rules">
+                            <span className="results-field-label">Scoring rules</span>
+                            <select
+                              id="custom-event-scoring-rules"
+                              aria-label="Scoring rules"
+                              value={draft.format}
+                              onChange={(event) => updateDraftScoringRules(event.target.value as Competition["format"])}
+                              className="results-input"
+                            >
+                              {FORMAT_TEMPLATES.map((template) => (
+                                <option key={template.value} value={template.value}>{template.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="mt-2 text-xs leading-5 text-emerald-800">
+                            Custom setup keeps categories, rounds, and schedule in your hands. Changing scoring rules will update defaults unless you have already customized the round plan.
+                          </div>
+                          {roundPlanNeedsReset ? (
+                            <div className="mt-3 rounded-[1rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                              Scoring rules changed, but this event has a customized round plan. Current rounds were kept as a metadata-only update.
+                              <button
+                                type="button"
+                                onClick={() => replaceRoundPlanFromTemplate()}
+                                className="results-secondary-button ml-3"
+                              >
+                                Reset rounds from scoring rules
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
