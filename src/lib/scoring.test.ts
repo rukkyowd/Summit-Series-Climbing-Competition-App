@@ -20,6 +20,7 @@ import {
   phaseToStageMode,
   pickFinalists,
   pickPreferredQualifierCategory,
+  sortQualifierLeaderboardForDisplay,
   type QualifierLeaderboardEntry,
 } from "./scoring";
 
@@ -784,6 +785,58 @@ describe("competition normalization", () => {
 });
 
 describe("leaderboard category defaults", () => {
+  function displayEntry(input: {
+    id: string;
+    name: string;
+    categoryId: string;
+    category: string;
+    rank: number;
+    score: number;
+  }): QualifierLeaderboardEntry {
+    return {
+      climber_id: input.id,
+      name: input.name,
+      climber_number: input.id.replace("climber-", ""),
+      province: "NS",
+      category_id: input.categoryId,
+      display_category: input.category,
+      gender_division: input.category.split(" / ")[0] ?? "",
+      age_group: input.category.split(" / ")[1] ?? "",
+      time_slot_id: null,
+      total_score: input.score,
+      counting_climbs: [],
+      all_climbs: [],
+      topped_count: input.score,
+      zone_count: input.score,
+      counting_attempt_total: 1,
+      overall_rank: input.rank,
+      category_rank: input.rank,
+    };
+  }
+
+  it("sorts public leaderboard rows by category setup order before category rank", () => {
+    const sorted = sortQualifierLeaderboardForDisplay(
+      [
+        displayEntry({ id: "climber-3", name: "Kai", categoryId: "women-youth-b", category: "Women / Youth B", rank: 1, score: 100 }),
+        displayEntry({ id: "climber-1", name: "Jade", categoryId: "men-junior", category: "Men / Junior", rank: 1, score: 80 }),
+        displayEntry({ id: "climber-2", name: "Liam", categoryId: "men-junior", category: "Men / Junior", rank: 2, score: 70 }),
+        displayEntry({ id: "climber-4", name: "Owen", categoryId: "men-youth-d", category: "Men / Youth D", rank: 1, score: 90 }),
+      ],
+      [
+        { id: "men-junior", sort_order: 1, display_name: "Men / Junior" },
+        { id: "men-youth-d", sort_order: 2, display_name: "Men / Youth D" },
+        { id: "women-youth-b", sort_order: 3, display_name: "Women / Youth B" },
+      ]
+    );
+
+    expect(sorted.map((entry) => `${entry.display_category} #${entry.category_rank} ${entry.name}`)).toEqual([
+      "Men / Junior #1 Jade",
+      "Men / Junior #2 Liam",
+      "Men / Youth D #1 Owen",
+      "Women / Youth B #1 Kai",
+    ]);
+  });
+
   it("prefers the largest qualifier category and breaks ties by sort order", () => {
     const preferred = pickPreferredQualifierCategory(
       [

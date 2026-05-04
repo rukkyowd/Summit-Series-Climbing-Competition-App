@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import { Surface } from "@/components/ui/surface";
 import { getCompetitionSnapshot, type CompetitionSnapshot } from "@/lib/db";
 import { getDemoPublicWizardGuidance } from "@/lib/demo-wizard";
+import { sortQualifierLeaderboardForDisplay } from "@/lib/scoring";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
 
 export default function CompetitionLeaderboardPage() {
@@ -75,7 +76,7 @@ export default function CompetitionLeaderboardPage() {
 
   const qualifierGroups = snapshot
     ? Array.from(
-        snapshot.qualifierLeaderboard.reduce((groups, row) => {
+        sortQualifierLeaderboardForDisplay(snapshot.qualifierLeaderboard, snapshot.competition.categories).reduce((groups, row) => {
           const rows = groups.get(row.display_category) ?? [];
           rows.push(row);
           groups.set(row.display_category, rows);

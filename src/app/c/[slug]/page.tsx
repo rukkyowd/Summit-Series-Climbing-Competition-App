@@ -24,6 +24,7 @@ import {
   getActiveScheduleBlock,
   getTimeSlotLabel,
   parseScheduleTimeToMinutes,
+  sortQualifierLeaderboardForDisplay,
 } from "@/lib/scoring";
 import { getDemoPublicWizardGuidance } from "@/lib/demo-wizard";
 
@@ -184,8 +185,11 @@ export default function CompetitionOverviewPage() {
     [demoPublicReady]
   );
   const qualifierPreviewRows = useMemo(
-    () => [...(snapshot?.qualifierLeaderboard ?? [])].slice(0, 8),
-    [snapshot?.qualifierLeaderboard]
+    () =>
+      snapshot
+        ? sortQualifierLeaderboardForDisplay(snapshot.qualifierLeaderboard, snapshot.competition.categories).slice(0, 8)
+        : [],
+    [snapshot]
   );
   const liveCategoryCount = activeBlock ? getBlockAgeGroups(activeBlock.eligible_category_ids).length : 0;
   const overviewNavItems = useMemo(

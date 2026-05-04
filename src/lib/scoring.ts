@@ -1842,6 +1842,37 @@ export function compareQualifierEntries(left: QualifierLeaderboardEntry, right: 
   return left.name.localeCompare(right.name);
 }
 
+export function sortQualifierLeaderboardForDisplay(
+  entries: QualifierLeaderboardEntry[],
+  categories: Array<Pick<CompetitionCategory, "id" | "sort_order" | "display_name">>
+) {
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
+
+  return [...entries].sort((left, right) => {
+    const leftCategory = left.category_id ? categoryById.get(left.category_id) : null;
+    const rightCategory = right.category_id ? categoryById.get(right.category_id) : null;
+    const leftCategoryOrder = leftCategory?.sort_order ?? Number.MAX_SAFE_INTEGER;
+    const rightCategoryOrder = rightCategory?.sort_order ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftCategoryOrder !== rightCategoryOrder) {
+      return leftCategoryOrder - rightCategoryOrder;
+    }
+
+    const leftCategoryLabel = leftCategory?.display_name ?? left.display_category;
+    const rightCategoryLabel = rightCategory?.display_name ?? right.display_category;
+    const categoryLabelDiff = leftCategoryLabel.localeCompare(rightCategoryLabel);
+    if (categoryLabelDiff !== 0) {
+      return categoryLabelDiff;
+    }
+
+    if (left.category_rank !== right.category_rank) {
+      return left.category_rank - right.category_rank;
+    }
+
+    return compareQualifierEntries(left, right);
+  });
+}
+
 export function normalizeSuccessfulAttempts(attemptCount: number | null | undefined) {
   if (typeof attemptCount !== "number" || Number.isNaN(attemptCount)) {
     return 1;
