@@ -1,6 +1,12 @@
 import SiteHeader from "@/components/site-header";
-import { GuidedSandboxExperience } from "@/components/demo/GuidedSandboxExperience";
+import { DemoEntry } from "@/components/demo-entry";
 import { getDemoSetupValidation } from "@/lib/demo-setup-validation";
+import {
+  DEMO_TARGET_CLIMB_NUMBER,
+  DEMO_TARGET_CLIMBER_NUMBER,
+  isDemoTargetCorrected,
+  type DemoTargetAttemptState,
+} from "@/lib/demo-scenario";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
 async function getDemoCompetitions() {
@@ -29,6 +35,8 @@ async function getDemoCompetitions() {
           attemptsResult,
           finalistsResult,
           finalAttemptsResult,
+          qualifierRoundResult,
+          targetClimberResult,
         ] =
           await Promise.all([
             supabase
@@ -63,7 +71,35 @@ async function getDemoCompetitions() {
               .select("id")
               .eq("competition_id", competitionId)
               .limit(1),
+            supabase
+              .from("competition_rounds")
+              .select("id, name")
+              .eq("competition_id", competitionId)
+              .eq("scoring_bucket", "qualifier")
+              .order("sort_order", { ascending: true })
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from("climbers")
+              .select("id, name, climber_number")
+              .eq("competition_id", competitionId)
+              .eq("climber_number", DEMO_TARGET_CLIMBER_NUMBER)
+              .maybeSingle(),
           ]);
+
+        const targetClimber = targetClimberResult.data as { id: string; name: string; climber_number: string } | null;
+        const qualifierRound = qualifierRoundResult.data as { id: string; name: string | null } | null;
+        const { data: targetAttempt } =
+          targetClimber && qualifierRound?.id
+            ? await supabase
+                .from("qualifier_attempts")
+                .select("attempt_count, topped, zone, attempts_to_top, attempts_to_zone")
+                .eq("competition_id", competitionId)
+                .eq("round_id", qualifierRound.id)
+                .eq("climber_id", targetClimber.id)
+                .eq("climb_number", DEMO_TARGET_CLIMB_NUMBER)
+                .maybeSingle()
+            : { data: null };
 
         const setupValidation = getDemoSetupValidation(
           {
@@ -77,10 +113,18 @@ async function getDemoCompetitions() {
             saved: true,
           }
         );
-        const seeded = (climbersResult.data?.length ?? 0) >= 10 && (attemptsResult.data?.length ?? 0) > 0;
+        const seeded =
+          (climbersResult.data?.length ?? 0) >= 10 &&
+          (attemptsResult.data?.length ?? 0) > 0 &&
+          Boolean(targetClimber && targetAttempt);
+        const keyScoreCorrected = isDemoTargetCorrected(targetAttempt as DemoTargetAttemptState);
         const publicReady =
           (finalistsResult.data?.length ?? 0) > 0 &&
           (finalAttemptsResult.data?.length ?? 0) > 0 &&
+          ["finals_open", "finals_closed", "results"].includes(String(competition.current_phase ?? ""));
+        const organizerAdvanced =
+          seeded &&
+          (finalistsResult.data?.length ?? 0) > 0 &&
           ["finals_open", "finals_closed", "results"].includes(String(competition.current_phase ?? ""));
 
         return {
@@ -90,6 +134,13 @@ async function getDemoCompetitions() {
           created_at: (competition.created_at as string | null) ?? null,
           canSkipToJudge: setupValidation.canContinueToJudge && seeded,
           canSkipToResults: publicReady,
+          progress: {
+            eventReady: true,
+            dataPopulated: seeded,
+            keyScoreCorrected,
+            organizerAdvanced,
+            publicReady,
+          },
         };
       })
     );
@@ -105,7 +156,7 @@ export default async function DemoPage() {
     <main className="results-page">
       <div className="content-frame space-y-6">
         <SiteHeader light />
-        <GuidedSandboxExperience demos={demos} />
+        <DemoEntry demos={demos} />
       </div>
     </main>
   );

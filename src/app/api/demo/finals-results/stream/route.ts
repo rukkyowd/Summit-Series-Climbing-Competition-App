@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { buildDemoFinalScore } from "@/lib/demo-seed-data";
 import { createServiceRoleSupabaseClient } from "@/lib/server-supabase";
 
 export const runtime = "nodejs";
@@ -45,49 +44,6 @@ function sleep(ms: number) {
 
 function sseChunk(event: string, data: Record<string, unknown>) {
   return new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
-function buildOrderedAttempts(
-  finalistRows: FinalistRow[],
-  problemCount: number,
-  competitionId: string,
-  roundId: string,
-  timestamp: string
-): AttemptRow[] {
-  const ordered: AttemptRow[] = [];
-
-  for (let problemIndex = 0; problemIndex < problemCount; problemIndex += 1) {
-    const climbNumber = problemIndex + 1;
-
-    for (let finalistIndex = 0; finalistIndex < finalistRows.length; finalistIndex += 1) {
-      const finalist = finalistRows[finalistIndex];
-      const score = buildDemoFinalScore({
-        competitionId,
-        roundId,
-        climberId: finalist.climber_id,
-        qualifierRank: finalist.qualifier_rank,
-        climbingOrder: finalist.climbing_order,
-        finalistIndex,
-        climbNumber,
-        problemCount,
-      });
-
-      ordered.push({
-        competition_id: competitionId,
-        round_id: roundId,
-        climber_id: finalist.climber_id,
-        climb_number: climbNumber,
-        top: score.top,
-        zone: score.zone,
-        attempts_to_top: score.attempts_to_top,
-        attempts_to_zone: score.attempts_to_zone,
-        entered_by: "staff",
-        updated_at: timestamp,
-      });
-    }
-  }
-
-  return ordered;
 }
 
 export async function POST(request: NextRequest) {
@@ -163,28 +119,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { error: deleteError } = await supabase
+  const finalistIds = new Set(finalistRows.map((finalist) => finalist.climber_id));
+  const { data: existingAttempts, error: attemptsError } = await supabase
     .from("final_attempts")
-    .delete()
+    .select("competition_id, round_id, climber_id, climb_number, top, zone, attempts_to_top, attempts_to_zone, entered_by, updated_at")
     .eq("competition_id", competitionRow.id)
-    .eq("round_id", finalsRoundRow.id);
+    .eq("round_id", finalsRoundRow.id)
+    .order("climb_number", { ascending: true });
 
-  if (deleteError) {
-    return NextResponse.json({ ok: false, error: deleteError.message }, { status: 500 });
+  if (attemptsError) {
+    return NextResponse.json({ ok: false, error: attemptsError.message }, { status: 500 });
   }
 
-  const problemCount = Math.max(
-    1,
-    Math.min(finalsRoundRow.problem_count ?? competitionRow.finals_problem_count ?? 4, 8)
-  );
-  const timestamp = new Date().toISOString();
-  const orderedAttempts = buildOrderedAttempts(
-    finalistRows,
-    problemCount,
-    competitionRow.id,
-    finalsRoundRow.id,
-    timestamp
-  );
+  const orderedAttempts = ((existingAttempts ?? []) as AttemptRow[])
+    .filter((attempt) => finalistIds.has(attempt.climber_id))
+    .sort((left, right) => {
+      if (left.climb_number !== right.climb_number) {
+        return left.climb_number - right.climb_number;
+      }
+
+      const leftOrder = finalistRows.find((finalist) => finalist.climber_id === left.climber_id)?.climbing_order ?? 0;
+      const rightOrder = finalistRows.find((finalist) => finalist.climber_id === right.climber_id)?.climbing_order ?? 0;
+      return leftOrder - rightOrder;
+    });
+
+  if (!orderedAttempts.length) {
+    return NextResponse.json(
+      { ok: false, error: "Demo finals scores must be seeded before they can be streamed." },
+      { status: 409 }
+    );
+  }
   const scoreIntervalMs = 400;
 
   const stream = new ReadableStream<Uint8Array>({
@@ -194,13 +158,6 @@ export async function POST(request: NextRequest) {
 
         for (let index = 0; index < orderedAttempts.length; index += 1) {
           const attempt = orderedAttempts[index];
-          const { error: insertError } = await supabase.from("final_attempts").insert(attempt);
-
-          if (insertError) {
-            controller.enqueue(sseChunk("error", { message: insertError.message }));
-            controller.close();
-            return;
-          }
 
           controller.enqueue(
             sseChunk("score", {

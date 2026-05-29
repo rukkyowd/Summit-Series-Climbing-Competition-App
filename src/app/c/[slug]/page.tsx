@@ -34,30 +34,6 @@ import {
 } from "@/lib/public-results";
 import { useDemoState } from "@/lib/use-demo-state";
 
-type SseMessage = {
-  event: string;
-  data: Record<string, unknown>;
-};
-
-function parseSseMessage(message: string): SseMessage | null {
-  const lines = message.split("\n");
-  const eventLine = lines.find((line) => line.startsWith("event:"));
-  const dataLine = lines.find((line) => line.startsWith("data:"));
-
-  if (!eventLine || !dataLine) {
-    return null;
-  }
-
-  try {
-    return {
-      event: eventLine.slice("event:".length).trim(),
-      data: JSON.parse(dataLine.slice("data:".length).trim()) as Record<string, unknown>,
-    };
-  } catch {
-    return null;
-  }
-}
-
 export default function CompetitionOverviewPage() {
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
@@ -198,6 +174,10 @@ export default function CompetitionOverviewPage() {
   const finalsCategories = useMemo(() => Array.from(finalsGroups.keys()).sort(), [finalsGroups]);
   const activeFinalsCategory = selectedFinalsCategory || finalsCategories[0] || "";
   const finalsRows = finalsGroups.get(activeFinalsCategory) ?? [];
+  const maxFinalsRevealRows = useMemo(
+    () => Math.max(0, ...Array.from(finalsGroups.values()).map((rows) => rows.length)),
+    [finalsGroups]
+  );
   const publicResultsState = useMemo(
     () =>
       getPublicResultsState({
@@ -209,7 +189,7 @@ export default function CompetitionOverviewPage() {
   const finalsActive = publicResultsState.finalsStarted;
   const resultsPublished = snapshot?.competition.current_phase === "results";
   const demoOverlayActive = demoGuideActive && Boolean(snapshot?.competition.is_demo);
-  const { state: liveDemoState, refetch: refetchDemoState } = useDemoState(
+  const { state: liveDemoState } = useDemoState(
     demoOverlayActive ? snapshot?.competition.id : null,
     { pollMs: demoOverlayActive ? 2000 : 0 }
   );
@@ -218,8 +198,10 @@ export default function CompetitionOverviewPage() {
     [snapshot?.finalists]
   );
   const finalsScorePresent = publicResultsState.hasFinalsScores;
+  const publicDemoProgress = liveDemoState?.progress ?? null;
+  const publicDemoKeyScoreCorrected = publicDemoProgress?.keyScoreCorrected ?? false;
   const demoPublicReady =
-    liveDemoState?.progress?.publicReady ?? (finalsActive && finalistRows.length > 0 && finalsScorePresent);
+    publicDemoProgress?.publicReady ?? (finalsActive && finalistRows.length > 0 && finalsScorePresent);
   const demoWizardGuidance = useMemo(
     () => getDemoPublicWizardGuidance(demoPublicReady),
     [demoPublicReady]
@@ -299,105 +281,47 @@ export default function CompetitionOverviewPage() {
   }, [finalsCategories, finalsGroups, selectedFinalsCategory]);
 
   useEffect(() => {
-    if (!demoOverlayActive || !snapshot || !finalsActive || !finalistRows.length) {
+    if (!demoOverlayActive || !snapshot || !finalsActive || !finalsScorePresent || maxFinalsRevealRows === 0) {
+      setFinalsRevealActive(false);
+      setRevealedFinalsScoreCount(0);
       return;
     }
 
-    const streamKey = snapshot.competition.id;
+    const streamKey = `${snapshot.competition.id}:${maxFinalsRevealRows}`;
     if (finalsRevealStartedRef.current === streamKey) {
       return;
     }
 
     let cancelled = false;
-    const competitionId = snapshot.competition.id;
     finalsRevealStartedRef.current = streamKey;
     setFinalsRevealActive(true);
     setRevealedFinalsScoreCount(0);
+    let nextCount = 0;
 
-    async function runFinalsReveal() {
-      try {
-        const response = await fetch("/api/demo/finals-results/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ competitionId }),
-        });
+    const intervalId = window.setInterval(() => {
+      if (cancelled) {
+        return;
+      }
 
-        if (!response.ok || !response.body) {
-          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(payload?.error ?? "Unable to stream demo finals results.");
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (!cancelled) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          const messages = buffer.split("\n\n");
-          buffer = messages.pop() ?? "";
-
-          for (const message of messages) {
-            const parsed = parseSseMessage(message);
-            if (!parsed) {
-              continue;
-            }
-
-            if (parsed.event === "score") {
-              let nextCount = 0;
-              if (typeof parsed.data.index === "number") {
-                nextCount = parsed.data.index + 1;
-                setRevealedFinalsScoreCount(nextCount);
-              } else {
-                setRevealedFinalsScoreCount((current) => {
-                  nextCount = current + 1;
-                  return nextCount;
-                });
-              }
-              if (nextCount % 3 === 0) {
-                void refresh();
-                void refetchDemoState();
-              }
-            }
-
-            if (parsed.event === "complete") {
-              void refresh();
-              void refetchDemoState();
-            }
-
-            if (parsed.event === "error") {
-              throw new Error(typeof parsed.data.message === "string" ? parsed.data.message : "Unable to stream demo finals results.");
-            }
-          }
-        }
-      } catch (nextError) {
-        if (!cancelled) {
-          setError(nextError instanceof Error ? nextError.message : "Unable to stream demo finals results.");
-        }
-      } finally {
+      nextCount += 1;
+      setRevealedFinalsScoreCount(nextCount);
+      if (nextCount >= maxFinalsRevealRows) {
+        window.clearInterval(intervalId);
         if (!cancelled) {
           setFinalsRevealActive(false);
-          void refresh();
-          void refetchDemoState();
         }
       }
-    }
-
-    void runFinalsReveal();
+    }, 400);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
   }, [
     demoOverlayActive,
-    finalistRows.length,
     finalsActive,
-    refetchDemoState,
-    refresh,
+    finalsScorePresent,
+    maxFinalsRevealRows,
     snapshot,
   ]);
 
@@ -422,7 +346,17 @@ export default function CompetitionOverviewPage() {
           <div className="mt-3 text-sm text-slate-600">
             Competition phase: {formatCompetitionPhaseLabel(snapshot.competition.current_phase)}
           </div>
-          {publicResultsState.finalsPending ? (
+          {demoOverlayActive && publicResultsState.finalsPending ? (
+            <div className="results-alert mt-4">
+              Finals are active, but demo finals scores are not ready yet. Return to the organizer dashboard to seed
+              finals scores before reviewing the public result reveal.
+              <div className="mt-3">
+                <Link href={`/staff/c/${slug}?demo=act3`} className={buttonStyles({ variant: "secondary", size: "sm" })}>
+                  Organizer Dashboard
+                </Link>
+              </div>
+            </div>
+          ) : publicResultsState.finalsPending ? (
             <div className="results-alert mt-4">
               Finals are live. Scores will appear here as judges save them.
             </div>
@@ -471,21 +405,30 @@ export default function CompetitionOverviewPage() {
             ) : null}
             {demoOverlayActive ? (
               <DemoWizardSidebar
-                currentStep={demoPublicReady ? "finish" : "public"}
-                title={demoWizardGuidance.title}
-                instruction={demoWizardGuidance.instruction}
+                currentStep={!publicDemoKeyScoreCorrected ? "judge" : demoPublicReady ? "finish" : "public"}
+                title={!publicDemoKeyScoreCorrected ? "Finish the judge correction" : demoWizardGuidance.title}
+                instruction={
+                  !publicDemoKeyScoreCorrected
+                    ? "Return to the judge panel and save the guided Boulder 3 correction before reviewing public results."
+                    : demoWizardGuidance.instruction
+                }
                 why={demoWizardGuidance.why}
-                blockingMessage={demoWizardGuidance.blockingMessage}
+                blockingMessage={
+                  !publicDemoKeyScoreCorrected
+                    ? "Correct the guided judge score first."
+                    : demoWizardGuidance.blockingMessage
+                }
                 progress={{
                   eventReady: true,
                   dataPopulated: true,
-                  keyScoreCorrected: true,
-                  organizerAdvanced: finalistRows.length > 0,
+                  keyScoreCorrected: publicDemoKeyScoreCorrected,
+                  organizerAdvanced: publicDemoProgress?.organizerAdvanced ?? finalistRows.length > 0,
                   publicReady: demoPublicReady,
                 }}
                 primaryAction={{
-                  label: demoWizardGuidance.primaryActionLabel,
-                  targetAnchor: demoWizardGuidance.primaryTargetAnchor,
+                  label: publicDemoKeyScoreCorrected ? demoWizardGuidance.primaryActionLabel : "Fix Judge Score",
+                  targetAnchor: publicDemoKeyScoreCorrected ? demoWizardGuidance.primaryTargetAnchor : undefined,
+                  href: publicDemoKeyScoreCorrected ? undefined : `/staff/c/${slug}/judge?demo=act2`,
                 }}
                 secondaryActions={
                   demoPublicReady

@@ -28,6 +28,7 @@ import {
   type CompetitionPresetScheduleBlock,
 } from "@/lib/competition-presets";
 import { getDemoSetupValidation } from "@/lib/demo-setup-validation";
+import { useDemoState } from "@/lib/use-demo-state";
 import {
   getDemoCreateWizardGuidance,
   getDemoOrganizerWizardGuidance,
@@ -1117,6 +1118,12 @@ export default function StaffDashboard({
   const registrationQrUrl = `/api/qr?size=180&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const printableRegistrationQrUrl = `/api/qr?size=720&data=${encodeURIComponent(registerUrl || registerPath)}`;
   const selectedCompetitionIsDemo = draft ? isDemoCompetitionRecord(draft) : false;
+  const { state: organizerLiveDemoState } = useDemoState(
+    guidedDemoActive && selectedCompetitionIsDemo ? draft?.id : null,
+    { pollMs: guidedDemoActive && selectedCompetitionIsDemo ? 2000 : 0 }
+  );
+  const organizerDemoProgress = organizerLiveDemoState?.progress ?? null;
+  const organizerDemoKeyScoreCorrected = organizerDemoProgress?.keyScoreCorrected ?? false;
   const demoPublicPath = guidedDemoActive && selectedCompetitionIsDemo && publicPath ? `${publicPath}?demo=act4` : publicPath;
   const demoLeaderboardPath =
     guidedDemoActive && selectedCompetitionIsDemo && leaderboardPath ? `${leaderboardPath}?demo=act4` : leaderboardPath;
@@ -3253,16 +3260,22 @@ export default function StaffDashboard({
             title={demoOrganizerWizardGuidance.title}
             instruction={demoOrganizerWizardGuidance.instruction}
             why={demoOrganizerWizardGuidance.why}
-            blockingMessage={demoOrganizerWizardGuidance.blockingMessage}
+            blockingMessage={
+              organizerDemoKeyScoreCorrected
+                ? demoOrganizerWizardGuidance.blockingMessage
+                : "Correct the guided Boulder 3 score before advancing the demo."
+            }
             progress={{
               eventReady: true,
               dataPopulated: true,
-              keyScoreCorrected: true,
-              organizerAdvanced: finalistsPersisted,
-              publicReady: demoOrganizerReadyForPublic && finalsStartedForOperations,
+              keyScoreCorrected: organizerDemoKeyScoreCorrected,
+              organizerAdvanced: organizerDemoProgress?.organizerAdvanced ?? finalistsPersisted,
+              publicReady: organizerDemoProgress?.publicReady ?? (demoOrganizerReadyForPublic && finalsStartedForOperations),
             }}
             primaryAction={
-              demoOrganizerReadyForPublic
+              !organizerDemoKeyScoreCorrected
+                ? { label: "Fix Judge Score", href: `/staff/c/${draft.slug}/judge?demo=act2` }
+                : demoOrganizerReadyForPublic
                 ? { label: demoOrganizerWizardGuidance.primaryActionLabel, onClick: openDemoPublicPage }
                 : finalistsPersisted
                   ? {
@@ -3275,7 +3288,10 @@ export default function StaffDashboard({
                     targetAnchor: demoOrganizerWizardGuidance.primaryTargetAnchor,
                   }
             }
-            secondaryActions={[{ label: "Demo Home", href: "/demo" }]}
+            secondaryActions={[
+              { label: "Judge Panel", href: `/staff/c/${draft.slug}/judge?demo=act2` },
+              { label: "Demo Home", href: "/demo" },
+            ]}
           />
         ) : null}
         {demoMode && !isGuidedStoryAct1 ? (
