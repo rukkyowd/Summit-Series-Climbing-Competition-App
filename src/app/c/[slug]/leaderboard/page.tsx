@@ -12,6 +12,7 @@ import { getDemoPublicWizardGuidance } from "@/lib/demo-wizard";
 import { getLiveLeaderboardCopy, getPublicResultsState } from "@/lib/public-results";
 import { sortQualifierLeaderboardForDisplay } from "@/lib/scoring";
 import { publicSupabase, supabaseConfigured } from "@/lib/supabase";
+import { useDemoState } from "@/lib/use-demo-state";
 
 export default function CompetitionLeaderboardPage() {
   const params = useParams<{ slug: string }>();
@@ -112,7 +113,14 @@ export default function CompetitionLeaderboardPage() {
   const liveLeaderboardCopy = getLiveLeaderboardCopy(publicResultsState);
   const finalsVisible = publicResultsState.finalsStarted;
   const finalsScorePresent = publicResultsState.hasFinalsScores;
-  const demoPublicReady = Boolean(finalsVisible && (snapshot?.finalists.length ?? 0) > 0 && finalsScorePresent);
+  const { state: liveDemoState } = useDemoState(
+    demoOverlayActive ? snapshot?.competition.id : null,
+    { pollMs: demoOverlayActive ? 2000 : 0 }
+  );
+  const leaderboardDemoProgress = liveDemoState?.progress ?? null;
+  const leaderboardDemoKeyScoreCorrected = leaderboardDemoProgress?.keyScoreCorrected ?? false;
+  const demoPublicReady =
+    leaderboardDemoProgress?.publicReady ?? Boolean(finalsVisible && (snapshot?.finalists.length ?? 0) > 0 && finalsScorePresent);
   const demoWizardGuidance = useMemo(
     () => getDemoPublicWizardGuidance(demoPublicReady),
     [demoPublicReady]
@@ -142,20 +150,30 @@ export default function CompetitionLeaderboardPage() {
         ) : null}
         {demoOverlayActive ? (
           <DemoWizardSidebar
-            currentStep={demoPublicReady ? "finish" : "public"}
-            title={demoWizardGuidance.title}
-            instruction="This live leaderboard uses the same public results surface climbers and spectators can open during the event."
+            currentStep={!leaderboardDemoKeyScoreCorrected ? "judge" : demoPublicReady ? "finish" : "public"}
+            title={!leaderboardDemoKeyScoreCorrected ? "Finish the judge correction" : demoWizardGuidance.title}
+            instruction={
+              !leaderboardDemoKeyScoreCorrected
+                ? "Return to the judge panel and save the guided Boulder 3 correction before reviewing public results."
+                : "This live leaderboard uses the same public results surface climbers and spectators can open during the event."
+            }
             why={demoWizardGuidance.why}
-            blockingMessage={demoWizardGuidance.blockingMessage}
+            blockingMessage={
+              !leaderboardDemoKeyScoreCorrected
+                ? "Correct the guided judge score first."
+                : demoWizardGuidance.blockingMessage
+            }
             progress={{
               eventReady: true,
               dataPopulated: true,
-              keyScoreCorrected: true,
-              organizerAdvanced: (snapshot?.finalists.length ?? 0) > 0,
+              keyScoreCorrected: leaderboardDemoKeyScoreCorrected,
+              organizerAdvanced: leaderboardDemoProgress?.organizerAdvanced ?? (snapshot?.finalists.length ?? 0) > 0,
               publicReady: demoPublicReady,
             }}
             primaryAction={
-              demoPublicReady
+              !leaderboardDemoKeyScoreCorrected
+                ? { label: "Fix Judge Score", href: `/staff/c/${slug}/judge?demo=act2` }
+                : demoPublicReady
                 ? { label: "Public Page", href: `/c/${slug}?demo=act4` }
                 : { label: "Review Standings", targetAnchor: "leaderboard-standings" }
             }

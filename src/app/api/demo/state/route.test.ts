@@ -203,6 +203,28 @@ describe("demo state route", () => {
     });
   });
 
+  it("reports the guided judge correction as incomplete until the target score is fixed", async () => {
+    mockState.targetAttempt = {
+      attempt_count: 3,
+      topped: true,
+      zone: true,
+      attempts_to_top: 3,
+      attempts_to_zone: 1,
+    };
+
+    const response = await GET(stateRequest("slug=summit-demo"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.target).toMatchObject({
+      seeded: true,
+      corrected: false,
+    });
+    expect(body.progress).toMatchObject({
+      keyScoreCorrected: false,
+    });
+  });
+
   it("keeps publicReady false until finals attempts exist", async () => {
     mockState.finalAttemptCount = 0;
 

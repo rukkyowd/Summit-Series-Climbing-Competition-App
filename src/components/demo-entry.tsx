@@ -12,6 +12,13 @@ type DemoSummary = {
   created_at: string | null;
   canSkipToJudge: boolean;
   canSkipToResults: boolean;
+  progress?: {
+    eventReady: boolean;
+    dataPopulated: boolean;
+    keyScoreCorrected: boolean;
+    organizerAdvanced: boolean;
+    publicReady: boolean;
+  };
 };
 
 type DemoCompleteResponse = {
@@ -42,6 +49,7 @@ export function DemoEntry({ demos }: { demos: DemoSummary[] }) {
   const actionPending = navigationPending || deletingDemoId !== null;
   const visibleDemos = demos.filter((demo) => !deletedDemoIds.has(demo.id));
   const latestDemo = visibleDemos[0] ?? null;
+  const latestReadyForOrganizer = Boolean(latestDemo?.progress?.keyScoreCorrected);
 
   function startFullDemo() {
     setError("");
@@ -71,6 +79,17 @@ export function DemoEntry({ demos }: { demos: DemoSummary[] }) {
     void navigateWithDemoLoading(`/c/${latestDemo.slug}?demo=act4`);
   }
 
+  function skipToOrganizer() {
+    if (!latestDemo?.progress?.keyScoreCorrected) {
+      setError("Correct the guided judge score before opening the organizer handoff.");
+      return;
+    }
+
+    setError("");
+    setStatus("");
+    void navigateWithDemoLoading(`/staff/c/${latestDemo.slug}?demo=act3`);
+  }
+
   function openDemoJudge(demo: DemoSummary) {
     if (!demo.canSkipToJudge) {
       setError("Finish setup and add seeded scores before opening this judge panel.");
@@ -91,6 +110,17 @@ export function DemoEntry({ demos }: { demos: DemoSummary[] }) {
     setError("");
     setStatus("");
     void navigateWithDemoLoading(`/c/${demo.slug}?demo=act4`);
+  }
+
+  function openDemoOrganizer(demo: DemoSummary) {
+    if (!demo.progress?.keyScoreCorrected) {
+      setError("Correct the guided judge score before opening this organizer handoff.");
+      return;
+    }
+
+    setError("");
+    setStatus("");
+    void navigateWithDemoLoading(`/staff/c/${demo.slug}?demo=act3`);
   }
 
   async function deleteDemo(demo: DemoSummary) {
@@ -136,12 +166,12 @@ export function DemoEntry({ demos }: { demos: DemoSummary[] }) {
           Summit Series Demo
         </h1>
         <div className="mt-5 text-base leading-7 text-slate-700">
-          <div>Run a full climbing competition:</div>
+          <div>Run the real demo workflow from start to finish:</div>
           <ul className="mt-3 space-y-1">
-            <li>Create an event</li>
-            <li>Score athletes as a judge</li>
-            <li>Advance finalists</li>
-            <li>View public results</li>
+            <li>Create the demo event shell</li>
+            <li>Add sample athletes and correct one judge score</li>
+            <li>Lock qualifiers and advance finalists</li>
+            <li>View public finals results, then clean up</li>
           </ul>
         </div>
       </div>
@@ -178,6 +208,14 @@ export function DemoEntry({ demos }: { demos: DemoSummary[] }) {
           className={buttonStyles({ variant: "secondary" })}
         >
           Skip to Judge
+        </button>
+        <button
+          type="button"
+          onClick={skipToOrganizer}
+          disabled={actionPending || !latestReadyForOrganizer}
+          className={buttonStyles({ variant: "secondary" })}
+        >
+          Skip to Organizer
         </button>
         <button
           type="button"
@@ -234,12 +272,30 @@ export function DemoEntry({ demos }: { demos: DemoSummary[] }) {
                     </span>
                     <span
                       className={
-                        demo.canSkipToResults
+                        demo.progress?.keyScoreCorrected
                           ? "rounded-full bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-emerald-700"
                           : "rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500"
                       }
                     >
-                      {demo.canSkipToResults ? "Results ready" : "Results pending"}
+                      {demo.progress?.keyScoreCorrected ? "Correction saved" : "Correction pending"}
+                    </span>
+                    <span
+                      className={
+                        demo.progress?.organizerAdvanced
+                          ? "rounded-full bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-emerald-700"
+                          : "rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      }
+                    >
+                      {demo.progress?.organizerAdvanced ? "Finalists set" : "Organizer pending"}
+                    </span>
+                    <span
+                      className={
+                        demo.progress?.publicReady
+                          ? "rounded-full bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-emerald-700"
+                          : "rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      }
+                    >
+                      {demo.progress?.publicReady ? "Results ready" : "Results pending"}
                     </span>
                   </div>
                 </div>
@@ -252,6 +308,14 @@ export function DemoEntry({ demos }: { demos: DemoSummary[] }) {
                     className={buttonStyles({ variant: "ghost", size: "sm" })}
                   >
                     Open Judge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openDemoOrganizer(demo)}
+                    disabled={actionPending || !demo.progress?.keyScoreCorrected}
+                    className={buttonStyles({ variant: "ghost", size: "sm" })}
+                  >
+                    Organizer
                   </button>
                   <button
                     type="button"
