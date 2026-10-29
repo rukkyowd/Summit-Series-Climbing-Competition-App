@@ -21,6 +21,19 @@ pnpm-debug.log*
 # typescript
 *.tsbuildinfo
 
+# local and generated logs / artifacts
+*.log
+.codex-next-dev.err.log
+.codex-next-dev.log
+.next-dev-3001.err.log
+.next-dev-3001.log
+.next-dev-stderr.log
+.next-dev-stdout.log
+.next-dev.log
+.next-start.err.log
+.next-start.live.log
+.next-start.out.log
+
 # misc
 .DS_Store
 Thumbs.db

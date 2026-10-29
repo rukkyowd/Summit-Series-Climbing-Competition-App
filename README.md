@@ -1,133 +1,151 @@
-# Scorecard
+# Summit Series Climbing Competition Platform
 
-A real-time climbing competition platform built with Next.js, Tailwind CSS, and Supabase.
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat&logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat&logo=supabase)](https://supabase.com/)
+[![Vitest](https://img.shields.io/badge/Tested_with-Vitest-6E9F18?style=flat&logo=vitest)](https://vitest.dev/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
 
-The app now supports multiple simultaneous competitions instead of one singleton event. Each competition has its own:
+**Summit Series** is an end-to-end, real-time climbing competition platform engineered for gyms, event organizers, judges, athletes, and spectators. Built modern from the ground up with Next.js 14, TypeScript, Tailwind CSS, and Supabase (PostgreSQL with Row Level Security & Realtime).
 
-- public page and slug
-- registration flow
-- private scorecards
-- qualifier leaderboard
-- finals state and finalists
-- schedule blocks
-- admin controls
+The platform handles multi-competition concurrency, live qualifier scorecards, 2025 IFSC-compliant finals rounds with instant tie-breakers, digital judge entry stations, and public leaderboards.
 
-Examples:
+---
 
-- `/` shows the active competition browser
-- `/c/spring-send-recreational` shows one competition overview
-- `/c/spring-send-youth-competitive/leaderboard` shows rankings for that competition only
+## ⚡ Core Features
 
-## Current product model
+- **Multi-Event Management**: Concurrently manage multiple distinct competitions (e.g., Youth, Recreational, Open Pro) from an organizer command center without data collision.
+- **2025 IFSC Scoring Engine**: Official point-model implementation:
+  - Top: `25.0` points minus `0.1` per unsuccessful attempt before the top.
+  - Zone: `10.0` points minus `0.1` per unsuccessful attempt before the zone.
+  - Per-boulder score: `max(Top, Zone, 0.0)`.
+- **Live Athlete Scorecards**: Secure token-authenticated scorecards for participants to track boulder attempts without requiring account registration passwords.
+- **Judge Scoring Console**: Fast, high-contrast, touch-optimized judging interface with server-side validation and optimistic UI updates for rapid problem scoring.
+- **Real-Time Spectator Leaderboard**: Low-latency public leaderboard that auto-switches from qualifier standings to dynamic live finals rankings.
+- **Guided Demo Sandbox**: Interactive scenario walkthrough with seeded athletes and real-time score simulation for demonstrations and rehearsals.
+- **Automated Tie-Breaking & Cut Lines**: Automatic ranking calculations, qualification cutoffs, and finals bracket progression.
 
-- Public users land on a clean events browser and choose the competition they belong to.
-- Staff manage many competitions from one shared dashboard on the home page.
-- Registration, scorecards, leaderboards, finalists, and finals never leak across competitions.
-- Finals use the 2025 IFSC points model:
-  - `25.0` for a top, minus `0.1` per failed attempt before the top
-  - `10.0` for a zone, minus `0.1` per failed attempt before the zone
-  - per-boulder score is the better of top, zone, or `0.0`
+---
 
-## Main routes
+## 🏗 Architecture & Tech Stack
 
-- `/`
-  - public competition browser
-  - staff dashboard and competition manager for judges/admins
-- `/c/[slug]`
-  - competition overview
-- `/c/[slug]/register`
-  - public competition registration
-- `/c/[slug]/scorecard`
-  - private climber scorecard only; requires an access token from the climber's private link
-- `/staff/c/[slug]/judge`
-  - staff scoring route for judges/admins
-- `/c/[slug]/leaderboard`
-  - competition-specific qualifier or finals rankings
+- **Framework**: [Next.js 14](https://nextjs.org/) (App Router, Server Actions, Route Handlers)
+- **Language**: [TypeScript](https://www.typescriptlang.org/) (Strict typing with end-to-end Supabase schema types)
+- **Styling & UI**: [Tailwind CSS](https://tailwindcss.com/), [Framer Motion](https://www.framer.com/motion/)
+- **Database & Auth**: [Supabase](https://supabase.com/) (PostgreSQL 15+, Row-Level Security policies, PostgreSQL RPC functions, Realtime change data capture)
+- **Testing**: [Vitest](https://vitest.dev/) (Unit and integration test suites covering scoring calculations, state transitions, and organizer operations)
 
-## Security model
+---
 
-- Public users can read public competition data only for active or demo competitions.
-- Climber scorecards require private access tokens; missing or invalid tokens show a private-link state instead of redirecting into staff tools.
-- Staff scoring writes go through protected route handlers under `/api/staff/scores/*` before reaching checked Supabase RPC wrappers.
-- Admin/destructive actions such as phase changes, finalist edits, schedule/config updates, reset, undo, and delete run server-side through protected admin routes.
-- The current authorization model is intentionally still global `admin`/`judge`; per-competition staff assignments are a future pass.
+## 🚀 Getting Started
 
-## Local setup
+### Prerequisites
 
-1. Install dependencies
+- **Node.js** >= 18.x
+- **npm**, **pnpm**, or **yarn**
+- A [Supabase](https://supabase.com/) account & project (or local Supabase CLI instance)
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/rukkyowd/Summit-Series-Climbing-Competition-App.git
+cd Summit-Series-Climbing-Competition-App
+```
+
+### 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-2. Create `.env.local` from `.env.example` and add your Supabase values
+### 3. Environment configuration
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+Copy the template and configure your environment variables:
+
+```bash
+cp .env.example .env.local
 ```
 
-3. Choose one database setup path
+Populate `.env.local`:
 
-Recommended for a brand-new Supabase project:
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY # Optional: for administrative scripts
+```
 
-- open the Supabase SQL Editor
-- run [supabase-schema.sql](./supabase-schema.sql)
-- optionally run [supabase-seed.sql](./supabase-seed.sql) for sample data
+### 4. Database Setup
 
-Recommended if you want the repo to stay migration-driven from day one:
+Choose between two setup strategies:
 
-- follow [supabase/README.md](./supabase/README.md)
-- use the baseline migration plus `supabase db push`
+#### Option A: Quick Setup (Supabase Web Dashboard)
+1. Open the **SQL Editor** in your Supabase project dashboard.
+2. Execute [`supabase-schema.sql`](./supabase-schema.sql) to provision all tables, RPC functions, and RLS policies.
+3. *(Optional)* Execute [`supabase-seed.sql`](./supabase-seed.sql) to inject realistic sample events, categories, athletes, and scores.
 
-Do not apply both the manual schema file and the full migration history to the same fresh database unless you intentionally know why.
+#### Option B: Migration-Driven (Supabase CLI)
+Follow the guide in [`supabase/README.md`](./supabase/README.md) to link your project and apply versioned migrations:
+```bash
+npx supabase db push --linked
+```
 
-4. Start the app
+### 5. Launch the application
 
 ```bash
 npm run dev
 ```
 
-5. Verify the app
+Visit [`http://localhost:3000`](http://localhost:3000) in your browser.
 
-- open `/` to confirm competitions load
-- open `/staff/login` to confirm staff auth renders
+---
 
-## Database notes
+## 🧭 Application Routes
 
-The database now centers on a `competitions` table instead of a single `active_event_config` row.
+| Path | Purpose |
+| :--- | :--- |
+| `/` | Public competition browser & staff management dashboard |
+| `/c/[slug]` | Competition overview, schedule, and category breakdown |
+| `/c/[slug]/register` | Athlete registration portal |
+| `/c/[slug]/scorecard` | Private athlete scorecard (authenticated via unique access token) |
+| `/c/[slug]/leaderboard` | Live public standings (qualifier rankings & finals ladder) |
+| `/staff/c/[slug]/judge` | Secure, touch-optimized judge scoring station |
+| `/demo` | Guided interactive sandbox walkthrough for testing |
 
-Key tables:
+---
 
-- `competitions`
-- `competition_categories`
-- `competition_schedule_blocks`
-- `climbers`
-- `qualifier_attempts`
-- `competition_finalists`
-- `final_attempts`
-- `profiles`
+## 🧪 Testing & Code Quality
 
-Manual setup and automation notes for migrations live in [supabase/README.md](./supabase/README.md).
-
-## SQL helpers
-
-Manual SQL files for testing live at the repo root and in [sql/spring-send](./sql/spring-send).
-
-- [supabase-seed.sql](./supabase-seed.sql)
-  - light sample setup with multiple competitions
-- [supabase-test-100-athletes.sql](./supabase-test-100-athletes.sql)
-  - heavier test fixture with 100 athletes across multiple competitions
-- [sql/spring-send/README.md](./sql/spring-send/README.md)
-  - phased Spring Send scripts split by event segment
-
-## Quality checks
+This project maintains high reliability standards through comprehensive tests and automated linters:
 
 ```bash
-npm run typecheck
+# Run unit and integration tests
 npm run test
+
+# Type check TypeScript without emitting files
+npm run typecheck
+
+# Lint codebase with ESLint
 npm run lint
-npm run build
+
+# Check for accidental secret leakage in source files
 npm run security:secrets
-npm run db:push:dry
+
+# Production build
+npm run build
 ```
+
+---
+
+## 🔒 Security Architecture
+
+- **Row Level Security (RLS)**: Enforced directly at the PostgreSQL layer, preventing unauthorized reads or data leakage across competitions.
+- **Scoped Judge Operations**: Writes are processed through protected route handlers (`/api/staff/scores/*`) that validate user permissions before executing database RPC calls.
+- **Private Athlete Tokens**: Athletes access their personal scorecards through cryptographically sound unguessable tokens, eliminating the need to expose credentials on gym floor devices.
+- **Server-Side Administrative Actions**: Schedule changes, phase transitions, and finalist seeding strictly execute on the server under administrative authentication.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
